@@ -83,7 +83,7 @@ All notable changes to AnvilApp are documented here.
 |-------|--------|-------------|
 | 1 | ✅ Complete | Foundation — Xcode project, SwiftUI shell, ModelRegistry, DownloadClient |
 | 2 | ✅ Complete | Core Inference Stack — VAE, DiT, Diffusion Sampler, MusicPipeline, WeightConverter |
-| 3 | ✅ Complete | Conditioning Pipeline — Qwen3 text encoder, LyricEncoder, TimbreEncoder, ConditioningActor |
+| 3 | ✅ Complete | Conditioning Pipeline — Qwen3 text encoder, LyricEncoder, TimbreEncoder, ConditionEncoder, ConditioningActor |
 | 4 | Planned | UI Integration — IntentRouter, LyricWriter, full generation flow |
 | 5 | Planned | DSP Audio Editor — trim, fade, normalize, EQ, reverb, time stretch, pitch shift |
 | 6 | Planned | AI Audio Editor — inpaint/repaint via VAE encode → mask latents → denoise |
