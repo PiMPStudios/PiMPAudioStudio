@@ -1,0 +1,47 @@
+name: AnvilApp
+options:
+  bundleIdPrefix: net.pimp.anvil
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "16.0"
+  minimumXcodeGenVersion: "2.38"
+
+packages:
+  AnvilCore:
+    path: ./AnvilCore
+
+targets:
+  AnvilApp:
+    type: application
+    platform: macOS
+    sources: [AnvilApp]
+    dependencies:
+      - package: AnvilCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: net.pimp.anvil.AnvilApp
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: 1
+        SWIFT_VERSION: "5.10"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.music"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_NSHumanReadableCopyright: ""
+        INFOPLIST_KEY_CFBundleDisplayName: "Anvil"
+    entitlements:
+      path: AnvilApp/AnvilApp.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.network.client: true
+        com.apple.security.files.user-selected.read-write: true
+
+  AnvilAppTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources: [AnvilAppTests]
+    dependencies:
+      - target: AnvilApp
+      - package: AnvilCore
+    settings:
+      base:
+        SWIFT_VERSION: "5.10"

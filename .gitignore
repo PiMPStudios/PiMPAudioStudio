@@ -1,0 +1,16 @@
+# Xcode
+AnvilApp.xcodeproj/xcuserdata/
+AnvilApp.xcodeproj/project.xcworkspace/xcuserdata/
+DerivedData/
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# macOS
+.DS_Store
+
+# Models (never commit weights)
+*.safetensors
+*.bin
+*.gguf
