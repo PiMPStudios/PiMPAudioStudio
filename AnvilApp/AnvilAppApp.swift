@@ -8,10 +8,10 @@ struct AnvilAppApp: App {
     var body: some Scene {
         WindowGroup {
             if appState.isSetupComplete {
-                Text("Main UI coming soon")
+                MainShellView()
                     .environmentObject(appState)
             } else {
-                Text("First launch coming soon")
+                FirstLaunchView()
                     .environmentObject(appState)
             }
         }
