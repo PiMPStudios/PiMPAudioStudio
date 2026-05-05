@@ -56,10 +56,10 @@ public actor ConditioningActor {
 
         let tFrames = Int(Float(duration) * Self.latentFrameRate)
         let contextLatents: MLXArray
-        if let ref = referenceAudio {
-            let latents = await vae.encodeSample(audio: ref, precision: precision)
-            let chunkMask = MLXArray.ones(latents.shape).asType(precision.mlxDtype)
-            contextLatents = concatenated([latents, chunkMask], axis: -1)  // [B, T, 128]
+        if referenceAudio != nil {
+            // Use the already-prepared (padded/truncated) referenceLatents
+            let chunkMask = MLXArray.ones(referenceLatents.shape).asType(precision.mlxDtype)
+            contextLatents = concatenated([referenceLatents, chunkMask], axis: -1)  // [B, 750, 128]
         } else {
             contextLatents = MLXArray.zeros([1, tFrames, 128])
         }
