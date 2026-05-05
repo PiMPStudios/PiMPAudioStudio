@@ -77,4 +77,27 @@ public actor MusicPipeline {
             timeCosts: costs
         )
     }
+
+    public func generate(
+        text: String,
+        lyrics: String,
+        referenceAudio: MLXArray?,
+        duration: TimeInterval,
+        config: DiffusionConfig,
+        conditioning: ConditioningActor
+    ) async throws -> AudioResult {
+        let cond = await conditioning.encode(
+            text: text,
+            lyrics: lyrics,
+            referenceAudio: referenceAudio,
+            duration: duration,
+            precision: config.precision
+        )
+        return try await generate(
+            encoderStates: cond.encoderStates,
+            contextLatents: cond.contextLatents,
+            duration: duration,
+            config: config
+        )
+    }
 }
