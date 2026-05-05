@@ -10,6 +10,7 @@ import Foundation
     #expect(specs.contains(where: { $0.id == "ace-step-dit" }))
     #expect(specs.contains(where: { $0.id == "ace-step-vae" }))
     #expect(specs.contains(where: { $0.id == "lyric-llm" }))
+    #expect(specs.contains(where: { $0.id == "stable-audio-open" }))
 }
 
 @Test func registryDetectsModelNotDownloaded() async {

@@ -64,6 +64,10 @@ public actor ModelRegistry {
         return allFilesExist ? .ready : .notDownloaded
     }
 
+    private func setStatus(_ modelID: String, to status: ModelStatus) {
+        statuses[modelID] = status
+    }
+
     public func downloadAll(
         onProgress: @Sendable @escaping (String, Double) -> Void
     ) async throws {
@@ -73,14 +77,22 @@ public actor ModelRegistry {
 
             for file in spec.files {
                 let destination = spec.localPath(for: file, base: baseDirectory)
-                try await client.download(
-                    repo: spec.huggingFaceRepo,
-                    file: file,
-                    to: destination,
-                    onProgress: { [id = spec.id] progress in
-                        onProgress(id, progress)
-                    }
-                )
+                do {
+                    try await client.download(
+                        repo: spec.huggingFaceRepo,
+                        file: file,
+                        to: destination,
+                        onProgress: { [id = spec.id] progress in
+                            Task { [weak self] in
+                                await self?.setStatus(id, to: .downloading(progress: progress))
+                            }
+                            onProgress(id, progress)
+                        }
+                    )
+                } catch {
+                    statuses[spec.id] = .failed(error.localizedDescription)
+                    throw error
+                }
 
                 if let expectedHash = spec.sha256[file], !expectedHash.isEmpty {
                     statuses[spec.id] = .verifying
