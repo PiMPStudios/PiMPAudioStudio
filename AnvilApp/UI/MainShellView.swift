@@ -3,6 +3,8 @@ import SwiftUI
 struct MainShellView: View {
     @EnvironmentObject private var appState: AppState
     @State private var selectedSidebarItem: SidebarItem = .generate
+    @State private var selectedMode: String = "auto"
+    @State private var promptText: String = ""
 
     var body: some View {
         NavigationSplitView {
@@ -34,7 +36,7 @@ struct MainShellView: View {
 
     private var canvas: some View {
         VStack(spacing: 16) {
-            Picker("Mode", selection: .constant("auto")) {
+            Picker("Mode", selection: $selectedMode) {
                 Text("Auto").tag("auto")
                 Text("Music").tag("music")
                 Text("Sound FX").tag("fx")
@@ -43,7 +45,7 @@ struct MainShellView: View {
             .pickerStyle(.segmented)
             .padding(.horizontal)
 
-            TextEditor(text: .constant(""))
+            TextEditor(text: $promptText)
                 .font(.body)
                 .frame(minHeight: 100)
                 .overlay(

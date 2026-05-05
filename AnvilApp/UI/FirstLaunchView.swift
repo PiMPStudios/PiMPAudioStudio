@@ -3,7 +3,6 @@ import AnvilCore
 
 struct FirstLaunchView: View {
     @EnvironmentObject private var appState: AppState
-    @State private var isDownloading = false
 
     var body: some View {
         VStack(spacing: 32) {
@@ -35,21 +34,24 @@ struct FirstLaunchView: View {
 
             totalSizeLabel
 
-            Button(isDownloading ? "Downloading…" : "Download Models") {
-                isDownloading = true
+            Button(isActivelyDownloading ? "Downloading…" : "Download Models") {
                 Task {
                     await appState.startDownload()
-                    isDownloading = false
                 }
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
-            .disabled(isDownloading)
+            .disabled(isActivelyDownloading)
 
             Spacer()
         }
         .padding(48)
         .frame(minWidth: 600, minHeight: 500)
+    }
+
+    private var isActivelyDownloading: Bool {
+        !appState.downloadProgress.isEmpty &&
+        appState.downloadProgress.values.contains(where: { $0 < 1.0 })
     }
 
     private var totalSizeLabel: some View {
