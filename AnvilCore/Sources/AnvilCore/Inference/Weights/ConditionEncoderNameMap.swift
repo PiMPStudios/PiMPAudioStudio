@@ -28,14 +28,23 @@ public enum ConditionEncoderNameMap {
             return mapEncoderKey(stripped)
         }
 
+        // condition_encoder.timbre_attention_pooler.* → timbreEncoder.attentionPooler.*
+        if key.hasPrefix("condition_encoder.timbre_attention_pooler.") {
+            let sub = String(key.dropFirst("condition_encoder.timbre_attention_pooler.".count))
+            if sub == "special_token" {
+                return "timbreEncoder.attentionPooler.queryTokens"
+            }
+            let mapped = mapLayerKey("timbreEncoder.attentionPooler.\(sub)")
+            return mapped
+        }
+
         return nil
     }
 
-    private static func mapEncoderKey(_ key: String) -> String {
+    /// Remaps structural sub-keys (attention projections, MLP projections, layer norms)
+    /// for a key that already carries its Swift-side prefix.
+    private static func mapLayerKey(_ key: String) -> String {
         var mapped = key
-
-        // embed_tokens → inputProjection
-        mapped = mapped.replacingOccurrences(of: ".embed_tokens.", with: ".inputProjection.")
 
         // self_attn projections
         mapped = mapped.replacingOccurrences(of: ".self_attn.q_proj", with: ".attention.qProj")
@@ -54,9 +63,18 @@ public enum ConditionEncoderNameMap {
         mapped = mapped.replacingOccurrences(of: ".input_layernorm", with: ".inputNorm")
         mapped = mapped.replacingOccurrences(of: ".post_attention_layernorm", with: ".postNorm")
 
+        return mapped
+    }
+
+    private static func mapEncoderKey(_ key: String) -> String {
+        var mapped = key
+
+        // embed_tokens → inputProjection
+        mapped = mapped.replacingOccurrences(of: ".embed_tokens.", with: ".inputProjection.")
+
         // special_token → attentionPooler.queryTokens
         mapped = mapped.replacingOccurrences(of: ".special_token", with: ".attentionPooler.queryTokens")
 
-        return mapped
+        return mapLayerKey(mapped)
     }
 }
