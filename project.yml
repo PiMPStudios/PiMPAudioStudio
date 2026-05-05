@@ -29,6 +29,7 @@ targets:
         INFOPLIST_KEY_NSHumanReadableCopyright: ""
         INFOPLIST_KEY_CFBundleDisplayName: "Anvil"
         ENABLE_HARDENED_RUNTIME: YES
+        ENABLE_TESTABILITY: YES
     entitlements:
       path: AnvilApp/AnvilApp.entitlements
       properties:
@@ -46,3 +47,4 @@ targets:
     settings:
       base:
         SWIFT_VERSION: "5.10"
+        GENERATE_INFOPLIST_FILE: YES
