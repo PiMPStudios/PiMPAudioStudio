@@ -5,7 +5,14 @@ public actor DownloadClient {
     public init() {}
 
     public func huggingFaceURL(repo: String, file: String) -> URL {
-        URL(string: "https://huggingface.co/\(repo)/resolve/main/\(file)")!
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "huggingface.co"
+        components.path = "/\(repo)/resolve/main/\(file)"
+        guard let url = components.url else {
+            preconditionFailure("Invalid HuggingFace URL for repo: \(repo), file: \(file)")
+        }
+        return url
     }
 
     public func download(
@@ -36,11 +43,13 @@ public actor DownloadClient {
         try FileManager.default.moveItem(at: tempURL, to: destination)
     }
 
-    public nonisolated func verifySHA256(file: URL, expected: String) -> Bool {
-        guard let data = try? Data(contentsOf: file) else { return false }
-        let digest = SHA256.hash(data: data)
-        let hex = digest.map { String(format: "%02x", $0) }.joined()
-        return hex == expected.lowercased()
+    public nonisolated func verifySHA256(file: URL, expected: String) async -> Bool {
+        await Task.detached(priority: .userInitiated) {
+            guard let data = try? Data(contentsOf: file) else { return false }
+            let digest = SHA256.hash(data: data)
+            let hex = digest.map { String(format: "%02x", $0) }.joined()
+            return hex == expected.lowercased()
+        }.value
     }
 }
 
