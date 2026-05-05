@@ -1,0 +1,120 @@
+import Foundation
+import MLX
+import MLXRandom
+
+public actor DiffusionActor {
+    private let dit: DiTActor
+    private var progressContinuation: AsyncStream<DiffusionProgress>.Continuation?
+    private var _progress: AsyncStream<DiffusionProgress>?
+
+    public init(dit: DiTActor) {
+        self.dit = dit
+    }
+
+    public var progress: AsyncStream<DiffusionProgress> {
+        if let existing = _progress { return existing }
+        let (stream, continuation) = AsyncStream<DiffusionProgress>.makeStream()
+        self.progressContinuation = continuation
+        self._progress = stream
+        return stream
+    }
+
+    public func generate(
+        encoderStates: MLXArray,
+        contextLatents: MLXArray,
+        shape: (batch: Int, frames: Int, channels: Int),
+        config: DiffusionConfig
+    ) async -> DiffusionResult {
+        let totalStart = Date()
+
+        let bsz = shape.batch
+        let T = shape.frames
+        let C = shape.channels
+
+        var xt = DiffusionSampler.generateNoise(shape: [bsz, T, C], seed: config.seed)
+
+        let schedule = TimestepSchedule.compute(
+            shift: config.shift, timesteps: nil, inferSteps: config.steps
+        )
+        let numSteps = schedule.count
+
+        let doCFG = config.guidanceScale > 1.0
+        var encHS = encoderStates
+        var ctx = contextLatents
+        if doCFG {
+            let nullExpanded = MLXArray.zeros(like: encHS)
+            encHS = concatenated([encHS, nullExpanded], axis: 0)
+            ctx = concatenated([ctx, ctx], axis: 0)
+        }
+        let momentum: APGMomentum? = doCFG ? APGMomentum() : nil
+
+        let coverSteps = Int(Float(numSteps) * config.audioCoverStrength)
+
+        let cache = CrossAttentionCache()
+        let diffStart = Date()
+
+        for stepIdx in 0..<numSteps {
+            let currentT = schedule[stepIdx]
+
+            if stepIdx >= coverSteps {
+                cache.reset()
+            }
+
+            let xIn = doCFG ? concatenated([xt, xt], axis: 0) : xt
+
+            let (vt, _) = await dit.step(
+                noisyLatents: xIn,
+                timestep: currentT,
+                timestepR: currentT,
+                encoderStates: encHS,
+                contextLatents: ctx,
+                cache: cache,
+                useCache: !doCFG
+            )
+
+            var velocity = vt
+
+            if doCFG {
+                let predCond = vt[0..<bsz]
+                let predUncond = vt[bsz...]
+                let applyCFG = currentT >= config.cfgIntervalStart && currentT <= config.cfgIntervalEnd
+                if applyCFG {
+                    velocity = DiffusionSampler.apgForward(
+                        predCond: predCond, predUncond: predUncond,
+                        guidanceScale: config.guidanceScale, momentum: momentum
+                    )
+                } else {
+                    velocity = predCond
+                }
+            }
+
+            if stepIdx == numSteps - 1 {
+                xt = DiffusionSampler.finalStep(xt: xt, vt: velocity, currentT: currentT)
+            } else {
+                let nextT = schedule[stepIdx + 1]
+                switch config.method {
+                case .ode:
+                    xt = DiffusionSampler.odeStep(xt: xt, vt: velocity, currentT: currentT, nextT: nextT)
+                case .sde:
+                    xt = DiffusionSampler.sdeStep(xt: xt, vt: velocity, currentT: currentT, nextT: nextT)
+                }
+            }
+            eval(xt)
+
+            let elapsed = Date().timeIntervalSince(diffStart)
+            progressContinuation?.yield(DiffusionProgress(
+                currentStep: stepIdx + 1, totalSteps: numSteps, elapsedTime: elapsed
+            ))
+        }
+
+        let diffTime = Date().timeIntervalSince(diffStart)
+        let totalTime = Date().timeIntervalSince(totalStart)
+        let costs = TimeCosts(
+            diffusionTime: diffTime,
+            perStepTime: diffTime / Double(max(numSteps, 1)),
+            totalTime: totalTime
+        )
+
+        return DiffusionResult(latents: xt, timeCosts: costs)
+    }
+}
