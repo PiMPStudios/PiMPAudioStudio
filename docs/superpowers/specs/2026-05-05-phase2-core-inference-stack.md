@@ -394,4 +394,6 @@ implementation and stored in `AnvilCore/Tests/Fixtures/`.
 - Sound FX pipeline (Stable Audio) — Phase 3
 - IntentRouter / LyricWriter — Phase 4
 - UI integration — Phase 4
-- LoRA fine-tuning — Phase 5
+- DSP audio editor (trim, fade, normalize, EQ, reverb, time stretch, pitch shift) — Phase 5
+- AI audio editor (inpaint/repaint via VAE encode → mask latents → denoise) — Phase 6
+- LoRA fine-tuning — Phase 7
