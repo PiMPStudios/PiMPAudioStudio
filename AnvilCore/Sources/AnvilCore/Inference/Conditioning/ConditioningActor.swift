@@ -3,6 +3,7 @@ import MLX
 import MLXNN
 
 public actor ConditioningActor {
+    private let vae: VAEActor
     private let qwen3: Qwen3Model
     private let lyricEncoder: LyricEncoder
     private let timbreEncoder: TimbreEncoder
@@ -13,17 +14,19 @@ public actor ConditioningActor {
     static let latentFrameRate: Float = 25.0
 
     public init(
+        vae: VAEActor,
         qwen3: Qwen3Model,
+        conditionEncoder: ConditionEncoder,
         lyricEncoder: LyricEncoder,
         timbreEncoder: TimbreEncoder,
-        conditionEncoder: ConditionEncoder,
-        tokenizer: AnvilTokenizer
+        tokenizerURL: URL
     ) {
+        self.vae = vae
         self.qwen3 = qwen3
+        self.conditionEncoder = conditionEncoder
         self.lyricEncoder = lyricEncoder
         self.timbreEncoder = timbreEncoder
-        self.conditionEncoder = conditionEncoder
-        self.tokenizer = tokenizer
+        self.tokenizer = try! AnvilTokenizer(configURL: tokenizerURL)
     }
 
     public func encode(
@@ -32,7 +35,7 @@ public actor ConditioningActor {
         referenceAudio: MLXArray?,
         duration: TimeInterval,
         precision: Precision
-    ) -> ConditioningResult {
+    ) async -> ConditioningResult {
         let (textIds, textMask) = tokenizer.encodeText(text, maxLength: 256)
         let (lyricIds, lyricMask) = tokenizer.encodeLyrics(lyrics, maxLength: 2048)
 
@@ -40,7 +43,7 @@ public actor ConditioningActor {
         let lyricEmbeddings = qwen3.embedTokens(lyricIds)
         let lyricHidden = lyricEncoder(embeddings: lyricEmbeddings, attentionMask: lyricMask)
 
-        let referenceLatents = prepareReferenceLatents(referenceAudio)
+        let referenceLatents = await prepareReferenceLatents(referenceAudio, precision: precision)
         let timbreTokens = timbreEncoder(latents: referenceLatents, attentionMask: nil)
 
         let (encoderStates, encoderMask) = conditionEncoder(
@@ -52,7 +55,14 @@ public actor ConditioningActor {
         )
 
         let tFrames = Int(Float(duration) * Self.latentFrameRate)
-        let contextLatents = MLXArray.zeros([1, tFrames, 128])
+        let contextLatents: MLXArray
+        if let ref = referenceAudio {
+            let latents = await vae.encodeSample(audio: ref, precision: precision)
+            let chunkMask = MLXArray.ones(latents.shape).asType(precision.mlxDtype)
+            contextLatents = concatenated([latents, chunkMask], axis: -1)  // [B, T, 128]
+        } else {
+            contextLatents = MLXArray.zeros([1, tFrames, 128])
+        }
 
         if precision == .float16 {
             return ConditioningResult(
@@ -69,26 +79,27 @@ public actor ConditioningActor {
         )
     }
 
-    private func prepareReferenceLatents(_ referenceAudio: MLXArray?) -> MLXArray {
+    private func prepareReferenceLatents(_ referenceAudio: MLXArray?, precision: Precision) async -> MLXArray {
         guard let ref = referenceAudio else {
             return MLXArray.zeros([1, Self.timbreFixFrame, 64])
         }
 
-        let currentFrames = ref.shape[1]
+        let latents = await vae.encodeSample(audio: ref, precision: precision)
+        let currentFrames = latents.shape[1]
         if currentFrames == Self.timbreFixFrame {
-            return ref
+            return latents
         } else if currentFrames > Self.timbreFixFrame {
-            return ref[0..<ref.shape[0], 0..<Self.timbreFixFrame]
+            return latents[0..<latents.shape[0], 0..<Self.timbreFixFrame]
         } else {
-            let padding = MLXArray.zeros([ref.shape[0], Self.timbreFixFrame - currentFrames, 64])
-            return concatenated([ref, padding], axis: 1)
+            let padding = MLXArray.zeros([latents.shape[0], Self.timbreFixFrame - currentFrames, 64])
+            return concatenated([latents, padding], axis: 1)
         }
     }
 
     public func loadWeights(
         qwen3Weights: [(String, MLXArray)],
         conditionWeights: [(String, MLXArray)]
-    ) {
+    ) async {
         qwen3.update(parameters: ModuleParameters.unflattened(qwen3Weights))
         eval(qwen3.parameters())
 
@@ -116,14 +127,14 @@ public actor ConditioningActor {
 }
 
 extension ConditioningActor {
-    public static func forTesting() throws -> ConditioningActor {
-        let tokenizer = try AnvilTokenizer.forTesting()
+    public static func forTesting(tokenizerURL: URL) -> ConditioningActor {
         return ConditioningActor(
+            vae: VAEActor(),
             qwen3: Qwen3Model(),
+            conditionEncoder: ConditionEncoder(),
             lyricEncoder: LyricEncoder(),
             timbreEncoder: TimbreEncoder(),
-            conditionEncoder: ConditionEncoder(),
-            tokenizer: tokenizer
+            tokenizerURL: tokenizerURL
         )
     }
 }
