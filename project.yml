@@ -28,6 +28,7 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_NSHumanReadableCopyright: ""
         INFOPLIST_KEY_CFBundleDisplayName: "Anvil"
+        ENABLE_HARDENED_RUNTIME: YES
     entitlements:
       path: AnvilApp/AnvilApp.entitlements
       properties:

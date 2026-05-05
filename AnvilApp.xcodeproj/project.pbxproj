@@ -99,7 +99,7 @@
 			path = AnvilAppTests;
 			sourceTree = "<group>";
 		};
-		"TEMP_3026CB5D-E7F8-4E11-8701-A2A31DB813FE" /* UI */ = {
+		"TEMP_DF152F9C-2538-4C33-A3BC-6833A5EBF415" /* UI */ = {
 			isa = PBXGroup;
 			children = (
 			);
@@ -252,6 +252,7 @@
 				CODE_SIGN_ENTITLEMENTS = AnvilApp/AnvilApp.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Anvil;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
@@ -275,6 +276,7 @@
 				CODE_SIGN_ENTITLEMENTS = AnvilApp/AnvilApp.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Anvil;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
