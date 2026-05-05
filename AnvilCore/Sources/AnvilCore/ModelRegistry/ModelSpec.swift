@@ -1,10 +1,13 @@
 import Foundation
 
-public struct ModelSpec: Sendable, Codable, Identifiable {
+public struct ModelSpec: Sendable, Identifiable {
     public let id: String
     public let huggingFaceRepo: String
     public let files: [String]
     public let sizeBytes: Int64
+    /// SHA256 checksums keyed by filename. Entries are optional per file —
+    /// files without a corresponding hash skip verification during download.
+    /// When checksums are available, every file should have an entry.
     public let sha256: [String: String]
 
     public init(

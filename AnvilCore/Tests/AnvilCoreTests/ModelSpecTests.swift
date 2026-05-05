@@ -38,5 +38,18 @@ import Testing
     )
 
     let baseURL = URL(filePath: "/tmp/models")
-    #expect(spec.localDirectory(base: baseURL).path().contains("ace-step-dit"))
+    #expect(spec.localDirectory(base: baseURL) == URL(filePath: "/tmp/models/ace-step-dit"))
+}
+
+@Test func modelSpecLocalPath() {
+    let spec = ModelSpec(
+        id: "ace-step-dit",
+        huggingFaceRepo: "ACEStep/ACE-Step-v1-5-DiT",
+        files: ["model.safetensors"],
+        sizeBytes: 0,
+        sha256: [:]
+    )
+    let baseURL = URL(filePath: "/tmp/models")
+    #expect(spec.localPath(for: "model.safetensors", base: baseURL)
+            == URL(filePath: "/tmp/models/ace-step-dit/model.safetensors"))
 }
