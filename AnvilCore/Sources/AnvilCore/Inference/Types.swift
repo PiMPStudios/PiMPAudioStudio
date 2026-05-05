@@ -93,7 +93,7 @@ public struct ConversionProgress: Sendable {
     }
 }
 
-public enum PipelineState: Sendable {
+public enum PipelineState: Sendable, Equatable {
     case unloaded
     case loading
     case ready
