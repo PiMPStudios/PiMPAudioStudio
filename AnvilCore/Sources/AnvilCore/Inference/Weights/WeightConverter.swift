@@ -86,4 +86,36 @@ public actor WeightConverter {
 
         return result
     }
+
+    public func convertQwen3Weights(
+        from rawWeights: [(String, MLXArray)],
+        progress: ((ConversionProgress) -> Void)? = nil
+    ) -> [(String, MLXArray)] {
+        var result: [(String, MLXArray)] = []
+        let total = rawWeights.count
+
+        for (index, (key, value)) in rawWeights.enumerated() {
+            progress?(ConversionProgress(current: index + 1, total: total, currentTensorName: key))
+            guard let mappedKey = Qwen3NameMap.mapKey(key) else { continue }
+            result.append((mappedKey, value))
+        }
+
+        return result
+    }
+
+    public func convertConditionEncoderWeights(
+        from rawWeights: [(String, MLXArray)],
+        progress: ((ConversionProgress) -> Void)? = nil
+    ) -> [(String, MLXArray)] {
+        var result: [(String, MLXArray)] = []
+        let total = rawWeights.count
+
+        for (index, (key, value)) in rawWeights.enumerated() {
+            progress?(ConversionProgress(current: index + 1, total: total, currentTensorName: key))
+            guard let mappedKey = ConditionEncoderNameMap.mapKey(key) else { continue }
+            result.append((mappedKey, value))
+        }
+
+        return result
+    }
 }

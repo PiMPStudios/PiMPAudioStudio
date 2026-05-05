@@ -21,6 +21,8 @@ public enum InferMethod: String, Sendable {
 public enum ModelComponent: Sendable {
     case vae
     case dit
+    case qwen3
+    case conditionEncoder
 }
 
 public struct DiffusionConfig: Sendable {
