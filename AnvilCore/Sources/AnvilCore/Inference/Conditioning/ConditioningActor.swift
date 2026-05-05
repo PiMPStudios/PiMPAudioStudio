@@ -43,6 +43,8 @@ public actor ConditioningActor {
         let lyricEmbeddings = qwen3.embedTokens(lyricIds)
         let lyricHidden = lyricEncoder(embeddings: lyricEmbeddings, attentionMask: lyricMask)
 
+        // referenceLatents is [B, 750, 64] — raw VAE latent space fed to timbreEncoder
+        // contextLatents is [B, T, 128] = cat([src_latents, chunk_mask], axis:-1)
         let referenceLatents = await prepareReferenceLatents(referenceAudio, precision: precision)
         let timbreTokens = timbreEncoder(latents: referenceLatents, attentionMask: nil)
 
