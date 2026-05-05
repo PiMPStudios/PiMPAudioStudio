@@ -131,3 +131,15 @@ public struct DiffusionResult: @unchecked Sendable {
         self.timeCosts = timeCosts
     }
 }
+
+public struct ConditioningResult: @unchecked Sendable {
+    public let encoderStates: MLXArray
+    public let encoderMask: MLXArray
+    public let contextLatents: MLXArray
+
+    public init(encoderStates: MLXArray, encoderMask: MLXArray, contextLatents: MLXArray) {
+        self.encoderStates = encoderStates
+        self.encoderMask = encoderMask
+        self.contextLatents = contextLatents
+    }
+}
