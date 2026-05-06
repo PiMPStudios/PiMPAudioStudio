@@ -1,4 +1,5 @@
 import SwiftUI
+import AVFoundation
 import AnvilCore
 
 struct EditorView: View {
@@ -25,6 +26,13 @@ struct EditorView: View {
                         }
                         EditorPromptArea(state: state)
                         EditorControlsBar(state: state, onExecute: executeEdit)
+
+                        Divider()
+                            .padding(.horizontal, 16)
+
+                        DSPPaletteView(state: state) { effect, params in
+                            state.applyDSPEffect(effect, parameters: params)
+                        }
                     }
                     .padding(.vertical, 16)
                 }
@@ -39,6 +47,46 @@ struct EditorView: View {
             if let prompt = preloadedPrompt {
                 state.originalPrompt = prompt
             }
+        }
+        .background {
+            Group {
+                Button("") {
+                    if state.hasSelection && state.isLoaded {
+                        state.applyDSPEffect(.trimToSelection)
+                    }
+                }
+                .keyboardShortcut("t", modifiers: .command)
+
+                Button("") {
+                    if state.hasSelection && state.isLoaded {
+                        state.applyDSPEffect(.deleteSelection)
+                    }
+                }
+                .keyboardShortcut(.delete, modifiers: .command)
+
+                Button("") {
+                    if state.isLoaded {
+                        state.applyDSPEffect(.normalize)
+                    }
+                }
+                .keyboardShortcut("n", modifiers: [.command, .shift])
+
+                Button("") {
+                    if state.isLoaded {
+                        withAnimation { state.expandedEffect = .eq }
+                    }
+                }
+                .keyboardShortcut("e", modifiers: [.command, .shift])
+
+                Button("") {
+                    if state.isLoaded {
+                        withAnimation { state.expandedEffect = .reverb }
+                    }
+                }
+                .keyboardShortcut("r", modifiers: [.command, .shift])
+            }
+            .frame(width: 0, height: 0)
+            .opacity(0)
         }
     }
 
@@ -117,9 +165,28 @@ struct EditorView: View {
 
     private func loadFromURL(_ url: URL) {
         state.fileName = url.lastPathComponent
-        state.isLoaded = true
-        state.duration = 30.0
-        state.waveformPeaks = (0..<200).map { _ in Float.random(in: 0.1...0.9) }
+
+        do {
+            let audioFile = try AVAudioFile(forReading: url)
+            let format = audioFile.processingFormat
+            let frameCount = AVAudioFrameCount(audioFile.length)
+
+            guard let pcmBuffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else {
+                return
+            }
+            try audioFile.read(into: pcmBuffer)
+
+            let buffer = AudioBufferConverter.fromPCMBuffer(pcmBuffer)
+            state.audioBuffer = buffer
+            state.sampleRate = buffer.sampleRate
+            state.duration = buffer.duration
+            state.waveformPeaks = state.computePeaks(from: buffer)
+            state.isLoaded = true
+            state.selectionStart = 0
+            state.selectionEnd = 0
+        } catch {
+            state.isLoaded = false
+        }
     }
 
     private func executeEdit() {
