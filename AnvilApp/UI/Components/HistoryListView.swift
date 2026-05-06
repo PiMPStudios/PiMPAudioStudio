@@ -3,6 +3,11 @@ import SwiftUI
 struct HistoryListView: View {
     @EnvironmentObject private var historyStore: HistoryStore
     @EnvironmentObject private var playerService: AudioPlayerService
+    @EnvironmentObject private var trainingService: TrainingService
+
+    @State private var isSelecting = false
+    @State private var selectedIDs: Set<UUID> = []
+    @State private var showTrainingSheet = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -14,6 +19,10 @@ struct HistoryListView: View {
                 list
             }
         }
+        .sheet(isPresented: $showTrainingSheet) {
+            let selected = historyStore.entries.filter { selectedIDs.contains($0.id) }
+            TrainingSheet(selectedEntries: selected)
+        }
     }
 
     private var header: some View {
@@ -22,13 +31,44 @@ struct HistoryListView: View {
                 .font(.caption)
                 .fontWeight(.semibold)
                 .foregroundStyle(.secondary)
+
+            if isSelecting && !selectedIDs.isEmpty {
+                Text("\(selectedIDs.count) selected")
+                    .font(.caption2)
+                    .foregroundStyle(.accent)
+            }
+
             Spacer()
+
             if !historyStore.entries.isEmpty {
-                Button("Delete All", role: .destructive) {
-                    historyStore.deleteAll()
+                if isSelecting {
+                    if !selectedIDs.isEmpty {
+                        Button("Train LoRA") {
+                            showTrainingSheet = true
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.mini)
+                    }
+
+                    Button("Done") {
+                        isSelecting = false
+                        selectedIDs.removeAll()
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
+                } else {
+                    Button("Select") {
+                        isSelecting = true
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
+
+                    Button("Delete All", role: .destructive) {
+                        historyStore.deleteAll()
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.mini)
             }
         }
         .padding(.horizontal, 12)
@@ -50,11 +90,22 @@ struct HistoryListView: View {
     private var list: some View {
         List {
             ForEach(historyStore.entries) { entry in
-                HistoryRow(entry: entry)
-                    .onTapGesture {
+                HStack(spacing: 8) {
+                    if isSelecting {
+                        Image(systemName: selectedIDs.contains(entry.id) ? "checkmark.circle.fill" : "circle")
+                            .foregroundStyle(selectedIDs.contains(entry.id) ? Color.accentColor : .secondary)
+                    }
+                    HistoryRow(entry: entry)
+                }
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    if isSelecting {
+                        toggleSelection(entry.id)
+                    } else {
                         let url = historyStore.fileURL(for: entry)
                         playerService.load(url: url)
                     }
+                }
             }
             .onDelete { indices in
                 let toDelete = indices.map { historyStore.entries[$0] }
@@ -64,6 +115,14 @@ struct HistoryListView: View {
             }
         }
         .listStyle(.plain)
+    }
+
+    private func toggleSelection(_ id: UUID) {
+        if selectedIDs.contains(id) {
+            selectedIDs.remove(id)
+        } else {
+            selectedIDs.insert(id)
+        }
     }
 }
 
