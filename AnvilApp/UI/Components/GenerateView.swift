@@ -118,10 +118,14 @@ struct GenerateView: View {
     }
 
     private var canGenerate: Bool {
-        let isIdle = generationService.state == .idle
-            || generationService.state == .complete
-            || generationService.state == .cancelled
-        return isIdle && !promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let isReady: Bool
+        switch generationService.state {
+        case .idle, .complete, .cancelled, .error:
+            isReady = true
+        default:
+            isReady = false
+        }
+        return isReady && !promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var estimatedTime: TimeInterval? {

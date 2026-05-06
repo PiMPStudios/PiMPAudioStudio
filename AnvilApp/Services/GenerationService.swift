@@ -70,7 +70,24 @@ final class GenerationService: ObservableObject {
                 let totalSteps = config.steps ?? 8
                 self.state = .generating(step: 0, totalSteps: totalSteps, eta: 0)
 
-                let startTime = Date()
+                let progressStream = await self.pipeline.progress
+                let progressTask = Task { [weak self] in
+                    guard let self else { return }
+                    for await progress in progressStream {
+                        if case .diffusion(let dp) = progress {
+                            let perStep = dp.currentStep > 0
+                                ? dp.elapsedTime / Double(dp.currentStep)
+                                : 0
+                            let eta = perStep * Double(dp.totalSteps - dp.currentStep)
+                            self.state = .generating(
+                                step: dp.currentStep,
+                                totalSteps: dp.totalSteps,
+                                eta: eta
+                            )
+                        }
+                    }
+                }
+
                 let result = try await self.pipeline.generate(
                     text: request.text,
                     lyrics: request.lyrics,
@@ -79,6 +96,7 @@ final class GenerationService: ObservableObject {
                     config: config,
                     conditioning: self.conditioning
                 )
+                progressTask.cancel()
 
                 try Task.checkCancellation()
                 self.state = .decoding
