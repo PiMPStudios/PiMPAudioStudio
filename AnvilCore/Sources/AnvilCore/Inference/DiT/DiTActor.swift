@@ -61,4 +61,55 @@ public actor DiTActor {
         decoder = nil
         loadedModelID = nil
     }
+
+    // MARK: - LoRA
+
+    private var injectedPaths: [String] = []
+    public private(set) var injectedAdapterID: String?
+
+    /// Inject LoRA adapter layers into the DiT decoder.
+    public func injectLoRA(config: LoRAConfig) -> [String] {
+        guard let decoder else {
+            fatalError("DiTActor.injectLoRA called without loaded weights")
+        }
+        let paths = LoRAInjector.inject(model: decoder, config: config)
+        injectedPaths = paths
+        return paths
+    }
+
+    /// Remove LoRA adapter, restoring plain Linear layers.
+    public func removeLoRA() {
+        guard let decoder else { return }
+        LoRAInjector.remove(model: decoder, paths: injectedPaths)
+        injectedPaths = []
+        injectedAdapterID = nil
+    }
+
+    /// Load LoRA weights into already-injected layers.
+    public func loadLoRAWeights(_ weights: [(String, MLXArray)], adapterID: String) {
+        guard let decoder else {
+            fatalError("DiTActor.loadLoRAWeights called without loaded weights")
+        }
+        LoRAInjector.loadWeights(model: decoder, paths: injectedPaths, weights: weights)
+        eval(decoder.parameters())
+        injectedAdapterID = adapterID
+    }
+
+    /// Run LoRA training on the decoder. Must be called ON the actor's executor.
+    public func trainLoRA(
+        samples: [TrainingSample],
+        config: LoRAConfig,
+        onProgress: @escaping (TrainingProgress) -> Void
+    ) -> (weights: [(String, MLXArray)], finalLoss: Float?) {
+        guard let decoder else {
+            fatalError("DiTActor.trainLoRA called without loaded weights")
+        }
+        // Inject, train, extract, remove
+        let paths = LoRAInjector.inject(model: decoder, config: config)
+        let trainer = LoRATrainer(model: decoder, config: config, injectedPaths: paths)
+        let weights = trainer.train(dataset: samples, onProgress: onProgress)
+        let finalLoss = trainer.lowestLoss
+        LoRAInjector.remove(model: decoder, paths: paths)
+        return (weights, finalLoss)
+    }
 }

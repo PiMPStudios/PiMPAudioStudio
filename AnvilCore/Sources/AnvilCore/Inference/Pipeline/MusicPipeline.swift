@@ -50,6 +50,44 @@ public actor MusicPipeline {
         await vae.unloadWeights()
     }
 
+    // MARK: - LoRA
+
+    public func injectLoRA(config: LoRAConfig) async -> [String] {
+        await diffusion.injectLoRA(config: config)
+    }
+
+    public func removeLoRA() async {
+        await diffusion.removeLoRA()
+    }
+
+    public func loadLoRAWeights(_ weights: [(String, MLXArray)], adapterID: String) async {
+        await diffusion.loadLoRAWeights(weights, adapterID: adapterID)
+    }
+
+    public var injectedAdapterID: String? {
+        get async { await diffusion.injectedAdapterID }
+    }
+
+    /// Encode audio to latent mean (used for training dataset preparation).
+    public func encodeMean(audio: MLXArray, precision: Precision) async -> MLXArray {
+        await vae.encodeMean(audio: audio, precision: precision)
+    }
+
+    /// Run LoRA training through the actor chain.
+    public func trainLoRA(
+        samples: [TrainingSample],
+        config: LoRAConfig,
+        onProgress: @escaping @Sendable (TrainingProgress) -> Void
+    ) async -> (weights: [(String, MLXArray)], finalLoss: Float?) {
+        await diffusion.trainLoRA(samples: samples, config: config, onProgress: onProgress)
+    }
+
+    /// Cancel ongoing training.
+    public func cancelTraining() async {
+        // Training cancellation is cooperative via LoRATrainer.cancel()
+        // For now this is a no-op placeholder — full cancel requires storing trainer reference
+    }
+
     public func generate(
         encoderStates: MLXArray,
         contextLatents: MLXArray,

@@ -131,6 +131,32 @@ public actor DiffusionActor {
         await dit.unloadWeights()
     }
 
+    // MARK: - LoRA
+
+    public func injectLoRA(config: LoRAConfig) async -> [String] {
+        await dit.injectLoRA(config: config)
+    }
+
+    public func removeLoRA() async {
+        await dit.removeLoRA()
+    }
+
+    public func loadLoRAWeights(_ weights: [(String, MLXArray)], adapterID: String) async {
+        await dit.loadLoRAWeights(weights, adapterID: adapterID)
+    }
+
+    public var injectedAdapterID: String? {
+        get async { await dit.injectedAdapterID }
+    }
+
+    public func trainLoRA(
+        samples: [TrainingSample],
+        config: LoRAConfig,
+        onProgress: @escaping (TrainingProgress) -> Void
+    ) async -> (weights: [(String, MLXArray)], finalLoss: Float?) {
+        await dit.trainLoRA(samples: samples, config: config, onProgress: onProgress)
+    }
+
     public func inpaint(
         startLatents: MLXArray,
         schedule: [Float],

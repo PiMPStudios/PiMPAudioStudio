@@ -22,6 +22,8 @@ final class GenerationService: ObservableObject {
     private let registry: ModelRegistry
     private var currentlyLoadedDiTModelID: String?
     private var currentlyLoadedVAEModelID: String?
+    private var currentlyInjectedAdapterID: String?
+    var selectedAdapterID: String?
 
     init(
         pipeline: MusicPipeline,
@@ -196,6 +198,8 @@ final class GenerationService: ObservableObject {
             try await loadVAEWeights()
         }
 
+        await ensureAdapter()
+
         try Task.checkCancellation()
         state = .conditioning
 
@@ -252,6 +256,12 @@ final class GenerationService: ObservableObject {
         await pipeline.unloadDiTWeights()
         currentlyLoadedDiTModelID = nil
 
+        // Remove adapter when base model changes
+        if currentlyInjectedAdapterID != nil {
+            await pipeline.removeLoRA()
+            currentlyInjectedAdapterID = nil
+        }
+
         do {
             let weightsPath = spec.localPath(for: "model.safetensors", base: baseDir)
             let rawWeights = try await weightConverter.loadSafetensors(from: weightsPath)
@@ -264,6 +274,40 @@ final class GenerationService: ObservableObject {
                 try? await registry.setActiveModel(id: previousModelID, for: .aceStepDiT)
             }
             throw error
+        }
+    }
+
+    // MARK: - LoRA Adapter Injection
+
+    private func ensureAdapter() async {
+        let desired = selectedAdapterID
+        let current = currentlyInjectedAdapterID
+
+        if desired == current { return }
+
+        // Remove current if injected
+        if current != nil {
+            await pipeline.removeLoRA()
+            currentlyInjectedAdapterID = nil
+        }
+
+        // Inject new if selected
+        guard let adapterID = desired else { return }
+
+        do {
+            let adapters = AdapterRegistry.listAdapters()
+            guard let adapter = adapters.first(where: { $0.id == adapterID }) else {
+                selectedAdapterID = nil
+                return
+            }
+            let _ = await pipeline.injectLoRA(config: adapter.config)
+            let weights = try AdapterRegistry.loadWeights(adapterID: adapterID)
+            await pipeline.loadLoRAWeights(weights, adapterID: adapterID)
+            currentlyInjectedAdapterID = adapterID
+        } catch {
+            await pipeline.removeLoRA()
+            currentlyInjectedAdapterID = nil
+            selectedAdapterID = nil
         }
     }
 
