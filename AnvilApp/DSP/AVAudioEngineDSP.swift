@@ -243,7 +243,7 @@ struct AVAudioEngineDSP {
             }
             framesRendered += chunk.frameLength
 
-            if status == .insufficientDataFromInputNode || status == .cannotDoInCurrentContext {
+            if status == .insufficientDataFromInputNode && chunk.frameLength == 0 {
                 break
             }
         }

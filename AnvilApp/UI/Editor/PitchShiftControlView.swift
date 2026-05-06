@@ -90,7 +90,7 @@ struct PitchShiftControlView: View {
     }
 
     private func formatPitch(_ cents: Float) -> String {
-        let st = Int(cents / 100)
+        let st = Int((cents / 100).rounded())
         let sign = st >= 0 ? "+" : ""
         return "\(sign)\(st) st (\(sign)\(Int(cents))¢)"
     }

@@ -111,7 +111,7 @@ class EditorState: ObservableObject {
             ? .selection(start: selectionStart, end: selectionEnd)
             : .wholeTrack
 
-        let operation = dspProcessor.makeDescription(effect: effect, target: target)
+        let operation = dspProcessor.makeDescription(effect: effect, target: target, parameters: parameters)
 
         do {
             let result = try dspProcessor.apply(effect: effect, to: buffer, target: target, parameters: parameters)
