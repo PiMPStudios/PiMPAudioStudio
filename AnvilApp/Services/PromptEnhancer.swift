@@ -38,7 +38,7 @@ final class PromptEnhancer: ObservableObject {
         let systemPrompt = String(format: Self.systemPromptTemplate, mode.displayName)
 
         var result = ""
-        let stream = llm.generate(
+        let stream = await llm.generate(
             systemPrompt: systemPrompt,
             userPrompt: prompt,
             maxTokens: 300,

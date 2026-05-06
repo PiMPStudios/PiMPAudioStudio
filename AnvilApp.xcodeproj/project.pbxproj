@@ -27,6 +27,19 @@
 		AA00010A0101010101010101 /* OutputDirectoryPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00020A0101010101010101 /* OutputDirectoryPicker.swift */; };
 		AA00010B0101010101010101 /* PlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00020B0101010101010101 /* PlayerView.swift */; };
 		AA00010C0101010101010101 /* WaveformView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00020C0101010101010101 /* WaveformView.swift */; };
+		BB0001010101010101010101 /* APIKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0002010101010101010101 /* APIKeyStore.swift */; };
+		BB0001020101010101010101 /* IntentRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0002020101010101010101 /* IntentRouter.swift */; };
+		BB0001030101010101010101 /* LLMModelManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0002030101010101010101 /* LLMModelManager.swift */; };
+		BB0001040101010101010101 /* PromptEnhancer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0002040101010101010101 /* PromptEnhancer.swift */; };
+		BB0001050101010101010101 /* LyricWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0002050101010101010101 /* LyricWriter.swift */; };
+		BB0001060101010101010101 /* LyricWriterManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0002060101010101010101 /* LyricWriterManager.swift */; };
+		BB0001070101010101010101 /* ClaudeLyricWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0002070101010101010101 /* ClaudeLyricWriter.swift */; };
+		BB0001080101010101010101 /* GeminiLyricWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0002080101010101010101 /* GeminiLyricWriter.swift */; };
+		BB0001090101010101010101 /* LocalLyricWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0002090101010101010101 /* LocalLyricWriter.swift */; };
+		BB00010A0101010101010101 /* OpenAILyricWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00020A0101010101010101 /* OpenAILyricWriter.swift */; };
+		BB00010B0101010101010101 /* XAILyricWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00020B0101010101010101 /* XAILyricWriter.swift */; };
+		BB00010C0101010101010101 /* IntelligenceSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00020C0101010101010101 /* IntelligenceSettingsView.swift */; };
+		BB00010D0101010101010101 /* GenerationMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00020D0101010101010101 /* GenerationMode.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -62,6 +75,19 @@
 		AA00020A0101010101010101 /* OutputDirectoryPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutputDirectoryPicker.swift; sourceTree = "<group>"; };
 		AA00020B0101010101010101 /* PlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerView.swift; sourceTree = "<group>"; };
 		AA00020C0101010101010101 /* WaveformView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveformView.swift; sourceTree = "<group>"; };
+		BB0002010101010101010101 /* APIKeyStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIKeyStore.swift; sourceTree = "<group>"; };
+		BB0002020101010101010101 /* IntentRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentRouter.swift; sourceTree = "<group>"; };
+		BB0002030101010101010101 /* LLMModelManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMModelManager.swift; sourceTree = "<group>"; };
+		BB0002040101010101010101 /* PromptEnhancer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptEnhancer.swift; sourceTree = "<group>"; };
+		BB0002050101010101010101 /* LyricWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricWriter.swift; sourceTree = "<group>"; };
+		BB0002060101010101010101 /* LyricWriterManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricWriterManager.swift; sourceTree = "<group>"; };
+		BB0002070101010101010101 /* ClaudeLyricWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeLyricWriter.swift; sourceTree = "<group>"; };
+		BB0002080101010101010101 /* GeminiLyricWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeminiLyricWriter.swift; sourceTree = "<group>"; };
+		BB0002090101010101010101 /* LocalLyricWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLyricWriter.swift; sourceTree = "<group>"; };
+		BB00020A0101010101010101 /* OpenAILyricWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAILyricWriter.swift; sourceTree = "<group>"; };
+		BB00020B0101010101010101 /* XAILyricWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XAILyricWriter.swift; sourceTree = "<group>"; };
+		BB00020C0101010101010101 /* IntelligenceSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntelligenceSettingsView.swift; sourceTree = "<group>"; };
+		BB00020D0101010101010101 /* GenerationMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationMode.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -110,6 +136,7 @@
 		AA00030101010101010101AB /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				BB00020D0101010101010101 /* GenerationMode.swift */,
 				AA0002010101010101010101 /* GenerationRequest.swift */,
 				AA0002020101010101010101 /* GenerationState.swift */,
 				AA0002030101010101010101 /* HistoryEntry.swift */,
@@ -120,12 +147,31 @@
 		AA00030201010101010101AB /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				BB0002010101010101010101 /* APIKeyStore.swift */,
 				AA0002040101010101010101 /* AudioPlayerService.swift */,
 				AA0002050101010101010101 /* GenerationService.swift */,
 				AA0002060101010101010101 /* HistoryStore.swift */,
+				BB0002020101010101010101 /* IntentRouter.swift */,
+				BB0002030101010101010101 /* LLMModelManager.swift */,
+				BB00030301010101010101AB /* LyricWriter */,
 				AA0002070101010101010101 /* OutputDirectoryManager.swift */,
+				BB0002040101010101010101 /* PromptEnhancer.swift */,
 			);
 			path = Services;
+			sourceTree = "<group>";
+		};
+		BB00030301010101010101AB /* LyricWriter */ = {
+			isa = PBXGroup;
+			children = (
+				BB0002070101010101010101 /* ClaudeLyricWriter.swift */,
+				BB0002080101010101010101 /* GeminiLyricWriter.swift */,
+				BB0002090101010101010101 /* LocalLyricWriter.swift */,
+				BB0002050101010101010101 /* LyricWriter.swift */,
+				BB0002060101010101010101 /* LyricWriterManager.swift */,
+				BB00020A0101010101010101 /* OpenAILyricWriter.swift */,
+				BB00020B0101010101010101 /* XAILyricWriter.swift */,
+			);
+			path = LyricWriter;
 			sourceTree = "<group>";
 		};
 		41285AF55017242FB64EF3D8 /* UI */ = {
@@ -134,8 +180,17 @@
 				02A386DAC90F5E305529D789 /* FirstLaunchView.swift */,
 				43F636E7106FD40FD32886A4 /* MainShellView.swift */,
 				44EECD8B3145BA09E19164F1 /* Components */,
+				BB00030401010101010101AB /* Settings */,
 			);
 			path = UI;
+			sourceTree = "<group>";
+		};
+		BB00030401010101010101AB /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				BB00020C0101010101010101 /* IntelligenceSettingsView.swift */,
+			);
+			path = Settings;
 			sourceTree = "<group>";
 		};
 		44EECD8B3145BA09E19164F1 /* Components */ = {
@@ -274,6 +329,19 @@
 				AA00010C0101010101010101 /* WaveformView.swift in Sources */,
 				4916F3A44CF74EEE3A4ECA92 /* FirstLaunchView.swift in Sources */,
 				C8FD5C2133B259E0AEC730DF /* MainShellView.swift in Sources */,
+				BB0001010101010101010101 /* APIKeyStore.swift in Sources */,
+				BB0001020101010101010101 /* IntentRouter.swift in Sources */,
+				BB0001030101010101010101 /* LLMModelManager.swift in Sources */,
+				BB0001040101010101010101 /* PromptEnhancer.swift in Sources */,
+				BB0001050101010101010101 /* LyricWriter.swift in Sources */,
+				BB0001060101010101010101 /* LyricWriterManager.swift in Sources */,
+				BB0001070101010101010101 /* ClaudeLyricWriter.swift in Sources */,
+				BB0001080101010101010101 /* GeminiLyricWriter.swift in Sources */,
+				BB0001090101010101010101 /* LocalLyricWriter.swift in Sources */,
+				BB00010A0101010101010101 /* OpenAILyricWriter.swift in Sources */,
+				BB00010B0101010101010101 /* XAILyricWriter.swift in Sources */,
+				BB00010C0101010101010101 /* IntelligenceSettingsView.swift in Sources */,
+				BB00010D0101010101010101 /* GenerationMode.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

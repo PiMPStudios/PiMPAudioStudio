@@ -3,10 +3,37 @@ import AnvilCore
 
 @main
 struct AnvilAppApp: App {
-    @StateObject private var appState = AppState()
-    @StateObject private var outputManager = OutputDirectoryManager()
-    @StateObject private var playerService = AudioPlayerService()
-    @StateObject private var services = AppServices()
+    @StateObject private var appState: AppState
+    @StateObject private var outputManager: OutputDirectoryManager
+    @StateObject private var playerService: AudioPlayerService
+    @StateObject private var services: AppServices
+    @StateObject private var apiKeyStore: APIKeyStore
+    @StateObject private var modelManager: LLMModelManager
+    @StateObject private var intentRouter: IntentRouter
+    @StateObject private var promptEnhancer: PromptEnhancer
+    @StateObject private var lyricWriterManager: LyricWriterManager
+
+    init() {
+        let appState = AppState()
+        let outputManager = OutputDirectoryManager()
+        let playerService = AudioPlayerService()
+        let services = AppServices()
+        let apiKeys = APIKeyStore()
+        let manager = LLMModelManager()
+        let router = IntentRouter(llm: manager.llmActor)
+        let enhancer = PromptEnhancer(llm: manager.llmActor)
+        let lyricManager = LyricWriterManager(apiKeyStore: apiKeys)
+
+        _appState = StateObject(wrappedValue: appState)
+        _outputManager = StateObject(wrappedValue: outputManager)
+        _playerService = StateObject(wrappedValue: playerService)
+        _services = StateObject(wrappedValue: services)
+        _apiKeyStore = StateObject(wrappedValue: apiKeys)
+        _modelManager = StateObject(wrappedValue: manager)
+        _intentRouter = StateObject(wrappedValue: router)
+        _promptEnhancer = StateObject(wrappedValue: enhancer)
+        _lyricWriterManager = StateObject(wrappedValue: lyricManager)
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -16,16 +43,32 @@ struct AnvilAppApp: App {
                 .environmentObject(playerService)
                 .environmentObject(services.historyStore)
                 .environmentObject(services.generationService)
+                .environmentObject(apiKeyStore)
+                .environmentObject(modelManager)
+                .environmentObject(intentRouter)
+                .environmentObject(promptEnhancer)
+                .environmentObject(lyricWriterManager)
                 .task(id: outputManager.directory) {
                     services.configure(outputManager: outputManager)
+                }
+                .onReceive(modelManager.$llmActor) { llm in
+                    intentRouter.updateLLM(llm)
+                    promptEnhancer.updateLLM(llm)
+                    lyricWriterManager.updateLLM(llm)
+                }
+                .onChange(of: apiKeyStore.availableProviders) { _, _ in
+                    lyricWriterManager.refreshAPIBackends()
                 }
         }
         .windowStyle(.titleBar)
         .defaultSize(width: 1200, height: 800)
 
         Settings {
-            Text("Settings coming soon")
-                .frame(width: 400, height: 300)
+            IntelligenceSettingsView()
+                .environmentObject(modelManager)
+                .environmentObject(apiKeyStore)
+                .environmentObject(lyricWriterManager)
+                .frame(minWidth: 500, minHeight: 400)
         }
     }
 }

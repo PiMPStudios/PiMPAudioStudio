@@ -29,11 +29,20 @@ struct LocalLyricWriter: LyricWriter {
             userPrompt = "\(prompt)\nStyle: \(style)"
         }
 
-        return llm.generate(
-            systemPrompt: systemPrompt,
-            userPrompt: userPrompt,
-            maxTokens: 512,
-            temperature: 0.8
-        )
+        let actor = llm
+        return AsyncStream { continuation in
+            Task {
+                let stream = await actor.generate(
+                    systemPrompt: systemPrompt,
+                    userPrompt: userPrompt,
+                    maxTokens: 512,
+                    temperature: 0.8
+                )
+                for await chunk in stream {
+                    continuation.yield(chunk)
+                }
+                continuation.finish()
+            }
+        }
     }
 }
