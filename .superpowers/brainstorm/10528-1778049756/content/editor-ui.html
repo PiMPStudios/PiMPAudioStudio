@@ -1,0 +1,121 @@
+<h2>Phase 6: AI Audio Editor — UI Design</h2>
+<p class="subtitle">Edit tab layout with waveform selection, prompt inputs, and controls</p>
+
+<div class="mockup">
+  <div class="mockup-header">Edit Tab — Main Layout</div>
+  <div class="mockup-body" style="padding: 0; overflow: hidden;">
+    <!-- Top toolbar -->
+    <div style="display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: #1a1a1a; border-bottom: 1px solid #333;">
+      <span style="color: #888; font-size: 12px;">📂 Open</span>
+      <span style="color: #888; font-size: 12px;">|</span>
+      <span style="color: #fff; font-size: 12px; font-weight: 500;">mysong_v2.wav</span>
+      <span style="color: #666; font-size: 11px;">— 3:24 · 44.1kHz · stereo</span>
+      <span style="flex: 1;"></span>
+      <span style="color: #888; font-size: 12px;">⟲ Undo</span>
+      <span style="color: #555; font-size: 12px;">⟳ Redo</span>
+      <span style="color: #888; font-size: 12px;">|</span>
+      <span style="color: #888; font-size: 12px;">Pipeline: ACE-Step ▾</span>
+    </div>
+
+    <!-- Waveform area -->
+    <div style="padding: 16px; background: #0d0d0d;">
+      <div style="position: relative; height: 120px; background: #111; border-radius: 6px; border: 1px solid #333; overflow: hidden;">
+        <!-- Waveform visualization -->
+        <div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;">
+          <svg width="100%" height="80" viewBox="0 0 600 80" preserveAspectRatio="none">
+            <path d="M0,40 Q10,20 20,35 Q30,10 40,40 Q50,60 60,35 Q70,15 80,40 Q90,55 100,30 Q110,20 120,40 Q130,50 140,35 Q150,15 160,40 Q170,60 180,30 Q190,10 200,40 Q210,55 220,35 Q230,20 240,40 Q250,65 260,30 Q270,10 280,45 Q290,60 300,35" stroke="#4a9eff" stroke-width="1.5" fill="none" opacity="0.7"/>
+            <path d="M300,35 Q310,15 320,40 Q330,55 340,30 Q350,10 360,45 Q370,60 380,35 Q390,20 400,40 Q410,55 420,30 Q430,15 440,40 Q450,60 460,35 Q470,20 480,40 Q490,50 500,35 Q510,25 520,40 Q530,55 540,30 Q550,20 560,40 Q570,50 580,35 Q590,25 600,40" stroke="#4a9eff" stroke-width="1.5" fill="none" opacity="0.7"/>
+          </svg>
+        </div>
+        <!-- Selection overlay -->
+        <div style="position: absolute; top: 0; bottom: 0; left: 30%; width: 20%; background: rgba(255, 100, 50, 0.15); border-left: 2px solid #ff6432; border-right: 2px solid #ff6432;">
+          <div style="position: absolute; top: 4px; left: 50%; transform: translateX(-50%); font-size: 10px; color: #ff6432; white-space: nowrap;">1.2s — 2.8s</div>
+        </div>
+        <!-- Time markers -->
+        <div style="position: absolute; bottom: 4px; left: 8px; font-size: 10px; color: #666;">0:00</div>
+        <div style="position: absolute; bottom: 4px; right: 8px; font-size: 10px; color: #666;">3:24</div>
+      </div>
+
+      <!-- Frequency band toggle (collapsed) -->
+      <div style="margin-top: 8px; display: flex; align-items: center; gap: 8px;">
+        <span style="font-size: 11px; color: #666;">▶ Frequency constraint</span>
+        <span style="font-size: 10px; color: #555;">(advanced)</span>
+      </div>
+    </div>
+
+    <!-- Prompt area -->
+    <div style="padding: 16px; background: #141414; border-top: 1px solid #222;">
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <div>
+          <div style="font-size: 11px; color: #888; margin-bottom: 4px;">Original Prompt (context)</div>
+          <div style="background: #1a1a1a; border: 1px solid #333; border-radius: 6px; padding: 8px 12px; font-size: 12px; color: #666; min-height: 48px;">
+            Upbeat electronic dance track with pulsing synths and driving bass...
+          </div>
+        </div>
+        <div>
+          <div style="font-size: 11px; color: #44aaff; margin-bottom: 4px;">Region Prompt (what to generate)</div>
+          <div style="background: #1a1a2a; border: 1px solid #3355aa; border-radius: 6px; padding: 8px 12px; font-size: 12px; color: #aabbff; min-height: 48px;">
+            Melodic piano breakdown with reverb tail
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Controls -->
+    <div style="padding: 16px; background: #111; border-top: 1px solid #222;">
+      <!-- Presets -->
+      <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+        <span style="padding: 4px 12px; background: #222; border: 1px solid #444; border-radius: 4px; font-size: 11px; color: #aaa;">Subtle</span>
+        <span style="padding: 4px 12px; background: #2a2a3a; border: 1px solid #6666cc; border-radius: 4px; font-size: 11px; color: #aaccff; font-weight: 500;">Moderate</span>
+        <span style="padding: 4px 12px; background: #222; border: 1px solid #444; border-radius: 4px; font-size: 11px; color: #aaa;">Full</span>
+      </div>
+
+      <!-- Sliders -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+        <div>
+          <div style="display: flex; justify-content: space-between; font-size: 11px; color: #888; margin-bottom: 4px;">
+            <span>Strength</span><span>0.65</span>
+          </div>
+          <div style="height: 4px; background: #333; border-radius: 2px; position: relative;">
+            <div style="position: absolute; left: 0; top: 0; height: 100%; width: 65%; background: #ff6432; border-radius: 2px;"></div>
+          </div>
+        </div>
+        <div>
+          <div style="display: flex; justify-content: space-between; font-size: 11px; color: #888; margin-bottom: 4px;">
+            <span>Guidance Scale</span><span>7.0</span>
+          </div>
+          <div style="height: 4px; background: #333; border-radius: 2px; position: relative;">
+            <div style="position: absolute; left: 0; top: 0; height: 100%; width: 47%; background: #44aaff; border-radius: 2px;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action button -->
+      <div style="margin-top: 16px; text-align: center;">
+        <span style="padding: 8px 32px; background: linear-gradient(135deg, #ff6432, #cc4422); border-radius: 6px; font-size: 13px; color: white; font-weight: 500;">Inpaint Selection</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div style="margin-top: 24px;">
+  <h3>Entry Points</h3>
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 13px;">
+    <div style="background: #1a1a2a; padding: 12px; border-radius: 6px;">
+      <strong style="color: #8888ff;">Edit Tab (standalone)</strong><br>
+      <span style="color: #aaa;">Open any audio file (WAV/MP3/OGG) from file picker or history. Full editor experience.</span>
+    </div>
+    <div style="background: #1a1a2a; padding: 12px; border-radius: 6px;">
+      <strong style="color: #8888ff;">"Edit This" from Generate</strong><br>
+      <span style="color: #aaa;">Button in PlayerView after generation. Jumps to Edit tab with audio + original prompt pre-loaded.</span>
+    </div>
+  </div>
+</div>
+
+<div style="margin-top: 16px;">
+  <h3>Mode Toggle</h3>
+  <div style="background: #1a1a1a; padding: 12px; border-radius: 6px; font-size: 13px; color: #aaa;">
+    <strong style="color: #ffaa44;">Inpaint</strong> (default) — select region, provide region prompt, regenerate selection<br>
+    <strong style="color: #44aaff;">Repaint</strong> — no selection needed, mask covers full duration, strength controls transformation degree
+  </div>
+</div>

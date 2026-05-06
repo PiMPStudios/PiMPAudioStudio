@@ -1,0 +1,68 @@
+<h2>Phase 5: Sound FX Pipeline — Architecture</h2>
+<p class="subtitle">Stable Audio Open 1.0 as a second inference pipeline alongside ACE-Step</p>
+
+<div class="mockup">
+  <div class="mockup-header">Generation Flow with Dual Pipelines</div>
+  <div class="mockup-body" style="padding: 24px; font-family: monospace; font-size: 13px; line-height: 2;">
+    <div style="text-align: center; margin-bottom: 16px;">
+      <span style="background: #2d2d2d; padding: 8px 16px; border-radius: 6px; border: 1px solid #444;">User Prompt</span>
+    </div>
+    <div style="text-align: center; margin-bottom: 8px; color: #888;">↓</div>
+    <div style="text-align: center; margin-bottom: 16px;">
+      <span style="background: #1a3a4a; padding: 8px 16px; border-radius: 6px; border: 1px solid #2a6a8a;">IntentRouter (existing)</span>
+    </div>
+    <div style="text-align: center; margin-bottom: 8px; color: #888;">↓ classifies ↓</div>
+
+    <div style="display: flex; gap: 24px; justify-content: center;">
+      <div style="flex: 1; max-width: 280px; background: #1a2a1a; border: 1px solid #3a6a3a; border-radius: 8px; padding: 16px;">
+        <div style="text-align: center; font-weight: bold; color: #6aba6a; margin-bottom: 12px;">🎵 Music Mode</div>
+        <div style="font-size: 11px; color: #aaa; line-height: 1.8;">
+          Qwen3 Lyrics + Timbre<br>
+          → ConditioningActor<br>
+          → DiffusionActor (ACE-Step)<br>
+          → VAEActor<br>
+          → WAV Output
+        </div>
+        <div style="text-align: center; margin-top: 12px; font-size: 11px; color: #6a6a6a;">MusicPipeline (existing)</div>
+      </div>
+
+      <div style="flex: 1; max-width: 280px; background: #2a1a2a; border: 1px solid #6a3a6a; border-radius: 8px; padding: 16px;">
+        <div style="text-align: center; font-weight: bold; color: #ba6aba; margin-bottom: 12px;">🔊 SFX / Ambient</div>
+        <div style="font-size: 11px; color: #aaa; line-height: 1.8;">
+          CLAP Text Encoder<br>
+          + Timing Conditioning<br>
+          → SFXDiffusionActor<br>
+          → SFXVAEActor<br>
+          → WAV Output
+        </div>
+        <div style="text-align: center; margin-top: 12px; font-size: 11px; color: #6a6a6a;">SoundFXPipeline (new)</div>
+      </div>
+    </div>
+
+    <div style="text-align: center; margin-top: 20px; font-size: 11px; color: #666; border-top: 1px solid #333; padding-top: 12px;">
+      GenerationService routes based on resolved mode • User can override pipeline in Inspector
+    </div>
+  </div>
+</div>
+
+<div style="margin-top: 24px;">
+  <h3>Key Properties</h3>
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 13px;">
+    <div style="background: #1a1a2a; padding: 12px; border-radius: 6px;">
+      <strong style="color: #8888ff;">Shared Primitives</strong><br>
+      <span style="color: #aaa;">TimestepSchedule, attention layers, sampler logic</span>
+    </div>
+    <div style="background: #1a1a2a; padding: 12px; border-radius: 6px;">
+      <strong style="color: #8888ff;">Independent Types</strong><br>
+      <span style="color: #aaa;">SFXDiT, SFXVAE separate from ACE-Step actors</span>
+    </div>
+    <div style="background: #1a1a2a; padding: 12px; border-radius: 6px;">
+      <strong style="color: #8888ff;">Deferred Download</strong><br>
+      <span style="color: #aaa;">~4GB weights download on first SFX use</span>
+    </div>
+    <div style="background: #1a1a2a; padding: 12px; border-radius: 6px;">
+      <strong style="color: #8888ff;">Max Duration</strong><br>
+      <span style="color: #aaa;">47 seconds (Stable Audio Open limit)</span>
+    </div>
+  </div>
+</div>
