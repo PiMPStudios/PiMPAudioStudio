@@ -67,9 +67,9 @@ public func createSlidingWindowMask(seqLen: Int, windowSize: Int, dtype: DType =
 // MARK: - SwiGLU MLP
 
 public class SwiGLUMLP: Module, UnaryLayer {
-    let gateProj: Linear
-    let upProj: Linear
-    let downProj: Linear
+    var gateProj: Linear
+    var upProj: Linear
+    var downProj: Linear
 
     public init(hiddenSize: Int, intermediateSize: Int) {
         self.gateProj = Linear(hiddenSize, intermediateSize, bias: false)
@@ -95,10 +95,10 @@ public class DiTAttention: Module {
     let isCrossAttention: Bool
     let slidingWindow: Int?
 
-    let qProj: Linear
-    let kProj: Linear
-    let vProj: Linear
-    let oProj: Linear
+    var qProj: Linear
+    var kProj: Linear
+    var vProj: Linear
+    var oProj: Linear
     let qNorm: RMSNorm
     let kNorm: RMSNorm
 
