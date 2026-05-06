@@ -107,7 +107,7 @@ public actor DiTActor {
         }
         // Inject, train, extract, remove
         let paths = LoRAInjector.inject(model: decoder, config: config)
-        let trainer = LoRATrainer(model: decoder, config: config, injectedPaths: paths)
+        let trainer = LoRATrainer(model: decoder, config: config, injectedPaths: paths, datasetSize: samples.count)
         activeTrainer = trainer
         let weights = trainer.train(dataset: samples, onProgress: onProgress)
         let finalLoss = trainer.lowestLoss
