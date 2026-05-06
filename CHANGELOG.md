@@ -4,6 +4,25 @@ All notable changes to AnvilApp are documented here.
 
 ---
 
+## [Unreleased] — Phase 7: DSP Audio Editor
+
+### Added
+
+- **DSPProcessor** (`DSPProcessor.swift`) — facade dispatching effects to SimpleDSP or AVAudioEngineDSP; generates human-readable operation descriptions for undo popover
+- **SimpleDSP** (`SimpleDSP.swift`) — pure Swift/vDSP implementations: Trim to Selection, Delete Selection, Fade In (linear ramp), Fade Out (linear ramp), Normalize (peak via `vDSP_maxmgv`)
+- **AVAudioEngineDSP** (`AVAudioEngineDSP.swift`) — offline AVAudioEngine rendering for 3-band Parametric EQ (`AVAudioUnitEQ`) and Reverb (`AVAudioUnitReverb` with Room/Hall/Plate presets); region splicing for selection-targeted effects
+- **AudioBufferConverter** (`AudioBufferConverter.swift`) — format conversion between `Data` (16-bit PCM), `[Float]` (vDSP), and `AVAudioPCMBuffer` (AVAudioEngine)
+- **DSPParameters** (`DSPParameters.swift`) — `AudioBuffer`, `DSPEffect`, `ApplyTarget`, `DSPParameters`, `EQBand`, `EQParameters`, `ReverbPreset`, `ReverbParameters`, `NormalizeMode`, `DSPOperation`
+- **DSPPaletteView** (`DSPPaletteView.swift`) — always-available effects palette in Edit tab with 3-column button grid, expandable EQ/Reverb parameter panels, instant-apply checkmark confirmation, smart "Apply to" target indicator
+- **EQControlView** (`EQControlView.swift`) — 3-band parametric EQ controls with Frequency, Gain (color-coded), and Q sliders per band
+- **ReverbControlView** (`ReverbControlView.swift`) — preset row (Room/Hall/Plate) + Decay, Wet/Dry, Pre-Delay, Damping sliders; selecting preset fills sliders, adjusting slider deselects preset
+- **EditorState DSP additions** — `expandedEffect`, `eqParameters`, `reverbParameters`, `audioBuffer` properties; `applyDSPEffect(_:parameters:)` method with smart target resolution; `computePeaks(from:)` for waveform display
+- **EditorView integration** — DSPPaletteView below AI controls with divider; real audio file loading via `AVAudioFile`; keyboard shortcuts: Cmd+T (trim), Cmd+Delete (delete), Cmd+Shift+N (normalize), Cmd+Shift+E (EQ), Cmd+Shift+R (reverb)
+- Design spec: `docs/superpowers/specs/2026-05-06-phase7-dsp-audio-editor.md`
+- Implementation plan: `docs/superpowers/plans/2026-05-06-phase7-dsp-audio-editor.md`
+
+---
+
 ## [Unreleased] — Phase 6: AI Audio Editor
 
 ### Added
@@ -188,5 +207,5 @@ All notable changes to AnvilApp are documented here.
 | 4b | ✅ Complete | Intelligence Layer — IntentRouter, PromptEnhancer, LyricWriters (local + API), LLMActor |
 | 5 | ✅ Complete | Sound FX Pipeline — Stable Audio Open, CLAP encoder, dual-pipeline routing, deferred download |
 | 6 | ✅ Complete | AI Audio Editor — inpaint/repaint via VAE encode → mask latents → denoise |
-| 7 | Planned | DSP Audio Editor — trim, fade, normalize, EQ, reverb, time stretch, pitch shift |
+| 7 | ✅ Complete | DSP Audio Editor — trim, fade, normalize, 3-band parametric EQ, reverb |
 | 8 | Planned | LoRA Fine-Tuning — on-device model personalization |
