@@ -4,6 +4,77 @@ All notable changes to AnvilApp are documented here.
 
 ---
 
+## [Unreleased] — Phase 5: Sound FX Pipeline
+
+### Added
+
+- **SoundFXPipeline** (`SoundFXPipeline.swift`) — top-level actor orchestrating CLAP encoding, timing conditioning, diffusion sampling, and VAE decode for Stable Audio Open; max duration 47s, progress stream via `AsyncStream<GenerationProgress>`
+- **CLAPEncoder** (`CLAPEncoder.swift`) — Swift actor wrapping a CLAP text transformer (configurable layers/heads/vocabSize); produces `[1, 512]` conditioning vector from text prompt; pre-norm residual attention + GELU MLP
+- **CLAPTokenizer** (`CLAPTokenizer.swift`) — word-level tokenization with character-level OOV fallback; BOS/EOS framing, pad/truncate to maxLength (77); loads vocabulary from JSON or uses `forTesting()` factory
+- **TimingEncoder** (`TimingEncoder.swift`) — sinusoidal positional embeddings from start time and duration scalars; output `[1, embeddingDim]` with values bounded to [-1, 1]
+- **SFXDiTModel + SFXDiTActor** — Stable Audio diffusion transformer with adaptive layer norm (adaLN), self-attention, cross-attention for text/timing conditioning, SiLU-gated MLP; actor provides `predict(latents:timestep:conditioning:)`
+- **SFXVAEModel + SFXVAEActor** — upsampling VAE decoder with configurable upsample ratios; converts latent sequences to stereo audio waveforms
+- **SFXDiffusionActor** — diffusion sampling loop with linear timestep schedule, classifier-free guidance (CFG) when `guidanceScale > 1.0`, cancellation support via `Task.checkCancellation()`
+- **Weight Name Maps** — `CLAPNameMap`, `SFXDiTNameMap`, `SFXVAENameMap` for converting PyTorch checkpoint keys to MLX-Swift parameter names
+- **SFXModelManager** (`SFXModelManager.swift`) — manages deferred download (~4GB) of Stable Audio Open weights from HuggingFace; uses `URLSession.download(from:)` for large files; tracks `SFXDownloadState` via Published property
+- **PipelineChoice** enum — `.auto`, `.aceStep`, `.stableAudio` for manual pipeline override
+- **GenerationService routing** — `shouldUseStableAudio(request:)` dispatches to correct pipeline based on `PipelineChoice` override or resolved `GenerationMode`; `generateWithStableAudio` / `generateWithACEStep` split
+- **GenerationState.downloadingModel** — new state case for SFX model download progress
+- **GenerationRequest** additions — `resolvedMode: GenerationMode` and `pipelineOverride: PipelineChoice` fields
+- **UI: download badge** — mode buttons show `arrow.down.circle` when SFX model not yet downloaded
+- **UI: duration cap** — slider/value capped at 47s when Stable Audio pipeline is resolved
+- **UI: Inspector pipeline section** — shows active pipeline name and override picker (when SFX model downloaded)
+- **SFXDiTConfig**, **SFXVAEConfig**, **SFXDiffusionConfig** types added to `Types.swift`
+- Design spec: `docs/superpowers/specs/2026-05-05-phase5-soundfx-pipeline.md`
+- Implementation plan: `docs/superpowers/plans/2026-05-06-phase5-soundfx-pipeline.md`
+
+---
+
+## [Unreleased] — Phase 4b: Intelligence Layer
+
+### Added
+
+- **LLMActor** (`LLMActor.swift`) — Swift actor for local LLM inference via MLX-Swift; streaming `generate()` and single-shot `classify()` methods
+- **IntentRouter** (`IntentRouter.swift`) — debounced live classification of user prompts into `GenerationMode` (music/soundFX/ambient) using local LLM; 500ms debounce, maxTokens 20
+- **PromptEnhancer** (`PromptEnhancer.swift`) — expands brief descriptions into detailed audio prompts via LLM; cancellable, mode-aware system prompt
+- **LyricWriterManager** (`LyricWriterManager.swift`) — coordinates backend selection (local + API), streaming output to binding, cancellation
+- **LocalLyricWriter** (`LocalLyricWriter.swift`) — on-device lyric generation via LLMActor with section markers and duration-aware line estimates
+- **API Lyric Writer backends** — ClaudeLyricWriter, OpenAILyricWriter, GeminiLyricWriter, XAILyricWriter; streaming HTTP with proper cancellation
+- **LLMModelManager** (`LLMModelManager.swift`) — model download (URLSession.download for large files), custom model add/remove, reactive `llmActor` publishing
+- **APIKeyStore** (`APIKeyStore.swift`) — Keychain storage with env var fallback for API keys; supports Claude, OpenAI, Gemini, xAI providers
+- **GenerationMode** enum — `.music`, `.soundFX`, `.ambient` with classification parsing
+- **ModeSelection** enum — `.auto` / `.manual(GenerationMode)` for UI state
+- **IntelligenceSettingsView** — model selection, backend management, API key configuration
+- **GenerateView** additions — mode picker with auto-detect indicator, Enhance button, Write Lyrics button
+- **App wiring** — reactive LLM propagation via `.onReceive(modelManager.$llmActor)`, API key refresh via `.onChange(of: apiKeyStore.availableProviders)`
+- Design spec: `docs/superpowers/specs/2026-05-05-phase4b-intelligence-layer.md`
+- Implementation plan: `docs/superpowers/plans/2026-05-05-phase4b-intelligence-layer.md`
+
+---
+
+## [Unreleased] — Phase 4a: Generation Flow
+
+### Added
+
+- **GenerationService** (`GenerationService.swift`) — `@MainActor ObservableObject` orchestrating full generation: validation → weight loading → conditioning → diffusion → VAE decode → WAV write → history entry
+- **GenerationRequest** type — captures all generation parameters (text, lyrics, duration, seed, method, guidanceScale, precision)
+- **GenerationState** enum — idle, loadingWeights, conditioning, generating, decoding, complete, error, cancelled
+- **HistoryStore** (`HistoryStore.swift`) — JSON-backed persistent history of generated audio with search
+- **HistoryEntry** type — metadata for each generation (prompt, lyrics, duration, seed, method, fileName)
+- **OutputDirectoryManager** — user-selected output folder with security-scoped bookmark persistence
+- **AudioPlayerService** — `AVAudioPlayer`-based playback with play/pause/stop
+- **WAVWriter** extensions — write `MLXArray` samples to WAV file at specified sample rate
+- **GenerateView** (`GenerateView.swift`) — prompt input, lyrics editor, controls bar, progress section, player
+- **HistoryListView** — searchable list of past generations with playback
+- **PlayerView** — inline audio player with waveform-style progress
+- **MainShellView** — three-panel NavigationSplitView with sidebar, canvas, inspector
+- **OutputDirectoryPicker** — first-use folder selection before main UI appears
+- **FirstLaunchView** / **AppState** — setup flow gating
+- Design spec: `docs/superpowers/specs/2026-05-05-phase4a-generation-flow.md`
+- Implementation plan: `docs/superpowers/plans/2026-05-05-phase4a-generation-flow.md`
+
+---
+
 ## [Unreleased] — Phase 3: Conditioning Pipeline
 
 ### Added
@@ -84,7 +155,10 @@ All notable changes to AnvilApp are documented here.
 | 1 | ✅ Complete | Foundation — Xcode project, SwiftUI shell, ModelRegistry, DownloadClient |
 | 2 | ✅ Complete | Core Inference Stack — VAE, DiT, Diffusion Sampler, MusicPipeline, WeightConverter |
 | 3 | ✅ Complete | Conditioning Pipeline — Qwen3 text encoder, LyricEncoder, TimbreEncoder, ConditionEncoder, ConditioningActor |
-| 4 | Planned | UI Integration — IntentRouter, LyricWriter, full generation flow |
-| 5 | Planned | DSP Audio Editor — trim, fade, normalize, EQ, reverb, time stretch, pitch shift |
-| 6 | Planned | AI Audio Editor — inpaint/repaint via VAE encode → mask latents → denoise |
-| 7 | Planned | LoRA Fine-Tuning — on-device model personalization |
+| 4a | ✅ Complete | Generation Flow — GenerationService, WAV output, history, audio player, full UI |
+| 4b | ✅ Complete | Intelligence Layer — IntentRouter, PromptEnhancer, LyricWriters (local + API), LLMActor |
+| 5 | ✅ Complete | Sound FX Pipeline — Stable Audio Open, CLAP encoder, dual-pipeline routing, deferred download |
+| 6 | Planned | TBD |
+| 7 | Planned | DSP Audio Editor — trim, fade, normalize, EQ, reverb, time stretch, pitch shift |
+| 8 | Planned | AI Audio Editor — inpaint/repaint via VAE encode → mask latents → denoise |
+| 9 | Planned | LoRA Fine-Tuning — on-device model personalization |
