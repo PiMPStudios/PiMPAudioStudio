@@ -146,6 +146,20 @@ public struct ConditioningResult: @unchecked Sendable {
     }
 }
 
+public struct SFXVAEConfig: Codable, Sendable {
+    public let latentDim: Int
+    public let outputChannels: Int
+    public let sampleRate: Int
+    public let upsampleRatios: [Int]
+
+    public init(latentDim: Int, outputChannels: Int, sampleRate: Int, upsampleRatios: [Int]) {
+        self.latentDim = latentDim
+        self.outputChannels = outputChannels
+        self.sampleRate = sampleRate
+        self.upsampleRatios = upsampleRatios
+    }
+}
+
 public struct SFXDiTConfig: Codable, Sendable {
     public let hiddenSize: Int
     public let numLayers: Int
