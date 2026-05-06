@@ -43,6 +43,66 @@ struct SimpleDSP {
         return AudioBuffer(data: result, sampleRate: buffer.sampleRate, channels: buffer.channels)
     }
 
+    static func fadeIn(_ buffer: AudioBuffer, start: TimeInterval, end: TimeInterval) throws -> AudioBuffer {
+        var floats = AudioBufferConverter.toFloats(buffer)
+        let startSample = sampleIndex(time: start, sampleRate: buffer.sampleRate, channels: buffer.channels)
+        let endSample = min(sampleIndex(time: end, sampleRate: buffer.sampleRate, channels: buffer.channels), floats.count)
+
+        guard startSample < endSample else { throw DSPError.invalidSelection }
+
+        let length = endSample - startSample
+        var ramp = [Float](repeating: 0, count: length)
+        var start_val: Float = 0.0
+        var end_val: Float = 1.0
+        vDSP_vgen(&start_val, &end_val, &ramp, 1, vDSP_Length(length))
+        floats.withUnsafeMutableBufferPointer { ptr in
+            let base = ptr.baseAddress! + startSample
+            vDSP_vmul(base, 1, ramp, 1, base, 1, vDSP_Length(length))
+        }
+
+        return AudioBufferConverter.fromFloats(floats, sampleRate: buffer.sampleRate, channels: buffer.channels)
+    }
+
+    static func fadeOut(_ buffer: AudioBuffer, start: TimeInterval, end: TimeInterval) throws -> AudioBuffer {
+        var floats = AudioBufferConverter.toFloats(buffer)
+        let startSample = sampleIndex(time: start, sampleRate: buffer.sampleRate, channels: buffer.channels)
+        let endSample = min(sampleIndex(time: end, sampleRate: buffer.sampleRate, channels: buffer.channels), floats.count)
+
+        guard startSample < endSample else { throw DSPError.invalidSelection }
+
+        let length = endSample - startSample
+        var ramp = [Float](repeating: 0, count: length)
+        var start_val: Float = 1.0
+        var end_val: Float = 0.0
+        vDSP_vgen(&start_val, &end_val, &ramp, 1, vDSP_Length(length))
+        floats.withUnsafeMutableBufferPointer { ptr in
+            let base = ptr.baseAddress! + startSample
+            vDSP_vmul(base, 1, ramp, 1, base, 1, vDSP_Length(length))
+        }
+
+        return AudioBufferConverter.fromFloats(floats, sampleRate: buffer.sampleRate, channels: buffer.channels)
+    }
+
+    static func normalize(_ buffer: AudioBuffer, mode: NormalizeMode = .peak) throws -> AudioBuffer {
+        var floats = AudioBufferConverter.toFloats(buffer)
+        guard !floats.isEmpty else { throw DSPError.bufferEmpty }
+
+        switch mode {
+        case .peak:
+            var peak: Float = 0
+            vDSP_maxmgv(floats, 1, &peak, vDSP_Length(floats.count))
+            guard peak > 0.001 else { return buffer }
+            guard peak < 0.99 else { return buffer }
+            var scale = 1.0 / peak
+            vDSP_vsmul(floats, 1, &scale, &floats, 1, vDSP_Length(floats.count))
+
+        case .rms:
+            return buffer
+        }
+
+        return AudioBufferConverter.fromFloats(floats, sampleRate: buffer.sampleRate, channels: buffer.channels)
+    }
+
     // MARK: - Helpers
 
     static func sampleIndex(time: TimeInterval, sampleRate: Int, channels: Int) -> Int {
