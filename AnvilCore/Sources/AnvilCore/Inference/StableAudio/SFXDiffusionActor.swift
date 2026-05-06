@@ -1,0 +1,81 @@
+// AnvilCore/Sources/AnvilCore/Inference/StableAudio/SFXDiffusionActor.swift
+import Foundation
+import MLX
+import MLXRandom
+
+public actor SFXDiffusionActor {
+    private let dit: SFXDiTActor
+    private var progressContinuation: AsyncStream<GenerationProgress>.Continuation?
+    private var _progress: AsyncStream<GenerationProgress>?
+
+    public init(dit: SFXDiTActor) {
+        self.dit = dit
+    }
+
+    public var progress: AsyncStream<GenerationProgress> {
+        if let existing = _progress { return existing }
+        let (stream, continuation) = AsyncStream<GenerationProgress>.makeStream()
+        self.progressContinuation = continuation
+        self._progress = stream
+        return stream
+    }
+
+    public func sample(
+        conditioning: MLXArray,
+        config: SFXDiffusionConfig
+    ) async throws -> DiffusionResult {
+        let totalStart = Date()
+
+        var xt = DiffusionSampler.generateNoise(shape: config.latentShape, seed: config.seed)
+
+        let schedule = generateLinearSchedule(steps: config.steps)
+        let doCFG = config.guidanceScale > 1.0
+
+        let diffStart = Date()
+
+        for stepIdx in 0..<config.steps {
+            try Task.checkCancellation()
+
+            let currentT = schedule[stepIdx]
+            let timestep = MLXArray([currentT])
+
+            var vt: MLXArray
+            if doCFG {
+                let condPred = await dit.predict(latents: xt, timestep: timestep, conditioning: conditioning)
+                let uncondPred = await dit.predict(latents: xt, timestep: timestep, conditioning: MLXArray.zeros(like: conditioning))
+                vt = uncondPred + config.guidanceScale * (condPred - uncondPred)
+            } else {
+                vt = await dit.predict(latents: xt, timestep: timestep, conditioning: conditioning)
+            }
+
+            if stepIdx == config.steps - 1 {
+                xt = DiffusionSampler.finalStep(xt: xt, vt: vt, currentT: currentT)
+            } else {
+                let nextT = schedule[stepIdx + 1]
+                xt = DiffusionSampler.odeStep(xt: xt, vt: vt, currentT: currentT, nextT: nextT)
+            }
+            eval(xt)
+
+            let elapsed = Date().timeIntervalSince(diffStart)
+            progressContinuation?.yield(.diffusion(DiffusionProgress(
+                currentStep: stepIdx + 1, totalSteps: config.steps, elapsedTime: elapsed
+            )))
+        }
+
+        let diffTime = Date().timeIntervalSince(diffStart)
+        let totalTime = Date().timeIntervalSince(totalStart)
+        let costs = TimeCosts(
+            diffusionTime: diffTime,
+            perStepTime: diffTime / Double(max(config.steps, 1)),
+            totalTime: totalTime
+        )
+
+        return DiffusionResult(latents: xt, timeCosts: costs)
+    }
+
+    private func generateLinearSchedule(steps: Int) -> [Float] {
+        (0..<steps).map { i in
+            1.0 - Float(i) / Float(steps)
+        }
+    }
+}

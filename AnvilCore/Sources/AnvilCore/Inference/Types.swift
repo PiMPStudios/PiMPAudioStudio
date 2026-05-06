@@ -160,6 +160,20 @@ public struct SFXVAEConfig: Codable, Sendable {
     }
 }
 
+public struct SFXDiffusionConfig: Sendable {
+    public let steps: Int
+    public let guidanceScale: Float
+    public let seed: Int?
+    public let latentShape: [Int]
+
+    public init(steps: Int = 100, guidanceScale: Float = 7.0, seed: Int? = nil, latentShape: [Int]) {
+        self.steps = steps
+        self.guidanceScale = guidanceScale
+        self.seed = seed
+        self.latentShape = latentShape
+    }
+}
+
 public struct SFXDiTConfig: Codable, Sendable {
     public let hiddenSize: Int
     public let numLayers: Int
