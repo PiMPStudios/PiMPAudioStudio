@@ -322,5 +322,6 @@ All notable changes to AnvilApp are documented here.
 | 8a | ✅ Complete | Time Stretch & Pitch Shift — AVAudioUnitTimePitch, quality zones, snap-point sliders |
 | 8b | ✅ Complete | Advanced DSP — custom WSOLA backend, LPC formant preservation, linear resampler |
 | 9a | ✅ Complete | Model Management Foundation — SHA256 verification, first-launch redesign, registry split |
-| 9b | Planned | Model Management UI — community models, model swapping, hot-swap runtime, settings page |
-| 10 | Planned | LoRA Fine-Tuning — on-device model personalization |
+| 9b | ✅ Complete | Model Management UI — ModelsSettingsView, AddModelView, active model tracking, lazy swap runtime |
+| 10a | ✅ Complete | LoRA Fine-Tuning — LoRALinear, LoRAInjector, flow-matching trainer, adapter picker, training sheet |
+| 10b | Planned | Advanced LoRA — target layer picker, LR scheduler, gradient accumulation, adapter composition, management UI |
