@@ -4,6 +4,9 @@ import AnvilCore
 struct GenerateView: View {
     @EnvironmentObject private var generationService: GenerationService
     @EnvironmentObject private var playerService: AudioPlayerService
+    @EnvironmentObject private var intentRouter: IntentRouter
+    @EnvironmentObject private var promptEnhancer: PromptEnhancer
+    @EnvironmentObject private var lyricWriterManager: LyricWriterManager
 
     @State private var promptText: String = ""
     @State private var lyricsText: String = ""
@@ -12,10 +15,12 @@ struct GenerateView: View {
     @State private var guidanceScale: Double = 1.0
     @State private var method: InferMethod = .ode
     @State private var precision: Precision = .float16
+    @State private var modeSelection: ModeSelection = .auto
 
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
+                modePickerSection
                 promptSection
                 lyricsSection
                 controlsBar
@@ -24,13 +29,77 @@ struct GenerateView: View {
             }
             .padding()
         }
+        .onChange(of: promptText) { _, newValue in
+            intentRouter.classify(prompt: newValue)
+        }
+    }
+
+    private var resolvedMode: GenerationMode {
+        switch modeSelection {
+        case .auto: return intentRouter.detectedMode
+        case .manual(let mode): return mode
+        }
+    }
+
+    private var modePickerSection: some View {
+        HStack(spacing: 8) {
+            modeButton("Auto", isSelected: modeSelection == .auto) {
+                modeSelection = .auto
+            }
+            ForEach(GenerationMode.allCases) { mode in
+                modeButton(mode.displayName, isSelected: modeSelection == .manual(mode)) {
+                    modeSelection = .manual(mode)
+                }
+            }
+
+            if case .auto = modeSelection {
+                Text("→ \(intentRouter.detectedMode.displayName)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if intentRouter.isClassifying {
+                    ProgressView()
+                        .controlSize(.mini)
+                }
+            }
+
+            Spacer()
+        }
+    }
+
+    private func modeButton(_ title: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+        Button(title, action: action)
+            .buttonStyle(.bordered)
+            .tint(isSelected ? .accentColor : .secondary)
+            .controlSize(.small)
     }
 
     private var promptSection: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Prompt")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            HStack {
+                Text("Prompt")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button {
+                    Task {
+                        let enhanced = await promptEnhancer.enhance(
+                            prompt: promptText,
+                            mode: resolvedMode
+                        )
+                        promptText = enhanced
+                    }
+                } label: {
+                    if promptEnhancer.isEnhancing {
+                        ProgressView()
+                            .controlSize(.mini)
+                    } else {
+                        Image(systemName: "sparkles")
+                    }
+                }
+                .buttonStyle(.borderless)
+                .disabled(!promptEnhancer.isAvailable || promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || promptEnhancer.isEnhancing)
+                .help("Enhance prompt")
+            }
             TextEditor(text: $promptText)
                 .font(.body)
                 .frame(minHeight: 60, maxHeight: 100)
@@ -40,13 +109,38 @@ struct GenerateView: View {
 
     private var lyricsSection: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Lyrics")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            HStack {
+                Text("Lyrics")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if resolvedMode == .music {
+                    if lyricWriterManager.isWriting {
+                        Button("Cancel") {
+                            lyricWriterManager.cancel()
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.mini)
+                    } else {
+                        Button("Write Lyrics") {
+                            lyricWriterManager.writeLyrics(
+                                prompt: promptText,
+                                style: "",
+                                duration: duration,
+                                into: $lyricsText
+                            )
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.mini)
+                        .disabled(promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                }
+            }
             TextEditor(text: $lyricsText)
                 .font(.body)
                 .frame(minHeight: 80, maxHeight: 120)
                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(.quaternary))
+                .disabled(lyricWriterManager.isWriting)
         }
     }
 
