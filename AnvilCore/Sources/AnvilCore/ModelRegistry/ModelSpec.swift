@@ -1,13 +1,12 @@
 import Foundation
 
-public struct ModelSpec: Sendable, Identifiable {
+public struct ModelSpec: Sendable, Identifiable, Codable {
     public let id: String
     public let huggingFaceRepo: String
     public let files: [String]
     public let sizeBytes: Int64
-    /// SHA256 checksums keyed by filename. Entries are optional per file —
-    /// files without a corresponding hash skip verification during download.
-    /// When checksums are available, every file should have an entry.
+    /// SHA256 checksums keyed by filename. Empty dictionary means skip
+    /// verification (used for user-added models without known hashes).
     public let sha256: [String: String]
 
     public init(
@@ -15,7 +14,7 @@ public struct ModelSpec: Sendable, Identifiable {
         huggingFaceRepo: String,
         files: [String],
         sizeBytes: Int64,
-        sha256: [String: String]
+        sha256: [String: String] = [:]
     ) {
         self.id = id
         self.huggingFaceRepo = huggingFaceRepo
@@ -37,3 +36,4 @@ public struct ModelSpec: Sendable, Identifiable {
         localDirectory(base: base).appending(path: file)
     }
 }
+
