@@ -64,6 +64,16 @@ struct PlayerView: View {
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
+
+                Button("Edit This") {
+                    NotificationCenter.default.post(
+                        name: .navigateToEditor,
+                        object: nil,
+                        userInfo: ["url": fileURL]
+                    )
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
             }
         }
         .padding()
@@ -88,4 +98,8 @@ struct PlayerView: View {
             try? FileManager.default.copyItem(at: fileURL, to: destination)
         }
     }
+}
+
+extension Notification.Name {
+    static let navigateToEditor = Notification.Name("navigateToEditor")
 }

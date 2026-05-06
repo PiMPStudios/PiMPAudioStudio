@@ -5,6 +5,8 @@ struct MainShellView: View {
     @EnvironmentObject private var sfxModelManager: SFXModelManager
     @State private var selectedSidebarItem: SidebarItem = .generate
     @State private var pipelineOverride: PipelineChoice = .auto
+    @State private var editAudioURL: URL?
+    @State private var editOriginalPrompt: String?
 
     var body: some View {
         if !outputManager.hasValidDirectory() {
@@ -18,6 +20,13 @@ struct MainShellView: View {
                 inspector
             }
             .navigationSplitViewStyle(.balanced)
+            .onReceive(NotificationCenter.default.publisher(for: .navigateToEditor)) { notification in
+                if let url = notification.userInfo?["url"] as? URL {
+                    editAudioURL = url
+                    editOriginalPrompt = notification.userInfo?["prompt"] as? String
+                    selectedSidebarItem = .edit
+                }
+            }
         }
     }
 
@@ -26,6 +35,8 @@ struct MainShellView: View {
             Section("Create") {
                 Label("Generate", systemImage: "waveform")
                     .tag(SidebarItem.generate)
+                Label("Edit", systemImage: "waveform.badge.minus")
+                    .tag(SidebarItem.edit)
             }
             Section("Library") {
                 Label("History", systemImage: "clock")
@@ -43,6 +54,8 @@ struct MainShellView: View {
         switch selectedSidebarItem {
         case .generate:
             GenerateView()
+        case .edit:
+            EditorView(preloadedAudioURL: editAudioURL, preloadedPrompt: editOriginalPrompt)
         case .history:
             HistoryListView()
         case .presets:
@@ -96,6 +109,7 @@ struct MainShellView: View {
 
 enum SidebarItem: Hashable {
     case generate
+    case edit
     case history
     case presets
 }
