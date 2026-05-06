@@ -17,7 +17,7 @@ struct AnvilAppApp: App {
                 .environmentObject(services.historyStore)
                 .environmentObject(services.generationService)
                 .task(id: outputManager.directory) {
-                    services.reconfigure(outputManager: outputManager)
+                    services.configure(outputManager: outputManager)
                 }
         }
         .windowStyle(.titleBar)
@@ -30,43 +30,49 @@ struct AnvilAppApp: App {
     }
 }
 
-/// Holds services that depend on OutputDirectoryManager and need stable identity.
 @MainActor
 final class AppServices: ObservableObject {
     @Published var historyStore: HistoryStore
     @Published var generationService: GenerationService
+
+    private var currentOutputManager: OutputDirectoryManager?
 
     init() {
         let tempDir = FileManager.default.temporaryDirectory
         let store = HistoryStore(directory: tempDir)
         let outputMgr = OutputDirectoryManager()
 
-        let vae = VAEActor()
-        let dit = DiTActor(decoder: DiTDecoder())
-        let diffusion = DiffusionActor(dit: dit)
-        let pipeline = MusicPipeline(vae: vae, diffusion: diffusion)
-        let conditioning = ConditioningActor.forTesting(
-            tokenizerURL: Bundle.main.url(forResource: "tokenizer", withExtension: "json")
-                ?? tempDir.appending(path: "tokenizer.json")
-        )
-        let converter = WeightConverter()
-
         self.historyStore = store
-        self.generationService = GenerationService(
-            pipeline: pipeline,
-            conditioning: conditioning,
-            weightConverter: converter,
+        self.generationService = Self.makeGenerationService(
             historyStore: store,
-            outputDirectoryManager: outputMgr
+            outputManager: outputMgr
         )
     }
 
-    func reconfigure(outputManager: OutputDirectoryManager) {
-        guard let dir = outputManager.directory else { return }
+    func configure(outputManager: OutputDirectoryManager) {
+        guard currentOutputManager !== outputManager || outputManager.directory != nil else {
+            currentOutputManager = outputManager
+            generationService = Self.makeGenerationService(
+                historyStore: historyStore,
+                outputManager: outputManager
+            )
+            return
+        }
+        currentOutputManager = outputManager
 
+        let dir = outputManager.directory ?? FileManager.default.temporaryDirectory
         let store = HistoryStore(directory: dir)
         self.historyStore = store
+        self.generationService = Self.makeGenerationService(
+            historyStore: store,
+            outputManager: outputManager
+        )
+    }
 
+    private static func makeGenerationService(
+        historyStore: HistoryStore,
+        outputManager: OutputDirectoryManager
+    ) -> GenerationService {
         let vae = VAEActor()
         let dit = DiTActor(decoder: DiTDecoder())
         let diffusion = DiffusionActor(dit: dit)
@@ -77,11 +83,11 @@ final class AppServices: ObservableObject {
         )
         let converter = WeightConverter()
 
-        self.generationService = GenerationService(
+        return GenerationService(
             pipeline: pipeline,
             conditioning: conditioning,
             weightConverter: converter,
-            historyStore: store,
+            historyStore: historyStore,
             outputDirectoryManager: outputManager
         )
     }

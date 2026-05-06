@@ -15,11 +15,14 @@ final class AudioPlayerService: ObservableObject {
     @Published var volume: Float = 0.7
     @Published var waveform: WaveformData?
 
+    private(set) var loadedURL: URL?
     private var player: AVAudioPlayer?
     private var timer: Timer?
 
     func load(url: URL) {
+        guard url != loadedURL else { return }
         stop()
+        loadedURL = url
         do {
             player = try AVAudioPlayer(contentsOf: url)
             player?.prepareToPlay()

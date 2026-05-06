@@ -57,8 +57,9 @@ struct HistoryListView: View {
                     }
             }
             .onDelete { indices in
-                for index in indices {
-                    historyStore.delete(historyStore.entries[index])
+                let toDelete = indices.map { historyStore.entries[$0] }
+                for entry in toDelete {
+                    historyStore.delete(entry)
                 }
             }
         }

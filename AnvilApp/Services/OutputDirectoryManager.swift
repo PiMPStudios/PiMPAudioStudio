@@ -10,6 +10,7 @@ final class OutputDirectoryManager: ObservableObject {
         directory = resolveBookmark()
     }
 
+    @discardableResult
     func pickDirectory() async -> URL? {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
@@ -22,6 +23,7 @@ final class OutputDirectoryManager: ObservableObject {
         let response = panel.runModal()
         guard response == .OK, let url = panel.url else { return nil }
 
+        directory?.stopAccessingSecurityScopedResource()
         saveBookmark(for: url)
         directory = url
         return url

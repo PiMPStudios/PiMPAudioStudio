@@ -87,6 +87,7 @@ final class GenerationService: ObservableObject {
                         }
                     }
                 }
+                defer { progressTask.cancel() }
 
                 let result = try await self.pipeline.generate(
                     text: request.text,
@@ -96,7 +97,6 @@ final class GenerationService: ObservableObject {
                     config: config,
                     conditioning: self.conditioning
                 )
-                progressTask.cancel()
 
                 try Task.checkCancellation()
                 self.state = .decoding
