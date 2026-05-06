@@ -12,12 +12,16 @@ struct TrainingSheet: View {
     @State private var adapterName: String = ""
     @State private var selectedRank: Int = 16
     @State private var selectedEpochs: Int = 10
+    @State private var selectedTargetLayers: Set<TargetLayer> = [.selfAttention, .crossAttention]
+    @State private var warmupFraction: Float = 0.10
+    @State private var gradientAccumulationSteps: Int = 1
     @State private var importedFiles: [(url: URL, description: String)] = []
     @State private var showingFileImporter: Bool = false
     @State private var showingStopConfirmation: Bool = false
 
     private let rankOptions = [8, 16, 32]
     private let epochOptions = [5, 10, 20, 50]
+    private let accumOptions = [1, 2, 4, 8]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -39,6 +43,8 @@ struct TrainingSheet: View {
                 switch trainingService.state {
                 case .idle, .failed, .cancelled:
                     configView
+                case .paused:
+                    configView
                 case .preparingDataset, .training, .saving:
                     progressView
                 case .complete(let adapter):
@@ -46,7 +52,7 @@ struct TrainingSheet: View {
                 }
             }
         }
-        .frame(minWidth: 450, minHeight: 400)
+        .frame(minWidth: 500, minHeight: 500)
         .fileImporter(
             isPresented: $showingFileImporter,
             allowedContentTypes: [.audio],
@@ -77,6 +83,20 @@ struct TrainingSheet: View {
 
     private var configView: some View {
         VStack(alignment: .leading, spacing: 16) {
+            // Resume banner
+            if case .paused = trainingService.state {
+                HStack {
+                    Image(systemName: "pause.circle.fill")
+                        .foregroundStyle(.orange)
+                    Text("Training paused. Configure and resume, or start fresh.")
+                        .font(.callout)
+                    Spacer()
+                }
+                .padding(8)
+                .background(.orange.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+
             // Training data section
             VStack(alignment: .leading, spacing: 8) {
                 Text("Training Data")
@@ -164,6 +184,52 @@ struct TrainingSheet: View {
                     .pickerStyle(.segmented)
                     .frame(maxWidth: 200)
                 }
+
+                // Target layers
+                LabeledContent("Target Layers") {
+                    HStack(spacing: 8) {
+                        ForEach(TargetLayer.allCases, id: \.self) { layer in
+                            Toggle(layer.displayName, isOn: Binding(
+                                get: { selectedTargetLayers.contains(layer) },
+                                set: { isOn in
+                                    if isOn {
+                                        selectedTargetLayers.insert(layer)
+                                    } else if selectedTargetLayers.count > 1 {
+                                        selectedTargetLayers.remove(layer)
+                                    }
+                                }
+                            ))
+                            .toggleStyle(.checkbox)
+                        }
+                    }
+                }
+
+                // Advanced: warmup + accumulation
+                DisclosureGroup("Advanced") {
+                    LabeledContent("LR Warmup") {
+                        HStack {
+                            Slider(
+                                value: Binding(
+                                    get: { Double(warmupFraction) },
+                                    set: { warmupFraction = Float($0) }
+                                ),
+                                in: 0...0.5,
+                                step: 0.05
+                            )
+                            .frame(maxWidth: 150)
+                            Text("\(Int(warmupFraction * 100))%")
+                                .monospacedDigit()
+                                .frame(width: 40)
+                        }
+                    }
+                    LabeledContent("Grad. Accumulation") {
+                        Picker("Steps", selection: $gradientAccumulationSteps) {
+                            ForEach(accumOptions, id: \.self) { Text("\($0)").tag($0) }
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(maxWidth: 200)
+                    }
+                }
             }
 
             // Error display
@@ -173,15 +239,20 @@ struct TrainingSheet: View {
                     .font(.caption)
             }
 
-            // Start button
+            // Start/Resume button
             HStack {
                 Spacer()
+                if case .paused = trainingService.state {
+                    Button("Resume Training") {
+                        startTraining()
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
                 Button("Start Training") {
                     startTraining()
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(adapterName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                          || (selectedEntries.isEmpty && importedFiles.isEmpty))
+                .disabled(!canStartTraining)
             }
         }
         .padding()
@@ -191,8 +262,6 @@ struct TrainingSheet: View {
 
     private var progressView: some View {
         VStack(spacing: 16) {
-            Spacer()
-
             switch trainingService.state {
             case .preparingDataset(let current, let total):
                 VStack(spacing: 8) {
@@ -204,24 +273,37 @@ struct TrainingSheet: View {
                     ProgressView(value: Double(current), total: Double(total))
                         .frame(maxWidth: 300)
                 }
+                .padding(.top, 40)
 
-            case .training(let epoch, let totalEpochs, let loss, let elapsed, let remaining):
+            case .training(let uiState):
                 VStack(spacing: 12) {
                     Text("Training \"\(adapterName)\"")
                         .font(.headline)
-                    Text("Epoch \(epoch) of \(totalEpochs)")
+                    Text("Epoch \(uiState.epoch) of \(uiState.totalEpochs)")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
 
-                    ProgressView(value: Double(epoch), total: Double(totalEpochs))
+                    ProgressView(value: Double(uiState.epoch), total: Double(uiState.totalEpochs))
                         .frame(maxWidth: 300)
 
-                    HStack(spacing: 24) {
-                        statView(value: String(format: "%.4f", loss), label: "Current Loss")
-                        statView(value: formatTime(elapsed), label: "Elapsed")
-                        statView(value: "~\(formatTime(remaining))", label: "Remaining")
+                    // Loss curve
+                    LossCurveView(lossHistory: uiState.lossHistory)
+                        .padding(.horizontal)
+
+                    // Stats row
+                    HStack(spacing: 20) {
+                        statView(value: String(format: "%.4f", uiState.loss), label: "Loss")
+                        statView(
+                            value: String(format: "%.1e", uiState.learningRate),
+                            label: "LR"
+                        )
+                        statView(value: formatTime(uiState.elapsed), label: "Elapsed")
+                        if let remaining = uiState.remaining {
+                            statView(value: "~\(formatTime(remaining))", label: "ETA")
+                        }
                     }
                 }
+                .padding(.top, 20)
 
             case .saving:
                 VStack(spacing: 8) {
@@ -230,6 +312,7 @@ struct TrainingSheet: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
+                .padding(.top, 40)
 
             default:
                 EmptyView()
@@ -284,6 +367,12 @@ struct TrainingSheet: View {
 
     // MARK: - Helpers
 
+    private var canStartTraining: Bool {
+        !adapterName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !(selectedEntries.isEmpty && importedFiles.isEmpty)
+            && !selectedTargetLayers.isEmpty
+    }
+
     private func statView(value: String, label: String) -> some View {
         VStack(spacing: 2) {
             Text(value)
@@ -304,7 +393,13 @@ struct TrainingSheet: View {
 
     private func startTraining() {
         let audioURLs = selectedEntries.map { historyStore.fileURL(for: $0) }
-        let config = LoRAConfig(rank: selectedRank, maxEpochs: selectedEpochs)
+        let config = LoRAConfig(
+            rank: selectedRank,
+            targetLayers: selectedTargetLayers,
+            maxEpochs: selectedEpochs,
+            warmupFraction: warmupFraction,
+            gradientAccumulationSteps: gradientAccumulationSteps
+        )
         trainingService.startTraining(
             entries: selectedEntries,
             audioURLs: audioURLs,
@@ -312,5 +407,17 @@ struct TrainingSheet: View {
             adapterName: adapterName,
             config: config
         )
+    }
+}
+
+// MARK: - TargetLayer Display
+
+extension TargetLayer {
+    var displayName: String {
+        switch self {
+        case .selfAttention: return "Self-Attn"
+        case .crossAttention: return "Cross-Attn"
+        case .mlp: return "MLP"
+        }
     }
 }
