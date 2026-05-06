@@ -195,7 +195,10 @@ Small progress pill or status bar line in the main UI:
 
 1. Check if Stable Audio model is present → if not, set phase to
    `.downloading(modelName: "Stable Audio Open", progress: 0)`, trigger
-   `SFXModelManager.downloadIfNeeded()`, observe progress
+   `SFXModelManager.downloadIfNeeded()`, observe progress. SFX downloads
+   first because it unlocks a primary creative tool (sound effects
+   generation), which users are more likely to try immediately than
+   lyric writing.
 2. After SFX completes (or if already present), check LLM → if not
    present, set phase to `.downloading(modelName: "Lyric Writer",
    progress: 0)`, trigger `LLMModelManager` download
@@ -230,7 +233,7 @@ Small progress pill or status bar line in the main UI:
 | `AnvilApp/Services/SFXModelManager.swift` | Already handles deferred download and feature gating |
 | `AnvilApp/Services/LLMModelManager.swift` | Already handles not-ready state |
 | `AnvilApp/Services/GenerationService.swift` | No changes needed |
-| All pipeline actors | No changes needed |
+| All pipeline actors (VAEActor, DiTActor, etc.) | No changes needed |
 | All DSP/Editor UI | No changes needed |
 
 ---
