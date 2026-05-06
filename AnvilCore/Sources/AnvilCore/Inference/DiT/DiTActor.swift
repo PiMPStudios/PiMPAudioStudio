@@ -66,6 +66,7 @@ public actor DiTActor {
 
     private var injectedPaths: [String] = []
     public private(set) var injectedAdapterID: String?
+    private var activeTrainer: LoRATrainer?
 
     /// Inject LoRA adapter layers into the DiT decoder.
     public func injectLoRA(config: LoRAConfig) -> [String] {
@@ -107,9 +108,16 @@ public actor DiTActor {
         // Inject, train, extract, remove
         let paths = LoRAInjector.inject(model: decoder, config: config)
         let trainer = LoRATrainer(model: decoder, config: config, injectedPaths: paths)
+        activeTrainer = trainer
         let weights = trainer.train(dataset: samples, onProgress: onProgress)
         let finalLoss = trainer.lowestLoss
+        activeTrainer = nil
         LoRAInjector.remove(model: decoder, paths: paths)
         return (weights, finalLoss)
+    }
+
+    /// Cancel ongoing training.
+    public func cancelTraining() {
+        activeTrainer?.cancel()
     }
 }

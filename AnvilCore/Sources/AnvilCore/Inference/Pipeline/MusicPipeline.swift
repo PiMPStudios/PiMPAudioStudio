@@ -82,10 +82,9 @@ public actor MusicPipeline {
         await diffusion.trainLoRA(samples: samples, config: config, onProgress: onProgress)
     }
 
-    /// Cancel ongoing training.
+    /// Cancel ongoing training cooperatively.
     public func cancelTraining() async {
-        // Training cancellation is cooperative via LoRATrainer.cancel()
-        // For now this is a no-op placeholder — full cancel requires storing trainer reference
+        await diffusion.cancelTraining()
     }
 
     public func generate(

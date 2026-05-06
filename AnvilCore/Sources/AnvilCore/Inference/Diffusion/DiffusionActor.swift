@@ -157,6 +157,10 @@ public actor DiffusionActor {
         await dit.trainLoRA(samples: samples, config: config, onProgress: onProgress)
     }
 
+    public func cancelTraining() async {
+        await dit.cancelTraining()
+    }
+
     public func inpaint(
         startLatents: MLXArray,
         schedule: [Float],

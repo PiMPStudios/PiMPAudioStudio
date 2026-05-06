@@ -201,10 +201,12 @@ struct GenerateView: View {
         )
         .onChange(of: selectedAdapterID) { _, newValue in
             persistedAdapterID = newValue ?? ""
+            generationService.selectedAdapterID = newValue
         }
         .onAppear {
             if !persistedAdapterID.isEmpty {
                 selectedAdapterID = persistedAdapterID
+                generationService.selectedAdapterID = persistedAdapterID
             }
         }
     }
