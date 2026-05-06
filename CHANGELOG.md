@@ -4,6 +4,23 @@ All notable changes to AnvilApp are documented here.
 
 ---
 
+## [Unreleased] — Phase 8a: Time Stretch & Pitch Shift
+
+### Added
+
+- **Time Stretch** — rate change (0.25×–4.0×) without pitch change via `AVAudioUnitTimePitch` offline rendering; output buffer length adjusts to match new duration
+- **Pitch Shift** — pitch change (±24 semitones / ±2400 cents) without duration change via `AVAudioUnitTimePitch` offline rendering; preserves original buffer length
+- **TimeStretchControlView** (`TimeStretchControlView.swift`) — rate slider with snap points (0.5×, 0.75×, 1.0×, 1.25×, 1.5×, 2.0×), quality zone indicator (green/yellow/red), double-click direct numeric entry
+- **PitchShiftControlView** (`PitchShiftControlView.swift`) — pitch slider with snap points at musical intervals (-12, -7, -5, 0, +5, +7, +12 semitones), quality zone indicator, direct numeric entry
+- **DSPPaletteView "Transforms" section** — palette split into "EFFECTS" (Phase 7 operations) and "TRANSFORMS" (Time Stretch, Pitch Shift) with divider and sub-headers; `DSPEffect.isTransform` drives grouping
+- **Quality zone indicator** — three-state display (Excellent/Good/Significant artifacts) based on parameter thresholds; green ≤2.0× or ≤±12st, yellow ≤3.0× or ≤±18st, red beyond
+- **DSPProcessor dispatch** — `makeDescription` accepts `DSPParameters` for richer undo labels (e.g., "Time Stretch 0.50× (whole track)", "Pitch Shift +7 st (1.2s–2.8s)")
+- Selection cleared after time stretch (duration change shifts region boundaries)
+- Design spec: `docs/superpowers/specs/2026-05-06-phase8a-time-stretch-pitch-shift.md`
+- Implementation plan: `docs/superpowers/plans/2026-05-06-phase8a-time-stretch-pitch-shift.md`
+
+---
+
 ## [Unreleased] — Phase 7: DSP Audio Editor
 
 ### Added
@@ -208,4 +225,6 @@ All notable changes to AnvilApp are documented here.
 | 5 | ✅ Complete | Sound FX Pipeline — Stable Audio Open, CLAP encoder, dual-pipeline routing, deferred download |
 | 6 | ✅ Complete | AI Audio Editor — inpaint/repaint via VAE encode → mask latents → denoise |
 | 7 | ✅ Complete | DSP Audio Editor — trim, fade, normalize, 3-band parametric EQ, reverb |
-| 8 | Planned | LoRA Fine-Tuning — on-device model personalization |
+| 8a | ✅ Complete | Time Stretch & Pitch Shift — AVAudioUnitTimePitch, quality zones, snap-point sliders |
+| 8b | Planned | Advanced DSP — custom Phase Vocoder/WSOLA backend, formant preservation |
+| 9 | Planned | LoRA Fine-Tuning — on-device model personalization |
