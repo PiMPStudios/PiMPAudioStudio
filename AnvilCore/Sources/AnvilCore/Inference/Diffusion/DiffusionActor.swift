@@ -122,4 +122,102 @@ public actor DiffusionActor {
 
         return DiffusionResult(latents: xt, timeCosts: costs)
     }
+
+    public func inpaint(
+        startLatents: MLXArray,
+        schedule: [Float],
+        encoderStates: MLXArray,
+        contextLatents: MLXArray,
+        encoderMask: MLXArray?,
+        config: DiffusionConfig
+    ) async throws -> DiffusionResult {
+        let totalStart = Date()
+        let numSteps = schedule.count
+
+        guard numSteps > 0 else {
+            let costs = TimeCosts(diffusionTime: 0, perStepTime: 0, totalTime: 0)
+            return DiffusionResult(latents: startLatents, timeCosts: costs)
+        }
+
+        var xt = startLatents
+
+        let bsz = xt.shape[0]
+
+        let doCFG = config.guidanceScale > 1.0
+        var encHS = encoderStates
+        var ctx = contextLatents
+        var encMask = encoderMask
+        if doCFG {
+            let nullExpanded = MLXArray.zeros(like: encHS)
+            encHS = concatenated([encHS, nullExpanded], axis: 0)
+            ctx = concatenated([ctx, ctx], axis: 0)
+            encMask = encoderMask.map { concatenated([$0, $0], axis: 0) }
+        }
+        let momentum: APGMomentum? = doCFG ? APGMomentum() : nil
+
+        let cache = CrossAttentionCache()
+        let diffStart = Date()
+
+        for stepIdx in 0..<numSteps {
+            try Task.checkCancellation()
+            let currentT = schedule[stepIdx]
+
+            let xIn = doCFG ? concatenated([xt, xt], axis: 0) : xt
+
+            let (vt, _) = await dit.step(
+                noisyLatents: xIn,
+                timestep: currentT,
+                timestepR: currentT,
+                encoderStates: encHS,
+                contextLatents: ctx,
+                encoderAttentionMask: encMask,
+                cache: cache,
+                useCache: !doCFG
+            )
+
+            var velocity = vt
+
+            if doCFG {
+                let predCond = vt[0..<bsz]
+                let predUncond = vt[bsz...]
+                let applyCFG = currentT >= config.cfgIntervalStart && currentT <= config.cfgIntervalEnd
+                if applyCFG {
+                    velocity = DiffusionSampler.apgForward(
+                        predCond: predCond, predUncond: predUncond,
+                        guidanceScale: config.guidanceScale, momentum: momentum
+                    )
+                } else {
+                    velocity = predCond
+                }
+            }
+
+            if stepIdx == numSteps - 1 {
+                xt = DiffusionSampler.finalStep(xt: xt, vt: velocity, currentT: currentT)
+            } else {
+                let nextT = schedule[stepIdx + 1]
+                switch config.method {
+                case .ode:
+                    xt = DiffusionSampler.odeStep(xt: xt, vt: velocity, currentT: currentT, nextT: nextT)
+                case .sde:
+                    xt = DiffusionSampler.sdeStep(xt: xt, vt: velocity, currentT: currentT, nextT: nextT)
+                }
+            }
+            eval(xt)
+
+            let elapsed = Date().timeIntervalSince(diffStart)
+            progressContinuation?.yield(DiffusionProgress(
+                currentStep: stepIdx + 1, totalSteps: numSteps, elapsedTime: elapsed
+            ))
+        }
+
+        let diffTime = Date().timeIntervalSince(diffStart)
+        let totalTime = Date().timeIntervalSince(totalStart)
+        let costs = TimeCosts(
+            diffusionTime: diffTime,
+            perStepTime: diffTime / Double(max(numSteps, 1)),
+            totalTime: totalTime
+        )
+
+        return DiffusionResult(latents: xt, timeCosts: costs)
+    }
 }
