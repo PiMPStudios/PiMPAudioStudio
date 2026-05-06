@@ -51,7 +51,7 @@ public actor MusicPipeline {
             currentStep: 0, totalSteps: config.steps ?? 8, elapsedTime: 0
         )))
 
-        let diffResult = await diffusion.generate(
+        let diffResult = try await diffusion.generate(
             encoderStates: encoderStates,
             contextLatents: contextLatents,
             encoderMask: encoderMask,

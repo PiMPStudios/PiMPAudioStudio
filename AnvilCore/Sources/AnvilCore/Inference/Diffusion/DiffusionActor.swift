@@ -25,7 +25,7 @@ public actor DiffusionActor {
         encoderMask: MLXArray?,
         shape: (batch: Int, frames: Int, channels: Int),
         config: DiffusionConfig
-    ) async -> DiffusionResult {
+    ) async throws -> DiffusionResult {
         let totalStart = Date()
 
         let bsz = shape.batch
@@ -57,6 +57,7 @@ public actor DiffusionActor {
         let diffStart = Date()
 
         for stepIdx in 0..<numSteps {
+            try Task.checkCancellation()
             let currentT = schedule[stepIdx]
 
             if stepIdx >= coverSteps {
