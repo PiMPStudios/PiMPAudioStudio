@@ -24,4 +24,10 @@ public actor SFXVAEActor {
         eval(result)
         return result
     }
+
+    public func encode(audio: MLXArray) -> MLXArray {
+        let result = model.encode(audio: audio)
+        eval(result)
+        return result
+    }
 }

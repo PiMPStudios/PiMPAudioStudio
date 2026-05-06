@@ -22,6 +22,12 @@ public actor VAEActor {
         return precision == .float16 ? latents.asType(.float32) : latents
     }
 
+    public func encodeMean(audio: MLXArray, precision: Precision) -> MLXArray {
+        let input = precision == .float16 ? audio.asType(.float16) : audio
+        let latents = vae.encodeMean(input)
+        return precision == .float16 ? latents.asType(.float32) : latents
+    }
+
     public func loadWeights(_ weights: [(String, MLXArray)]) {
         vae.update(parameters: ModuleParameters.unflattened(weights))
         eval(vae.parameters())
