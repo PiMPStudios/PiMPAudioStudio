@@ -4,6 +4,30 @@ All notable changes to AnvilApp are documented here.
 
 ---
 
+## [Unreleased] — Phase 9b: Model Management UI
+
+### Changed
+
+- **Settings window** — upgraded from single-view to `TabView` with "Intelligence" and "Models" tabs (Cmd+,)
+- **GenerationService lazy swap** — replaced `weightsLoaded` boolean with model ID comparison; detects active model mismatch at generation time, unloads old weights via ARC, loads new weights from registry path, then generates
+- **SFXModelManager swap support** — replaced hardcoded model ID/repo with registry dependency; `ensureActiveModel()` checks active `.stableAudio` model before generation, unloads and reloads pipeline on mismatch
+- **DiTActor/VAEActor unloadable** — `decoder`/`vae` properties changed from `let` to `var` optional with `decoderFactory` closure for recreation; `unloadWeights()` nils references for ARC deallocation; `loadedModelID` tracks which model is loaded
+
+### Added
+
+- **ModelsSettingsView** (`ModelsSettingsView.swift`) — Models tab with ACE-Step (Music) and Stable Audio (SFX) sections; each row shows display name, formatted size, status badge (Ready/Not Downloaded/Downloading N%/Verifying/Failed), active indicator with checkmark and background highlight; Set Active/Download/Delete/Remove actions with confirmation dialogs; error alert for failed operations; task cancellation on rapid refresh
+- **AddModelView** (`AddModelView.swift`) — HuggingFace repo input with category picker (ACE-Step DiT, Stable Audio); HEAD request validation for expected files per category; specific error messages (missing file, private/gated repo, network error, duplicate); size estimation from Content-Length headers; display name inference from repo ID; confirmation alert before adding; auto-download after add
+- **ModelCategory enum** (`ModelCategory`) — `aceStepDiT`, `aceStepVAE`, `stableAudio`, `lyricLLM` cases for pipeline assignment; `category` field on `ModelSpec`
+- **Active model tracking** — `ModelRegistry.activeModels` mapping (`[ModelCategory: String]`) persisted to `active-models.json`; `setActiveModel`, `activeModelID`, `activeSpec`, `specs(for:)` methods; defaults to built-in model IDs on first launch
+- **Model file deletion** — `ModelRegistry.deleteModelFiles(id:)` removes downloaded files while preserving spec for re-download; reverts active model to built-in default on deletion
+- **Error revert on swap failure** — if new model weights fail to load, active model reverts to previous working model ID; nil-decoder guard prevents fatalError
+- **LocalizedError on RegistryError** — user-visible error descriptions for all registry error cases
+- **ModelSpec.displayName** — computed property deriving readable name from HuggingFace repo (hyphens/underscores to spaces, title-cased)
+- Design spec: `docs/superpowers/specs/2026-05-06-phase9b-model-management-ui.md`
+- Implementation plan: `docs/superpowers/plans/2026-05-06-phase9b-model-management-ui.md`
+
+---
+
 ## [Unreleased] — Phase 9a: Model Management Foundation
 
 ### Changed
