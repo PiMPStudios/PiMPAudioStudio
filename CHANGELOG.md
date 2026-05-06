@@ -4,6 +4,35 @@ All notable changes to AnvilApp are documented here.
 
 ---
 
+## [Unreleased] — Phase 6: AI Audio Editor
+
+### Added
+
+- **InpaintCoordinator** (`InpaintCoordinator.swift`) — actor orchestrating the full inpainting pipeline: VAE encode → mask → noise injection → diffusion denoise → composite → VAE decode; manages undo stack, routes through ACE-Step or Stable Audio pipelines
+- **MaskBuilder** (`MaskBuilder.swift`) — converts time selection (+ optional frequency band) into latent-space binary mask `[1, T, 1]` or `[1, T, D]`; handles sample-rate-to-frame conversion via hop size
+- **LatentBlender** (`LatentBlender.swift`) — noise injection at strength level and latent compositing; seeded noise for reproducible edits
+- **TimestepMapper** (`TimestepMapper.swift`) — maps strength (0.0–1.0) to diffusion start timestep; returns truncated schedule for partial denoising (fewer steps = faster)
+- **EditHistoryManager** (`EditHistoryManager.swift`) — multi-level undo/redo stack (max 20 snapshots) with discard-on-branch semantics
+- **InpaintTypes** (`InpaintTypes.swift`) — `EditMode`, `InpaintSelection`, `FrequencyBand`, `InpaintRequest`, `InpaintProgress`, `InpaintPreset`, `EditSnapshot`, `PipelineChoice` (moved to AnvilCore)
+- **SFXVAEModel encoder path** — symmetric downsample blocks (`SFXDownsampleBlock`) mirroring the existing upsample decoder; `encode(audio:)` returns mean latents
+- **VAEActor.encodeMean** — deterministic encoding for inpainting (vs. `encodeSample` which adds stochastic noise)
+- **DiffusionActor.inpaint** — partial-noise diffusion start with pre-truncated schedule; reuses CFG/APG/ODE/SDE stepping from `generate()`
+- **SFXDiffusionActor.inpaint** — same partial-noise pattern for Stable Audio pipeline
+- **EditorView** (`EditorView.swift`) — Edit tab root: waveform canvas, frequency constraint panel, dual prompts, controls bar, empty state with file picker
+- **EditorWaveformView** (`EditorWaveformView.swift`) — Canvas-based stereo waveform with drag-to-select (orange overlay), playhead, zoom-ready
+- **EditorToolbar** (`EditorToolbar.swift`) — mode toggle (Inpaint/Repaint segmented), pipeline picker, undo/redo with Cmd+Z shortcuts
+- **EditorPromptArea** (`EditorPromptArea.swift`) — two-column layout: Original Prompt (context, read-only style) + Region Prompt (editable, blue-themed); relabels to "Target Style" in Repaint mode
+- **EditorControlsBar** (`EditorControlsBar.swift`) — preset buttons (Subtle/Moderate/Full), strength + guidance scale sliders, dynamic action button ("Inpaint Selection" / "Repaint Track")
+- **EditorState** (`EditorState.swift`) — `@MainActor ObservableObject` managing all editor UI state; `buildRequest()` assembles `InpaintRequest` from current state
+- **EditorService** (`EditorService.swift`) — `@MainActor ObservableObject` wrapping `InpaintCoordinator` for environment injection
+- **Edit tab in sidebar** — new `.edit` entry in `MainShellView` under "Create" section
+- **"Edit This" button** — added to `PlayerView` after generation; posts notification to navigate to Edit tab with audio + prompt pre-loaded
+- **HistoryEntry additions** — `pipeline: String?` and `originalPrompt: String?` fields for provenance tracking
+- Design spec: `docs/superpowers/specs/2026-05-06-phase6-ai-audio-editor.md`
+- Implementation plan: `docs/superpowers/plans/2026-05-06-phase6-ai-audio-editor.md`
+
+---
+
 ## [Unreleased] — Phase 5: Sound FX Pipeline
 
 ### Added
@@ -158,7 +187,6 @@ All notable changes to AnvilApp are documented here.
 | 4a | ✅ Complete | Generation Flow — GenerationService, WAV output, history, audio player, full UI |
 | 4b | ✅ Complete | Intelligence Layer — IntentRouter, PromptEnhancer, LyricWriters (local + API), LLMActor |
 | 5 | ✅ Complete | Sound FX Pipeline — Stable Audio Open, CLAP encoder, dual-pipeline routing, deferred download |
-| 6 | Planned | TBD |
+| 6 | ✅ Complete | AI Audio Editor — inpaint/repaint via VAE encode → mask latents → denoise |
 | 7 | Planned | DSP Audio Editor — trim, fade, normalize, EQ, reverb, time stretch, pitch shift |
-| 8 | Planned | AI Audio Editor — inpaint/repaint via VAE encode → mask latents → denoise |
-| 9 | Planned | LoRA Fine-Tuning — on-device model personalization |
+| 8 | Planned | LoRA Fine-Tuning — on-device model personalization |
