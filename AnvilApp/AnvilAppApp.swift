@@ -12,17 +12,19 @@ struct AnvilAppApp: App {
     @StateObject private var intentRouter: IntentRouter
     @StateObject private var promptEnhancer: PromptEnhancer
     @StateObject private var lyricWriterManager: LyricWriterManager
+    @StateObject private var sfxModelManager: SFXModelManager
 
     init() {
         let appState = AppState()
         let outputManager = OutputDirectoryManager()
         let playerService = AudioPlayerService()
-        let services = AppServices()
         let apiKeys = APIKeyStore()
         let manager = LLMModelManager()
         let router = IntentRouter(llm: manager.llmActor)
         let enhancer = PromptEnhancer(llm: manager.llmActor)
         let lyricManager = LyricWriterManager(apiKeyStore: apiKeys)
+        let sfxManager = SFXModelManager()
+        let services = AppServices(sfxModelManager: sfxManager)
 
         _appState = StateObject(wrappedValue: appState)
         _outputManager = StateObject(wrappedValue: outputManager)
@@ -33,6 +35,7 @@ struct AnvilAppApp: App {
         _intentRouter = StateObject(wrappedValue: router)
         _promptEnhancer = StateObject(wrappedValue: enhancer)
         _lyricWriterManager = StateObject(wrappedValue: lyricManager)
+        _sfxModelManager = StateObject(wrappedValue: sfxManager)
     }
 
     var body: some Scene {
@@ -48,6 +51,7 @@ struct AnvilAppApp: App {
                 .environmentObject(intentRouter)
                 .environmentObject(promptEnhancer)
                 .environmentObject(lyricWriterManager)
+                .environmentObject(sfxModelManager)
                 .task(id: outputManager.directory) {
                     services.configure(outputManager: outputManager)
                 }
@@ -79,8 +83,10 @@ final class AppServices: ObservableObject {
     @Published var generationService: GenerationService
 
     private var currentOutputManager: OutputDirectoryManager?
+    private let sfxModelManager: SFXModelManager
 
-    init() {
+    init(sfxModelManager: SFXModelManager) {
+        self.sfxModelManager = sfxModelManager
         let tempDir = FileManager.default.temporaryDirectory
         let store = HistoryStore(directory: tempDir)
         let outputMgr = OutputDirectoryManager()
@@ -88,7 +94,8 @@ final class AppServices: ObservableObject {
         self.historyStore = store
         self.generationService = Self.makeGenerationService(
             historyStore: store,
-            outputManager: outputMgr
+            outputManager: outputMgr,
+            sfxModelManager: sfxModelManager
         )
     }
 
@@ -97,7 +104,8 @@ final class AppServices: ObservableObject {
             currentOutputManager = outputManager
             generationService = Self.makeGenerationService(
                 historyStore: historyStore,
-                outputManager: outputManager
+                outputManager: outputManager,
+                sfxModelManager: sfxModelManager
             )
             return
         }
@@ -108,13 +116,15 @@ final class AppServices: ObservableObject {
         self.historyStore = store
         self.generationService = Self.makeGenerationService(
             historyStore: store,
-            outputManager: outputManager
+            outputManager: outputManager,
+            sfxModelManager: sfxModelManager
         )
     }
 
     private static func makeGenerationService(
         historyStore: HistoryStore,
-        outputManager: OutputDirectoryManager
+        outputManager: OutputDirectoryManager,
+        sfxModelManager: SFXModelManager
     ) -> GenerationService {
         let vae = VAEActor()
         let dit = DiTActor(decoder: DiTDecoder())
@@ -131,7 +141,8 @@ final class AppServices: ObservableObject {
             conditioning: conditioning,
             weightConverter: converter,
             historyStore: historyStore,
-            outputDirectoryManager: outputManager
+            outputDirectoryManager: outputManager,
+            sfxModelManager: sfxModelManager
         )
     }
 }
