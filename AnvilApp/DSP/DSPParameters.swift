@@ -26,12 +26,14 @@ enum DSPEffect: String, CaseIterable {
     case normalize
     case eq
     case reverb
+    case timeStretch
+    case pitchShift
 
     var requiresParameters: Bool {
         switch self {
         case .trimToSelection, .deleteSelection, .fadeIn, .fadeOut, .normalize:
             return false
-        case .eq, .reverb:
+        case .eq, .reverb, .timeStretch, .pitchShift:
             return true
         }
     }
@@ -40,7 +42,7 @@ enum DSPEffect: String, CaseIterable {
         switch self {
         case .trimToSelection, .deleteSelection, .fadeIn, .fadeOut:
             return true
-        case .normalize, .eq, .reverb:
+        case .normalize, .eq, .reverb, .timeStretch, .pitchShift:
             return false
         }
     }
@@ -54,6 +56,15 @@ enum DSPEffect: String, CaseIterable {
         case .normalize: return "Normalize"
         case .eq: return "Parametric EQ"
         case .reverb: return "Reverb"
+        case .timeStretch: return "Time Stretch"
+        case .pitchShift: return "Pitch Shift"
+        }
+    }
+
+    var isTransform: Bool {
+        switch self {
+        case .timeStretch, .pitchShift: return true
+        default: return false
         }
     }
 }
@@ -71,6 +82,8 @@ enum DSPParameters: Equatable {
     case none
     case eq(EQParameters)
     case reverb(ReverbParameters)
+    case timeStretch(TimeStretchParameters)
+    case pitchShift(PitchShiftParameters)
 }
 
 // MARK: - EQBand + EQParameters
@@ -119,6 +132,20 @@ struct ReverbParameters: Equatable {
     static let hall = ReverbParameters(decayTime: 2.4, wetDryMix: 0.35, preDelay: 20, damping: 0.6)
     static let plate = ReverbParameters(decayTime: 1.5, wetDryMix: 0.40, preDelay: 5, damping: 0.3)
     static let `default` = ReverbParameters.hall
+}
+
+// MARK: - TimeStretchParameters
+
+struct TimeStretchParameters: Equatable {
+    var rate: Float          // 0.25-4.0 (1.0 = original speed)
+    static let `default` = TimeStretchParameters(rate: 1.0)
+}
+
+// MARK: - PitchShiftParameters
+
+struct PitchShiftParameters: Equatable {
+    var pitch: Float         // -2400 to +2400 cents (-24 to +24 semitones)
+    static let `default` = PitchShiftParameters(pitch: 0)
 }
 
 // MARK: - NormalizeMode
