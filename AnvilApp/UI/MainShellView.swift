@@ -55,7 +55,9 @@ struct MainShellView: View {
                 if newPhase == .complete {
                     Task {
                         try? await Task.sleep(for: .seconds(3))
-                        appState.backgroundDownloadPhase = .idle
+                        if appState.backgroundDownloadPhase == .complete {
+                            appState.backgroundDownloadPhase = .idle
+                        }
                     }
                 }
             }

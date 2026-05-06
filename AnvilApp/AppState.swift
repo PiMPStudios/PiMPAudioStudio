@@ -1,7 +1,7 @@
 import SwiftUI
 import AnvilCore
 
-public enum BackgroundDownloadPhase: Equatable {
+enum BackgroundDownloadPhase: Equatable {
     case idle
     case downloading(modelName: String, progress: Float)
     case complete
@@ -31,16 +31,9 @@ final class AppState: ObservableObject {
     }
 
     func checkSetupStatus() async {
-        let baseDir = await registry.baseDirectory
-        let allEssentialsReady = ModelRegistry.builtInSpecs
-            .filter { ModelRegistry.essentialModelIDs.contains($0.id) }
-            .allSatisfy { spec in
-                spec.files.allSatisfy { file in
-                    FileManager.default.fileExists(
-                        atPath: spec.localPath(for: file, base: baseDir).path()
-                    )
-                }
-            }
+        let allEssentialsReady = await ModelRegistry.essentialModelIDs.allSatisfy { id in
+            await registry.isModelReady(id)
+        }
         isSetupComplete = allEssentialsReady
     }
 
@@ -68,24 +61,54 @@ final class AppState: ObservableObject {
         // Download Stable Audio first (more immediately useful than LLM)
         if sfxManager.downloadState == .notDownloaded {
             backgroundDownloadPhase = .downloading(modelName: "Stable Audio Open", progress: 0)
+
+            // Observe SFX progress and relay to background phase
+            let sfxObserver = Task { @MainActor [weak self] in
+                for await state in sfxManager.$downloadState.values {
+                    guard let self else { return }
+                    if case .downloading(let progress) = state {
+                        self.backgroundDownloadPhase = .downloading(
+                            modelName: "Stable Audio Open", progress: progress
+                        )
+                    }
+                }
+            }
+
             do {
                 try await sfxManager.downloadIfNeeded()
             } catch {
-                backgroundDownloadPhase = .failed("Stable Audio download failed. Tap to retry.")
+                sfxObserver.cancel()
+                backgroundDownloadPhase = .failed("Stable Audio download failed. Click to retry.")
                 return
             }
+            sfxObserver.cancel()
         }
 
         // Then download LLM if needed
         let defaultLLM = LLMModelManager.defaultModels.first
         if let spec = defaultLLM, llmManager.downloadState == .idle {
             backgroundDownloadPhase = .downloading(modelName: "Lyric Writer", progress: 0)
+
+            // Observe LLM progress and relay to background phase
+            let llmObserver = Task { @MainActor [weak self] in
+                for await state in llmManager.$downloadState.values {
+                    guard let self else { return }
+                    if case .downloading(let progress) = state {
+                        self.backgroundDownloadPhase = .downloading(
+                            modelName: "Lyric Writer", progress: progress
+                        )
+                    }
+                }
+            }
+
             do {
                 try await llmManager.downloadModel(spec)
             } catch {
-                backgroundDownloadPhase = .failed("Lyric Writer download failed. Tap to retry.")
+                llmObserver.cancel()
+                backgroundDownloadPhase = .failed("Lyric Writer download failed. Click to retry.")
                 return
             }
+            llmObserver.cancel()
         }
 
         backgroundDownloadPhase = .complete
