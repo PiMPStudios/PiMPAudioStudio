@@ -4,6 +4,29 @@ All notable changes to AnvilApp are documented here.
 
 ---
 
+## [Unreleased] — Phase 8b: Custom DSP Backend
+
+### Changed
+
+- **Time Stretch backend** — replaced `AVAudioUnitTimePitch` with custom WSOLA (Waveform Similarity Overlap-Add) processor; time-domain stretching with cross-correlation search for optimal overlap alignment; window 1024 samples, 75% overlap, ±64 sample search range, energy gating on silent frames
+- **Pitch Shift backend** — replaced `AVAudioUnitTimePitch` with three-stage pipeline: linear resampler → WSOLA time correction → LPC formant correction; eliminates "chipmunk effect" on vocals at large pitch changes
+- **LPC Formant Correction** (`LPCFormantShifter.swift`) — estimates spectral envelope via Levinson-Durbin recursion (order 24), inverse-filters shifted audio to remove distorted formants, re-filters with original coefficients to restore natural vocal resonances
+- **DSPProcessor region targeting** — `processRegion` helper handles selection-based byte-level splicing directly in DSPProcessor (previously delegated to AVAudioEngineDSP for time stretch/pitch shift)
+
+### Added
+
+- **WSOLAProcessor** (`WSOLAProcessor.swift`) — WSOLA time stretch with Hann windowing, vDSP cross-correlation search, overlap-add with envelope normalization, energy gating bypass for silent frames
+- **Resampler** (`Resampler.swift`) — linear interpolation resampler for pitch ratio conversion; ratio clamped 0.25–4.0, stereo de-interleave/re-interleave
+- **LPCFormantShifter** (`LPCFormantShifter.swift`) — LPC formant correction with autocorrelation via vDSP, Levinson-Durbin solver with reflection coefficient clamping (±0.99), inverse/synthesis filtering, overlap-add output
+- Design spec: `docs/superpowers/specs/2026-05-06-phase8b-custom-dsp-backend.md`
+- Implementation plan: `docs/superpowers/plans/2026-05-06-phase8b-custom-dsp-backend.md`
+
+### Removed
+
+- `AVAudioEngineDSP.applyTimeStretch` and `applyPitchShift` methods (replaced by custom processors; EQ and Reverb still use AVAudioEngine)
+
+---
+
 ## [Unreleased] — Phase 8a: Time Stretch & Pitch Shift
 
 ### Added
