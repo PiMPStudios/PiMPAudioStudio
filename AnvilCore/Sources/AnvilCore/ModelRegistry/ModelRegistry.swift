@@ -1,4 +1,7 @@
 import Foundation
+import OSLog
+
+private let logger = Logger(subsystem: "com.pimp.AnvilApp", category: "ModelRegistry")
 
 public enum ModelStatus: Sendable, Equatable {
     case notDownloaded
@@ -13,7 +16,9 @@ public actor ModelRegistry {
     private let client: DownloadClient
     private var statuses: [String: ModelStatus] = [:]
 
-    public nonisolated let allSpecs: [ModelSpec] = [
+    // MARK: - Built-in Models
+
+    public static let builtInSpecs: [ModelSpec] = [
         ModelSpec(
             id: "ace-step-dit",
             huggingFaceRepo: "ACEStep/ACE-Step-v1-5-DiT",
@@ -44,10 +49,35 @@ public actor ModelRegistry {
         ),
     ]
 
+    // MARK: - User-Added Models
+
+    private(set) var userSpecs: [ModelSpec] = []
+
+    private var userSpecsFileURL: URL {
+        baseDirectory.appending(path: "user-models.json")
+    }
+
+    // MARK: - Unified Access
+
+    public var allSpecs: [ModelSpec] {
+        Self.builtInSpecs + userSpecs
+    }
+
+    /// The ACE-Step model IDs required for initial setup.
+    public static let essentialModelIDs: Set<String> = [
+        "ace-step-dit",
+        "ace-step-vae"
+    ]
+
+    // MARK: - Init
+
     public init(baseDirectory: URL, client: DownloadClient = DownloadClient()) {
         self.baseDirectory = baseDirectory
         self.client = client
+        loadUserSpecs()
     }
+
+    // MARK: - Status
 
     public func status(for modelID: String) -> ModelStatus {
         if let cached = statuses[modelID] {
@@ -64,46 +94,128 @@ public actor ModelRegistry {
         return allFilesExist ? .ready : .notDownloaded
     }
 
+    public func isModelReady(_ modelID: String) -> Bool {
+        status(for: modelID) == .ready
+    }
+
     private func setStatus(_ modelID: String, to status: ModelStatus) {
         statuses[modelID] = status
     }
 
-    public func downloadAll(
+    // MARK: - Download
+
+    /// Downloads the specified models with SHA256 verification and auto-retry.
+    public func downloadModels(
+        _ specs: [ModelSpec],
         onProgress: @Sendable @escaping (String, Double) -> Void
     ) async throws {
-        for spec in allSpecs {
+        for spec in specs {
             guard status(for: spec.id) != .ready else { continue }
             statuses[spec.id] = .downloading(progress: 0)
 
             for file in spec.files {
                 let destination = spec.localPath(for: file, base: baseDirectory)
+                let expectedHash = spec.sha256[file]
+
                 do {
-                    try await client.download(
+                    try await client.downloadAndVerify(
                         repo: spec.huggingFaceRepo,
                         file: file,
                         to: destination,
+                        expectedHash: expectedHash,
                         onProgress: { [id = spec.id] progress in
                             Task { [weak self] in
                                 await self?.setStatus(id, to: .downloading(progress: progress))
                             }
                             onProgress(id, progress)
+                        },
+                        onRetry: { [id = spec.id] in
+                            logger.warning("Verification failed for \(file) in \(id), retrying...")
                         }
                     )
                 } catch {
-                    statuses[spec.id] = .failed(error.localizedDescription)
-                    throw error
-                }
-
-                if let expectedHash = spec.sha256[file], !expectedHash.isEmpty {
-                    statuses[spec.id] = .verifying
-                    guard await client.verifySHA256(file: destination, expected: expectedHash) else {
-                        statuses[spec.id] = .failed("Checksum mismatch: \(file)")
-                        throw DownloadError.checksumMismatch(file: file)
+                    let message: String
+                    if case DownloadError.checksumMismatch = error {
+                        message = "Model verification failed. The file may be corrupted or tampered with."
+                    } else {
+                        message = error.localizedDescription
                     }
+                    statuses[spec.id] = .failed(message)
+                    throw error
                 }
             }
 
             statuses[spec.id] = .ready
         }
     }
+
+    /// Downloads only the essential (ACE-Step) models for first launch.
+    public func downloadEssentialModels(
+        onProgress: @Sendable @escaping (String, Double) -> Void
+    ) async throws {
+        let essentials = Self.builtInSpecs.filter { Self.essentialModelIDs.contains($0.id) }
+        try await downloadModels(essentials, onProgress: onProgress)
+    }
+
+    /// Downloads all built-in models. Kept for backward compatibility.
+    public func downloadAll(
+        onProgress: @Sendable @escaping (String, Double) -> Void
+    ) async throws {
+        try await downloadModels(Self.builtInSpecs, onProgress: onProgress)
+    }
+
+    // MARK: - User Model Management (extension points for 9b)
+
+    public func addModel(_ spec: ModelSpec) throws {
+        guard !isBuiltIn(id: spec.id) else {
+            throw RegistryError.cannotModifyBuiltIn
+        }
+        guard !userSpecs.contains(where: { $0.id == spec.id }) else {
+            throw RegistryError.duplicateModel(spec.id)
+        }
+        userSpecs.append(spec)
+        saveUserSpecs()
+    }
+
+    public func removeModel(id: String) throws {
+        guard !isBuiltIn(id: id) else {
+            throw RegistryError.cannotModifyBuiltIn
+        }
+        userSpecs.removeAll { $0.id == id }
+        statuses.removeValue(forKey: id)
+        saveUserSpecs()
+    }
+
+    public nonisolated func isBuiltIn(id: String) -> Bool {
+        Self.builtInSpecs.contains { $0.id == id }
+    }
+
+    // MARK: - Persistence
+
+    private func loadUserSpecs() {
+        let url = userSpecsFileURL
+        guard FileManager.default.fileExists(atPath: url.path()) else { return }
+
+        do {
+            let data = try Data(contentsOf: url)
+            userSpecs = try JSONDecoder().decode([ModelSpec].self, from: data)
+        } catch {
+            logger.error("Failed to load user-models.json: \(error.localizedDescription). Starting with empty list.")
+            userSpecs = []
+        }
+    }
+
+    private func saveUserSpecs() {
+        do {
+            let data = try JSONEncoder().encode(userSpecs)
+            try data.write(to: userSpecsFileURL, options: .atomic)
+        } catch {
+            logger.error("Failed to save user-models.json: \(error.localizedDescription)")
+        }
+    }
+}
+
+public enum RegistryError: Error, Sendable {
+    case cannotModifyBuiltIn
+    case duplicateModel(String)
 }

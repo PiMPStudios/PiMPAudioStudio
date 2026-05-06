@@ -18,7 +18,7 @@ import Foundation
     defer { try? FileManager.default.removeItem(at: tempDir) }
 
     let registry = ModelRegistry(baseDirectory: tempDir)
-    for spec in registry.allSpecs {
+    for spec in await registry.allSpecs {
         let dir = spec.localDirectory(base: tempDir)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         for file in spec.files {

@@ -4,7 +4,7 @@ import Foundation
 
 @Test func registryReturnsAllSpecs() async {
     let registry = ModelRegistry(baseDirectory: FileManager.default.temporaryDirectory)
-    let specs = registry.allSpecs
+    let specs = await registry.allSpecs
 
     #expect(specs.isEmpty == false)
     #expect(specs.contains(where: { $0.id == "ace-step-dit" }))
@@ -27,7 +27,7 @@ import Foundation
     defer { try? FileManager.default.removeItem(at: tempDir) }
 
     let registry = ModelRegistry(baseDirectory: tempDir)
-    let spec = registry.allSpecs.first(where: { $0.id == "ace-step-dit" })!
+    let spec = await registry.allSpecs.first(where: { $0.id == "ace-step-dit" })!
 
     let modelDir = spec.localDirectory(base: tempDir)
     try FileManager.default.createDirectory(at: modelDir, withIntermediateDirectories: true)

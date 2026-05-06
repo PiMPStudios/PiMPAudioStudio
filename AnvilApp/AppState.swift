@@ -24,7 +24,8 @@ final class AppState: ObservableObject {
 
     func checkSetupStatus() async {
         let baseDir = await registry.baseDirectory
-        let allReady = registry.allSpecs.allSatisfy { spec in
+        let specs = await registry.allSpecs
+        let allReady = specs.allSatisfy { spec in
             spec.files.allSatisfy { file in
                 FileManager.default.fileExists(
                     atPath: spec.localPath(for: file, base: baseDir).path()
