@@ -79,8 +79,14 @@ struct DSPProcessor {
                                                             rate: 1.0 / pitchRatio,
                                                             sampleRate: regionBuffer.sampleRate,
                                                             channels: regionBuffer.channels)
+                var matched = timeCorrected
+                if matched.count < floats.count {
+                    matched.append(contentsOf: [Float](repeating: 0, count: floats.count - matched.count))
+                } else if matched.count > floats.count {
+                    matched = Array(matched.prefix(floats.count))
+                }
                 let corrected = LPCFormantShifter.correct(original: floats,
-                                                          shifted: timeCorrected,
+                                                          shifted: matched,
                                                           sampleRate: regionBuffer.sampleRate,
                                                           channels: regionBuffer.channels)
                 return AudioBufferConverter.fromFloats(corrected,

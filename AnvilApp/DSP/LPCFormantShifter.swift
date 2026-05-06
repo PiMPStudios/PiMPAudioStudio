@@ -111,12 +111,14 @@ struct LPCFormantShifter {
         let order = lpcOrder + 1
         var result = [Float](repeating: 0, count: order)
 
-        for lag in 0..<order {
-            var sum: Float = 0
-            vDSP_dotpr(Array(frame[0..<n - lag]), 1,
-                       Array(frame[lag..<n]), 1,
-                       &sum, vDSP_Length(n - lag))
-            result[lag] = sum
+        frame.withUnsafeBufferPointer { ptr in
+            for lag in 0..<order {
+                var sum: Float = 0
+                vDSP_dotpr(ptr.baseAddress!, 1,
+                           ptr.baseAddress! + lag, 1,
+                           &sum, vDSP_Length(n - lag))
+                result[lag] = sum
+            }
         }
         return result
     }

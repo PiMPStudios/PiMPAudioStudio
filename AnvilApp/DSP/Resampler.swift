@@ -1,4 +1,4 @@
-import Accelerate
+import Foundation
 
 struct Resampler {
     static func resample(_ samples: [Float], ratio: Float, channels: Int) -> [Float] {

@@ -89,21 +89,22 @@ struct WSOLAProcessor {
         var bestPos = idealPos
         var bestCorrelation: Float = -.greatestFiniteMagnitude
 
-        for candidate in searchStart...searchEnd {
-            let overlapLength = min(refLength, frameCount - candidate)
-            guard overlapLength > 0 else { continue }
+        prevOutput.withUnsafeBufferPointer { outputPtr in
+            input.withUnsafeBufferPointer { inputPtr in
+                for candidate in searchStart...searchEnd {
+                    let overlapLength = min(refLength, frameCount - candidate)
+                    guard overlapLength > 0 else { continue }
 
-            var correlation: Float = 0
-            vDSP_dotpr(
-                Array(prevOutput[refStart..<refStart + overlapLength]), 1,
-                Array(input[candidate..<candidate + overlapLength]), 1,
-                &correlation,
-                vDSP_Length(overlapLength)
-            )
+                    var correlation: Float = 0
+                    vDSP_dotpr(outputPtr.baseAddress! + refStart, 1,
+                               inputPtr.baseAddress! + candidate, 1,
+                               &correlation, vDSP_Length(overlapLength))
 
-            if correlation > bestCorrelation {
-                bestCorrelation = correlation
-                bestPos = candidate
+                    if correlation > bestCorrelation {
+                        bestCorrelation = correlation
+                        bestPos = candidate
+                    }
+                }
             }
         }
         return bestPos
@@ -115,7 +116,9 @@ struct WSOLAProcessor {
         guard length > 0 else { return true }
 
         var rms: Float = 0
-        vDSP_rmsqv(Array(samples[position..<end]), 1, &rms, vDSP_Length(length))
+        samples.withUnsafeBufferPointer { ptr in
+            vDSP_rmsqv(ptr.baseAddress! + position, 1, &rms, vDSP_Length(length))
+        }
 
         let db = 20.0 * log10(max(rms, 1e-10))
         return db < silenceThresholdDB
