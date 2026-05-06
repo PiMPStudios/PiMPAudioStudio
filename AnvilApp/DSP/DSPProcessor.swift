@@ -51,10 +51,22 @@ struct DSPProcessor {
                 return buffer
             }
             return try AVAudioEngineDSP.applyReverb(to: buffer, parameters: reverbParams, target: target)
+
+        case .timeStretch:
+            guard case .timeStretch(let params) = parameters else {
+                return buffer
+            }
+            return try AVAudioEngineDSP.applyTimeStretch(to: buffer, parameters: params, target: target)
+
+        case .pitchShift:
+            guard case .pitchShift(let params) = parameters else {
+                return buffer
+            }
+            return try AVAudioEngineDSP.applyPitchShift(to: buffer, parameters: params, target: target)
         }
     }
 
-    func makeDescription(effect: DSPEffect, target: ApplyTarget) -> DSPOperation {
+    func makeDescription(effect: DSPEffect, target: ApplyTarget, parameters: DSPParameters = .none) -> DSPOperation {
         let targetLabel: String
         switch target {
         case .selection(let start, let end):
@@ -63,10 +75,22 @@ struct DSPProcessor {
             targetLabel = "(whole track)"
         }
 
+        let paramLabel: String
+        switch parameters {
+        case .timeStretch(let params):
+            paramLabel = " \(String(format: "%.2f", params.rate))×"
+        case .pitchShift(let params):
+            let semitones = Int(params.pitch / 100)
+            let sign = semitones >= 0 ? "+" : ""
+            paramLabel = " \(sign)\(semitones) st"
+        default:
+            paramLabel = ""
+        }
+
         return DSPOperation(
             effect: effect,
             target: target,
-            description: "\(effect.displayName) \(targetLabel)"
+            description: "\(effect.displayName)\(paramLabel) \(targetLabel)"
         )
     }
 
