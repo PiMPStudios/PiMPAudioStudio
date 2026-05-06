@@ -145,3 +145,19 @@ public struct ConditioningResult: @unchecked Sendable {
         self.contextLatents = contextLatents
     }
 }
+
+public struct SFXDiTConfig: Codable, Sendable {
+    public let hiddenSize: Int
+    public let numLayers: Int
+    public let numHeads: Int
+    public let latentDim: Int
+    public let conditioningDim: Int
+
+    public init(hiddenSize: Int, numLayers: Int, numHeads: Int, latentDim: Int, conditioningDim: Int) {
+        self.hiddenSize = hiddenSize
+        self.numLayers = numLayers
+        self.numHeads = numHeads
+        self.latentDim = latentDim
+        self.conditioningDim = conditioningDim
+    }
+}
