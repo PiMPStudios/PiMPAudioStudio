@@ -41,6 +41,8 @@
 		BB00010C0101010101010101 /* IntelligenceSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00020C0101010101010101 /* IntelligenceSettingsView.swift */; };
 		BB00010D0101010101010101 /* GenerationMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00020D0101010101010101 /* GenerationMode.swift */; };
 		CC0001010101010101010101 /* SFXModelManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC0002010101010101010101 /* SFXModelManager.swift */; };
+		BB00010E0101010101010101 /* ModelsSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00020E0101010101010101 /* ModelsSettingsView.swift */; };
+		BB00010F0101010101010101 /* AddModelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00020F0101010101010101 /* AddModelView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -90,6 +92,8 @@
 		BB00020C0101010101010101 /* IntelligenceSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntelligenceSettingsView.swift; sourceTree = "<group>"; };
 		BB00020D0101010101010101 /* GenerationMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationMode.swift; sourceTree = "<group>"; };
 		CC0002010101010101010101 /* SFXModelManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SFXModelManager.swift; sourceTree = "<group>"; };
+		BB00020E0101010101010101 /* ModelsSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsSettingsView.swift; sourceTree = "<group>"; };
+		BB00020F0101010101010101 /* AddModelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddModelView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -191,7 +195,9 @@
 		BB00030401010101010101AB /* Settings */ = {
 			isa = PBXGroup;
 			children = (
+				BB00020F0101010101010101 /* AddModelView.swift */,
 				BB00020C0101010101010101 /* IntelligenceSettingsView.swift */,
+				BB00020E0101010101010101 /* ModelsSettingsView.swift */,
 			);
 			path = Settings;
 			sourceTree = "<group>";
@@ -346,6 +352,8 @@
 				BB00010C0101010101010101 /* IntelligenceSettingsView.swift in Sources */,
 				BB00010D0101010101010101 /* GenerationMode.swift in Sources */,
 				CC0001010101010101010101 /* SFXModelManager.swift in Sources */,
+				BB00010E0101010101010101 /* ModelsSettingsView.swift in Sources */,
+				BB00010F0101010101010101 /* AddModelView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
