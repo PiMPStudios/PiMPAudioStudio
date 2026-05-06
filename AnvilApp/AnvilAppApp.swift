@@ -24,7 +24,7 @@ struct AnvilAppApp: App {
         let enhancer = PromptEnhancer(llm: manager.llmActor)
         let lyricManager = LyricWriterManager(apiKeyStore: apiKeys)
         let sfxManager = SFXModelManager()
-        let services = AppServices(sfxModelManager: sfxManager)
+        let services = AppServices(sfxModelManager: sfxManager, registry: appState.registry)
 
         _appState = StateObject(wrappedValue: appState)
         _outputManager = StateObject(wrappedValue: outputManager)
@@ -84,9 +84,11 @@ final class AppServices: ObservableObject {
 
     private var currentOutputManager: OutputDirectoryManager?
     private let sfxModelManager: SFXModelManager
+    private let registry: ModelRegistry
 
-    init(sfxModelManager: SFXModelManager) {
+    init(sfxModelManager: SFXModelManager, registry: ModelRegistry) {
         self.sfxModelManager = sfxModelManager
+        self.registry = registry
         let tempDir = FileManager.default.temporaryDirectory
         let store = HistoryStore(directory: tempDir)
         let outputMgr = OutputDirectoryManager()
@@ -95,7 +97,8 @@ final class AppServices: ObservableObject {
         self.generationService = Self.makeGenerationService(
             historyStore: store,
             outputManager: outputMgr,
-            sfxModelManager: sfxModelManager
+            sfxModelManager: sfxModelManager,
+            registry: registry
         )
     }
 
@@ -105,7 +108,8 @@ final class AppServices: ObservableObject {
             generationService = Self.makeGenerationService(
                 historyStore: historyStore,
                 outputManager: outputManager,
-                sfxModelManager: sfxModelManager
+                sfxModelManager: sfxModelManager,
+                registry: registry
             )
             return
         }
@@ -117,14 +121,16 @@ final class AppServices: ObservableObject {
         self.generationService = Self.makeGenerationService(
             historyStore: store,
             outputManager: outputManager,
-            sfxModelManager: sfxModelManager
+            sfxModelManager: sfxModelManager,
+            registry: registry
         )
     }
 
     private static func makeGenerationService(
         historyStore: HistoryStore,
         outputManager: OutputDirectoryManager,
-        sfxModelManager: SFXModelManager
+        sfxModelManager: SFXModelManager,
+        registry: ModelRegistry
     ) -> GenerationService {
         let vae = VAEActor()
         let dit = DiTActor(decoder: DiTDecoder())
@@ -142,7 +148,8 @@ final class AppServices: ObservableObject {
             weightConverter: converter,
             historyStore: historyStore,
             outputDirectoryManager: outputManager,
-            sfxModelManager: sfxModelManager
+            sfxModelManager: sfxModelManager,
+            registry: registry
         )
     }
 }

@@ -34,6 +34,22 @@ public actor MusicPipeline {
         Int(ceil(Double(sampleRate) * duration / Double(hopLength)))
     }
 
+    public func loadDiTWeights(_ weights: [(String, MLXArray)], modelID: String) async {
+        await diffusion.loadDiTWeights(weights, modelID: modelID)
+    }
+
+    public func unloadDiTWeights() async {
+        await diffusion.unloadDiTWeights()
+    }
+
+    public func loadVAEWeights(_ weights: [(String, MLXArray)], modelID: String) async {
+        await vae.loadWeights(weights, modelID: modelID)
+    }
+
+    public func unloadVAEWeights() async {
+        await vae.unloadWeights()
+    }
+
     public func generate(
         encoderStates: MLXArray,
         contextLatents: MLXArray,

@@ -15,6 +15,11 @@ public actor WeightConverter {
         return stream
     }
 
+    public func loadSafetensors(from url: URL) throws -> [(String, MLXArray)] {
+        let dict = try MLX.loadArrays(url: url)
+        return dict.sorted { $0.key < $1.key }.map { ($0.key, $0.value) }
+    }
+
     public func convertVAEWeights(stateDict: [(String, MLXArray)]) -> [(String, MLXArray)] {
         var result: [(String, MLXArray)] = []
         var processed: Set<String> = []

@@ -123,6 +123,14 @@ public actor DiffusionActor {
         return DiffusionResult(latents: xt, timeCosts: costs)
     }
 
+    public func loadDiTWeights(_ weights: [(String, MLXArray)], modelID: String) async {
+        await dit.loadWeights(weights, modelID: modelID)
+    }
+
+    public func unloadDiTWeights() async {
+        await dit.unloadWeights()
+    }
+
     public func inpaint(
         startLatents: MLXArray,
         schedule: [Float],

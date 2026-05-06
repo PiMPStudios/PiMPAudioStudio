@@ -19,7 +19,9 @@ final class GenerationService: ObservableObject {
     private let historyStore: HistoryStore
     private let outputDirectoryManager: OutputDirectoryManager
     private let sfxModelManager: SFXModelManager
-    private var weightsLoaded = false
+    private let registry: ModelRegistry
+    private var currentlyLoadedDiTModelID: String?
+    private var currentlyLoadedVAEModelID: String?
 
     init(
         pipeline: MusicPipeline,
@@ -27,7 +29,8 @@ final class GenerationService: ObservableObject {
         weightConverter: WeightConverter,
         historyStore: HistoryStore,
         outputDirectoryManager: OutputDirectoryManager,
-        sfxModelManager: SFXModelManager
+        sfxModelManager: SFXModelManager,
+        registry: ModelRegistry
     ) {
         self.pipeline = pipeline
         self.conditioning = conditioning
@@ -35,6 +38,7 @@ final class GenerationService: ObservableObject {
         self.historyStore = historyStore
         self.outputDirectoryManager = outputDirectoryManager
         self.sfxModelManager = sfxModelManager
+        self.registry = registry
     }
 
     func generate(request: GenerationRequest) {
@@ -168,10 +172,17 @@ final class GenerationService: ObservableObject {
     }
 
     private func generateWithACEStep(request: GenerationRequest) async throws -> AudioResult {
-        if !weightsLoaded {
+        // Check DiT model swap
+        let activeDiTID = await registry.activeModelID(for: .aceStepDiT)
+        if activeDiTID != currentlyLoadedDiTModelID {
             state = .loadingWeights(progress: 0)
-            try await loadWeights()
-            weightsLoaded = true
+            try await loadDiTWeights()
+        }
+
+        // Check VAE model swap
+        let activeVAEID = await registry.activeModelID(for: .aceStepVAE)
+        if activeVAEID != currentlyLoadedVAEModelID {
+            try await loadVAEWeights()
         }
 
         try Task.checkCancellation()
@@ -219,17 +230,47 @@ final class GenerationService: ObservableObject {
         return result
     }
 
-    private func loadWeights() async throws {
-        state = .loadingWeights(progress: 1.0)
+    private func loadDiTWeights() async throws {
+        guard let spec = await registry.activeSpec(for: .aceStepDiT) else {
+            throw GenerationError.modelNotConfigured("ACE-Step DiT")
+        }
+        let baseDir = await registry.baseDirectory
+        state = .loadingWeights(progress: 0)
+
+        await pipeline.unloadDiTWeights()
+
+        let weightsPath = spec.localPath(for: "model.safetensors", base: baseDir)
+        let rawWeights = try await weightConverter.loadSafetensors(from: weightsPath)
+        let weights = await weightConverter.convertDiTWeights(stateDict: rawWeights)
+        await pipeline.loadDiTWeights(weights, modelID: spec.id)
+        currentlyLoadedDiTModelID = spec.id
+    }
+
+    private func loadVAEWeights() async throws {
+        guard let spec = await registry.activeSpec(for: .aceStepVAE) else {
+            throw GenerationError.modelNotConfigured("ACE-Step VAE")
+        }
+        let baseDir = await registry.baseDirectory
+
+        await pipeline.unloadVAEWeights()
+
+        let vaeFile = spec.files.first(where: { $0.contains("vae") }) ?? "vae.safetensors"
+        let weightsPath = spec.localPath(for: vaeFile, base: baseDir)
+        let rawWeights = try await weightConverter.loadSafetensors(from: weightsPath)
+        let weights = await weightConverter.convertVAEWeights(stateDict: rawWeights)
+        await pipeline.loadVAEWeights(weights, modelID: spec.id)
+        currentlyLoadedVAEModelID = spec.id
     }
 }
 
 enum GenerationError: Error, LocalizedError {
     case pipelineNotReady
+    case modelNotConfigured(String)
 
     var errorDescription: String? {
         switch self {
         case .pipelineNotReady: return "Sound FX pipeline is not ready"
+        case .modelNotConfigured(let name): return "\(name) model is not configured"
         }
     }
 }
