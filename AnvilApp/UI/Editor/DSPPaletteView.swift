@@ -8,14 +8,29 @@ struct DSPPaletteView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("DSP EFFECTS")
-                .font(.system(size: 11, weight: .semibold))
+            Text("EFFECTS")
+                .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(.secondary)
                 .tracking(0.5)
 
             effectGrid
 
-            if let expanded = state.expandedEffect {
+            if let expanded = state.expandedEffect, !expanded.isTransform {
+                expandedPanel(for: expanded)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+
+            Divider()
+                .padding(.vertical, 4)
+
+            Text("TRANSFORMS")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .tracking(0.5)
+
+            transformGrid
+
+            if let expanded = state.expandedEffect, expanded.isTransform {
                 expandedPanel(for: expanded)
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
@@ -43,6 +58,14 @@ struct DSPPaletteView: View {
                 Spacer()
                 Spacer()
             }
+        }
+    }
+
+    private var transformGrid: some View {
+        HStack(spacing: 6) {
+            effectButton(.timeStretch)
+            effectButton(.pitchShift)
+            Spacer()
         }
     }
 
@@ -119,6 +142,10 @@ struct DSPPaletteView: View {
                     parameters: $state.reverbParameters,
                     selectedPreset: $state.selectedReverbPreset
                 )
+            case .timeStretch:
+                TimeStretchControlView(parameters: $state.timeStretchParameters)
+            case .pitchShift:
+                PitchShiftControlView(parameters: $state.pitchShiftParameters)
             default:
                 EmptyView()
             }
@@ -151,6 +178,8 @@ struct DSPPaletteView: View {
                 switch effect {
                 case .eq: params = .eq(state.eqParameters)
                 case .reverb: params = .reverb(state.reverbParameters)
+                case .timeStretch: params = .timeStretch(state.timeStretchParameters)
+                case .pitchShift: params = .pitchShift(state.pitchShiftParameters)
                 default: params = .none
                 }
                 onApply(effect, params)
