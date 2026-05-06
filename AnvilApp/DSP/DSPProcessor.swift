@@ -56,13 +56,37 @@ struct DSPProcessor {
             guard case .timeStretch(let params) = parameters else {
                 return buffer
             }
-            return try AVAudioEngineDSP.applyTimeStretch(to: buffer, parameters: params, target: target)
+            return try processRegion(buffer, target: target) { regionBuffer in
+                let floats = AudioBufferConverter.toFloats(regionBuffer)
+                let stretched = WSOLAProcessor.stretch(floats, rate: params.rate,
+                                                       sampleRate: regionBuffer.sampleRate,
+                                                       channels: regionBuffer.channels)
+                return AudioBufferConverter.fromFloats(stretched,
+                                                       sampleRate: regionBuffer.sampleRate,
+                                                       channels: regionBuffer.channels)
+            }
 
         case .pitchShift:
             guard case .pitchShift(let params) = parameters else {
                 return buffer
             }
-            return try AVAudioEngineDSP.applyPitchShift(to: buffer, parameters: params, target: target)
+            return try processRegion(buffer, target: target) { regionBuffer in
+                let floats = AudioBufferConverter.toFloats(regionBuffer)
+                let pitchRatio = pow(2.0, params.pitch / 1200.0)
+                let resampled = Resampler.resample(floats, ratio: pitchRatio,
+                                                    channels: regionBuffer.channels)
+                let timeCorrected = WSOLAProcessor.stretch(resampled,
+                                                            rate: 1.0 / pitchRatio,
+                                                            sampleRate: regionBuffer.sampleRate,
+                                                            channels: regionBuffer.channels)
+                let corrected = LPCFormantShifter.correct(original: floats,
+                                                          shifted: timeCorrected,
+                                                          sampleRate: regionBuffer.sampleRate,
+                                                          channels: regionBuffer.channels)
+                return AudioBufferConverter.fromFloats(corrected,
+                                                       sampleRate: regionBuffer.sampleRate,
+                                                       channels: regionBuffer.channels)
+            }
         }
     }
 
@@ -92,6 +116,38 @@ struct DSPProcessor {
             target: target,
             description: "\(effect.displayName)\(paramLabel) \(targetLabel)"
         )
+    }
+
+    private func processRegion(
+        _ buffer: AudioBuffer,
+        target: ApplyTarget,
+        transform: (AudioBuffer) throws -> AudioBuffer
+    ) throws -> AudioBuffer {
+        switch target {
+        case .wholeTrack:
+            return try transform(buffer)
+        case .selection(let start, let end):
+            let bytesPerSample = MemoryLayout<Int16>.size
+            let startSample = SimpleDSP.sampleIndex(time: start, sampleRate: buffer.sampleRate, channels: buffer.channels)
+            let endSample = min(
+                SimpleDSP.sampleIndex(time: end, sampleRate: buffer.sampleRate, channels: buffer.channels),
+                buffer.data.count / bytesPerSample
+            )
+            let startByte = startSample * bytesPerSample
+            let endByte = endSample * bytesPerSample
+
+            let regionData = Data(buffer.data[startByte..<endByte])
+            let regionBuffer = AudioBuffer(data: regionData, sampleRate: buffer.sampleRate, channels: buffer.channels)
+            let processed = try transform(regionBuffer)
+
+            var result = Data()
+            result.append(buffer.data[0..<startByte])
+            result.append(processed.data)
+            if endByte < buffer.data.count {
+                result.append(buffer.data[endByte...])
+            }
+            return AudioBuffer(data: result, sampleRate: buffer.sampleRate, channels: buffer.channels)
+        }
     }
 
     private func formatTime(_ time: TimeInterval) -> String {
