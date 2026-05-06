@@ -4,6 +4,33 @@ All notable changes to AnvilApp are documented here.
 
 ---
 
+## [Unreleased] — Phase 10a: LoRA Fine-Tuning
+
+### Added
+
+- **LoRALinear module** (`LoRALinear.swift`) — subclasses MLXNN `Linear` with low-rank A·B adapter matrices; output = base(x) + scaling * x @ A^T @ B^T; Kaiming uniform init for A, zero init for B (starts as identity); `merge()`/`unmerge()` for folding adapter into base weights with zero inference overhead; `freezeBase()` marks base parameters non-trainable
+- **LoRAInjector** (`LoRAInjector.swift`) — static utility for module tree manipulation; `inject(model:config:)` walks DiTDecoder layers and swaps target Linear properties with LoRALinear wrappers; `remove(model:paths:)` restores plain Linear; `extractWeights`/`loadWeights` for safetensors serialization
+- **LoRATrainer** (`LoRATrainer.swift`) — flow-matching training loop with AdamW optimizer; samples t∈[0,1], interpolates x_t = (1-t)·x₀ + t·noise, MSE loss on predicted vs target velocity; trains only LoRA A/B matrices (~6.3M params at rank 16); tracks best weights across epochs; cooperative cancellation support
+- **LoRAConfig + LoRAAdapter** (`LoRAConfig.swift`) — config struct (rank, alpha, dropout, targetLayers, learningRate, epochs, batchSize) with sensible defaults; adapter metadata struct (id, name, baseModelID, baseModelCategory, sampleCount, finalLoss, createdAt)
+- **AdapterRegistry** (`AdapterRegistry.swift`) — lightweight file-system scanner for `~/Library/Application Support/Anvil/models/adapters/`; lists adapters, filters by base model category, saves/loads adapter.safetensors + adapter.json
+- **TrainingService** (`TrainingService.swift`) — orchestrates full training flow: preprocesses dataset (audio→latent via VAE, text→conditioning), runs training through actor chain, saves adapter; reports progress to UI; WAV file loading for training data
+- **TrainingSheet** (`TrainingSheet.swift`) — SwiftUI sheet for training config + progress; config state shows selected tracks, adapter name, rank/epochs pickers, "+ Add audio files..." import; progress state shows epoch N/M, current loss, elapsed/remaining time; "Stop Training" with save-if-possible confirmation; completion view with adapter details
+- **AdapterPicker** (`AdapterPicker.swift`) — dropdown in Generate view showing "None" + compatible adapters filtered by baseModelCategory; displays name, rank, sample count per adapter; selection persisted via @AppStorage
+- **History multi-select** — "Select" toolbar button toggles multi-select mode with checkmarks; selected count badge; "Train LoRA" button appears when tracks selected; presents TrainingSheet
+- **Adapter lazy injection** — `GenerationService.ensureAdapter()` compares selected vs injected adapter at generation time; injects/removes/swaps as needed; falls back to base model on any adapter error; adapter removed when base model changes
+
+### Changed
+
+- **DiTComponents** — `DiTAttention` and `SwiGLUMLP` Linear properties changed from `let` to `var` for runtime LoRA injection
+- **DiTActor** — gained `injectLoRA`, `removeLoRA`, `loadLoRAWeights`, `trainLoRA`, `cancelTraining` methods
+- **DiffusionActor/MusicPipeline** — LoRA forwarding methods through the actor chain; `encodeMean` for training dataset prep; `cancelTraining` for cooperative stop
+- **GenerateView** — added `adapterPickerSection` between controls bar and progress; syncs selection to GenerationService
+- **Package.swift** — added `MLXOptimizers` dependency for AdamW
+- Design spec: `docs/superpowers/specs/2026-05-06-phase10a-lora-fine-tuning.md`
+- Implementation plan: `docs/superpowers/plans/2026-05-06-phase10a-lora-fine-tuning.md`
+
+---
+
 ## [Unreleased] — Phase 9b: Model Management UI
 
 ### Changed
