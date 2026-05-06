@@ -75,6 +75,13 @@ public actor ModelRegistry {
 
     // MARK: - Active Model Tracking
 
+    private static let defaultActiveModels: [ModelCategory: String] = [
+        .aceStepDiT: "ace-step-dit",
+        .aceStepVAE: "ace-step-vae",
+        .stableAudio: "stable-audio-open",
+        .lyricLLM: "lyric-llm"
+    ]
+
     private(set) var activeModels: [ModelCategory: String] = [:]
 
     private var activeModelsFileURL: URL {
@@ -284,12 +291,7 @@ public actor ModelRegistry {
         let url = activeModelsFileURL
         guard FileManager.default.fileExists(atPath: url.path()) else {
             // First launch — default to built-in models
-            activeModels = [
-                .aceStepDiT: "ace-step-dit",
-                .aceStepVAE: "ace-step-vae",
-                .stableAudio: "stable-audio-open",
-                .lyricLLM: "lyric-llm"
-            ]
+            activeModels = Self.defaultActiveModels
             return
         }
 
@@ -304,12 +306,7 @@ public actor ModelRegistry {
             )
         } catch {
             logger.error("Failed to load active-models.json: \(error.localizedDescription). Using defaults.")
-            activeModels = [
-                .aceStepDiT: "ace-step-dit",
-                .aceStepVAE: "ace-step-vae",
-                .stableAudio: "stable-audio-open",
-                .lyricLLM: "lyric-llm"
-            ]
+            activeModels = Self.defaultActiveModels
         }
     }
 
@@ -326,10 +323,25 @@ public actor ModelRegistry {
     }
 }
 
-public enum RegistryError: Error, Sendable {
+public enum RegistryError: Error, Sendable, LocalizedError {
     case cannotModifyBuiltIn
     case duplicateModel(String)
     case unknownModel(String)
     case categoryMismatch(expected: ModelCategory, got: ModelCategory)
     case modelNotReady(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .cannotModifyBuiltIn:
+            return "Built-in models cannot be modified."
+        case .duplicateModel(let id):
+            return "Model '\(id)' already exists."
+        case .unknownModel(let id):
+            return "Unknown model '\(id)'."
+        case .categoryMismatch(let expected, let got):
+            return "Category mismatch: expected \(expected.rawValue), got \(got.rawValue)."
+        case .modelNotReady(let id):
+            return "Model '\(id)' is not downloaded yet."
+        }
+    }
 }

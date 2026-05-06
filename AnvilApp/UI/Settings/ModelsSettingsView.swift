@@ -190,7 +190,7 @@ private struct ModelRow: View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    Text(displayName)
+                    Text(spec.displayName)
                         .font(.body)
                         .fontWeight(isActive ? .semibold : .regular)
                     if isActive {
@@ -212,12 +212,6 @@ private struct ModelRow: View {
         }
         .padding(.vertical, 2)
         .listRowBackground(isActive ? Color.accentColor.opacity(0.08) : nil)
-    }
-
-    private var displayName: String {
-        let name = spec.huggingFaceRepo.components(separatedBy: "/").last ?? spec.id
-        return name.replacingOccurrences(of: "-", with: " ")
-            .replacingOccurrences(of: "_", with: " ")
     }
 
     @ViewBuilder

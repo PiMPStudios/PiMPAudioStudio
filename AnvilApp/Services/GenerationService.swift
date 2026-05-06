@@ -119,6 +119,9 @@ final class GenerationService: ObservableObject {
     }
 
     private func generateWithStableAudio(request: GenerationRequest) async throws -> AudioResult {
+        // Check for active model swap before readiness check
+        try await sfxModelManager.ensureActiveModel()
+
         if !sfxModelManager.isReady {
             state = .downloadingModel(progress: 0)
             try await sfxModelManager.downloadIfNeeded()
@@ -176,6 +179,9 @@ final class GenerationService: ObservableObject {
     private func generateWithACEStep(request: GenerationRequest) async throws -> AudioResult {
         // Check DiT model swap
         let activeDiTID = await registry.activeModelID(for: .aceStepDiT)
+        guard let activeDiTID else {
+            throw GenerationError.modelNotConfigured("ACE-Step DiT")
+        }
         if activeDiTID != currentlyLoadedDiTModelID {
             state = .loadingWeights(progress: 0)
             try await loadDiTWeights()
@@ -183,6 +189,9 @@ final class GenerationService: ObservableObject {
 
         // Check VAE model swap
         let activeVAEID = await registry.activeModelID(for: .aceStepVAE)
+        guard let activeVAEID else {
+            throw GenerationError.modelNotConfigured("ACE-Step VAE")
+        }
         if activeVAEID != currentlyLoadedVAEModelID {
             try await loadVAEWeights()
         }
@@ -237,15 +246,25 @@ final class GenerationService: ObservableObject {
             throw GenerationError.modelNotConfigured("ACE-Step DiT")
         }
         let baseDir = await registry.baseDirectory
+        let previousModelID = currentlyLoadedDiTModelID
         state = .loadingWeights(progress: 0)
 
         await pipeline.unloadDiTWeights()
+        currentlyLoadedDiTModelID = nil
 
-        let weightsPath = spec.localPath(for: "model.safetensors", base: baseDir)
-        let rawWeights = try await weightConverter.loadSafetensors(from: weightsPath)
-        let weights = await weightConverter.convertDiTWeights(stateDict: rawWeights)
-        await pipeline.loadDiTWeights(weights, modelID: spec.id)
-        currentlyLoadedDiTModelID = spec.id
+        do {
+            let weightsPath = spec.localPath(for: "model.safetensors", base: baseDir)
+            let rawWeights = try await weightConverter.loadSafetensors(from: weightsPath)
+            let weights = await weightConverter.convertDiTWeights(stateDict: rawWeights)
+            await pipeline.loadDiTWeights(weights, modelID: spec.id)
+            currentlyLoadedDiTModelID = spec.id
+        } catch {
+            // Revert active model to previous working model
+            if let previousModelID {
+                try? await registry.setActiveModel(id: previousModelID, for: .aceStepDiT)
+            }
+            throw error
+        }
     }
 
     private func loadVAEWeights() async throws {
@@ -253,15 +272,25 @@ final class GenerationService: ObservableObject {
             throw GenerationError.modelNotConfigured("ACE-Step VAE")
         }
         let baseDir = await registry.baseDirectory
+        let previousModelID = currentlyLoadedVAEModelID
 
         await pipeline.unloadVAEWeights()
+        currentlyLoadedVAEModelID = nil
 
-        let vaeFile = spec.files.first(where: { $0.contains("vae") }) ?? "vae.safetensors"
-        let weightsPath = spec.localPath(for: vaeFile, base: baseDir)
-        let rawWeights = try await weightConverter.loadSafetensors(from: weightsPath)
-        let weights = await weightConverter.convertVAEWeights(stateDict: rawWeights)
-        await pipeline.loadVAEWeights(weights, modelID: spec.id)
-        currentlyLoadedVAEModelID = spec.id
+        do {
+            let vaeFile = spec.files.first(where: { $0.contains("vae") }) ?? "vae.safetensors"
+            let weightsPath = spec.localPath(for: vaeFile, base: baseDir)
+            let rawWeights = try await weightConverter.loadSafetensors(from: weightsPath)
+            let weights = await weightConverter.convertVAEWeights(stateDict: rawWeights)
+            await pipeline.loadVAEWeights(weights, modelID: spec.id)
+            currentlyLoadedVAEModelID = spec.id
+        } catch {
+            // Revert active model to previous working model
+            if let previousModelID {
+                try? await registry.setActiveModel(id: previousModelID, for: .aceStepVAE)
+            }
+            throw error
+        }
     }
 }
 

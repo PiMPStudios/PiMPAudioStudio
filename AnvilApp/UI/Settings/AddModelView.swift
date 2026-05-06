@@ -56,7 +56,7 @@ struct AddModelView: View {
             Button("Cancel", role: .cancel) { validatedSpec = nil }
         } message: {
             if let spec = validatedSpec {
-                Text("Add \(inferDisplayName(from: repoID))?\nSize: \(spec.totalSizeFormatted)")
+                Text("Add \(spec.displayName)?\nSize: \(spec.totalSizeFormatted)")
             }
         }
     }
@@ -164,10 +164,4 @@ struct AddModelView: View {
         }
     }
 
-    private func inferDisplayName(from repoID: String) -> String {
-        let name = repoID.components(separatedBy: "/").last ?? repoID
-        return name.replacingOccurrences(of: "-", with: " ")
-            .replacingOccurrences(of: "_", with: " ")
-            .capitalized
-    }
 }

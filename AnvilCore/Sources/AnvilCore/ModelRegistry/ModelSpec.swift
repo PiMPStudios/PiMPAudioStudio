@@ -33,6 +33,13 @@ public struct ModelSpec: Sendable, Identifiable, Codable {
         self.category = category
     }
 
+    public var displayName: String {
+        let name = huggingFaceRepo.components(separatedBy: "/").last ?? id
+        return name.replacingOccurrences(of: "-", with: " ")
+            .replacingOccurrences(of: "_", with: " ")
+            .capitalized
+    }
+
     public var totalSizeFormatted: String {
         let gb = Double(sizeBytes) / 1_000_000_000
         return String(format: "%.1f GB", gb)
