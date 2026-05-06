@@ -42,6 +42,7 @@
 		BB00010D0101010101010101 /* GenerationMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00020D0101010101010101 /* GenerationMode.swift */; };
 		CC0001010101010101010101 /* SFXModelManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC0002010101010101010101 /* SFXModelManager.swift */; };
 		DD0001010101010101010101 /* AdapterRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD0002010101010101010101 /* AdapterRegistry.swift */; };
+		EE0001010101010101010101 /* TrainingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE0002010101010101010101 /* TrainingService.swift */; };
 		BB00010E0101010101010101 /* ModelsSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00020E0101010101010101 /* ModelsSettingsView.swift */; };
 		BB00010F0101010101010101 /* AddModelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00020F0101010101010101 /* AddModelView.swift */; };
 /* End PBXBuildFile section */
@@ -94,6 +95,7 @@
 		BB00020D0101010101010101 /* GenerationMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationMode.swift; sourceTree = "<group>"; };
 		CC0002010101010101010101 /* SFXModelManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SFXModelManager.swift; sourceTree = "<group>"; };
 		DD0002010101010101010101 /* AdapterRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdapterRegistry.swift; sourceTree = "<group>"; };
+		EE0002010101010101010101 /* TrainingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingService.swift; sourceTree = "<group>"; };
 		BB00020E0101010101010101 /* ModelsSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsSettingsView.swift; sourceTree = "<group>"; };
 		BB00020F0101010101010101 /* AddModelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddModelView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -166,6 +168,7 @@
 				AA0002070101010101010101 /* OutputDirectoryManager.swift */,
 				BB0002040101010101010101 /* PromptEnhancer.swift */,
 				CC0002010101010101010101 /* SFXModelManager.swift */,
+				EE0002010101010101010101 /* TrainingService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -356,6 +359,7 @@
 				BB00010D0101010101010101 /* GenerationMode.swift in Sources */,
 				CC0001010101010101010101 /* SFXModelManager.swift in Sources */,
 				DD0001010101010101010101 /* AdapterRegistry.swift in Sources */,
+				EE0001010101010101010101 /* TrainingService.swift in Sources */,
 				BB00010E0101010101010101 /* ModelsSettingsView.swift in Sources */,
 				BB00010F0101010101010101 /* AddModelView.swift in Sources */,
 			);
