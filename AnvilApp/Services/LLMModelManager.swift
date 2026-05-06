@@ -1,0 +1,244 @@
+import Foundation
+import AnvilCore
+
+// MARK: - LLMModelSpec
+
+/// Describes a downloadable LLM model.
+struct LLMModelSpec: Identifiable, Codable, Sendable, Equatable {
+    let id: String
+    let displayName: String
+    let repoID: String
+    let sizeBytes: Int64
+    let isDefault: Bool
+}
+
+// MARK: - LLMDownloadState
+
+/// Represents the current download state of a model.
+enum LLMDownloadState: Equatable, Sendable {
+    case idle
+    case downloading(progress: Float)
+    case error(String)
+}
+
+// MARK: - LLMModelManager
+
+/// Manages downloading, deleting, and activating local LLM models.
+@MainActor
+final class LLMModelManager: ObservableObject {
+
+    // MARK: Published State
+
+    @Published var availableModels: [LLMModelSpec]
+    @Published var activeModel: LLMModelSpec?
+    @Published var downloadState: LLMDownloadState = .idle
+    @Published var llmActor: LLMActor?
+
+    // MARK: Defaults
+
+    static let defaultModels: [LLMModelSpec] = [
+        LLMModelSpec(
+            id: "llama-3.2-3b-instruct-4bit",
+            displayName: "Llama 3.2 3B Instruct (4-bit)",
+            repoID: "mlx-community/Llama-3.2-3B-Instruct-4bit",
+            sizeBytes: 1_800_000_000,
+            isDefault: true
+        )
+    ]
+
+    // MARK: Storage
+
+    var modelsDirectory: URL {
+        let appSupport = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first!
+        return appSupport
+            .appendingPathComponent("Anvil", isDirectory: true)
+            .appendingPathComponent("LLM", isDirectory: true)
+    }
+
+    private let modelsKey = "LLMModelManager.availableModels"
+    private let activeModelKey = "LLMModelManager.activeModelID"
+
+    // MARK: Init
+
+    init() {
+        // Load persisted available models or fall back to defaults
+        if let data = UserDefaults.standard.data(forKey: modelsKey),
+           let decoded = try? JSONDecoder().decode([LLMModelSpec].self, from: data) {
+            self.availableModels = decoded
+        } else {
+            self.availableModels = Self.defaultModels
+        }
+
+        // Load persisted active model selection
+        if let activeID = UserDefaults.standard.string(forKey: activeModelKey) {
+            self.activeModel = availableModels.first { $0.id == activeID }
+        }
+
+        // Create actor if active model is already downloaded
+        if let active = activeModel, isModelDownloaded(active) {
+            let path = modelsDirectory.appendingPathComponent(active.id)
+            self.llmActor = LLMActor(modelPath: path)
+        }
+    }
+
+    // MARK: - Public API
+
+    /// Downloads a model's files from HuggingFace.
+    func downloadModel(_ spec: LLMModelSpec) async throws {
+        let fm = FileManager.default
+        let modelDir = modelsDirectory.appendingPathComponent(spec.id)
+
+        try fm.createDirectory(at: modelDir, withIntermediateDirectories: true)
+
+        downloadState = .downloading(progress: 0)
+
+        let baseURL = "https://huggingface.co/\(spec.repoID)/resolve/main/"
+        let session = URLSession.shared
+
+        // Required metadata files
+        let metadataFiles = ["config.json", "tokenizer.json", "tokenizer_config.json"]
+
+        for (index, filename) in metadataFiles.enumerated() {
+            guard let url = URL(string: baseURL + filename) else {
+                downloadState = .error("Invalid URL for \(filename)")
+                throw LLMError.missingFile(filename)
+            }
+
+            let (data, response) = try await session.data(from: url)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+                // tokenizer_config.json is optional for some models
+                if filename == "tokenizer_config.json" { continue }
+                let msg = "Failed to download \(filename)"
+                downloadState = .error(msg)
+                throw LLMError.missingFile(filename)
+            }
+
+            let dest = modelDir.appendingPathComponent(filename)
+            try data.write(to: dest)
+
+            let progress = Float(index + 1) / Float(metadataFiles.count + 1) * 0.2
+            downloadState = .downloading(progress: progress)
+        }
+
+        // Download safetensors — try index first, then single file
+        try await downloadSafetensors(spec: spec, modelDir: modelDir, baseURL: baseURL, session: session)
+
+        downloadState = .idle
+        persistModels()
+    }
+
+    /// Removes a downloaded model from disk and clears actor if active.
+    func deleteModel(_ spec: LLMModelSpec) {
+        let modelDir = modelsDirectory.appendingPathComponent(spec.id)
+        try? FileManager.default.removeItem(at: modelDir)
+
+        if activeModel == spec {
+            activeModel = nil
+            llmActor = nil
+            UserDefaults.standard.removeObject(forKey: activeModelKey)
+        }
+    }
+
+    /// Sets the given model as the active model and creates a new LLMActor.
+    func setActiveModel(_ spec: LLMModelSpec) {
+        activeModel = spec
+        let path = modelsDirectory.appendingPathComponent(spec.id)
+        llmActor = LLMActor(modelPath: path)
+        UserDefaults.standard.set(spec.id, forKey: activeModelKey)
+    }
+
+    /// Returns the file URL of the active model's directory, if available.
+    func resolveModelPath() -> URL? {
+        guard let active = activeModel else { return nil }
+        let path = modelsDirectory.appendingPathComponent(active.id)
+        return FileManager.default.fileExists(atPath: path.path) ? path : nil
+    }
+
+    /// Checks whether a model has been downloaded (config.json + tokenizer.json present).
+    func isModelDownloaded(_ spec: LLMModelSpec) -> Bool {
+        let dir = modelsDirectory.appendingPathComponent(spec.id)
+        let fm = FileManager.default
+        let hasConfig = fm.fileExists(atPath: dir.appendingPathComponent("config.json").path)
+        let hasTokenizer = fm.fileExists(atPath: dir.appendingPathComponent("tokenizer.json").path)
+        return hasConfig && hasTokenizer
+    }
+
+    // MARK: - Private Helpers
+
+    private func downloadSafetensors(
+        spec: LLMModelSpec,
+        modelDir: URL,
+        baseURL: String,
+        session: URLSession
+    ) async throws {
+        // Try model.safetensors.index.json first (sharded models)
+        let indexName = "model.safetensors.index.json"
+        if let indexURL = URL(string: baseURL + indexName) {
+            let (indexData, indexResponse) = try await session.data(from: indexURL)
+            if let http = indexResponse as? HTTPURLResponse, http.statusCode == 200 {
+                try indexData.write(to: modelDir.appendingPathComponent(indexName))
+
+                // Parse the index to find shard filenames
+                let shardFiles = try parseShardFiles(from: indexData)
+                for (idx, shard) in shardFiles.enumerated() {
+                    guard let shardURL = URL(string: baseURL + shard) else { continue }
+                    let (shardData, shardResp) = try await session.data(from: shardURL)
+                    guard let shardHttp = shardResp as? HTTPURLResponse,
+                          shardHttp.statusCode == 200 else {
+                        let msg = "Failed to download shard: \(shard)"
+                        downloadState = .error(msg)
+                        throw LLMError.missingFile(shard)
+                    }
+                    try shardData.write(to: modelDir.appendingPathComponent(shard))
+
+                    let progress = 0.2 + Float(idx + 1) / Float(shardFiles.count) * 0.8
+                    downloadState = .downloading(progress: progress)
+                }
+                return
+            }
+        }
+
+        // Fallback: single model.safetensors
+        let singleName = "model.safetensors"
+        guard let singleURL = URL(string: baseURL + singleName) else {
+            downloadState = .error("Invalid safetensors URL")
+            throw LLMError.missingFile(singleName)
+        }
+
+        let (data, response) = try await session.data(from: singleURL)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            let msg = "Failed to download \(singleName)"
+            downloadState = .error(msg)
+            throw LLMError.missingFile(singleName)
+        }
+
+        try data.write(to: modelDir.appendingPathComponent(singleName))
+        downloadState = .downloading(progress: 1.0)
+    }
+
+    private func parseShardFiles(from indexData: Data) throws -> [String] {
+        struct SafetensorsIndex: Codable {
+            let weight_map: [String: String]
+        }
+
+        let index = try JSONDecoder().decode(SafetensorsIndex.self, from: indexData)
+        // Deduplicate shard filenames while preserving order
+        var seen = Set<String>()
+        var result: [String] = []
+        for file in index.weight_map.values.sorted() {
+            if seen.insert(file).inserted {
+                result.append(file)
+            }
+        }
+        return result
+    }
+
+    private func persistModels() {
+        if let data = try? JSONEncoder().encode(availableModels) {
+            UserDefaults.standard.set(data, forKey: modelsKey)
+        }
+    }
+}
