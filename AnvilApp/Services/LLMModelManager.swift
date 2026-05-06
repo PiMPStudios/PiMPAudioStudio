@@ -166,6 +166,48 @@ final class LLMModelManager: ObservableObject {
         return hasConfig && hasTokenizer
     }
 
+    /// Validates and adds a custom model from a HuggingFace repo ID.
+    func addCustomModel(repoID: String) async throws {
+        let id = repoID.replacingOccurrences(of: "/", with: "-").lowercased()
+
+        guard !availableModels.contains(where: { $0.id == id }) else { return }
+
+        let baseURL = "https://huggingface.co/\(repoID)/resolve/main/"
+        let session = URLSession.shared
+        let requiredFiles = ["config.json", "tokenizer.json"]
+
+        for file in requiredFiles {
+            guard let url = URL(string: baseURL + file) else {
+                throw LLMError.missingFile(file)
+            }
+            var request = URLRequest(url: url)
+            request.httpMethod = "HEAD"
+            let (_, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+                throw LLMError.missingFile(file)
+            }
+        }
+
+        let displayName = repoID.components(separatedBy: "/").last ?? repoID
+        let spec = LLMModelSpec(
+            id: id,
+            displayName: displayName,
+            repoID: repoID,
+            sizeBytes: 0,
+            isDefault: false
+        )
+        availableModels.append(spec)
+        persistModels()
+    }
+
+    /// Removes a custom (non-default) model from the available list and disk.
+    func removeCustomModel(_ spec: LLMModelSpec) {
+        guard !spec.isDefault else { return }
+        deleteModel(spec)
+        availableModels.removeAll { $0.id == spec.id }
+        persistModels()
+    }
+
     // MARK: - Private Helpers
 
     private func downloadSafetensors(

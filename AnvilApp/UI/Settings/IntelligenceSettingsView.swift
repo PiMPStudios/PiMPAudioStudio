@@ -6,6 +6,8 @@ struct IntelligenceSettingsView: View {
     @EnvironmentObject private var lyricWriterManager: LyricWriterManager
 
     @State private var newAPIKeys: [String: String] = [:]
+    @State private var customModelRepoID: String = ""
+    @State private var customModelError: String?
 
     var body: some View {
         Form {
@@ -60,6 +62,34 @@ struct IntelligenceSettingsView: View {
 
             if case .error(let message) = modelManager.downloadState {
                 Label(message, systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(.red)
+                    .font(.caption)
+            }
+
+            Divider()
+
+            HStack {
+                TextField("HuggingFace repo (e.g. mlx-community/Model-4bit)", text: $customModelRepoID)
+                    .textFieldStyle(.roundedBorder)
+
+                Button("Add Model") {
+                    customModelError = nil
+                    Task {
+                        do {
+                            try await modelManager.addCustomModel(repoID: customModelRepoID)
+                            customModelRepoID = ""
+                        } catch {
+                            customModelError = "Invalid repo: missing required files"
+                        }
+                    }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(customModelRepoID.isEmpty)
+            }
+
+            if let error = customModelError {
+                Label(error, systemImage: "exclamationmark.triangle")
                     .foregroundStyle(.red)
                     .font(.caption)
             }

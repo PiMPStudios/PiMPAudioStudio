@@ -196,7 +196,7 @@ public actor LLMActor {
         let stream = generate(
             systemPrompt: systemPrompt,
             userPrompt: userPrompt,
-            maxTokens: 64,
+            maxTokens: 20,
             temperature: 0.0
         )
         for await token in stream {
