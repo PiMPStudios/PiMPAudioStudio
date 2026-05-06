@@ -24,28 +24,32 @@ public actor ModelRegistry {
             huggingFaceRepo: "ACEStep/ACE-Step-v1-5-DiT",
             files: ["model.safetensors", "config.json"],
             sizeBytes: 3_200_000_000,
-            sha256: [:]
+            sha256: [:],
+            category: .aceStepDiT
         ),
         ModelSpec(
             id: "ace-step-vae",
             huggingFaceRepo: "ACEStep/ACE-Step-v1-5-VAE",
             files: ["vae.safetensors", "config.json"],
             sizeBytes: 800_000_000,
-            sha256: [:]
+            sha256: [:],
+            category: .aceStepVAE
         ),
         ModelSpec(
             id: "stable-audio-open",
             huggingFaceRepo: "stabilityai/stable-audio-open-1.0",
             files: ["model.safetensors", "config.json"],
             sizeBytes: 1_200_000_000,
-            sha256: [:]
+            sha256: [:],
+            category: .stableAudio
         ),
         ModelSpec(
             id: "lyric-llm",
             huggingFaceRepo: "microsoft/Phi-3-mini-4k-instruct",
             files: ["model.safetensors", "tokenizer.json", "config.json"],
             sizeBytes: 2_400_000_000,
-            sha256: [:]
+            sha256: [:],
+            category: .lyricLLM
         ),
     ]
 
