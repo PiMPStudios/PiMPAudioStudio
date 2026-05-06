@@ -304,7 +304,7 @@ struct TrainingSheet: View {
 
     private func startTraining() {
         let audioURLs = selectedEntries.map { historyStore.fileURL(for: $0) }
-        let config = LoRAConfig(rank: selectedRank, epochs: selectedEpochs)
+        let config = LoRAConfig(rank: selectedRank, maxEpochs: selectedEpochs)
         trainingService.startTraining(
             entries: selectedEntries,
             audioURLs: audioURLs,

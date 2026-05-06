@@ -1,63 +1,100 @@
 import Foundation
 
+/// High-level categories of DiT layers that can receive LoRA adapters.
+public enum TargetLayer: String, Codable, CaseIterable, Sendable, Hashable {
+    case selfAttention = "self_attn"
+    case crossAttention = "cross_attn"
+    case mlp = "mlp"
+
+    /// Maps to the property name pattern used by LoRAInjector (e.g. "selfAttn").
+    public var moduleName: String {
+        switch self {
+        case .selfAttention: return "selfAttn"
+        case .crossAttention: return "crossAttn"
+        case .mlp: return "mlp"
+        }
+    }
+
+    /// Returns the injection patterns for this target layer category.
+    /// E.g. selfAttention → ["selfAttn.qProj", "selfAttn.vProj"]
+    public var defaultPatterns: [String] {
+        switch self {
+        case .selfAttention:
+            return ["selfAttn.qProj", "selfAttn.vProj"]
+        case .crossAttention:
+            return ["crossAttn.qProj", "crossAttn.vProj"]
+        case .mlp:
+            return ["mlp.gateProj", "mlp.downProj"]
+        }
+    }
+}
+
 /// Configuration for LoRA adapter training and injection.
-public struct LoRAConfig: Codable, Sendable, Equatable {
+public struct LoRAConfig: Codable, Sendable, Equatable, Hashable {
     /// Low-rank dimension. Higher = more expressive, more memory. Typical: 8, 16, 32.
-    public let rank: Int
+    public var rank: Int
 
     /// Scaling factor. The adapter contribution is scaled by alpha/rank.
-    public let alpha: Float
+    public var alpha: Float
 
     /// Dropout rate applied to adapter path during training. 0.0 = no dropout.
-    public let dropout: Float
+    public var dropout: Float
 
-    /// Layer name patterns to inject LoRA into (e.g. "selfAttn.qProj").
-    public let targetLayers: [String]
+    /// Which module categories to inject LoRA into.
+    public var targetLayers: Set<TargetLayer>
 
-    /// Learning rate for AdamW optimizer.
-    public let learningRate: Float
+    /// Learning rate for AdamW optimizer (peak LR when using scheduler).
+    public var learningRate: Float
 
-    /// Number of training epochs.
-    public let epochs: Int
+    /// Maximum number of training epochs.
+    public var maxEpochs: Int
 
     /// Training batch size. Default 1 (memory constrained on-device).
-    public let batchSize: Int
+    public var batchSize: Int
+
+    /// Fraction of total steps used for linear LR warmup. Default 0.10.
+    public var warmupFraction: Float
+
+    /// Number of mini-batches to accumulate gradients over before optimizer step. Default 1.
+    public var gradientAccumulationSteps: Int
 
     public init(
         rank: Int = 16,
         alpha: Float = 16.0,
         dropout: Float = 0.0,
-        targetLayers: [String] = LoRAConfig.defaultTargetLayers,
+        targetLayers: Set<TargetLayer> = [.selfAttention, .crossAttention],
         learningRate: Float = 1e-4,
-        epochs: Int = 10,
-        batchSize: Int = 1
+        maxEpochs: Int = 10,
+        batchSize: Int = 1,
+        warmupFraction: Float = 0.10,
+        gradientAccumulationSteps: Int = 1
     ) {
         self.rank = rank
         self.alpha = alpha
         self.dropout = dropout
         self.targetLayers = targetLayers
         self.learningRate = learningRate
-        self.epochs = epochs
+        self.maxEpochs = maxEpochs
         self.batchSize = batchSize
+        self.warmupFraction = warmupFraction
+        self.gradientAccumulationSteps = gradientAccumulationSteps
     }
 
-    /// Default LoRA target layers for ACE-Step DiT: q and v projections
-    /// in both self-attention and cross-attention across all 24 layers.
-    public static let defaultTargetLayers: [String] = [
-        "selfAttn.qProj",
-        "selfAttn.vProj",
-        "crossAttn.qProj",
-        "crossAttn.vProj",
-    ]
+    /// Expands targetLayers into the full list of injection pattern strings
+    /// (e.g. ["selfAttn.qProj", "selfAttn.vProj", "crossAttn.qProj", ...]).
+    public var injectionPatterns: [String] {
+        targetLayers.sorted(by: { $0.rawValue < $1.rawValue })
+            .flatMap(\.defaultPatterns)
+    }
 }
 
 /// A saved LoRA adapter with metadata.
 public struct LoRAAdapter: Codable, Sendable, Identifiable, Equatable {
     /// Directory name used as identifier.
-    public let id: String
+    public var id: String
 
     /// User-facing display name.
-    public let name: String
+    public var name: String
 
     /// The LoRA config used during training.
     public let config: LoRAConfig

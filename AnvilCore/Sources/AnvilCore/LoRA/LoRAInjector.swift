@@ -18,7 +18,7 @@ public enum LoRAInjector {
         var injectedPaths: [String] = []
 
         for (layerIdx, layer) in model.layers.enumerated() {
-            for pattern in config.targetLayers {
+            for pattern in config.injectionPatterns {
                 let keyPath = "layers.\(layerIdx).\(pattern)"
 
                 if let linear = resolveLinear(in: layer, path: pattern) {

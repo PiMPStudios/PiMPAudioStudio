@@ -99,7 +99,7 @@ public final class LoRATrainer {
             return [loss]
         }
 
-        for epoch in 1...config.epochs {
+        for epoch in 1...config.maxEpochs {
             guard !isCancelled else { break }
 
             var epochLoss: Float = 0
@@ -146,11 +146,11 @@ public final class LoRATrainer {
 
             let elapsed = Date().timeIntervalSince(startTime)
             let avgEpochTime = elapsed / Double(epoch)
-            let remaining = avgEpochTime * Double(config.epochs - epoch)
+            let remaining = avgEpochTime * Double(config.maxEpochs - epoch)
 
             onProgress(TrainingProgress(
                 epoch: epoch,
-                totalEpochs: config.epochs,
+                totalEpochs: config.maxEpochs,
                 loss: avgLoss,
                 elapsedTime: elapsed,
                 estimatedRemaining: remaining
