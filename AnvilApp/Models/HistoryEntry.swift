@@ -11,6 +11,8 @@ struct HistoryEntry: Identifiable, Codable, Sendable, Equatable {
     let guidanceScale: Float
     let precision: String
     let fileName: String
+    let pipeline: String?
+    let originalPrompt: String?
 
     static func fileName(prompt: String, date: Date = Date()) -> String {
         let formatter = DateFormatter()
