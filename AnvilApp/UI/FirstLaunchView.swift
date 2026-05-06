@@ -4,6 +4,12 @@ import AnvilCore
 struct FirstLaunchView: View {
     @EnvironmentObject private var appState: AppState
 
+    private var essentialSpecs: [ModelSpec] {
+        ModelRegistry.builtInSpecs.filter {
+            ModelRegistry.essentialModelIDs.contains($0.id)
+        }
+    }
+
     var body: some View {
         VStack(spacing: 32) {
             Spacer()
@@ -11,12 +17,12 @@ struct FirstLaunchView: View {
             Text("Welcome to Anvil")
                 .font(.largeTitle.bold())
 
-            Text("AI audio generation — music, sound effects, and more.\nModels need to be downloaded before first use.")
+            Text("AI audio generation — music, sound effects, and more.\nCore models need to be downloaded before first use.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
 
             VStack(alignment: .leading, spacing: 8) {
-                ForEach(ModelRegistry.builtInSpecs) { spec in
+                ForEach(essentialSpecs) { spec in
                     DownloadProgressRow(
                         spec: spec,
                         progress: appState.downloadProgress[spec.id]
@@ -43,6 +49,11 @@ struct FirstLaunchView: View {
             .controlSize(.large)
             .disabled(isActivelyDownloading)
 
+            Text("Additional models (sound effects, lyric writing) will download\nautomatically in the background after setup.")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+
             Spacer()
         }
         .padding(48)
@@ -55,7 +66,7 @@ struct FirstLaunchView: View {
     }
 
     private var totalSizeLabel: some View {
-        let totalBytes = ModelRegistry.builtInSpecs.reduce(Int64(0)) { $0 + $1.sizeBytes }
+        let totalBytes = essentialSpecs.reduce(Int64(0)) { $0 + $1.sizeBytes }
         let totalGB = Double(totalBytes) / 1_000_000_000
         return Text("Total download: \(String(format: "%.1f", totalGB)) GB — this only happens once.")
             .font(.caption)
