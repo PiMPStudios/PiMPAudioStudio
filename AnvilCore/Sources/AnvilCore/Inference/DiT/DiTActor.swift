@@ -15,6 +15,7 @@ public actor DiTActor {
         timestepR: Float,
         encoderStates: MLXArray,
         contextLatents: MLXArray,
+        encoderAttentionMask: MLXArray?,
         cache: CrossAttentionCache?,
         useCache: Bool
     ) -> (output: MLXArray, cache: CrossAttentionCache?) {
@@ -28,6 +29,7 @@ public actor DiTActor {
             timestepR: trArray,
             encoderHiddenStates: encoderStates,
             contextLatents: contextLatents,
+            encoderAttentionMask: encoderAttentionMask,
             cache: cache,
             useCache: useCache
         )

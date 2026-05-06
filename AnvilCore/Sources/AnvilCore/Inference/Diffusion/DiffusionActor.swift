@@ -22,6 +22,7 @@ public actor DiffusionActor {
     public func generate(
         encoderStates: MLXArray,
         contextLatents: MLXArray,
+        encoderMask: MLXArray?,
         shape: (batch: Int, frames: Int, channels: Int),
         config: DiffusionConfig
     ) async -> DiffusionResult {
@@ -41,10 +42,12 @@ public actor DiffusionActor {
         let doCFG = config.guidanceScale > 1.0
         var encHS = encoderStates
         var ctx = contextLatents
+        var encMask = encoderMask
         if doCFG {
             let nullExpanded = MLXArray.zeros(like: encHS)
             encHS = concatenated([encHS, nullExpanded], axis: 0)
             ctx = concatenated([ctx, ctx], axis: 0)
+            encMask = encoderMask.map { concatenated([$0, $0], axis: 0) }
         }
         let momentum: APGMomentum? = doCFG ? APGMomentum() : nil
 
@@ -68,6 +71,7 @@ public actor DiffusionActor {
                 timestepR: currentT,
                 encoderStates: encHS,
                 contextLatents: ctx,
+                encoderAttentionMask: encMask,
                 cache: cache,
                 useCache: !doCFG
             )

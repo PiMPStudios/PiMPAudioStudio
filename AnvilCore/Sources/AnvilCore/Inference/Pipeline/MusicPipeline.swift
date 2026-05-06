@@ -37,6 +37,7 @@ public actor MusicPipeline {
     public func generate(
         encoderStates: MLXArray,
         contextLatents: MLXArray,
+        encoderMask: MLXArray?,
         duration: TimeInterval,
         config: DiffusionConfig
     ) async throws -> AudioResult {
@@ -53,6 +54,7 @@ public actor MusicPipeline {
         let diffResult = await diffusion.generate(
             encoderStates: encoderStates,
             contextLatents: contextLatents,
+            encoderMask: encoderMask,
             shape: (batch: batchSize, frames: frames, channels: 64),
             config: config
         )
@@ -96,6 +98,7 @@ public actor MusicPipeline {
         return try await generate(
             encoderStates: cond.encoderStates,
             contextLatents: cond.contextLatents,
+            encoderMask: cond.encoderMask,
             duration: duration,
             config: config
         )

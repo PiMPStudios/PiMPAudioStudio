@@ -92,6 +92,7 @@ public class DiTDecoder: Module {
         timestepR: MLXArray,
         encoderHiddenStates: MLXArray,
         contextLatents: MLXArray,
+        encoderAttentionMask: MLXArray?,
         cache: CrossAttentionCache?,
         useCache: Bool
     ) -> (MLXArray, CrossAttentionCache?) {
@@ -128,6 +129,12 @@ public class DiTDecoder: Module {
         let hasSlidingLayer = layerTypes.contains("sliding_attention")
         let slidingMask: MLXArray? = hasSlidingLayer ? getSlidingMask(seqLen: seqLen) : nil
 
+        // Convert boolean/float mask to additive bias (0 → 0, 1 → -1e9)
+        let additiveMask: MLXArray? = encoderAttentionMask.map { mask in
+            let inverted = (1.0 - mask) * Float(-1e9)
+            return inverted.expandedDimensions(axes: [1, 2])
+        }
+
         // Process through transformer layers
         for layer in layers {
             let selfAttnMask = layer.layerType == "sliding_attention" ? slidingMask : nil
@@ -137,7 +144,7 @@ public class DiTDecoder: Module {
                 temb: timestepProj,
                 selfAttnMask: selfAttnMask,
                 encoderHiddenStates: encStates,
-                encoderAttentionMask: nil,
+                encoderAttentionMask: additiveMask,
                 cache: cache,
                 useCache: useCache
             )
