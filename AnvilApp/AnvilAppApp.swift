@@ -68,11 +68,18 @@ struct AnvilAppApp: App {
         .defaultSize(width: 1200, height: 800)
 
         Settings {
-            IntelligenceSettingsView()
-                .environmentObject(modelManager)
-                .environmentObject(apiKeyStore)
-                .environmentObject(lyricWriterManager)
-                .frame(minWidth: 500, minHeight: 400)
+            TabView {
+                IntelligenceSettingsView()
+                    .tabItem { Label("Intelligence", systemImage: "brain") }
+                    .environmentObject(modelManager)
+                    .environmentObject(apiKeyStore)
+                    .environmentObject(lyricWriterManager)
+
+                ModelsSettingsView()
+                    .tabItem { Label("Models", systemImage: "cube.box") }
+                    .environmentObject(appState)
+            }
+            .frame(minWidth: 550, minHeight: 450)
         }
     }
 }
