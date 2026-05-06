@@ -12,7 +12,7 @@ struct PlayerView: View {
                 Button(action: { playerService.togglePlayback() }) {
                     Image(systemName: playerService.isPlaying ? "pause.circle.fill" : "play.circle.fill")
                         .font(.system(size: 32))
-                        .foregroundStyle(.accent)
+                        .foregroundStyle(.tint)
                 }
                 .buttonStyle(.plain)
 

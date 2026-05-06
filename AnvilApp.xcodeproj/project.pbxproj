@@ -15,6 +15,18 @@
 		B26EE3E5C89EA6E41E2AEC9F /* AppStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC923278BD1DFB05336E01E3 /* AppStateTests.swift */; };
 		C7C3DB52C2251429C55B8EAF /* AnvilCore in Frameworks */ = {isa = PBXBuildFile; productRef = E3CDBF8443FB369FB268D4A5 /* AnvilCore */; };
 		C8FD5C2133B259E0AEC730DF /* MainShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43F636E7106FD40FD32886A4 /* MainShellView.swift */; };
+		AA0001010101010101010101 /* GenerationRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002010101010101010101 /* GenerationRequest.swift */; };
+		AA0001020101010101010101 /* GenerationState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002020101010101010101 /* GenerationState.swift */; };
+		AA0001030101010101010101 /* HistoryEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002030101010101010101 /* HistoryEntry.swift */; };
+		AA0001040101010101010101 /* AudioPlayerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002040101010101010101 /* AudioPlayerService.swift */; };
+		AA0001050101010101010101 /* GenerationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002050101010101010101 /* GenerationService.swift */; };
+		AA0001060101010101010101 /* HistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002060101010101010101 /* HistoryStore.swift */; };
+		AA0001070101010101010101 /* OutputDirectoryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002070101010101010101 /* OutputDirectoryManager.swift */; };
+		AA0001080101010101010101 /* GenerateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002080101010101010101 /* GenerateView.swift */; };
+		AA0001090101010101010101 /* HistoryListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002090101010101010101 /* HistoryListView.swift */; };
+		AA00010A0101010101010101 /* OutputDirectoryPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00020A0101010101010101 /* OutputDirectoryPicker.swift */; };
+		AA00010B0101010101010101 /* PlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00020B0101010101010101 /* PlayerView.swift */; };
+		AA00010C0101010101010101 /* WaveformView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00020C0101010101010101 /* WaveformView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -38,6 +50,18 @@
 		9AA36FD1A3879D2885265598 /* AnvilApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AnvilApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		9E46D5718C7768D91073FCEE /* AnvilAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AnvilAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		FC923278BD1DFB05336E01E3 /* AppStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStateTests.swift; sourceTree = "<group>"; };
+		AA0002010101010101010101 /* GenerationRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationRequest.swift; sourceTree = "<group>"; };
+		AA0002020101010101010101 /* GenerationState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationState.swift; sourceTree = "<group>"; };
+		AA0002030101010101010101 /* HistoryEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryEntry.swift; sourceTree = "<group>"; };
+		AA0002040101010101010101 /* AudioPlayerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayerService.swift; sourceTree = "<group>"; };
+		AA0002050101010101010101 /* GenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationService.swift; sourceTree = "<group>"; };
+		AA0002060101010101010101 /* HistoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryStore.swift; sourceTree = "<group>"; };
+		AA0002070101010101010101 /* OutputDirectoryManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutputDirectoryManager.swift; sourceTree = "<group>"; };
+		AA0002080101010101010101 /* GenerateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerateView.swift; sourceTree = "<group>"; };
+		AA0002090101010101010101 /* HistoryListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryListView.swift; sourceTree = "<group>"; };
+		AA00020A0101010101010101 /* OutputDirectoryPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutputDirectoryPicker.swift; sourceTree = "<group>"; };
+		AA00020B0101010101010101 /* PlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerView.swift; sourceTree = "<group>"; };
+		AA00020C0101010101010101 /* WaveformView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveformView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -76,9 +100,32 @@
 				5C8B4733DB13E444A97CBD50 /* AnvilApp.entitlements */,
 				7C8FC85EA6F448C8C5B81968 /* AnvilAppApp.swift */,
 				5CF1F6196D3D92EA32ADB3A2 /* AppState.swift */,
+				AA00030101010101010101AB /* Models */,
+				AA00030201010101010101AB /* Services */,
 				41285AF55017242FB64EF3D8 /* UI */,
 			);
 			path = AnvilApp;
+			sourceTree = "<group>";
+		};
+		AA00030101010101010101AB /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				AA0002010101010101010101 /* GenerationRequest.swift */,
+				AA0002020101010101010101 /* GenerationState.swift */,
+				AA0002030101010101010101 /* HistoryEntry.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		AA00030201010101010101AB /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				AA0002040101010101010101 /* AudioPlayerService.swift */,
+				AA0002050101010101010101 /* GenerationService.swift */,
+				AA0002060101010101010101 /* HistoryStore.swift */,
+				AA0002070101010101010101 /* OutputDirectoryManager.swift */,
+			);
+			path = Services;
 			sourceTree = "<group>";
 		};
 		41285AF55017242FB64EF3D8 /* UI */ = {
@@ -95,6 +142,11 @@
 			isa = PBXGroup;
 			children = (
 				3717DC54FFB7427757568719 /* DownloadProgressRow.swift */,
+				AA0002080101010101010101 /* GenerateView.swift */,
+				AA0002090101010101010101 /* HistoryListView.swift */,
+				AA00020A0101010101010101 /* OutputDirectoryPicker.swift */,
+				AA00020B0101010101010101 /* PlayerView.swift */,
+				AA00020C0101010101010101 /* WaveformView.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -207,7 +259,19 @@
 			files = (
 				0AF9779F80608B35F17064E4 /* AnvilAppApp.swift in Sources */,
 				A7E26898FC333EE4A7BCF31A /* AppState.swift in Sources */,
+				AA0001010101010101010101 /* GenerationRequest.swift in Sources */,
+				AA0001020101010101010101 /* GenerationState.swift in Sources */,
+				AA0001030101010101010101 /* HistoryEntry.swift in Sources */,
+				AA0001040101010101010101 /* AudioPlayerService.swift in Sources */,
+				AA0001050101010101010101 /* GenerationService.swift in Sources */,
+				AA0001060101010101010101 /* HistoryStore.swift in Sources */,
+				AA0001070101010101010101 /* OutputDirectoryManager.swift in Sources */,
 				13CF74E2ED45EE9086D3FF45 /* DownloadProgressRow.swift in Sources */,
+				AA0001080101010101010101 /* GenerateView.swift in Sources */,
+				AA0001090101010101010101 /* HistoryListView.swift in Sources */,
+				AA00010A0101010101010101 /* OutputDirectoryPicker.swift in Sources */,
+				AA00010B0101010101010101 /* PlayerView.swift in Sources */,
+				AA00010C0101010101010101 /* WaveformView.swift in Sources */,
 				4916F3A44CF74EEE3A4ECA92 /* FirstLaunchView.swift in Sources */,
 				C8FD5C2133B259E0AEC730DF /* MainShellView.swift in Sources */,
 			);

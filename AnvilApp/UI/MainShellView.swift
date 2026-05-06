@@ -1,20 +1,22 @@
 import SwiftUI
 
 struct MainShellView: View {
-    @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var outputManager: OutputDirectoryManager
     @State private var selectedSidebarItem: SidebarItem = .generate
-    @State private var selectedMode: String = "auto"
-    @State private var promptText: String = ""
 
     var body: some View {
-        NavigationSplitView {
-            sidebar
-        } content: {
-            canvas
-        } detail: {
-            inspector
+        if !outputManager.hasValidDirectory() {
+            OutputDirectoryPicker()
+        } else {
+            NavigationSplitView {
+                sidebar
+            } content: {
+                canvas
+            } detail: {
+                inspector
+            }
+            .navigationSplitViewStyle(.balanced)
         }
-        .navigationSplitViewStyle(.balanced)
     }
 
     private var sidebar: some View {
@@ -34,46 +36,25 @@ struct MainShellView: View {
         .navigationTitle("Anvil")
     }
 
+    @ViewBuilder
     private var canvas: some View {
-        VStack(spacing: 16) {
-            Picker("Mode", selection: $selectedMode) {
-                Text("Auto").tag("auto")
-                Text("Music").tag("music")
-                Text("Sound FX").tag("fx")
-                Text("Ambient").tag("ambient")
-            }
-            .pickerStyle(.segmented)
-            .padding(.horizontal)
-
-            TextEditor(text: $promptText)
-                .font(.body)
-                .frame(minHeight: 100)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(.quaternary)
-                )
-                .padding(.horizontal)
-
-            Spacer()
-
-            HStack {
-                Button("Write Lyrics") {}
-                    .buttonStyle(.bordered)
-                Button("Generate") {}
-                    .buttonStyle(.borderedProminent)
-            }
-            .padding()
+        switch selectedSidebarItem {
+        case .generate:
+            GenerateView()
+        case .history:
+            HistoryListView()
+        case .presets:
+            Text("Presets coming in Phase 4b")
+                .foregroundStyle(.secondary)
         }
-        .padding(.top)
     }
 
     private var inspector: some View {
         Form {
             Section("Parameters") {
-                LabeledContent("BPM") { TextField("120", text: .constant("")) }
-                LabeledContent("Key") { TextField("C Major", text: .constant("")) }
                 LabeledContent("Duration") { TextField("30s", text: .constant("")) }
                 LabeledContent("Seed") { TextField("Random", text: .constant("")) }
+                LabeledContent("Guidance") { TextField("1.0", text: .constant("")) }
             }
             Section("Model") {
                 Text("ACE-Step DiT v1.5")
