@@ -5,7 +5,7 @@ import Foundation
 /// Stores everything needed to reconstruct the exact training state:
 /// epoch, step, weights snapshot, optimizer state, and the original config
 /// (which includes totalSteps for scheduler reconstruction).
-public struct TrainingCheckpoint: Codable, Sendable {
+public struct TrainingCheckpoint: Codable, Sendable, Equatable {
     /// Current epoch (1-indexed) when checkpoint was saved.
     public let epoch: Int
 

@@ -6,11 +6,23 @@ import MLX
 enum TrainingState: Equatable {
     case idle
     case preparingDataset(current: Int, total: Int)
-    case training(epoch: Int, totalEpochs: Int, loss: Float, elapsed: TimeInterval, remaining: TimeInterval)
+    case training(TrainingUIState)
     case saving
     case complete(LoRAAdapter)
     case failed(String)
     case cancelled
+    case paused(TrainingCheckpoint)
+}
+
+struct TrainingUIState: Equatable {
+    let epoch: Int
+    let totalEpochs: Int
+    let step: Int
+    let loss: Float
+    let learningRate: Float
+    let elapsed: TimeInterval
+    let remaining: TimeInterval?
+    let lossHistory: [Float]
 }
 
 /// Result returned from the pipeline's training method (added in Task 10).
@@ -112,13 +124,16 @@ final class TrainingService: ObservableObject {
                     config: config,
                     onProgress: { [weak self] progress in
                         Task { @MainActor in
-                            self?.state = .training(
+                            self?.state = .training(TrainingUIState(
                                 epoch: progress.epoch,
                                 totalEpochs: progress.totalEpochs,
+                                step: progress.step,
                                 loss: progress.loss,
+                                learningRate: progress.learningRate,
                                 elapsed: progress.elapsedTime,
-                                remaining: progress.estimatedRemaining
-                            )
+                                remaining: progress.estimatedTimeRemaining,
+                                lossHistory: progress.lossHistory
+                            ))
                         }
                     }
                 )
@@ -175,8 +190,8 @@ final class TrainingService: ObservableObject {
 
     /// Whether training can produce a usable checkpoint on stop.
     var canSaveOnStop: Bool {
-        if case .training(let epoch, _, _, _, _) = state {
-            return epoch >= 2
+        if case .training(let uiState) = state {
+            return uiState.epoch >= 2
         }
         return false
     }
