@@ -35,7 +35,7 @@ struct HistoryListView: View {
             if isSelecting && !selectedIDs.isEmpty {
                 Text("\(selectedIDs.count) selected")
                     .font(.caption2)
-                    .foregroundStyle(.accent)
+                    .foregroundStyle(.blue)
             }
 
             Spacer()
