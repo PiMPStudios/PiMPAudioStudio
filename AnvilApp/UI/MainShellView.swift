@@ -2,7 +2,9 @@ import SwiftUI
 
 struct MainShellView: View {
     @EnvironmentObject private var outputManager: OutputDirectoryManager
+    @EnvironmentObject private var sfxModelManager: SFXModelManager
     @State private var selectedSidebarItem: SidebarItem = .generate
+    @State private var pipelineOverride: PipelineChoice = .auto
 
     var body: some View {
         if !outputManager.hasValidDirectory() {
@@ -51,6 +53,20 @@ struct MainShellView: View {
 
     private var inspector: some View {
         Form {
+            Section("Pipeline") {
+                LabeledContent("Active") {
+                    Text(resolvedPipelineName)
+                        .foregroundStyle(.secondary)
+                }
+                if sfxModelManager.downloadState == .downloaded {
+                    Picker("Override", selection: $pipelineOverride) {
+                        Text("Auto").tag(PipelineChoice.auto)
+                        Text("ACE-Step (Music)").tag(PipelineChoice.aceStep)
+                        Text("Stable Audio (SFX)").tag(PipelineChoice.stableAudio)
+                    }
+                    .pickerStyle(.menu)
+                }
+            }
             Section("Parameters") {
                 LabeledContent("Duration") { TextField("30s", text: .constant("")) }
                 LabeledContent("Seed") { TextField("Random", text: .constant("")) }
@@ -59,10 +75,22 @@ struct MainShellView: View {
             Section("Model") {
                 Text("ACE-Step DiT v1.5")
                     .foregroundStyle(.secondary)
+                if sfxModelManager.downloadState == .downloaded {
+                    Text("Stable Audio Open 1.0")
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .formStyle(.grouped)
         .frame(minWidth: 250)
+    }
+
+    private var resolvedPipelineName: String {
+        switch pipelineOverride {
+        case .aceStep: return "ACE-Step"
+        case .stableAudio: return "Stable Audio"
+        case .auto: return "Auto"
+        }
     }
 }
 

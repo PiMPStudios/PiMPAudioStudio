@@ -7,6 +7,7 @@ struct GenerateView: View {
     @EnvironmentObject private var intentRouter: IntentRouter
     @EnvironmentObject private var promptEnhancer: PromptEnhancer
     @EnvironmentObject private var lyricWriterManager: LyricWriterManager
+    @EnvironmentObject private var sfxModelManager: SFXModelManager
 
     @State private var promptText: String = ""
     @State private var lyricsText: String = ""
@@ -16,6 +17,7 @@ struct GenerateView: View {
     @State private var method: InferMethod = .ode
     @State private var precision: Precision = .float16
     @State private var modeSelection: ModeSelection = .auto
+    @State private var pipelineOverride: PipelineChoice = .auto
 
     var body: some View {
         ScrollView {
@@ -47,7 +49,7 @@ struct GenerateView: View {
                 modeSelection = .auto
             }
             ForEach(GenerationMode.allCases) { mode in
-                modeButton(mode.displayName, isSelected: modeSelection == .manual(mode)) {
+                modeButton(mode.displayName, isSelected: modeSelection == .manual(mode), isSFXMode: mode == .soundFX || mode == .ambient) {
                     modeSelection = .manual(mode)
                 }
             }
@@ -66,11 +68,20 @@ struct GenerateView: View {
         }
     }
 
-    private func modeButton(_ title: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
-        Button(title, action: action)
-            .buttonStyle(.bordered)
-            .tint(isSelected ? .accentColor : .secondary)
-            .controlSize(.small)
+    private func modeButton(_ title: String, isSelected: Bool, isSFXMode: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Text(title)
+                if isSFXMode && sfxModelManager.downloadState == .notDownloaded {
+                    Image(systemName: "arrow.down.circle")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .buttonStyle(.bordered)
+        .tint(isSelected ? .accentColor : .secondary)
+        .controlSize(.small)
     }
 
     private var promptSection: some View {
@@ -150,11 +161,13 @@ struct GenerateView: View {
                 let request = GenerationRequest(
                     text: promptText,
                     lyrics: lyricsText,
-                    duration: duration,
+                    duration: effectiveDuration,
                     seed: Int(seed),
                     method: method,
                     guidanceScale: Float(guidanceScale),
-                    precision: precision
+                    precision: precision,
+                    resolvedMode: resolvedMode,
+                    pipelineOverride: pipelineOverride
                 )
                 generationService.generate(request: request)
             }
@@ -183,6 +196,8 @@ struct GenerateView: View {
         switch generationService.state {
         case .idle, .complete, .cancelled:
             EmptyView()
+        case .downloadingModel(let progress):
+            ProgressView("Downloading Sound FX model...", value: Double(progress), total: 1.0)
         case .loadingWeights(let progress):
             ProgressView("Loading weights...", value: Double(progress), total: 1.0)
         case .conditioning:
@@ -208,6 +223,21 @@ struct GenerateView: View {
     private var playerSection: some View {
         if let result = generationService.currentResult {
             PlayerView(fileURL: result.fileURL)
+        }
+    }
+
+    private var effectiveDuration: TimeInterval {
+        if shouldUseStableAudio {
+            return min(duration, 47.0)
+        }
+        return duration
+    }
+
+    private var shouldUseStableAudio: Bool {
+        switch pipelineOverride {
+        case .aceStep: return false
+        case .stableAudio: return true
+        case .auto: return resolvedMode == .soundFX || resolvedMode == .ambient
         }
     }
 
