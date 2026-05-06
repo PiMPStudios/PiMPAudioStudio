@@ -76,4 +76,179 @@ struct AdapterRegistry {
         let dict = try MLX.loadArrays(url: url)
         return dict.map { ($0.key, $0.value) }
     }
+
+    // MARK: - Adapter Management
+
+    /// Errors for adapter management operations.
+    enum AdapterError: Error, LocalizedError {
+        case nameExists(String)
+        case notFound(String)
+        case rankMismatch(Int, Int)
+
+        var errorDescription: String? {
+            switch self {
+            case .nameExists(let name):
+                return "An adapter named '\(name)' already exists"
+            case .notFound(let id):
+                return "Adapter '\(id)' not found"
+            case .rankMismatch(let a, let b):
+                return "Cannot merge adapters with different ranks (\(a) vs \(b))"
+            }
+        }
+    }
+
+    /// Rename an adapter (updates directory name and metadata).
+    static func rename(adapterID: String, to newName: String) throws {
+        let fm = FileManager.default
+        let sourceDir = adapterDirectory(id: adapterID)
+
+        guard fm.fileExists(atPath: sourceDir.path(percentEncoded: false)) else {
+            throw AdapterError.notFound(adapterID)
+        }
+
+        // Generate new ID from new name
+        let newID = newName
+            .lowercased()
+            .replacingOccurrences(of: " ", with: "-")
+            .replacingOccurrences(of: "[^a-z0-9\\-]", with: "", options: .regularExpression)
+
+        let destDir = adapterDirectory(id: newID)
+
+        // Check collision
+        if newID != adapterID && fm.fileExists(atPath: destDir.path(percentEncoded: false)) {
+            throw AdapterError.nameExists(newName)
+        }
+
+        // Read existing metadata, update name and id
+        let metadataURL = sourceDir.appending(path: "adapter.json")
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let data = try Data(contentsOf: metadataURL)
+        var adapter = try decoder.decode(LoRAAdapter.self, from: data)
+        adapter.name = newName
+        adapter.id = newID
+
+        // Write updated metadata
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let updatedData = try encoder.encode(adapter)
+        try updatedData.write(to: metadataURL)
+
+        // Move directory if ID changed
+        if newID != adapterID {
+            try fm.moveItem(at: sourceDir, to: destDir)
+        }
+    }
+
+    /// Delete an adapter and all its files.
+    static func delete(adapterID: String) throws {
+        let fm = FileManager.default
+        let dir = adapterDirectory(id: adapterID)
+
+        guard fm.fileExists(atPath: dir.path(percentEncoded: false)) else {
+            throw AdapterError.notFound(adapterID)
+        }
+
+        try fm.removeItem(at: dir)
+    }
+
+    /// Export an adapter (safetensors + metadata) to a destination directory.
+    static func export(adapterID: String, to destination: URL) throws {
+        let fm = FileManager.default
+        let sourceDir = adapterDirectory(id: adapterID)
+
+        guard fm.fileExists(atPath: sourceDir.path(percentEncoded: false)) else {
+            throw AdapterError.notFound(adapterID)
+        }
+
+        // Copy safetensors
+        let weightsSource = sourceDir.appending(path: "adapter.safetensors")
+        let weightsDest = destination.appending(path: "adapter.safetensors")
+        try fm.copyItem(at: weightsSource, to: weightsDest)
+
+        // Copy metadata
+        let metaSource = sourceDir.appending(path: "adapter.json")
+        let metaDest = destination.appending(path: "adapter.json")
+        try fm.copyItem(at: metaSource, to: metaDest)
+    }
+
+    /// Merge two adapters with weighted interpolation: alpha * A + (1-alpha) * B.
+    ///
+    /// Both adapters must have the same rank. Creates a new adapter.
+    ///
+    /// - Parameters:
+    ///   - adapterA: ID of the first adapter.
+    ///   - adapterB: ID of the second adapter.
+    ///   - alpha: Interpolation weight (1.0 = all A, 0.0 = all B).
+    ///   - name: Display name for the merged adapter.
+    /// - Returns: The newly created merged adapter.
+    @discardableResult
+    static func merge(
+        adapterA: String,
+        adapterB: String,
+        alpha: Float,
+        name: String
+    ) throws -> LoRAAdapter {
+        // Load both adapters' metadata
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        let metaA = try Data(contentsOf: adapterDirectory(id: adapterA).appending(path: "adapter.json"))
+        let infoA = try decoder.decode(LoRAAdapter.self, from: metaA)
+
+        let metaB = try Data(contentsOf: adapterDirectory(id: adapterB).appending(path: "adapter.json"))
+        let infoB = try decoder.decode(LoRAAdapter.self, from: metaB)
+
+        // Validate same rank
+        guard infoA.config.rank == infoB.config.rank else {
+            throw AdapterError.rankMismatch(infoA.config.rank, infoB.config.rank)
+        }
+
+        // Load weights
+        let weightsA = try loadWeights(adapterID: adapterA)
+        let weightsB = try loadWeights(adapterID: adapterB)
+
+        let dictA = Dictionary(weightsA, uniquingKeysWith: { _, last in last })
+        let dictB = Dictionary(weightsB, uniquingKeysWith: { _, last in last })
+
+        // Interpolate: alpha * A + (1-alpha) * B
+        let alphaArray = MLXArray(alpha)
+        let oneMinusAlpha = MLXArray(1.0 - alpha)
+
+        var mergedWeights: [(String, MLXArray)] = []
+        for (key, valueA) in dictA {
+            if let valueB = dictB[key] {
+                let merged = alphaArray * valueA + oneMinusAlpha * valueB
+                mergedWeights.append((key, merged))
+            } else {
+                // Key only in A — scale by alpha
+                mergedWeights.append((key, alphaArray * valueA))
+            }
+        }
+        // Keys only in B
+        for (key, valueB) in dictB where dictA[key] == nil {
+            mergedWeights.append((key, oneMinusAlpha * valueB))
+        }
+
+        // Create merged adapter metadata
+        let mergedID = name
+            .lowercased()
+            .replacingOccurrences(of: " ", with: "-")
+            .replacingOccurrences(of: "[^a-z0-9\\-]", with: "", options: .regularExpression)
+
+        let mergedAdapter = LoRAAdapter(
+            id: mergedID,
+            name: name,
+            config: infoA.config,
+            baseModelID: infoA.baseModelID,
+            baseModelCategory: infoA.baseModelCategory,
+            createdAt: Date(),
+            sampleCount: infoA.sampleCount + infoB.sampleCount,
+            finalLoss: nil
+        )
+
+        try save(adapter: mergedAdapter, weights: mergedWeights)
+        return mergedAdapter
+    }
 }
