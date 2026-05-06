@@ -10,6 +10,8 @@ struct GenerationRequest: Sendable {
     let method: InferMethod
     let guidanceScale: Float
     let precision: Precision
+    let resolvedMode: GenerationMode
+    let pipelineOverride: PipelineChoice
 
     init(
         text: String,
@@ -19,7 +21,9 @@ struct GenerationRequest: Sendable {
         seed: Int? = nil,
         method: InferMethod = .ode,
         guidanceScale: Float = 1.0,
-        precision: Precision = .float16
+        precision: Precision = .float16,
+        resolvedMode: GenerationMode = .music,
+        pipelineOverride: PipelineChoice = .auto
     ) {
         self.text = text
         self.lyrics = lyrics
@@ -29,5 +33,7 @@ struct GenerationRequest: Sendable {
         self.method = method
         self.guidanceScale = guidanceScale
         self.precision = precision
+        self.resolvedMode = resolvedMode
+        self.pipelineOverride = pipelineOverride
     }
 }
