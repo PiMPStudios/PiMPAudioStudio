@@ -227,4 +227,5 @@ All notable changes to AnvilApp are documented here.
 | 7 | ✅ Complete | DSP Audio Editor — trim, fade, normalize, 3-band parametric EQ, reverb |
 | 8a | ✅ Complete | Time Stretch & Pitch Shift — AVAudioUnitTimePitch, quality zones, snap-point sliders |
 | 8b | Planned | Advanced DSP — custom Phase Vocoder/WSOLA backend, formant preservation |
-| 9 | Planned | LoRA Fine-Tuning — on-device model personalization |
+| 9 | Planned | Model Management — community models, model swapping, first-launch download flow, ModelSpec verification |
+| 10 | Planned | LoRA Fine-Tuning — on-device model personalization |
