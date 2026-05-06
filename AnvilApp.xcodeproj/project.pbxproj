@@ -46,6 +46,7 @@
 		FF0001010101010101010101 /* TrainingSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF0002010101010101010101 /* TrainingSheet.swift */; };
 		BB00010E0101010101010101 /* ModelsSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00020E0101010101010101 /* ModelsSettingsView.swift */; };
 		BB00010F0101010101010101 /* AddModelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00020F0101010101010101 /* AddModelView.swift */; };
+		GG0001010101010101010101 /* AdapterPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = GG0002010101010101010101 /* AdapterPicker.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -100,6 +101,7 @@
 		FF0002010101010101010101 /* TrainingSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingSheet.swift; sourceTree = "<group>"; };
 		BB00020E0101010101010101 /* ModelsSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsSettingsView.swift; sourceTree = "<group>"; };
 		BB00020F0101010101010101 /* AddModelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddModelView.swift; sourceTree = "<group>"; };
+		GG0002010101010101010101 /* AdapterPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdapterPicker.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -195,10 +197,19 @@
 				02A386DAC90F5E305529D789 /* FirstLaunchView.swift */,
 				43F636E7106FD40FD32886A4 /* MainShellView.swift */,
 				44EECD8B3145BA09E19164F1 /* Components */,
+				GG00030101010101010101AB /* Generate */,
 				BB00030401010101010101AB /* Settings */,
 				FF00030101010101010101AB /* Training */,
 			);
 			path = UI;
+			sourceTree = "<group>";
+		};
+		GG00030101010101010101AB /* Generate */ = {
+			isa = PBXGroup;
+			children = (
+				GG0002010101010101010101 /* AdapterPicker.swift */,
+			);
+			path = Generate;
 			sourceTree = "<group>";
 		};
 		BB00030401010101010101AB /* Settings */ = {
@@ -374,6 +385,7 @@
 				FF0001010101010101010101 /* TrainingSheet.swift in Sources */,
 				BB00010E0101010101010101 /* ModelsSettingsView.swift in Sources */,
 				BB00010F0101010101010101 /* AddModelView.swift in Sources */,
+				GG0001010101010101010101 /* AdapterPicker.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

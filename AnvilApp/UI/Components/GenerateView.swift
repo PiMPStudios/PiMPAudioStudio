@@ -18,6 +18,8 @@ struct GenerateView: View {
     @State private var precision: Precision = .float16
     @State private var modeSelection: ModeSelection = .auto
     @State private var pipelineOverride: PipelineChoice = .auto
+    @State private var selectedAdapterID: String?
+    @AppStorage("selectedAdapterID") private var persistedAdapterID: String = ""
 
     var body: some View {
         ScrollView {
@@ -26,6 +28,7 @@ struct GenerateView: View {
                 promptSection
                 lyricsSection
                 controlsBar
+                adapterPickerSection
                 progressSection
                 playerSection
             }
@@ -187,6 +190,21 @@ struct GenerateView: View {
                 Text("~\(Int(eta))s remaining")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var adapterPickerSection: some View {
+        AdapterPicker(
+            selectedAdapterID: $selectedAdapterID,
+            activeModelCategory: .aceStepDiT
+        )
+        .onChange(of: selectedAdapterID) { _, newValue in
+            persistedAdapterID = newValue ?? ""
+        }
+        .onAppear {
+            if !persistedAdapterID.isEmpty {
+                selectedAdapterID = persistedAdapterID
             }
         }
     }
