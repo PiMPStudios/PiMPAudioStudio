@@ -15,7 +15,49 @@ public actor DownloadClient {
         return url
     }
 
+    /// Downloads a file and verifies its SHA256 checksum if provided.
+    /// On verification failure, deletes the file and retries once.
+    /// If `expectedHash` is nil or empty, skips verification.
+    public func downloadAndVerify(
+        repo: String,
+        file: String,
+        to destination: URL,
+        expectedHash: String?,
+        onProgress: @Sendable @escaping (Double) -> Void,
+        onRetry: @Sendable @escaping () -> Void
+    ) async throws {
+        try await downloadFile(repo: repo, file: file, to: destination, onProgress: onProgress)
+
+        guard let hash = expectedHash, !hash.isEmpty else { return }
+
+        let verified = await verifySHA256(file: destination, expected: hash)
+        if verified { return }
+
+        // First verification failed — delete and retry once
+        try? FileManager.default.removeItem(at: destination)
+        onRetry()
+
+        try await downloadFile(repo: repo, file: file, to: destination, onProgress: onProgress)
+
+        let retryVerified = await verifySHA256(file: destination, expected: hash)
+        if retryVerified { return }
+
+        // Second verification failed — hard fail
+        try? FileManager.default.removeItem(at: destination)
+        throw DownloadError.checksumMismatch(file: file)
+    }
+
+    /// Raw download without verification. Used internally by downloadAndVerify.
     public func download(
+        repo: String,
+        file: String,
+        to destination: URL,
+        onProgress: @Sendable @escaping (Double) -> Void
+    ) async throws {
+        try await downloadFile(repo: repo, file: file, to: destination, onProgress: onProgress)
+    }
+
+    private func downloadFile(
         repo: String,
         file: String,
         to destination: URL,
