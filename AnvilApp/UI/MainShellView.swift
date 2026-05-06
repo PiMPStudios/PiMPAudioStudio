@@ -1,8 +1,10 @@
 import SwiftUI
 
 struct MainShellView: View {
+    @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var outputManager: OutputDirectoryManager
     @EnvironmentObject private var sfxModelManager: SFXModelManager
+    @EnvironmentObject private var llmManager: LLMModelManager
     @State private var selectedSidebarItem: SidebarItem = .generate
     @State private var pipelineOverride: PipelineChoice = .auto
     @State private var editAudioURL: URL?
@@ -25,6 +27,36 @@ struct MainShellView: View {
                     editAudioURL = url
                     editOriginalPrompt = notification.userInfo?["prompt"] as? String
                     selectedSidebarItem = .edit
+                }
+            }
+            .overlay(alignment: .bottom) {
+                BackgroundDownloadIndicator(
+                    phase: appState.backgroundDownloadPhase,
+                    onRetry: {
+                        Task {
+                            await appState.startBackgroundDownloads(
+                                sfxManager: sfxModelManager,
+                                llmManager: llmManager
+                            )
+                        }
+                    }
+                )
+                .padding(.bottom, 8)
+            }
+            .task {
+                if appState.backgroundDownloadPhase == .idle {
+                    await appState.startBackgroundDownloads(
+                        sfxManager: sfxModelManager,
+                        llmManager: llmManager
+                    )
+                }
+            }
+            .onChange(of: appState.backgroundDownloadPhase) { _, newPhase in
+                if newPhase == .complete {
+                    Task {
+                        try? await Task.sleep(for: .seconds(3))
+                        appState.backgroundDownloadPhase = .idle
+                    }
                 }
             }
         }
