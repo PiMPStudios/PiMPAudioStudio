@@ -4,6 +4,26 @@ All notable changes to AnvilApp are documented here.
 
 ---
 
+## [Unreleased] — Phase 9a: Model Management Foundation
+
+### Changed
+
+- **First-launch redesign** — blocking download reduced from ~7.6 GB (all 4 models) to ~4 GB (ACE-Step only); users generate music while SFX and LLM models download in the background
+- **Setup gate** — `AppState.checkSetupStatus` now checks only essential models (`ace-step-dit`, `ace-step-vae`) via `ModelRegistry.isModelReady`; SFX and lyric features unlock automatically when their background downloads complete
+- **ModelRegistry architecture** — split from single `nonisolated let allSpecs` into `static let builtInSpecs` + actor-isolated `var userSpecs` with computed `var allSpecs`; JSON persistence for user-added model specs at `~/Library/Application Support/Anvil/models/user-models.json`
+
+### Added
+
+- **SHA256 download verification** (`DownloadClient.downloadAndVerify`) — enforces SHA256 checksum after each file download with one automatic retry on verification failure; empty hash dictionaries bypass verification (forward-compatible for community models in 9b)
+- **BackgroundDownloadIndicator** (`BackgroundDownloadIndicator.swift`) — capsule-shaped progress pill showing background download status: spinner with model name and percentage while downloading, checkmark on completion (auto-dismisses after 3 seconds), warning with click-to-retry on failure
+- **Background download coordination** (`AppState.startBackgroundDownloads`) — sequential background downloads after first launch: Stable Audio Open first (more immediately useful), then Lyric Writer LLM; progress relayed from manager `$downloadState` publishers to `BackgroundDownloadPhase`
+- **Registry extension points** — `addModel`, `removeModel`, `isBuiltIn` methods on ModelRegistry (functional in 9a, UI in 9b); `RegistryError` enum for built-in protection and duplicate detection
+- **ModelSpec Codable conformance** — enables JSON persistence for user-added models; `sha256` parameter defaults to empty dictionary
+- Design spec: `docs/superpowers/specs/2026-05-06-phase9a-model-management-foundation.md`
+- Implementation plan: `docs/superpowers/plans/2026-05-06-phase9a-model-management-foundation.md`
+
+---
+
 ## [Unreleased] — Phase 8b: Custom DSP Backend
 
 ### Changed
@@ -250,5 +270,6 @@ All notable changes to AnvilApp are documented here.
 | 7 | ✅ Complete | DSP Audio Editor — trim, fade, normalize, 3-band parametric EQ, reverb |
 | 8a | ✅ Complete | Time Stretch & Pitch Shift — AVAudioUnitTimePitch, quality zones, snap-point sliders |
 | 8b | ✅ Complete | Advanced DSP — custom WSOLA backend, LPC formant preservation, linear resampler |
-| 9 | Planned | Model Management — community models, model swapping, first-launch download flow, ModelSpec verification |
+| 9a | ✅ Complete | Model Management Foundation — SHA256 verification, first-launch redesign, registry split |
+| 9b | Planned | Model Management UI — community models, model swapping, hot-swap runtime, settings page |
 | 10 | Planned | LoRA Fine-Tuning — on-device model personalization |
