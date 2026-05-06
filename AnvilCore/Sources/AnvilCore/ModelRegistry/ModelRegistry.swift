@@ -73,12 +73,21 @@ public actor ModelRegistry {
         "ace-step-vae"
     ]
 
+    // MARK: - Active Model Tracking
+
+    private(set) var activeModels: [ModelCategory: String] = [:]
+
+    private var activeModelsFileURL: URL {
+        baseDirectory.appending(path: "active-models.json")
+    }
+
     // MARK: - Init
 
     public init(baseDirectory: URL, client: DownloadClient = DownloadClient()) {
         self.baseDirectory = baseDirectory
         self.client = client
         loadUserSpecs()
+        loadActiveModels()
     }
 
     // MARK: - Status
@@ -194,6 +203,59 @@ public actor ModelRegistry {
         Self.builtInSpecs.contains { $0.id == id }
     }
 
+    // MARK: - Active Model Selection
+
+    public func setActiveModel(id: String, for category: ModelCategory) throws {
+        guard let spec = allSpecs.first(where: { $0.id == id }) else {
+            throw RegistryError.unknownModel(id)
+        }
+        guard spec.category == category else {
+            throw RegistryError.categoryMismatch(expected: category, got: spec.category)
+        }
+        guard isModelReady(id) else {
+            throw RegistryError.modelNotReady(id)
+        }
+        activeModels[category] = id
+        saveActiveModels()
+    }
+
+    public func activeModelID(for category: ModelCategory) -> String? {
+        activeModels[category]
+    }
+
+    public func activeSpec(for category: ModelCategory) -> ModelSpec? {
+        guard let id = activeModels[category] else { return nil }
+        return allSpecs.first(where: { $0.id == id })
+    }
+
+    public func specs(for category: ModelCategory) -> [ModelSpec] {
+        allSpecs.filter { $0.category == category }
+    }
+
+    // MARK: - File Management
+
+    public func deleteModelFiles(id: String) throws {
+        guard let spec = allSpecs.first(where: { $0.id == id }) else {
+            throw RegistryError.unknownModel(id)
+        }
+        let dir = spec.localDirectory(base: baseDirectory)
+        if FileManager.default.fileExists(atPath: dir.path()) {
+            try FileManager.default.removeItem(at: dir)
+        }
+        statuses[id] = .notDownloaded
+
+        // If this was the active model, revert to built-in default
+        if activeModels[spec.category] == id {
+            let defaultID = Self.builtInSpecs.first(where: { $0.category == spec.category })?.id
+            if let defaultID, defaultID != id, isModelReady(defaultID) {
+                activeModels[spec.category] = defaultID
+            } else if let defaultID {
+                activeModels[spec.category] = defaultID
+            }
+            saveActiveModels()
+        }
+    }
+
     // MARK: - Persistence
 
     private func loadUserSpecs() {
@@ -217,9 +279,57 @@ public actor ModelRegistry {
             logger.error("Failed to save user-models.json: \(error.localizedDescription)")
         }
     }
+
+    private func loadActiveModels() {
+        let url = activeModelsFileURL
+        guard FileManager.default.fileExists(atPath: url.path()) else {
+            // First launch — default to built-in models
+            activeModels = [
+                .aceStepDiT: "ace-step-dit",
+                .aceStepVAE: "ace-step-vae",
+                .stableAudio: "stable-audio-open",
+                .lyricLLM: "lyric-llm"
+            ]
+            return
+        }
+
+        do {
+            let data = try Data(contentsOf: url)
+            let decoded = try JSONDecoder().decode([String: String].self, from: data)
+            activeModels = Dictionary(
+                uniqueKeysWithValues: decoded.compactMap { key, value in
+                    guard let category = ModelCategory(rawValue: key) else { return nil }
+                    return (category, value)
+                }
+            )
+        } catch {
+            logger.error("Failed to load active-models.json: \(error.localizedDescription). Using defaults.")
+            activeModels = [
+                .aceStepDiT: "ace-step-dit",
+                .aceStepVAE: "ace-step-vae",
+                .stableAudio: "stable-audio-open",
+                .lyricLLM: "lyric-llm"
+            ]
+        }
+    }
+
+    private func saveActiveModels() {
+        let encoded = Dictionary(
+            uniqueKeysWithValues: activeModels.map { ($0.key.rawValue, $0.value) }
+        )
+        do {
+            let data = try JSONEncoder().encode(encoded)
+            try data.write(to: activeModelsFileURL, options: .atomic)
+        } catch {
+            logger.error("Failed to save active-models.json: \(error.localizedDescription)")
+        }
+    }
 }
 
 public enum RegistryError: Error, Sendable {
     case cannotModifyBuiltIn
     case duplicateModel(String)
+    case unknownModel(String)
+    case categoryMismatch(expected: ModelCategory, got: ModelCategory)
+    case modelNotReady(String)
 }
