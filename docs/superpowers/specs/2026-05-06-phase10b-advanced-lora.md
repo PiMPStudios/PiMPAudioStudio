@@ -75,7 +75,8 @@ disabling the merge button when ranks differ.
 
 **MergeSheet** — Modal for adapter composition:
 
-- Picker A, Picker B (filtered to same base model + same rank)
+- Picker A, Picker B (filtered to same base model + same rank; shows rank
+  badge in each row for clarity)
 - Alpha slider (0.0 = all B, 1.0 = all A) with labels
 - Name text field for the new merged adapter
 - Merge button triggers AdapterRegistry.merge()
@@ -208,7 +209,7 @@ AdaptersSettingsView -> "Merge Two" button
 |----------|----------|
 | OOM during training | Auto-checkpoint, surface error with "Resume with smaller batch?" option |
 | NaN/Inf loss (3 consecutive) | Halt, save checkpoint at last good step, report to UI |
-| Checkpoint missing on resume | Validate URLs before resume; if missing, offer "Start fresh?" and delete corrupt checkpoint |
+| Checkpoint missing on resume | Validate URLs before resume; if missing, offer "Start fresh?" and auto-delete corrupt checkpoint files on confirmation |
 | Close TrainingSheet mid-training | Training continues in background; re-open reconnects to progress stream |
 | Delete currently-active adapter | Remove LoRA from pipeline first, then delete files |
 | Merge incompatible base models | Prevented at UI level (picker B filtered to same baseModelID) |
