@@ -40,6 +40,7 @@
 		BB00010B0101010101010101 /* XAILyricWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00020B0101010101010101 /* XAILyricWriter.swift */; };
 		BB00010C0101010101010101 /* IntelligenceSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00020C0101010101010101 /* IntelligenceSettingsView.swift */; };
 		BB00010D0101010101010101 /* GenerationMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00020D0101010101010101 /* GenerationMode.swift */; };
+		CC0001010101010101010101 /* SFXModelManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC0002010101010101010101 /* SFXModelManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -88,6 +89,7 @@
 		BB00020B0101010101010101 /* XAILyricWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XAILyricWriter.swift; sourceTree = "<group>"; };
 		BB00020C0101010101010101 /* IntelligenceSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntelligenceSettingsView.swift; sourceTree = "<group>"; };
 		BB00020D0101010101010101 /* GenerationMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationMode.swift; sourceTree = "<group>"; };
+		CC0002010101010101010101 /* SFXModelManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SFXModelManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -156,6 +158,7 @@
 				BB00030301010101010101AB /* LyricWriter */,
 				AA0002070101010101010101 /* OutputDirectoryManager.swift */,
 				BB0002040101010101010101 /* PromptEnhancer.swift */,
+				CC0002010101010101010101 /* SFXModelManager.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -342,6 +345,7 @@
 				BB00010B0101010101010101 /* XAILyricWriter.swift in Sources */,
 				BB00010C0101010101010101 /* IntelligenceSettingsView.swift in Sources */,
 				BB00010D0101010101010101 /* GenerationMode.swift in Sources */,
+				CC0001010101010101010101 /* SFXModelManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

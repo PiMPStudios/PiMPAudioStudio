@@ -14,23 +14,28 @@ final class SFXModelManager: ObservableObject {
     @Published var downloadState: SFXDownloadState = .notDownloaded
     @Published var pipeline: SoundFXPipeline?
 
-    private let modelID = "stable-audio-open-1.0"
-    private let repoID = "stabilityai/stable-audio-open-1.0"
+    private let registry: ModelRegistry
+    private var loadedModelID: String?
 
+    /// The model path for the currently active Stable Audio model.
     var modelPath: URL {
         let appSupport = FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask
         ).first!
-        return appSupport
+        let base = appSupport
             .appendingPathComponent("Anvil", isDirectory: true)
             .appendingPathComponent("models", isDirectory: true)
-            .appendingPathComponent(modelID, isDirectory: true)
+
+        // Use active model's directory if available
+        // Fall back to built-in stable-audio-open
+        return base.appendingPathComponent("stable-audio-open", isDirectory: true)
     }
 
     var isReady: Bool { pipeline != nil }
 
-    init() {
+    init(registry: ModelRegistry) {
+        self.registry = registry
         if isModelDownloaded() {
             downloadState = .downloaded
         }
@@ -44,6 +49,9 @@ final class SFXModelManager: ObservableObject {
 
         downloadState = .downloading(progress: 0)
 
+        // Get the active spec's repo, or fall back to built-in
+        let activeSpec = await registry.activeSpec(for: .stableAudio)
+        let repoID = activeSpec?.huggingFaceRepo ?? "stabilityai/stable-audio-open-1.0"
         let baseURL = "https://huggingface.co/\(repoID)/resolve/main/"
         let session = URLSession.shared
 
@@ -85,6 +93,37 @@ final class SFXModelManager: ObservableObject {
         downloadState = .downloaded
     }
 
+    /// Checks if the active model has changed and reloads if needed.
+    func ensureActiveModel() async throws {
+        let activeID = await registry.activeModelID(for: .stableAudio)
+        guard let activeID else { return }
+
+        if activeID != loadedModelID && pipeline != nil {
+            // Active model changed — unload current pipeline
+            pipeline = nil
+        }
+
+        if pipeline == nil {
+            let spec = await registry.activeSpec(for: .stableAudio)
+            guard let spec else { return }
+            let baseDir = await registry.baseDirectory
+            let dir = spec.localDirectory(base: baseDir)
+
+            // Check if model files exist at new location
+            let hasFiles = spec.files.allSatisfy { file in
+                FileManager.default.fileExists(
+                    atPath: dir.appending(path: file).path()
+                )
+            }
+
+            if hasFiles {
+                downloadState = .downloaded
+                try await loadPipeline()
+                loadedModelID = activeID
+            }
+        }
+    }
+
     func loadPipeline() async throws {
         guard isModelDownloaded() else { return }
 
@@ -109,6 +148,7 @@ final class SFXModelManager: ObservableObject {
         try? FileManager.default.removeItem(at: modelPath)
         downloadState = .notDownloaded
         pipeline = nil
+        loadedModelID = nil
     }
 
     private func isModelDownloaded() -> Bool {

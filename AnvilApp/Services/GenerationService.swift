@@ -88,7 +88,9 @@ final class GenerationService: ObservableObject {
                     method: request.method.rawValue,
                     guidanceScale: request.guidanceScale,
                     precision: request.precision.rawValue,
-                    fileName: fileName
+                    fileName: fileName,
+                    pipeline: nil,
+                    originalPrompt: nil
                 )
 
                 self.historyStore.add(entry)

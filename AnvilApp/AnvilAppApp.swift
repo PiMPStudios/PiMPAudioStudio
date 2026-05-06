@@ -23,7 +23,7 @@ struct AnvilAppApp: App {
         let router = IntentRouter(llm: manager.llmActor)
         let enhancer = PromptEnhancer(llm: manager.llmActor)
         let lyricManager = LyricWriterManager(apiKeyStore: apiKeys)
-        let sfxManager = SFXModelManager()
+        let sfxManager = SFXModelManager(registry: appState.registry)
         let services = AppServices(sfxModelManager: sfxManager, registry: appState.registry)
 
         _appState = StateObject(wrappedValue: appState)
