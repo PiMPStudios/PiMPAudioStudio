@@ -31,7 +31,7 @@ struct LocalLyricWriter: LyricWriter {
 
         let actor = llm
         return AsyncStream { continuation in
-            Task {
+            let task = Task {
                 let stream = await actor.generate(
                     systemPrompt: systemPrompt,
                     userPrompt: userPrompt,
@@ -39,9 +39,14 @@ struct LocalLyricWriter: LyricWriter {
                     temperature: 0.8
                 )
                 for await chunk in stream {
+                    if Task.isCancelled { break }
                     continuation.yield(chunk)
                 }
                 continuation.finish()
+            }
+
+            continuation.onTermination = { _ in
+                task.cancel()
             }
         }
     }

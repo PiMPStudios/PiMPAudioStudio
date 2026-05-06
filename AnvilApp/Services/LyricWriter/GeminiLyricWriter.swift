@@ -18,6 +18,7 @@ struct GeminiLyricWriter: LyricWriter {
                 let url = URL(string: urlString)!
                 var request = URLRequest(url: url)
                 request.httpMethod = "POST"
+                request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
                 let linesPerSection = Int(duration / 15)

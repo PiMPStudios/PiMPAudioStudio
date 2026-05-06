@@ -102,6 +102,7 @@ final class LLMModelManager: ObservableObject {
         let metadataFiles = ["config.json", "tokenizer.json", "tokenizer_config.json"]
 
         for (index, filename) in metadataFiles.enumerated() {
+            try Task.checkCancellation()
             guard let url = URL(string: baseURL + filename) else {
                 downloadState = .error("Invalid URL for \(filename)")
                 throw LLMError.missingFile(filename)
@@ -223,18 +224,12 @@ final class LLMModelManager: ObservableObject {
             if let http = indexResponse as? HTTPURLResponse, http.statusCode == 200 {
                 try indexData.write(to: modelDir.appendingPathComponent(indexName))
 
-                // Parse the index to find shard filenames
                 let shardFiles = try parseShardFiles(from: indexData)
                 for (idx, shard) in shardFiles.enumerated() {
+                    try Task.checkCancellation()
                     guard let shardURL = URL(string: baseURL + shard) else { continue }
-                    let (shardData, shardResp) = try await session.data(from: shardURL)
-                    guard let shardHttp = shardResp as? HTTPURLResponse,
-                          shardHttp.statusCode == 200 else {
-                        let msg = "Failed to download shard: \(shard)"
-                        downloadState = .error(msg)
-                        throw LLMError.missingFile(shard)
-                    }
-                    try shardData.write(to: modelDir.appendingPathComponent(shard))
+                    let dest = modelDir.appendingPathComponent(shard)
+                    try await downloadFile(from: shardURL, to: dest, session: session)
 
                     let progress = 0.2 + Float(idx + 1) / Float(shardFiles.count) * 0.8
                     downloadState = .downloading(progress: progress)
@@ -250,15 +245,20 @@ final class LLMModelManager: ObservableObject {
             throw LLMError.missingFile(singleName)
         }
 
-        let (data, response) = try await session.data(from: singleURL)
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            let msg = "Failed to download \(singleName)"
-            downloadState = .error(msg)
-            throw LLMError.missingFile(singleName)
-        }
-
-        try data.write(to: modelDir.appendingPathComponent(singleName))
+        let dest = modelDir.appendingPathComponent(singleName)
+        try await downloadFile(from: singleURL, to: dest, session: session)
         downloadState = .downloading(progress: 1.0)
+    }
+
+    private func downloadFile(from url: URL, to destination: URL, session: URLSession) async throws {
+        let (tempURL, response) = try await session.download(from: url)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            let name = url.lastPathComponent
+            let msg = "Failed to download \(name)"
+            downloadState = .error(msg)
+            throw LLMError.missingFile(name)
+        }
+        try FileManager.default.moveItem(at: tempURL, to: destination)
     }
 
     private func parseShardFiles(from indexData: Data) throws -> [String] {

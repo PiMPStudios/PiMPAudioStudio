@@ -7,7 +7,7 @@ final class PromptEnhancer: ObservableObject {
     @Published var isEnhancing: Bool = false
 
     private var llm: LLMActor?
-    private var enhanceTask: Task<Void, Never>?
+    private var enhanceTask: Task<String, Never>?
 
     private static let systemPromptTemplate = """
         You are an audio prompt enhancer. Given a brief description and the generation \
@@ -32,29 +32,38 @@ final class PromptEnhancer: ObservableObject {
     func enhance(prompt: String, mode: GenerationMode) async -> String {
         guard let llm else { return prompt }
 
-        isEnhancing = true
-        defer { isEnhancing = false }
+        enhanceTask?.cancel()
 
-        let systemPrompt = String(format: Self.systemPromptTemplate, mode.displayName)
+        var result = prompt
+        let task = Task {
+            isEnhancing = true
+            defer { isEnhancing = false }
 
-        var result = ""
-        let stream = await llm.generate(
-            systemPrompt: systemPrompt,
-            userPrompt: prompt,
-            maxTokens: 300,
-            temperature: 0.7
-        )
-        for await token in stream {
-            if Task.isCancelled { return prompt }
-            result += token
+            let systemPrompt = String(format: Self.systemPromptTemplate, mode.displayName)
+
+            var accumulated = ""
+            let stream = await llm.generate(
+                systemPrompt: systemPrompt,
+                userPrompt: prompt,
+                maxTokens: 300,
+                temperature: 0.7
+            )
+            for await token in stream {
+                if Task.isCancelled { return prompt }
+                accumulated += token
+            }
+
+            let enhanced = accumulated.trimmingCharacters(in: .whitespacesAndNewlines)
+            return enhanced.isEmpty ? prompt : enhanced
         }
+        enhanceTask = task
 
-        let enhanced = result.trimmingCharacters(in: .whitespacesAndNewlines)
-        return enhanced.isEmpty ? prompt : enhanced
+        return (try? await task.value) ?? prompt
     }
 
     func cancel() {
         enhanceTask?.cancel()
+        enhanceTask = nil
         isEnhancing = false
     }
 }
