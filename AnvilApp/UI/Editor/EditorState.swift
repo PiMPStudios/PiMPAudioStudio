@@ -42,6 +42,8 @@ class EditorState: ObservableObject {
     @Published var selectedReverbPreset: ReverbPreset? = .hall
     @Published var audioBuffer: AudioBuffer?
     @Published var dspConfirmation: DSPEffect?
+    @Published var timeStretchParameters: TimeStretchParameters = .default
+    @Published var pitchShiftParameters: PitchShiftParameters = .default
 
     private let dspProcessor = DSPProcessor()
 
@@ -117,7 +119,7 @@ class EditorState: ObservableObject {
             duration = result.duration
             waveformPeaks = computePeaks(from: result)
 
-            if effect == .trimToSelection || effect == .deleteSelection {
+            if effect == .trimToSelection || effect == .deleteSelection || effect == .timeStretch {
                 selectionStart = 0
                 selectionEnd = 0
             }
