@@ -8,6 +8,7 @@ struct GenerateView: View {
     @EnvironmentObject private var promptEnhancer: PromptEnhancer
     @EnvironmentObject private var lyricWriterManager: LyricWriterManager
     @EnvironmentObject private var sfxModelManager: SFXModelManager
+    @EnvironmentObject private var stackManager: AdapterStackManager
 
     @State private var promptText: String = ""
     @State private var lyricsText: String = ""
@@ -195,18 +196,28 @@ struct GenerateView: View {
     }
 
     private var adapterPickerSection: some View {
-        AdapterPicker(
-            selectedAdapterID: $selectedAdapterID,
-            activeModelCategory: .aceStepDiT
-        )
-        .onChange(of: selectedAdapterID) { _, newValue in
-            persistedAdapterID = newValue ?? ""
-            generationService.selectedAdapterID = newValue
-        }
-        .onAppear {
-            if !persistedAdapterID.isEmpty {
-                selectedAdapterID = persistedAdapterID
-                generationService.selectedAdapterID = persistedAdapterID
+        VStack(alignment: .leading, spacing: 12) {
+            AdapterPicker(
+                selectedAdapterID: $selectedAdapterID,
+                activeModelCategory: .aceStepDiT
+            )
+            .onChange(of: selectedAdapterID) { _, newValue in
+                persistedAdapterID = newValue ?? ""
+                generationService.selectedAdapterID = newValue
+            }
+            .onAppear {
+                if !persistedAdapterID.isEmpty {
+                    selectedAdapterID = persistedAdapterID
+                    generationService.selectedAdapterID = persistedAdapterID
+                }
+            }
+
+            // Multi-adapter stacking controls
+            if selectedAdapterID != nil || stackManager.isStacking {
+                AdapterStackView(
+                    stackManager: stackManager,
+                    activeModelCategory: .aceStepDiT
+                )
             }
         }
     }

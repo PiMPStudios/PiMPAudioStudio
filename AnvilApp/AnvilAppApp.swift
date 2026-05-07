@@ -13,6 +13,7 @@ struct AnvilAppApp: App {
     @StateObject private var promptEnhancer: PromptEnhancer
     @StateObject private var lyricWriterManager: LyricWriterManager
     @StateObject private var sfxModelManager: SFXModelManager
+    @StateObject private var adapterStackManager = AdapterStackManager()
 
     init() {
         let appState = AppState()
@@ -52,6 +53,7 @@ struct AnvilAppApp: App {
                 .environmentObject(promptEnhancer)
                 .environmentObject(lyricWriterManager)
                 .environmentObject(sfxModelManager)
+                .environmentObject(adapterStackManager)
                 .task(id: outputManager.directory) {
                     services.configure(outputManager: outputManager)
                 }
