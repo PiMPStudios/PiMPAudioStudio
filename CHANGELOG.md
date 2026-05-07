@@ -4,6 +4,30 @@ All notable changes to AnvilApp are documented here.
 
 ---
 
+## [Unreleased] — GenerationService Split
+
+### Added
+
+- **`ACEStepGenerationService`** (`AnvilApp/Services/`) — `@MainActor final class` owning DiT/VAE weight loading, `ConditioningActor` stub→real upgrade after tokenizer download, weight-load rollback on failure, and ACE-Step diffusion. Emits typed `Event` stream (`.loadingWeights`, `.conditioning`, `.generating`, `.decoding`, `.result`) via `AsyncThrowingStream`
+- **`SFXGenerationService`** (`AnvilApp/Services/`) — `@MainActor final class` owning SFX pipeline readiness (download + load) and Stable Audio diffusion. Emits typed `Event` stream (`.downloadingModel`, `.generating`, `.decoding`, `.result`)
+- **`LoRACoordinator`** (`AnvilApp/Services/`) — `@MainActor final class` owning adapter injection/removal, `currentlyInjectedAdapterID` state, and a defensive base-model self-check: queries `registry.activeModelID(for: .aceStepDiT)` on every `ensureAdapter` call and clears the adapter if the base DiT changed since last injection
+- **`HistoryEntry.pipeline` field populated** — now records `"stableAudio"` or `"aceStep"` instead of `nil`, so history views can distinguish which generation path produced each entry
+
+### Changed
+
+- **`GenerationService`** — gutted from 371 lines to ~150 line thin facade. Public API unchanged (`state`, `currentResult`, `selectedAdapterID`, `generate(request:)`, `cancel()`, `unloadAllWeights()`); zero changes to any caller (`GenerateView`, `AppState`, `ModelsSettingsView`, etc.). Internally routes to the three sub-services and maps their stream events to `@Published` state
+- **`AppServices`** (`AnvilAppApp.swift`) — `init` now takes the real `OutputDirectoryManager` instead of allocating a throwaway one. Eliminates a full GPU pipeline allocation (`VAEActor` + `DiTActor` + `DiffusionActor` + `MusicPipeline` + stub `ConditioningActor`) per cold launch that was previously orphaned when `configure()` fired on first appear
+- **`AppServices.configure()`** — rewritten with explicit "skip if manager and directory both unchanged" check; first `.task` fire is now a no-op instead of a full rebuild. Tracks `currentDirectory` separately so identity-only manager swaps don't conflate with directory changes
+- **`AnvilAppApp.makeGenerationService()`** — wires `ACEStepGenerationService`, `SFXGenerationService`, and `LoRACoordinator` into the facade. `MusicPipeline` is shared between `ACEStepGenerationService` and `LoRACoordinator` (safe — both hold actor references). `ConditioningActor.stub()` failure path now uses `do/catch` with error interpolation instead of `try?` so crash logs include the underlying cause
+- **`GenerationError.pipelineNotReady`** — description changed from SFX-specific `"Sound FX pipeline is not ready"` to generic `"Generation pipeline did not return a result"` (now thrown by both `runSFX` and `runACEStep` fallback paths)
+
+### Fixed
+
+- **`DownloadError`** — added `LocalizedError` conformance with per-HTTP-status-code descriptions (401 = "Unauthorized — authentication or model access may be required", 403 = "Forbidden — license acceptance required", 404 = "Not Found", 429 = "Rate limited", 5xx = "Server error", etc.). Previously surfaced as opaque `"AnvilCore.DownloadError error 0"` in error sheets when the user clicked Download Models against unavailable HuggingFace repos
+- **Xcode project (`project.pbxproj`)** — registered the three new sub-service files with fresh unique UUIDs after a collision was detected with existing project entries that would have silently dropped them from the compilation plan
+
+---
+
 ## [Unreleased] — Build Fixes & Project Hygiene
 
 ### Fixed
