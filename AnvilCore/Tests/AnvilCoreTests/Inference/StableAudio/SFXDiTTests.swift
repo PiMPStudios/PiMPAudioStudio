@@ -24,14 +24,39 @@ struct SFXDiTTests {
         #expect(output.shape == [1, 16, 64])
     }
 
-    @Test("Actor predict returns correct shape")
-    func actorPredict() async {
+    @Test("Actor predict returns correct shape after loading weights")
+    func actorPredict() async throws {
+        let actor = SFXDiTActor(config: config)
+        try await actor.loadWeights(randomDiTWeights())
+        let latents = MLXRandom.normal([1, 16, 64])
+        let timestep = MLXArray([0.5])
+        let conditioning = MLXRandom.normal([1, 512])
+        let output = try await actor.predict(latents: latents, timestep: timestep, conditioning: conditioning)
+        #expect(output.shape == [1, 16, 64])
+    }
+
+    @Test("Predict throws when weights not loaded")
+    func predictThrowsWithoutWeights() async {
         let actor = SFXDiTActor(config: config)
         let latents = MLXRandom.normal([1, 16, 64])
         let timestep = MLXArray([0.5])
         let conditioning = MLXRandom.normal([1, 512])
-        let output = await actor.predict(latents: latents, timestep: timestep, conditioning: conditioning)
-        #expect(output.shape == [1, 16, 64])
+        await #expect(throws: SFXDiTActorError.weightsNotLoaded) {
+            try await actor.predict(latents: latents, timestep: timestep, conditioning: conditioning)
+        }
+    }
+
+    @Test("unloadWeights causes subsequent predict to throw")
+    func unloadWeightsCausesThrow() async throws {
+        let actor = SFXDiTActor(config: config)
+        try await actor.loadWeights(randomDiTWeights())
+        await actor.unloadWeights()
+        let latents = MLXRandom.normal([1, 16, 64])
+        let timestep = MLXArray([0.5])
+        let conditioning = MLXRandom.normal([1, 512])
+        await #expect(throws: SFXDiTActorError.weightsNotLoaded) {
+            try await actor.predict(latents: latents, timestep: timestep, conditioning: conditioning)
+        }
     }
 
     @Test("Actor loadWeights marks as loaded")
