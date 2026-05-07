@@ -5,7 +5,9 @@ struct ModelsSettingsView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var generationService: GenerationService
     @EnvironmentObject private var sfxModelManager: SFXModelManager
+    @EnvironmentObject private var apiKeyStore: APIKeyStore
 
+    @State private var huggingFaceToken: String = ""
     @State private var aceStepSpecs: [ModelSpec] = []
     @State private var stableAudioSpecs: [ModelSpec] = []
     @State private var activeModels: [ModelCategory: String] = [:]
@@ -17,6 +19,7 @@ struct ModelsSettingsView: View {
 
     var body: some View {
         Form {
+            huggingFaceTokenSection
             aceStepSection
             stableAudioSection
             memorySection
@@ -27,7 +30,10 @@ struct ModelsSettingsView: View {
         }
         .formStyle(.grouped)
         .frame(minWidth: 500, minHeight: 400)
-        .task { refreshModels() }
+        .task {
+            huggingFaceToken = apiKeyStore.huggingFaceToken() ?? ""
+            refreshModels()
+        }
         .confirmationDialog(
             "Delete model files?",
             isPresented: Binding(
@@ -67,6 +73,23 @@ struct ModelsSettingsView: View {
             if let msg = errorMessage {
                 Text(msg)
             }
+        }
+    }
+
+    private var huggingFaceTokenSection: some View {
+        Section("HuggingFace Access Token (optional)") {
+            SecureField("hf_…", text: $huggingFaceToken)
+            HStack {
+                Button("Save") {
+                    apiKeyStore.setAPIKey(huggingFaceToken, for: APIKeyStore.huggingFaceProviderID)
+                }
+                .disabled(huggingFaceToken.isEmpty)
+                Spacer()
+                Link("Get a token", destination: URL(string: "https://huggingface.co/settings/tokens")!)
+            }
+            Text("Required for gated models like Stable Audio Open. Stored in macOS Keychain.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 

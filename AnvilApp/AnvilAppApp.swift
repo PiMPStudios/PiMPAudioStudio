@@ -84,6 +84,7 @@ struct AnvilAppApp: App {
                 ModelsSettingsView()
                     .tabItem { Label("Models", systemImage: "cube.box") }
                     .environmentObject(appState)
+                    .environmentObject(apiKeyStore)
 
                 AdaptersSettingsView()
                     .tabItem { Label("Adapters", systemImage: "puzzlepiece.extension") }
