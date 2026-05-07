@@ -11,7 +11,10 @@ final class APIKeyStore: ObservableObject {
         ("openai", "OpenAI", "OPENAI_API_KEY"),
         ("google", "Gemini (Google)", "GOOGLE_API_KEY"),
         ("xai", "Grok (xAI)", "XAI_API_KEY"),
+        ("huggingface", "HuggingFace", "HUGGINGFACE_API_KEY"),
     ]
+
+    static let huggingFaceProviderID = "huggingface"
 
     private static let serviceName = "com.pimpstudios.anvil.apikeys"
 
@@ -41,6 +44,10 @@ final class APIKeyStore: ObservableObject {
 
     func hasKey(for provider: String) -> Bool {
         apiKey(for: provider) != nil
+    }
+
+    func huggingFaceToken() -> String? {
+        apiKey(for: Self.huggingFaceProviderID)
     }
 
     func keySource(for provider: String) -> KeySource {
