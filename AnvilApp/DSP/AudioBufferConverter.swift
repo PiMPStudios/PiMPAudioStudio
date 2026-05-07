@@ -34,7 +34,7 @@ struct AudioBufferConverter {
         vDSP_vsmul(clamped, 1, &scale, &scaled, 1, vDSP_Length(samples.count))
 
         var int16Samples = [Int16](repeating: 0, count: samples.count)
-        vDSP.convertElements(of: scaled, to: &int16Samples)
+        vDSP_vfix16(scaled, 1, &int16Samples, 1, vDSP_Length(samples.count))
 
         let data = int16Samples.withUnsafeBufferPointer { ptr in
             Data(buffer: ptr)

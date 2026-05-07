@@ -132,8 +132,9 @@ struct ModelsSettingsView: View {
         refreshTask?.cancel()
         refreshTask = Task { @MainActor in
             let registry = appState.registry
-            aceStepSpecs = await registry.specs(for: .aceStepDiT)
-                + await registry.specs(for: .aceStepVAE)
+            let ditSpecs = await registry.specs(for: .aceStepDiT)
+            let vaeSpecs = await registry.specs(for: .aceStepVAE)
+            aceStepSpecs = ditSpecs + vaeSpecs
             stableAudioSpecs = await registry.specs(for: .stableAudio)
 
             var newStatuses: [String: ModelStatus] = [:]
@@ -222,7 +223,7 @@ private struct ModelRow: View {
                         .fontWeight(isActive ? .semibold : .regular)
                     if isActive {
                         Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.accent)
+                            .foregroundStyle(Color.accentColor)
                             .font(.caption)
                     }
                 }

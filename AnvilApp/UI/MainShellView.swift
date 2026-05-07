@@ -1,4 +1,5 @@
 import SwiftUI
+import AnvilCore
 
 struct MainShellView: View {
     @EnvironmentObject private var appState: AppState
@@ -148,8 +149,3 @@ enum SidebarItem: Hashable {
     case presets
 }
 
-enum PipelineChoice: String, CaseIterable, Hashable {
-    case auto
-    case aceStep
-    case stableAudio
-}

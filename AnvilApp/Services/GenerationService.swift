@@ -169,7 +169,7 @@ final class GenerationService: ObservableObject {
 
         let clampedDuration = min(request.duration, 47.0)
         guard let tokenizer = sfxModelManager.tokenizer else {
-            throw GenerationError.modelNotReady
+            throw GenerationError.pipelineNotReady
         }
         let config = SFXDiffusionConfig(
             steps: totalSteps,
@@ -313,9 +313,9 @@ final class GenerationService: ObservableObject {
                 selectedAdapterID = nil
                 return
             }
-            let _ = await pipeline.injectLoRA(config: adapter.config)
+            let _ = try await pipeline.injectLoRA(config: adapter.config)
             let weights = try AdapterRegistry.loadWeights(adapterID: adapterID)
-            await pipeline.loadLoRAWeights(weights, adapterID: adapterID)
+            try await pipeline.loadLoRAWeights(weights, adapterID: adapterID)
             currentlyInjectedAdapterID = adapterID
         } catch {
             await pipeline.removeLoRA()

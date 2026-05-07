@@ -31,10 +31,14 @@ final class AppState: ObservableObject {
     }
 
     func checkSetupStatus() async {
-        let allEssentialsReady = await ModelRegistry.essentialModelIDs.allSatisfy { id in
-            await registry.isModelReady(id)
+        var allReady = true
+        for id in ModelRegistry.essentialModelIDs {
+            if await !registry.isModelReady(id) {
+                allReady = false
+                break
+            }
         }
-        isSetupComplete = allEssentialsReady
+        isSetupComplete = allReady
     }
 
     /// Downloads only the essential ACE-Step models for first launch.
