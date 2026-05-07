@@ -81,7 +81,10 @@ public class TimbreEncoder: Module {
     static let rmsNormEps: Float = 1e-6
 
     override public init() {
-        self.inputProjection = Linear(Self.inputDim, Self.hiddenSize, bias: false)
+        // v1.5 checkpoint provides both weight and bias for this projection
+        // (called `embed_tokens` in safetensors). Linear must allocate the
+        // bias parameter slot so the loaded tensor has a place to land.
+        self.inputProjection = Linear(Self.inputDim, Self.hiddenSize, bias: true)
         self.layers = (0..<Self.numEncoderLayers).map { _ in
             Qwen3Layer(
                 hiddenSize: Self.hiddenSize,

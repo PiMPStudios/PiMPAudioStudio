@@ -1,6 +1,9 @@
 import Foundation
 import MLX
 import MLXNN
+import OSLog
+
+private let condLogger = Logger(subsystem: "com.pimp.AnvilApp", category: "ConditioningActor")
 
 public actor ConditioningActor {
     private let vae: VAEActor
@@ -125,6 +128,11 @@ public actor ConditioningActor {
         qwen3Weights: [(String, MLXArray)],
         conditionWeights: [(String, MLXArray)]
     ) async {
+        // Diagnostic for each sub-module: how many supplied keys match a
+        // real model parameter path? Mirrors the DiTActor / VAEActor
+        // diagnostic that revealed the silent-audio root cause.
+        Self.logKeyDiff(name: "qwen3", supplied: qwen3Weights, model: qwen3)
+
         qwen3.update(parameters: ModuleParameters.unflattened(qwen3Weights))
         eval(qwen3.parameters())
 
@@ -132,6 +140,7 @@ public actor ConditioningActor {
             guard key.hasPrefix("lyricEncoder.") else { return nil }
             return (String(key.dropFirst("lyricEncoder.".count)), value)
         }
+        Self.logKeyDiff(name: "lyricEncoder", supplied: lyricWeights, model: lyricEncoder)
         lyricEncoder.update(parameters: ModuleParameters.unflattened(lyricWeights))
         eval(lyricEncoder.parameters())
 
@@ -139,6 +148,7 @@ public actor ConditioningActor {
             guard key.hasPrefix("timbreEncoder.") else { return nil }
             return (String(key.dropFirst("timbreEncoder.".count)), value)
         }
+        Self.logKeyDiff(name: "timbreEncoder", supplied: timbreWeights, model: timbreEncoder)
         timbreEncoder.update(parameters: ModuleParameters.unflattened(timbreWeights))
         eval(timbreEncoder.parameters())
 
@@ -146,8 +156,26 @@ public actor ConditioningActor {
             guard key.hasPrefix("conditionEncoder.") else { return nil }
             return (String(key.dropFirst("conditionEncoder.".count)), value)
         }
+        Self.logKeyDiff(name: "conditionEncoder", supplied: condEncWeights, model: conditionEncoder)
         conditionEncoder.update(parameters: ModuleParameters.unflattened(condEncWeights))
         eval(conditionEncoder.parameters())
+    }
+
+    private static func logKeyDiff(
+        name: String, supplied: [(String, MLXArray)], model: Module
+    ) {
+        let modelKeys = Set(model.parameters().flattened().map { $0.0 })
+        let suppliedKeys = Set(supplied.map { $0.0 })
+        let matched = suppliedKeys.intersection(modelKeys).count
+        let supExtra = suppliedKeys.subtracting(modelKeys)
+        let modExtra = modelKeys.subtracting(suppliedKeys)
+        condLogger.info("[\(name)] supplied=\(suppliedKeys.count) model=\(modelKeys.count) matched=\(matched)")
+        if !supExtra.isEmpty {
+            condLogger.info("[\(name)] supplied-but-no-model-param (first 8): \(Array(supExtra.sorted().prefix(8)))")
+        }
+        if !modExtra.isEmpty {
+            condLogger.info("[\(name)] model-param-but-no-supplied (first 8): \(Array(modExtra.sorted().prefix(8)))")
+        }
     }
 }
 
