@@ -128,17 +128,19 @@ struct AdapterRegistry {
         adapter.name = newName
         adapter.id = newID
 
-        // Write updated metadata
+        // Move directory first (if ID changed), then write metadata.
+        // This order ensures we don't corrupt metadata if the move fails.
+        if newID != adapterID {
+            try fm.moveItem(at: sourceDir, to: destDir)
+        }
+
+        // Write updated metadata to the (possibly moved) directory
+        let finalMetadataURL = adapterDirectory(id: newID).appending(path: "adapter.json")
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let updatedData = try encoder.encode(adapter)
-        try updatedData.write(to: metadataURL)
-
-        // Move directory if ID changed
-        if newID != adapterID {
-            try fm.moveItem(at: sourceDir, to: destDir)
-        }
+        try updatedData.write(to: finalMetadataURL)
     }
 
     /// Delete an adapter and all its files.
