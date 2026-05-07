@@ -129,11 +129,16 @@ public class DiTDecoder: Module {
         let hasSlidingLayer = layerTypes.contains("sliding_attention")
         let slidingMask: MLXArray? = hasSlidingLayer ? getSlidingMask(seqLen: seqLen) : nil
 
-        // Convert boolean/float mask to additive bias (0 → 0, 1 → -1e9)
-        let additiveMask: MLXArray? = encoderAttentionMask.map { mask in
-            let inverted = (1.0 - mask) * Float(-1e9)
-            return inverted.expandedDimensions(axes: [1, 2])
-        }
+        // Match upstream: do NOT pass an encoder_attention_mask to cross-
+        // attention. Upstream MLX (acestep/models/mlx/dit_model.py:591)
+        // hardcodes encoder_attention_mask=None when calling each layer;
+        // upstream Python (modeling_acestep_v15_turbo.py:1380-1382) shadows
+        // its forward parameter to None and rebuilds a shape-only 4D mask
+        // with attention_mask=None (no padding info). The model was trained
+        // without padding mask in cross-attention, so applying one at
+        // inference shifts the attention distribution away from training
+        // and degrades prompt-following.
+        let _ = encoderAttentionMask  // intentionally unused
 
         // Process through transformer layers
         for layer in layers {
@@ -144,7 +149,7 @@ public class DiTDecoder: Module {
                 temb: timestepProj,
                 selfAttnMask: selfAttnMask,
                 encoderHiddenStates: encStates,
-                encoderAttentionMask: additiveMask,
+                encoderAttentionMask: nil,
                 cache: cache,
                 useCache: useCache
             )
