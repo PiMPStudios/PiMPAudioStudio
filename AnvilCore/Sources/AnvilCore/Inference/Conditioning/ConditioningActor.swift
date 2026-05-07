@@ -167,7 +167,23 @@ public actor ConditioningActor {
             let chunkMask = MLXArray.ones(referenceLatents.shape).asType(precision.mlxDtype)
             contextLatents = concatenated([referenceLatents, chunkMask], axis: -1)
         } else {
-            contextLatents = MLXArray.zeros([1, tFrames, 128])
+            // Smoke test for GPT-5.5's silence_latent hypothesis: upstream
+            // text2music builds context_latents = cat([silence_latent_slice,
+            // ones]) along the channel axis. The "ones" half is the
+            // chunk_mask, telling the DiT "generate the whole sequence." We
+            // were sending [zeros, zeros] which says "no source latent, no
+            // generate mask" — the model interprets that as a degenerate
+            // condition.
+            //
+            // Step 1 smoke test: keep src_latents as zeros (no silence_latent
+            // loader yet) but flip the mask half to ones. This isolates the
+            // mask contribution from the silence_latent body contribution.
+            // Step 2 (separate fix): load silence_latent.pt and replace the
+            // zero src_latent half with its `[:tFrames, :]` slice.
+            let zerosSrc = MLXArray.zeros([1, tFrames, 64])
+            let onesMask = MLXArray.ones([1, tFrames, 64])
+            contextLatents = concatenated([zerosSrc, onesMask], axis: -1)
+                .asType(precision.mlxDtype)
         }
 
         let result: ConditioningResult
