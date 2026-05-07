@@ -36,6 +36,9 @@ final class GenerationService: ObservableObject {
     func generate(request: GenerationRequest) {
         generationTask?.cancel()
 
+        // [weak self] breaks the retain cycle where generationTask retains self, which retains generationTask.
+        // SwiftUI holds GenerationService strongly for the view's lifetime, so self being nil is rare
+        // (view dismissed mid-generation), and returning silently is correct — no observer remains.
         generationTask = Task { [weak self] in
             guard let self else { return }
 
@@ -155,7 +158,7 @@ enum GenerationError: Error, LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .pipelineNotReady: return "Sound FX pipeline is not ready"
+        case .pipelineNotReady: return "Generation pipeline did not return a result"
         case .modelNotConfigured(let name): return "\(name) model is not configured"
         }
     }
