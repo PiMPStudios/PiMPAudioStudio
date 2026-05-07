@@ -140,16 +140,20 @@ final class ACEStepGenerationService {
 
             // Upgrade stub ConditioningActor to one backed by the real downloaded tokenizer.
             // tokenizer.json lives in the VAE spec's local directory (shared between DiT variants).
+            // Use path(percentEncoded: false) so paths containing "Application Support" (with
+            // its space) match the actual filesystem layout, not the percent-encoded URL form.
             if let vaeSpec = await registry.activeSpec(for: .aceStepVAE) {
                 let tokenizerPath = vaeSpec.localPath(for: "tokenizer.json", base: baseDir)
-                if FileManager.default.fileExists(atPath: tokenizerPath.path()) {
+                let tokenizerFSPath = tokenizerPath.path(percentEncoded: false)
+                if FileManager.default.fileExists(atPath: tokenizerFSPath) {
                     if let real = try? ConditioningActor.make(tokenizerURL: tokenizerPath) {
                         conditioning = real
+                        logger.info("Upgraded ConditioningActor with tokenizer at \(tokenizerFSPath)")
                     } else {
-                        logger.warning("Could not upgrade ConditioningActor from tokenizer at \(tokenizerPath.path()) — using stub")
+                        logger.warning("Could not upgrade ConditioningActor from tokenizer at \(tokenizerFSPath) — using stub")
                     }
                 } else {
-                    logger.info("tokenizer.json not yet downloaded at \(tokenizerPath.path()) — keeping stub conditioning actor")
+                    logger.info("tokenizer.json not yet downloaded at \(tokenizerFSPath) — keeping stub conditioning actor")
                 }
             }
         } catch {

@@ -195,7 +195,7 @@ public actor ModelRegistry {
             for entry in entries {
                 let name = entry.lastPathComponent
                 var isDir: ObjCBool = false
-                FileManager.default.fileExists(atPath: entry.path(), isDirectory: &isDir)
+                FileManager.default.fileExists(atPath: entry.path(percentEncoded: false), isDirectory: &isDir)
                 guard isDir.boolValue, name != "user-models.json" else { continue }
                 if !validIDs.contains(name) {
                     try? FileManager.default.removeItem(at: entry)
@@ -378,7 +378,7 @@ public actor ModelRegistry {
             throw RegistryError.unknownModel(id)
         }
         let dir = spec.localDirectory(base: baseDirectory)
-        if FileManager.default.fileExists(atPath: dir.path()) {
+        if FileManager.default.fileExists(atPath: dir.path(percentEncoded: false)) {
             try FileManager.default.removeItem(at: dir)
         }
         statuses[id] = .notDownloaded
@@ -399,7 +399,7 @@ public actor ModelRegistry {
 
     private func loadUserSpecs() {
         let url = userSpecsFileURL
-        guard FileManager.default.fileExists(atPath: url.path()) else { return }
+        guard FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) else { return }
 
         do {
             let data = try Data(contentsOf: url)
@@ -421,7 +421,7 @@ public actor ModelRegistry {
 
     private func loadActiveModels() {
         let url = activeModelsFileURL
-        guard FileManager.default.fileExists(atPath: url.path()) else {
+        guard FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) else {
             // First launch — default to built-in models
             activeModels = Self.defaultActiveModels
             return

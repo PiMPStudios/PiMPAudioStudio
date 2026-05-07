@@ -34,7 +34,7 @@ final class OutputDirectoryManager: ObservableObject {
 
     func hasValidDirectory() -> Bool {
         guard let dir = directory else { return false }
-        return FileManager.default.isWritableFile(atPath: dir.path())
+        return FileManager.default.isWritableFile(atPath: dir.path(percentEncoded: false))
     }
 
     private func saveBookmark(for url: URL) {

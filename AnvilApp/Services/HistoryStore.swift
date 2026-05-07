@@ -41,7 +41,7 @@ final class HistoryStore: ObservableObject {
     }
 
     private func loadFromDisk() {
-        guard FileManager.default.fileExists(atPath: historyFileURL.path()) else { return }
+        guard FileManager.default.fileExists(atPath: historyFileURL.path(percentEncoded: false)) else { return }
         do {
             let data = try Data(contentsOf: historyFileURL)
             let decoder = JSONDecoder()
