@@ -1,4 +1,5 @@
 import AVFoundation
+import OSLog
 import SwiftUI
 
 struct WaveformData: Sendable {
@@ -9,6 +10,8 @@ struct WaveformData: Sendable {
 
 @MainActor
 final class AudioPlayerService: ObservableObject {
+    private let logger = Logger(subsystem: "com.pimp.AnvilApp", category: "AudioPlayer")
+
     @Published var isPlaying: Bool = false
     @Published var currentTime: TimeInterval = 0
     @Published var duration: TimeInterval = 0
@@ -31,7 +34,7 @@ final class AudioPlayerService: ObservableObject {
             currentTime = 0
             waveform = computeWaveform(url: url)
         } catch {
-            print("Failed to load audio: \(error)")
+            logger.error("Failed to load audio: \(error, privacy: .public)")
         }
     }
 

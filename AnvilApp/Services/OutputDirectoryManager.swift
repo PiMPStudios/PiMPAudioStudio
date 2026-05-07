@@ -1,7 +1,10 @@
+import OSLog
 import SwiftUI
 
 @MainActor
 final class OutputDirectoryManager: ObservableObject {
+    private let logger = Logger(subsystem: "com.pimp.AnvilApp", category: "OutputDirectory")
+
     @Published var directory: URL?
 
     private static let bookmarkKey = "outputDirectoryBookmark"
@@ -43,7 +46,7 @@ final class OutputDirectoryManager: ObservableObject {
             )
             UserDefaults.standard.set(bookmark, forKey: Self.bookmarkKey)
         } catch {
-            print("Failed to save bookmark: \(error)")
+            logger.error("Failed to save bookmark: \(error, privacy: .public)")
         }
     }
 

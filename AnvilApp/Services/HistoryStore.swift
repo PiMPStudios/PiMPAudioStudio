@@ -1,7 +1,10 @@
 import Foundation
+import OSLog
 
 @MainActor
 final class HistoryStore: ObservableObject {
+    private let logger = Logger(subsystem: "com.pimp.AnvilApp", category: "HistoryStore")
+
     @Published var entries: [HistoryEntry] = []
 
     private let directory: URL
@@ -57,7 +60,7 @@ final class HistoryStore: ObservableObject {
             let data = try encoder.encode(entries)
             try data.write(to: historyFileURL, options: .atomic)
         } catch {
-            print("Failed to save history: \(error)")
+            logger.error("Failed to save history: \(error, privacy: .public)")
         }
     }
 }
