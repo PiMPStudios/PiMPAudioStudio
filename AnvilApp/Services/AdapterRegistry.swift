@@ -77,6 +77,15 @@ struct AdapterRegistry {
         return dict.map { ($0.key, $0.value) }
     }
 
+    /// Async-safe wrapper that runs the safetensors read off the calling actor.
+    /// Use this from `@MainActor` callers (e.g. `LoRACoordinator`) so the UI
+    /// thread is not blocked while a multi-MB adapter file is read from disk.
+    static func loadWeights(adapterID: String) async throws -> [(String, MLXArray)] {
+        try await Task.detached(priority: .userInitiated) {
+            try Self.loadWeights(adapterID: adapterID) as [(String, MLXArray)]
+        }.value
+    }
+
     // MARK: - Adapter Management
 
     /// Errors for adapter management operations.

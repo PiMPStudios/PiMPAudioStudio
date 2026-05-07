@@ -135,7 +135,10 @@ public actor ConditioningActor {
 }
 
 extension ConditioningActor {
-    public static func forTesting(tokenizerURL: URL) throws -> ConditioningActor {
+    /// Builds a ConditioningActor backed by a real tokenizer file on disk.
+    /// Used in production to upgrade from a stub once the model's `tokenizer.json`
+    /// has been downloaded, and in tests where a fixture tokenizer is available.
+    public static func make(tokenizerURL: URL) throws -> ConditioningActor {
         return try ConditioningActor(
             vae: VAEActor(),
             qwen3: Qwen3Model(),

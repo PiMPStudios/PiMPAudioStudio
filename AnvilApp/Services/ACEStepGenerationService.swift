@@ -141,7 +141,7 @@ final class ACEStepGenerationService {
             // Upgrade stub ConditioningActor to one backed by the real downloaded tokenizer.
             let tokenizerPath = spec.localPath(for: "tokenizer.json", base: baseDir)
             if FileManager.default.fileExists(atPath: tokenizerPath.path()) {
-                if let real = try? ConditioningActor.forTesting(tokenizerURL: tokenizerPath) {
+                if let real = try? ConditioningActor.make(tokenizerURL: tokenizerPath) {
                     conditioning = real
                 } else {
                     logger.warning("Could not upgrade ConditioningActor from tokenizer at \(tokenizerPath.path()) — using stub")

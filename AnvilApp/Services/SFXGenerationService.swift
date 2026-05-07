@@ -39,6 +39,8 @@ final class SFXGenerationService {
                         throw GenerationError.pipelineNotReady
                     }
 
+                    try Task.checkCancellation()
+
                     let totalSteps = 100
                     let clampedDuration = min(request.duration, 47.0)
                     let config = SFXDiffusionConfig(

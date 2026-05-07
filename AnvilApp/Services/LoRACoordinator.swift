@@ -55,7 +55,7 @@ final class LoRACoordinator {
                 return
             }
             let _ = try await pipeline.injectLoRA(config: adapter.config)
-            let weights = try AdapterRegistry.loadWeights(adapterID: adapterID)
+            let weights = try await AdapterRegistry.loadWeights(adapterID: adapterID)
             try await pipeline.loadLoRAWeights(weights, adapterID: adapterID)
             currentlyInjectedAdapterID = adapterID
             logger.info("Injected LoRA adapter '\(adapterID)'")

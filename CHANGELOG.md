@@ -25,6 +25,9 @@ All notable changes to AnvilApp are documented here.
 
 - **`DownloadError`** — added `LocalizedError` conformance with per-HTTP-status-code descriptions (401 = "Unauthorized — authentication or model access may be required", 403 = "Forbidden — license acceptance required", 404 = "Not Found", 429 = "Rate limited", 5xx = "Server error", etc.). Previously surfaced as opaque `"AnvilCore.DownloadError error 0"` in error sheets when the user clicked Download Models against unavailable HuggingFace repos
 - **Xcode project (`project.pbxproj`)** — registered the three new sub-service files with fresh unique UUIDs after a collision was detected with existing project entries that would have silently dropped them from the compilation plan
+- **`SFXGenerationService` cancellation gap** — added `try Task.checkCancellation()` between pipeline-readiness setup and the `pipeline.generate(...)` call so a user cancellation immediately after weights load no longer triggers the GPU pipeline before unwinding
+- **`ConditioningActor.forTesting(tokenizerURL:)` misnamed for production** — renamed to `make(tokenizerURL:)` since `ACEStepGenerationService` calls it on the production path (after a model's `tokenizer.json` is downloaded). The test-only naming was misleading; the new name matches its actual responsibility. The argumentless `stub()` factory is unchanged
+- **`AdapterRegistry.loadWeights` blocking the main thread** — added an `async throws` overload that runs the safetensors read on `Task.detached(priority: .userInitiated)`. `LoRACoordinator.ensureAdapter` (`@MainActor`) now `await`s it, so reading multi-MB adapter files no longer stalls the UI thread. The existing synchronous version is retained for `merge()` and other off-main callers
 
 ---
 
