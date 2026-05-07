@@ -80,26 +80,74 @@ public actor DownloadClient {
         let delegate = DownloadProgressDelegate(onProgress: onProgress)
         let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
 
-        try await withTaskCancellationHandler {
-            defer { session.invalidateAndCancel() }
-            let (tempURL, response) = try await session.download(for: request)
+        // Emit an immediate 0% so the UI can switch out of "Waiting…" before
+        // the first delegate callback fires.
+        onProgress(0.0)
 
-            guard let httpResponse = response as? HTTPURLResponse,
-                  (200...299).contains(httpResponse.statusCode) else {
-                throw DownloadError.httpError(
-                    statusCode: (response as? HTTPURLResponse)?.statusCode ?? -1
-                )
+        // Use the completion-handler downloadTask API wrapped in a continuation.
+        // The async `download(for:)` overload does not reliably fire the
+        // session delegate's didWriteData callback, so we use the older API
+        // that guarantees per-chunk progress events.
+        let task = ManagedTaskHolder()
+        let result: Result<(URL, URLResponse), Error> = await withTaskCancellationHandler {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Result<(URL, URLResponse), Error>, Never>) in
+                let downloadTask = session.downloadTask(with: request) { tempURL, response, error in
+                    if let error {
+                        continuation.resume(returning: .failure(error))
+                        return
+                    }
+                    guard let tempURL, let response else {
+                        continuation.resume(returning: .failure(
+                            DownloadError.httpError(statusCode: -1)
+                        ))
+                        return
+                    }
+                    // URLSession reclaims the temp file as soon as this completion
+                    // returns — move it into our own temp location synchronously.
+                    let safeURL = FileManager.default.temporaryDirectory
+                        .appending(path: UUID().uuidString)
+                    do {
+                        try FileManager.default.moveItem(at: tempURL, to: safeURL)
+                        continuation.resume(returning: .success((safeURL, response)))
+                    } catch {
+                        continuation.resume(returning: .failure(error))
+                    }
+                }
+                task.set(downloadTask)
+                downloadTask.resume()
             }
-
-            let destDir = destination.deletingLastPathComponent()
-            try FileManager.default.createDirectory(at: destDir, withIntermediateDirectories: true)
-            if FileManager.default.fileExists(atPath: destination.path()) {
-                try FileManager.default.removeItem(at: destination)
-            }
-            try FileManager.default.moveItem(at: tempURL, to: destination)
         } onCancel: {
+            task.cancel()
             session.invalidateAndCancel()
         }
+
+        session.invalidateAndCancel()
+
+        let (tempURL, response): (URL, URLResponse)
+        switch result {
+        case .success(let pair):
+            (tempURL, response) = pair
+        case .failure(let error):
+            throw error
+        }
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
+            try? FileManager.default.removeItem(at: tempURL)
+            throw DownloadError.httpError(
+                statusCode: (response as? HTTPURLResponse)?.statusCode ?? -1
+            )
+        }
+
+        let destDir = destination.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: destDir, withIntermediateDirectories: true)
+        if FileManager.default.fileExists(atPath: destination.path()) {
+            try FileManager.default.removeItem(at: destination)
+        }
+        try FileManager.default.moveItem(at: tempURL, to: destination)
+
+        // Final 100% in case the delegate stopped firing slightly before the end.
+        onProgress(1.0)
     }
 
     public nonisolated func verifySHA256(file: URL, expected: String) async -> Bool {
@@ -153,6 +201,31 @@ public enum DownloadError: Error, Sendable, LocalizedError {
         case .authForbidden(let repo):
             return "HuggingFace rejected the access token for \(repo). Verify the token is valid and that the model license has been accepted."
         }
+    }
+}
+
+/// Thread-safe holder for the in-flight URLSessionDownloadTask so the
+/// cancellation handler can signal it without a race against task creation.
+private final class ManagedTaskHolder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var task: URLSessionDownloadTask?
+    private var cancelled = false
+
+    func set(_ task: URLSessionDownloadTask) {
+        lock.lock()
+        defer { lock.unlock() }
+        if cancelled {
+            task.cancel()
+        } else {
+            self.task = task
+        }
+    }
+
+    func cancel() {
+        lock.lock()
+        defer { lock.unlock() }
+        cancelled = true
+        task?.cancel()
     }
 }
 
