@@ -4,6 +4,54 @@ All notable changes to AnvilApp are documented here.
 
 ---
 
+## [Unreleased] — Polish & Hardening Phase 2
+
+### Added
+
+- **Release GPU Memory button** (`ModelsSettingsView`) — "Memory" section in Models Settings with a "Release" button that calls `AppState.unloadAllModels()`, freeing all ACE-Step and SFX weights without restarting
+- **`AppState.unloadAllModels()`** — coordinating helper that calls `GenerationService.unloadAllWeights()` and `SFXModelManager.unloadPipeline()` in one shot
+- **`GenerationService.unloadAllWeights()`** — unloads ACE-Step DiT and VAE weights and resets loaded model IDs; weights reload automatically on next generation
+- **`SFXDiTActorError` / `SFXVAEActorError`** — typed error enums for SFX actors matching the existing `DiTActorError` / `VAEActorError` pattern
+
+### Changed
+
+- **`SFXDiTActor.predict()`** — now `throws SFXDiTActorError.weightsNotLoaded` when weights have not been loaded, instead of silently running against an uninitialized model
+- **`SFXVAEActor.decode()` / `encode()`** — same: now `throws SFXVAEActorError.weightsNotLoaded`; added `unloadWeights()` to both SFX actors
+- **`SFXDiffusionActor`** — all `dit.predict(...)` calls updated to `try await` (6 call sites across `sample` and `inpaint`)
+- **`SoundFXPipeline`** — `vae.decode(...)` updated to `try await`
+- **`WeightConverter.convertVAEWeights()` / `convertDiTWeights()`** — now `throws`; `try Task.checkCancellation()` added every 50 tensor iterations so cancellation interrupts multi-GB weight conversion mid-flight
+- **`SFXModelManager.loadPipeline()`** — refactored into three private helpers (`loadedDiTWeights()`, `loadedVAEWeights()`, `loadedCLAPWeights()`) for readability; main method reduced to pipeline assembly
+- **`SFXModelManager.baseModelsDirectory()`** — new `private static` helper eliminates duplicated App Support URL construction; `modelPath` simplified to 3 lines; `downloadIfNeeded()` now resolves the model path before the early-return guard so `modelPath` is correct even when files are already downloaded
+- **`GenerationService.ensureSFXPipelineReady()`** — extracted from `generateWithStableAudio()`, encapsulating the active-model check, optional download, and pipeline load into a single returning helper
+- **`CrossAttentionCache`** — added detailed doc comment explaining the `@unchecked Sendable` threading contract (one cache per generation, sequential access only, clean ownership transfer) and a warning against concurrent use
+
+---
+
+## [Unreleased] — Polish & Hardening Phase 1
+
+### Fixed
+
+- **Streaming SHA-256 verification** (`DownloadClient`) — replaced `Data(contentsOf:)` with 1 MB chunked `FileHandle` reads to prevent OOM crashes when verifying 3 GB+ model files
+- **Single-consumer `AsyncStream` bug** (`DiffusionActor`, `MusicPipeline`, `SoundFXPipeline`, `WeightConverter`, `SFXDiffusionActor`) — lazy `var progress` was exhausted after first consumer; replaced with `func makeProgressStream() -> AsyncStream<…>` that creates a fresh stream per call; `continuation?.finish()` called at generation end to prevent leaks
+- **`DiTActor` crash on bad state** — three `fatalError(…)` calls replaced with `throws DiTActorError.weightsNotLoaded`; callers updated throughout `DiffusionActor` and `MusicPipeline`
+- **SFX pipeline weight loading** (`SFXModelManager`) — `loadPipeline()` was a stub; fully implemented weight loading via `WeightConverter.loadSafetensors` → `SFXDiTNameMap` / `SFXVAENameMap` / `CLAPNameMap` → actor `loadWeights()`; SFX VAE uses manual name mapping (not `convertVAEWeights()` which is music-VAE-specific)
+- **`CLAPTokenizer` placeholder** (`GenerationService`) — `CLAPTokenizer.forTesting()` replaced with real tokenizer loaded from `SFXModelManager.tokenizer`
+- **Qwen3 text mask ignored** (`ConditioningActor`) — `textMask` computed by tokenizer was silently discarded; `Qwen3Model.callAsFunction` now accepts optional `attentionMask` and converts binary mask to additive −1e9 mask passed to all 28 attention layers
+- **`VAETiledDecode` force-unwrap** — `upsampleFactor: Double?` with `!` unwrap replaced with `var upsampleFactor: Double = 0.0` pattern
+- **`SFXModelManager.modelPath`** — hardcoded `"stable-audio-open"` path replaced with `resolvedModelPath` stored after fetching the active spec; correct directory used regardless of which SFX model is active
+
+### Changed
+
+- **`VAEActor`** — three `fatalError` calls replaced with `throws VAEActorError.weightsNotLoaded`; `VAEActorError` enum added; all callers (`MusicPipeline`, `InpaintCoordinator`, `TrainingService`, `ConditioningActor`) updated
+- **`ConditioningActor.init`** — `try!` on tokenizer load replaced with `throws`; `forTesting()` factory also `throws`; call site in `AnvilAppApp` uses `guard let … = try?` with `fatalError` fallback for missing bundle resource
+- **`ConditioningActor.encode()`** — `try Task.checkCancellation()` added after tokenization, after Qwen3 forward pass, and after reference audio preparation
+- **`DownloadClient`** — `withTaskCancellationHandler` wraps `URLSession.download(from:)` so cancelling the parent Swift task immediately calls `session.invalidateAndCancel()` on large file downloads
+- **`RotaryEmbedding`** — removed eager `cosTable`/`sinTable` pre-allocation at `maxLen=32768`; now stores only `invFreq` (`headDim/2` elements) and computes position tables on demand at `forward()` time for the actual `seqLen`
+- **`SFXModelManager.unloadPipeline()`** — new method frees in-memory pipeline, tokenizer, and model ID without touching files on disk
+- **`AudioPlayerService`, `OutputDirectoryManager`, `HistoryStore`** — bare `print()` error calls replaced with `os.Logger` (subsystem `com.pimp.AnvilApp`, per-class categories)
+
+---
+
 ## [Unreleased] — Phase 10c: Community Sharing + Multi-Adapter Stacking
 
 ### Added
