@@ -3,12 +3,16 @@ import MLX
 import MLXNN
 import MLXRandom
 
-/// A Linear layer wrapped with a low-rank adapter.
+/// A Linear layer wrapped with one or more low-rank adapter contributions.
 ///
-/// Output = base(x) + scaling * dropout(x @ A^T @ B^T)
+/// Single adapter (Phase 10a/b):
+///   Output = base(x) + scaling * dropout(x @ A^T @ B^T)
+///
+/// Multi-adapter stacking (Phase 10c):
+///   Output = base(x) + sum_i(strength_i * x @ A_i^T @ B_i^T)
 ///
 /// A is initialized with Kaiming uniform, B is initialized to zero,
-/// so the adapter starts as identity (no effect on output).
+/// so a fresh adapter starts as identity (no effect on output).
 public class LoRALinear: Linear {
     /// The original frozen weight matrix stored separately.
     let baseWeight: MLXArray
@@ -17,9 +21,11 @@ public class LoRALinear: Linear {
     let baseBias: MLXArray?
 
     /// Low-rank matrix A: shape (rank, inFeatures). Kaiming uniform init.
+    /// Used for training (single adapter mode). For stacking, see contributions.
     var loraA: MLXArray
 
     /// Low-rank matrix B: shape (outFeatures, rank). Zero init.
+    /// Used for training (single adapter mode). For stacking, see contributions.
     var loraB: MLXArray
 
     /// Scaling factor = alpha / rank.
@@ -28,11 +34,16 @@ public class LoRALinear: Linear {
     /// Dropout rate (applied during training only).
     let dropoutRate: Float
 
-    /// Whether we are in training mode (enables dropout).
+    /// Whether we are in training mode (enables dropout, uses loraA/loraB directly).
     var isTraining: Bool = false
 
     /// Whether adapter has been merged into base weights.
     private var isMerged: Bool = false
+
+    /// Multiple adapter contributions for inference stacking.
+    /// When non-empty, these are used instead of the single loraA/loraB pair.
+    /// Each contribution has its own strength multiplier.
+    public var contributions: [LoRAContribution] = []
 
     public init(base: Linear, rank: Int, alpha: Float = 16.0, dropout: Float = 0.0) {
         let inFeatures = base.weight.shape[1]
@@ -69,14 +80,29 @@ public class LoRALinear: Linear {
             return baseOut
         }
 
-        // LoRA path: scaling * x @ A^T @ B^T
-        var loraInput = x
-        if isTraining && dropoutRate > 0 {
-            let mask = MLXRandom.uniform(0 ..< 1, loraInput.shape) .> dropoutRate
-            loraInput = loraInput * mask / (1.0 - dropoutRate)
+        // Training mode: use single loraA/loraB pair with dropout
+        if isTraining {
+            var loraInput = x
+            if dropoutRate > 0 {
+                let mask = MLXRandom.uniform(0 ..< 1, loraInput.shape) .> dropoutRate
+                loraInput = loraInput * mask / (1.0 - dropoutRate)
+            }
+            let loraOut = scaling * matmul(matmul(loraInput, loraA.T), loraB.T)
+            return baseOut + loraOut
         }
-        let loraOut = scaling * matmul(matmul(loraInput, loraA.T), loraB.T)
 
+        // Inference stacking mode: use contributions if present
+        if !contributions.isEmpty {
+            var out = baseOut
+            for contribution in contributions where contribution.strength != 0.0 {
+                let loraOut = matmul(matmul(x, contribution.loraA.T), contribution.loraB.T)
+                out = out + MLXArray(contribution.strength) * loraOut
+            }
+            return out
+        }
+
+        // Single adapter inference (backward compat with 10a/b usage)
+        let loraOut = scaling * matmul(matmul(x, loraA.T), loraB.T)
         return baseOut + loraOut
     }
 
