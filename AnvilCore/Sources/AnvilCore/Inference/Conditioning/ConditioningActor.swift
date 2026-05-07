@@ -11,7 +11,19 @@ public actor ConditioningActor {
     private let tokenizer: AnvilTokenizer
 
     static let timbreFixFrame = 750
-    static let latentFrameRate: Float = 25.0
+    /// Audio sample rate matching MusicPipeline.defaultSampleRate.
+    static let audioSampleRate: Int = 44100
+    /// VAE downsampling factor (product of [2,4,4,8,8] from upstream config).
+    /// `hop_length = 2048` per upstream `models/mlx/vae_model.py`.
+    static let vaeHopLength: Int = 2048
+
+    /// Number of latent frames produced by the VAE for `duration` seconds of
+    /// audio at `audioSampleRate`. Must match `MusicPipeline.latentFrames` so
+    /// that `contextLatents` and the diffusion noisy latent share a sequence
+    /// dimension and can be concatenated along the channel axis in DiTModel.
+    static func latentFrames(forDuration duration: TimeInterval) -> Int {
+        Int(ceil(Double(audioSampleRate) * duration / Double(vaeHopLength)))
+    }
 
     public init(
         vae: VAEActor,
@@ -62,12 +74,17 @@ public actor ConditioningActor {
             timbreTokens: timbreTokens
         )
 
-        let tFrames = Int(Float(duration) * Self.latentFrameRate)
+        // tFrames must match the noisy-latent sequence length built by
+        // DiffusionActor.generate (which uses MusicPipeline.latentFrames).
+        // Both compute ceil(sampleRate * duration / hopLength) so the
+        // [contextLatents, hiddenStates] concat in DiTModel.callAsFunction
+        // has matching seq dims.
+        let tFrames = Self.latentFrames(forDuration: duration)
         let contextLatents: MLXArray
         if referenceAudio != nil {
             // Use the already-prepared (padded/truncated) referenceLatents
             let chunkMask = MLXArray.ones(referenceLatents.shape).asType(precision.mlxDtype)
-            contextLatents = concatenated([referenceLatents, chunkMask], axis: -1)  // [B, 750, 128]
+            contextLatents = concatenated([referenceLatents, chunkMask], axis: -1)
         } else {
             contextLatents = MLXArray.zeros([1, tFrames, 128])
         }
