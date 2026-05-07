@@ -113,9 +113,23 @@ final class AppState: ObservableObject {
             sfxObserver.cancel()
         }
 
-        // Then download LLM if needed
+        // Then download LLM if needed. Skip when the model is already on
+        // disk OR a download is currently in progress. Previously this
+        // checked `downloadState == .idle`, which both (a) failed to skip
+        // the trigger when files were already on disk (post-init state is
+        // .idle), and (b) skipped retries after a failure (state is .error
+        // after failure, not .idle, so retry from MainShellView's onRetry
+        // hit nothing).
         let defaultLLM = LLMModelManager.defaultModels.first
-        if let spec = defaultLLM, llmManager.downloadState == .idle {
+        let llmIsDownloading: Bool
+        if case .downloading = llmManager.downloadState {
+            llmIsDownloading = true
+        } else {
+            llmIsDownloading = false
+        }
+        if let spec = defaultLLM,
+           !llmIsDownloading,
+           !llmManager.isModelDownloaded(spec) {
             backgroundDownloadPhase = .downloading(modelName: "Lyric Writer", progress: 0)
 
             // Observe LLM progress and relay to background phase

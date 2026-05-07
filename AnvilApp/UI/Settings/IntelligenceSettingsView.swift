@@ -33,7 +33,12 @@ struct IntelligenceSettingsView: View {
 
                     Spacer()
 
-                    if modelManager.activeModel?.id == spec.id {
+                    // Green checkmark = model is BOTH active AND fully on disk.
+                    // Was previously gated only on activeModel ID, which
+                    // could show the check while a re-download was in flight
+                    // or after files were partially deleted.
+                    if modelManager.activeModel?.id == spec.id
+                        && modelManager.isModelDownloaded(spec) {
                         Image(systemName: "checkmark.circle.fill")
                             .foregroundStyle(.green)
                     }

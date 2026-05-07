@@ -77,6 +77,15 @@ final class LLMModelManager: ObservableObject {
             self.activeModel = availableModels.first { $0.id == activeID }
         }
 
+        // Drop the persisted active selection if its files aren't actually on
+        // disk — otherwise the UI shows a stale "active" indicator while a
+        // re-download is in flight or after the model was partially deleted.
+        // The user can reactivate after the download completes.
+        if let active = activeModel, !isModelDownloaded(active) {
+            self.activeModel = nil
+            UserDefaults.standard.removeObject(forKey: activeModelKey)
+        }
+
         // Create actor if active model is already downloaded
         if let active = activeModel, isModelDownloaded(active) {
             let path = modelsDirectory.appendingPathComponent(active.id)
@@ -158,13 +167,31 @@ final class LLMModelManager: ObservableObject {
         return FileManager.default.fileExists(atPath: path.path) ? path : nil
     }
 
-    /// Checks whether a model has been downloaded (config.json + tokenizer.json present).
+    /// Checks whether a model is fully downloaded — config.json, tokenizer.json,
+    /// AND at least one .safetensors body file are all present.
+    ///
+    /// Previously this only checked the two metadata files, which complete in
+    /// the first ~20% of a download (3 small JSON files). The 1.8 GB+ model
+    /// body would still be in flight, but `isModelDownloaded` returned true,
+    /// so the UI showed the model as ready and the auto-download skip logic
+    /// thought it didn't need to run. Now we require an actual safetensors
+    /// body file (single or sharded) to be on disk.
     func isModelDownloaded(_ spec: LLMModelSpec) -> Bool {
         let dir = modelsDirectory.appendingPathComponent(spec.id)
         let fm = FileManager.default
-        let hasConfig = fm.fileExists(atPath: dir.appendingPathComponent("config.json").path)
-        let hasTokenizer = fm.fileExists(atPath: dir.appendingPathComponent("tokenizer.json").path)
-        return hasConfig && hasTokenizer
+        let hasConfig = fm.fileExists(atPath: dir.appendingPathComponent("config.json").path(percentEncoded: false))
+        let hasTokenizer = fm.fileExists(atPath: dir.appendingPathComponent("tokenizer.json").path(percentEncoded: false))
+        guard hasConfig, hasTokenizer else { return false }
+
+        // Look for any *.safetensors file in the model dir. Single-file models
+        // produce `model.safetensors`; sharded models produce
+        // `model-00001-of-NNNNN.safetensors` etc. (downloadFile only writes
+        // the destination after a successful complete transfer, so any
+        // present .safetensors file is fully downloaded).
+        guard let entries = try? fm.contentsOfDirectory(atPath: dir.path(percentEncoded: false)) else {
+            return false
+        }
+        return entries.contains { $0.hasSuffix(".safetensors") }
     }
 
     /// Validates and adds a custom model from a HuggingFace repo ID.
