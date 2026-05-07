@@ -305,9 +305,17 @@ public class DiTLayer: Module {
         )
         h = h + attnOut * gateMSA
 
-        normed = crossAttnNorm(h)
+        // Cross-attention takes RAW hidden_states (no pre-norm). Upstream's
+        // LinearTransformerBlock.forward (acestep/models/attention.py:308–315)
+        // passes `hidden_states` directly into `self.cross_attn(...)`, then
+        // adds the output residually. We previously applied an extra
+        // `crossAttnNorm` that has no corresponding tensor in the upstream
+        // weights file — its gamma defaulted to whatever RMSNorm initializes,
+        // and the rescaling killed the queries' magnitude before cross-attn,
+        // which made the conditional prediction barely differ from the noise
+        // input (vt ≈ xt → x0_pred ≈ 0 → static after VAE decode).
         let crossOut = crossAttn(
-            hiddenStates: normed, positionCosSin: nil,
+            hiddenStates: h, positionCosSin: nil,
             attentionMask: encoderAttentionMask,
             encoderHiddenStates: encoderHiddenStates,
             cache: cache, useCache: useCache
