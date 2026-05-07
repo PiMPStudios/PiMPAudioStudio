@@ -66,7 +66,7 @@ public actor DiffusionActor {
 
             let xIn = doCFG ? concatenated([xt, xt], axis: 0) : xt
 
-            let (vt, _) = await dit.step(
+            let (vt, _) = try await dit.step(
                 noisyLatents: xIn,
                 timestep: currentT,
                 timestepR: currentT,
@@ -133,16 +133,16 @@ public actor DiffusionActor {
 
     // MARK: - LoRA
 
-    public func injectLoRA(config: LoRAConfig) async -> [String] {
-        await dit.injectLoRA(config: config)
+    public func injectLoRA(config: LoRAConfig) async throws -> [String] {
+        try await dit.injectLoRA(config: config)
     }
 
     public func removeLoRA() async {
         await dit.removeLoRA()
     }
 
-    public func loadLoRAWeights(_ weights: [(String, MLXArray)], adapterID: String) async {
-        await dit.loadLoRAWeights(weights, adapterID: adapterID)
+    public func loadLoRAWeights(_ weights: [(String, MLXArray)], adapterID: String) async throws {
+        try await dit.loadLoRAWeights(weights, adapterID: adapterID)
     }
 
     public var injectedAdapterID: String? {
@@ -153,8 +153,8 @@ public actor DiffusionActor {
         samples: [TrainingSample],
         config: LoRAConfig,
         onProgress: @escaping (TrainingProgress) -> Void
-    ) async -> (weights: [(String, MLXArray)], finalLoss: Float?) {
-        await dit.trainLoRA(samples: samples, config: config, onProgress: onProgress)
+    ) async throws -> (weights: [(String, MLXArray)], finalLoss: Float?) {
+        try await dit.trainLoRA(samples: samples, config: config, onProgress: onProgress)
     }
 
     public func cancelTraining() async {
@@ -202,7 +202,7 @@ public actor DiffusionActor {
 
             let xIn = doCFG ? concatenated([xt, xt], axis: 0) : xt
 
-            let (vt, _) = await dit.step(
+            let (vt, _) = try await dit.step(
                 noisyLatents: xIn,
                 timestep: currentT,
                 timestepR: currentT,

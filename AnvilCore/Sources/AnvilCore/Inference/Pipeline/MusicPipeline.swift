@@ -52,16 +52,16 @@ public actor MusicPipeline {
 
     // MARK: - LoRA
 
-    public func injectLoRA(config: LoRAConfig) async -> [String] {
-        await diffusion.injectLoRA(config: config)
+    public func injectLoRA(config: LoRAConfig) async throws -> [String] {
+        try await diffusion.injectLoRA(config: config)
     }
 
     public func removeLoRA() async {
         await diffusion.removeLoRA()
     }
 
-    public func loadLoRAWeights(_ weights: [(String, MLXArray)], adapterID: String) async {
-        await diffusion.loadLoRAWeights(weights, adapterID: adapterID)
+    public func loadLoRAWeights(_ weights: [(String, MLXArray)], adapterID: String) async throws {
+        try await diffusion.loadLoRAWeights(weights, adapterID: adapterID)
     }
 
     public var injectedAdapterID: String? {
@@ -78,8 +78,8 @@ public actor MusicPipeline {
         samples: [TrainingSample],
         config: LoRAConfig,
         onProgress: @escaping @Sendable (TrainingProgress) -> Void
-    ) async -> (weights: [(String, MLXArray)], finalLoss: Float?) {
-        await diffusion.trainLoRA(samples: samples, config: config, onProgress: onProgress)
+    ) async throws -> (weights: [(String, MLXArray)], finalLoss: Float?) {
+        try await diffusion.trainLoRA(samples: samples, config: config, onProgress: onProgress)
     }
 
     /// Cancel ongoing training cooperatively.

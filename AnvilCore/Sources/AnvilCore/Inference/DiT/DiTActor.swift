@@ -2,6 +2,14 @@ import Foundation
 import MLX
 import MLXNN
 
+public enum DiTActorError: Error, LocalizedError, Sendable {
+    case weightsNotLoaded
+
+    public var errorDescription: String? {
+        "DiT model weights are not loaded. Please wait for model loading to complete."
+    }
+}
+
 public actor DiTActor {
     private var decoder: DiTDecoder?
     private let decoderFactory: () -> DiTDecoder
@@ -21,9 +29,9 @@ public actor DiTActor {
         encoderAttentionMask: MLXArray?,
         cache: CrossAttentionCache?,
         useCache: Bool
-    ) -> (output: MLXArray, cache: CrossAttentionCache?) {
+    ) throws -> (output: MLXArray, cache: CrossAttentionCache?) {
         guard let decoder else {
-            fatalError("DiTActor.step called without loaded weights")
+            throw DiTActorError.weightsNotLoaded
         }
         let batchSize = noisyLatents.shape[0]
         let tArray = MLXArray.full([batchSize], values: MLXArray(timestep))
@@ -69,9 +77,9 @@ public actor DiTActor {
     private var activeTrainer: LoRATrainer?
 
     /// Inject LoRA adapter layers into the DiT decoder.
-    public func injectLoRA(config: LoRAConfig) -> [String] {
+    public func injectLoRA(config: LoRAConfig) throws -> [String] {
         guard let decoder else {
-            fatalError("DiTActor.injectLoRA called without loaded weights")
+            throw DiTActorError.weightsNotLoaded
         }
         let paths = LoRAInjector.inject(model: decoder, config: config)
         injectedPaths = paths
@@ -87,9 +95,9 @@ public actor DiTActor {
     }
 
     /// Load LoRA weights into already-injected layers.
-    public func loadLoRAWeights(_ weights: [(String, MLXArray)], adapterID: String) {
+    public func loadLoRAWeights(_ weights: [(String, MLXArray)], adapterID: String) throws {
         guard let decoder else {
-            fatalError("DiTActor.loadLoRAWeights called without loaded weights")
+            throw DiTActorError.weightsNotLoaded
         }
         LoRAInjector.loadWeights(model: decoder, paths: injectedPaths, weights: weights)
         eval(decoder.parameters())
@@ -101,9 +109,9 @@ public actor DiTActor {
         samples: [TrainingSample],
         config: LoRAConfig,
         onProgress: @escaping (TrainingProgress) -> Void
-    ) -> (weights: [(String, MLXArray)], finalLoss: Float?) {
+    ) throws -> (weights: [(String, MLXArray)], finalLoss: Float?) {
         guard let decoder else {
-            fatalError("DiTActor.trainLoRA called without loaded weights")
+            throw DiTActorError.weightsNotLoaded
         }
         // Inject, train, extract, remove
         let paths = LoRAInjector.inject(model: decoder, config: config)
