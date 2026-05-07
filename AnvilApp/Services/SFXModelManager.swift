@@ -192,6 +192,14 @@ final class SFXModelManager: ObservableObject {
         self.pipeline = sfxPipeline
     }
 
+    /// Release the in-memory SFX pipeline, freeing GPU memory.
+    /// The downloaded model files remain on disk and can be reloaded via loadPipeline().
+    func unloadPipeline() {
+        pipeline = nil
+        tokenizer = nil
+        loadedModelID = nil
+    }
+
     func deleteWeights() {
         try? FileManager.default.removeItem(at: modelPath)
         downloadState = .notDownloaded

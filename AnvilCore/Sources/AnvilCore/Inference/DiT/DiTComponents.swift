@@ -7,28 +7,22 @@ import MLXFast
 
 public class RotaryEmbedding: Module {
     let headDim: Int
-    let maxLen: Int
-    let cosTable: MLXArray
-    let sinTable: MLXArray
+    private let invFreq: MLXArray
 
     public init(headDim: Int, maxLen: Int = 32768, base: Float = 1_000_000.0) {
         self.headDim = headDim
-        self.maxLen = maxLen
-
-        let invFreq = 1.0 / pow(
+        self.invFreq = 1.0 / pow(
             MLXArray(base),
             MLXArray(stride(from: 0, to: headDim, by: 2).map { Float($0) / Float(headDim) })
         )
-        let positions = MLXArray(Array(0..<maxLen).map { Float($0) })
-        let freqs = positions.expandedDimensions(axis: 1) * invFreq.expandedDimensions(axis: 0)
-        let freqsFull = concatenated([freqs, freqs], axis: 1)
-        self.cosTable = cos(freqsFull)
-        self.sinTable = sin(freqsFull)
     }
 
     public func forward(seqLen: Int) -> (cos: MLXArray, sin: MLXArray) {
-        let c = cosTable[0..<seqLen].reshaped([1, 1, seqLen, headDim])
-        let s = sinTable[0..<seqLen].reshaped([1, 1, seqLen, headDim])
+        let positions = MLXArray(Array(0..<seqLen).map { Float($0) })
+        let freqs = positions.expandedDimensions(axis: 1) * invFreq.expandedDimensions(axis: 0)
+        let freqsFull = concatenated([freqs, freqs], axis: 1)
+        let c = cos(freqsFull).reshaped([1, 1, seqLen, headDim])
+        let s = sin(freqsFull).reshaped([1, 1, seqLen, headDim])
         return (c, s)
     }
 }
