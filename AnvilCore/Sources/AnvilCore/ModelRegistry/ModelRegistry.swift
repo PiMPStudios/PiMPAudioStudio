@@ -21,34 +21,44 @@ public actor ModelRegistry {
     public static let builtInSpecs: [ModelSpec] = [
         ModelSpec(
             id: "ace-step-dit",
+            displayName: "ACE-Step DiT (placeholder)",
             huggingFaceRepo: "ACEStep/ACE-Step-v1-5-DiT",
-            files: ["model.safetensors", "tokenizer.json", "config.json"],
-            sizeBytes: 3_200_000_000,
-            sha256: [:],
+            files: [
+                ModelFileSpec(remotePath: "model.safetensors", sizeBytes: 3_000_000_000),
+                ModelFileSpec(remotePath: "tokenizer.json", sizeBytes: 11_000_000),
+                ModelFileSpec(remotePath: "config.json", sizeBytes: 2_000)
+            ],
             category: .aceStepDiT
         ),
         ModelSpec(
             id: "ace-step-vae",
+            displayName: "ACE-Step VAE (placeholder)",
             huggingFaceRepo: "ACEStep/ACE-Step-v1-5-VAE",
-            files: ["vae.safetensors", "config.json"],
-            sizeBytes: 800_000_000,
-            sha256: [:],
+            files: [
+                ModelFileSpec(remotePath: "vae.safetensors", sizeBytes: 800_000_000),
+                ModelFileSpec(remotePath: "config.json", sizeBytes: 500)
+            ],
             category: .aceStepVAE
         ),
         ModelSpec(
             id: "stable-audio-open",
+            displayName: "Stable Audio Open 1.0 (placeholder)",
             huggingFaceRepo: "stabilityai/stable-audio-open-1.0",
-            files: ["model.safetensors", "config.json"],
-            sizeBytes: 1_200_000_000,
-            sha256: [:],
+            files: [
+                ModelFileSpec(remotePath: "model.safetensors", sizeBytes: 1_200_000_000),
+                ModelFileSpec(remotePath: "config.json", sizeBytes: 4_000)
+            ],
             category: .stableAudio
         ),
         ModelSpec(
             id: "lyric-llm",
+            displayName: "Phi-3 Mini 4k Instruct",
             huggingFaceRepo: "microsoft/Phi-3-mini-4k-instruct",
-            files: ["model.safetensors", "tokenizer.json", "config.json"],
-            sizeBytes: 2_400_000_000,
-            sha256: [:],
+            files: [
+                ModelFileSpec(remotePath: "model.safetensors", sizeBytes: 2_400_000_000),
+                ModelFileSpec(remotePath: "tokenizer.json", sizeBytes: 2_000_000),
+                ModelFileSpec(remotePath: "config.json", sizeBytes: 1_000)
+            ],
             category: .lyricLLM
         ),
     ]
@@ -106,9 +116,9 @@ public actor ModelRegistry {
         guard let spec = allSpecs.first(where: { $0.id == modelID }) else {
             return .failed("Unknown model: \(modelID)")
         }
-        let allFilesExist = spec.files.allSatisfy { file in
+        let allFilesExist = spec.files.allSatisfy { fileSpec in
             FileManager.default.fileExists(
-                atPath: spec.localPath(for: file, base: baseDirectory).path()
+                atPath: spec.localPath(for: fileSpec.localName, base: baseDirectory).path()
             )
         }
         return allFilesExist ? .ready : .notDownloaded
@@ -133,24 +143,24 @@ public actor ModelRegistry {
             guard status(for: spec.id) != .ready else { continue }
             statuses[spec.id] = .downloading(progress: 0)
 
-            for file in spec.files {
-                let destination = spec.localPath(for: file, base: baseDirectory)
-                let expectedHash = spec.sha256[file]
+            for fileSpec in spec.files {
+                let destination = spec.localPath(for: fileSpec.localName, base: baseDirectory)
 
                 do {
                     try await client.downloadAndVerify(
                         repo: spec.huggingFaceRepo,
-                        file: file,
+                        file: fileSpec.remotePath,
                         to: destination,
-                        expectedHash: expectedHash,
+                        expectedHash: fileSpec.sha256,
+                        bearerToken: nil,
                         onProgress: { [id = spec.id] progress in
                             Task { [weak self] in
                                 await self?.setStatus(id, to: .downloading(progress: progress))
                             }
                             onProgress(id, progress)
                         },
-                        onRetry: { [id = spec.id] in
-                            logger.warning("Verification failed for \(file) in \(id), retrying...")
+                        onRetry: { [id = spec.id, remote = fileSpec.remotePath] in
+                            logger.warning("Verification failed for \(remote) in \(id), retrying...")
                         }
                     )
                 } catch {
