@@ -53,8 +53,9 @@ final class GenerationService: ObservableObject {
             }
 
             do {
+                let usesStableAudio = self.shouldUseStableAudio(request: request)
                 let audioResult: AudioResult
-                if self.shouldUseStableAudio(request: request) {
+                if usesStableAudio {
                     audioResult = try await self.runSFX(request: request)
                 } else {
                     await self.loraCoordinator.ensureAdapter(selectedID: self.selectedAdapterID)
@@ -83,7 +84,7 @@ final class GenerationService: ObservableObject {
                     guidanceScale: request.guidanceScale,
                     precision: request.precision.rawValue,
                     fileName: fileName,
-                    pipeline: nil,
+                    pipeline: usesStableAudio ? "stableAudio" : "aceStep",
                     originalPrompt: nil
                 )
 
