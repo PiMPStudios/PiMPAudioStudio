@@ -66,23 +66,27 @@ public actor DownloadClient {
         let url = huggingFaceURL(repo: repo, file: file)
         let delegate = DownloadProgressDelegate(onProgress: onProgress)
         let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
-        defer { session.invalidateAndCancel() }
 
-        let (tempURL, response) = try await session.download(from: url)
+        try await withTaskCancellationHandler {
+            defer { session.invalidateAndCancel() }
+            let (tempURL, response) = try await session.download(from: url)
 
-        guard let httpResponse = response as? HTTPURLResponse,
-              (200...299).contains(httpResponse.statusCode) else {
-            throw DownloadError.httpError(
-                statusCode: (response as? HTTPURLResponse)?.statusCode ?? -1
-            )
+            guard let httpResponse = response as? HTTPURLResponse,
+                  (200...299).contains(httpResponse.statusCode) else {
+                throw DownloadError.httpError(
+                    statusCode: (response as? HTTPURLResponse)?.statusCode ?? -1
+                )
+            }
+
+            let destDir = destination.deletingLastPathComponent()
+            try FileManager.default.createDirectory(at: destDir, withIntermediateDirectories: true)
+            if FileManager.default.fileExists(atPath: destination.path()) {
+                try FileManager.default.removeItem(at: destination)
+            }
+            try FileManager.default.moveItem(at: tempURL, to: destination)
+        } onCancel: {
+            session.invalidateAndCancel()
         }
-
-        let destDir = destination.deletingLastPathComponent()
-        try FileManager.default.createDirectory(at: destDir, withIntermediateDirectories: true)
-        if FileManager.default.fileExists(atPath: destination.path()) {
-            try FileManager.default.removeItem(at: destination)
-        }
-        try FileManager.default.moveItem(at: tempURL, to: destination)
     }
 
     public nonisolated func verifySHA256(file: URL, expected: String) async -> Bool {
