@@ -123,9 +123,9 @@ final class SFXModelManager: ObservableObject {
             resolvedModelPath = dir
 
             // Check if model files exist at new location
-            let hasFiles = spec.files.allSatisfy { file in
+            let hasFiles = spec.files.allSatisfy { fileSpec in
                 FileManager.default.fileExists(
-                    atPath: dir.appending(path: file).path()
+                    atPath: dir.appending(path: fileSpec.localName).path()
                 )
             }
 

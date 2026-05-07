@@ -66,7 +66,7 @@ struct FirstLaunchView: View {
     }
 
     private var totalSizeLabel: some View {
-        let totalBytes = essentialSpecs.reduce(Int64(0)) { $0 + $1.sizeBytes }
+        let totalBytes = essentialSpecs.reduce(Int64(0)) { $0 + $1.totalSizeBytes }
         let totalGB = Double(totalBytes) / 1_000_000_000
         return Text("Total download: \(String(format: "%.1f", totalGB)) GB — this only happens once.")
             .font(.caption)

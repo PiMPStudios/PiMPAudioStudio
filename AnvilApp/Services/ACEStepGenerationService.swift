@@ -166,8 +166,7 @@ final class ACEStepGenerationService {
         currentlyLoadedVAEModelID = nil
 
         do {
-            let vaeFile = spec.files.first(where: { $0.contains("vae") }) ?? "vae.safetensors"
-            let weightsPath = spec.localPath(for: vaeFile, base: baseDir)
+            let weightsPath = spec.localPath(for: "vae.safetensors", base: baseDir)
             let rawWeights = try await weightConverter.loadSafetensors(from: weightsPath)
             let weights = try await weightConverter.convertVAEWeights(stateDict: rawWeights)
             await pipeline.loadVAEWeights(weights, modelID: spec.id)

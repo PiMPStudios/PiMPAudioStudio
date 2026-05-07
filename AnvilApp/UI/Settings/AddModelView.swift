@@ -79,7 +79,7 @@ struct AddModelView: View {
                 }
 
                 let expectedFiles = expectedFiles(for: selectedCategory)
-                var totalSize: Int64 = 0
+                var fileSpecs: [ModelFileSpec] = []
 
                 for file in expectedFiles {
                     let urlString = "https://huggingface.co/\(trimmed)/resolve/main/\(file)"
@@ -101,10 +101,12 @@ struct AddModelView: View {
 
                     switch http.statusCode {
                     case 200:
+                        var fileSize: Int64 = 0
                         if let contentLength = http.value(forHTTPHeaderField: "Content-Length"),
                            let size = Int64(contentLength) {
-                            totalSize += size
+                            fileSize = size
                         }
+                        fileSpecs.append(ModelFileSpec(remotePath: file, sizeBytes: fileSize))
                     case 401, 403:
                         validationError = "This repository is private or gated. Only public repositories are supported for now."
                         isValidating = false
@@ -123,9 +125,9 @@ struct AddModelView: View {
                 let id = trimmed.replacingOccurrences(of: "/", with: "-").lowercased()
                 let spec = ModelSpec(
                     id: id,
+                    displayName: trimmed,
                     huggingFaceRepo: trimmed,
-                    files: expectedFiles,
-                    sizeBytes: totalSize > 0 ? totalSize : 1_000_000_000,
+                    files: fileSpecs,
                     category: selectedCategory
                 )
 
