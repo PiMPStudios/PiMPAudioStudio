@@ -87,8 +87,22 @@ public actor DownloadClient {
 
     public nonisolated func verifySHA256(file: URL, expected: String) async -> Bool {
         await Task.detached(priority: .userInitiated) {
-            guard let data = try? Data(contentsOf: file) else { return false }
-            let digest = SHA256.hash(data: data)
+            guard let handle = try? FileHandle(forReadingFrom: file) else { return false }
+            defer { try? handle.close() }
+
+            var hasher = SHA256()
+            let bufferSize = 1_024 * 1_024  // 1 MB chunks
+
+            while true {
+                let chunk: Data? = autoreleasepool {
+                    let data = handle.readData(ofLength: bufferSize)
+                    return data.isEmpty ? nil : data
+                }
+                guard let chunk else { break }
+                hasher.update(data: chunk)
+            }
+
+            let digest = hasher.finalize()
             let hex = digest.map { String(format: "%02x", $0) }.joined()
             return hex == expected.lowercased()
         }.value
