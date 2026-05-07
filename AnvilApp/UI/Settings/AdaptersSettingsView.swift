@@ -8,7 +8,6 @@ struct AdaptersSettingsView: View {
     }
 
     @State private var selectedTab: Tab = .myAdapters
-    @StateObject private var communityService = CommunityService()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -30,7 +29,7 @@ struct AdaptersSettingsView: View {
             case .myAdapters:
                 MyAdaptersListView()
             case .community:
-                CommunityBrowserView(service: communityService)
+                CommunityBrowserView()
             }
         }
     }

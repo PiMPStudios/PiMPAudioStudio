@@ -96,7 +96,7 @@ public class LoRALinear: Linear {
             var out = baseOut
             for contribution in contributions where contribution.strength != 0.0 {
                 let loraOut = matmul(matmul(x, contribution.loraA.T), contribution.loraB.T)
-                out = out + MLXArray(contribution.strength) * loraOut
+                out = out + MLXArray(contribution.strength * scaling) * loraOut
             }
             return out
         }

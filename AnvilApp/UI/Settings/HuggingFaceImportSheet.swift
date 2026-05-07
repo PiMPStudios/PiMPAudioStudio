@@ -8,9 +8,7 @@ struct HuggingFaceImportSheet: View {
     @State private var repoURLText = ""
     @State private var fetchedAdapter: LoRAAdapter?
     @State private var isFetching = false
-    @State private var isDownloading = false
     @State private var fetchError: String?
-    @State private var downloadError: String?
     @State private var downloadComplete = false
 
     // The currently active installed base model category (nil if unknown).
@@ -30,9 +28,6 @@ struct HuggingFaceImportSheet: View {
                     }
                     if let adapter = fetchedAdapter {
                         previewSection(adapter)
-                        if let downloadErr = downloadError {
-                            errorView(downloadErr)
-                        }
                     }
                 }
                 .padding(16)
@@ -167,14 +162,14 @@ struct HuggingFaceImportSheet: View {
                 Button("Done") { dismiss() }
                     .buttonStyle(.borderedProminent)
             } else {
-                if isDownloading {
+                if isFetching {
                     ProgressView().controlSize(.small)
                 }
-                Button("Download") {
-                    downloadAdapter()
+                Button("Import") {
+                    fetchMetadata()
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(fetchedAdapter == nil || isDownloading)
+                .disabled(repoURLText.trimmingCharacters(in: .whitespaces).isEmpty || isFetching)
             }
         }
         .padding(16)
@@ -190,7 +185,6 @@ struct HuggingFaceImportSheet: View {
         }
         fetchError = nil
         fetchedAdapter = nil
-        downloadError = nil
         downloadComplete = false
         isFetching = true
 
@@ -206,23 +200,6 @@ struct HuggingFaceImportSheet: View {
         }
     }
 
-    private func downloadAdapter() {
-        guard let url = URL(string: repoURLText.trimmingCharacters(in: .whitespaces)) else {
-            return
-        }
-        downloadError = nil
-        isDownloading = true
-
-        Task {
-            do {
-                _ = try await service.importFromHuggingFace(repoURL: url)
-                downloadComplete = true
-            } catch {
-                downloadError = error.localizedDescription
-            }
-            isDownloading = false
-        }
-    }
 }
 
 // MARK: - Helpers
