@@ -59,6 +59,25 @@ public actor ModelRegistry {
             variantFamily: "ace-step-1.5"
         ),
         ModelSpec(
+            id: "ace-step-dit-sft",
+            displayName: "ACE-Step v1.5 SFT",
+            huggingFaceRepo: "ACE-Step/acestep-v15-sft",
+            files: [
+                ModelFileSpec(
+                    remotePath: "model.safetensors",
+                    localName: "model.safetensors",
+                    sizeBytes: 4_787_825_604
+                ),
+                ModelFileSpec(
+                    remotePath: "config.json",
+                    localName: "config.json",
+                    sizeBytes: 1_940
+                )
+            ],
+            category: .aceStepDiT,
+            variantFamily: "ace-step-1.5"
+        ),
+        ModelSpec(
             id: "ace-step-vae",
             displayName: "ACE-Step VAE + Text Encoder",
             huggingFaceRepo: "ACE-Step/Ace-Step1.5",

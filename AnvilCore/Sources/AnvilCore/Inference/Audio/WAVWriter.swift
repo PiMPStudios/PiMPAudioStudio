@@ -38,7 +38,22 @@ public struct WAVWriter {
             assertionFailure("WAVWriter received samples of unexpected rank \(samples.ndim)")
         }
 
-        let clamped = clip(normalized, min: -1.0, max: 1.0)
+        // The MLX AutoencoderOobleck VAE often produces audio samples that
+        // exceed the [-1, 1] range (we've observed peaks ~1.15 for Turbo
+        // and ~1.78 for the Full DiT variant). Hard-clipping to [-1, 1]
+        // produces audible distortion — sounds like sizzle or harshness on
+        // top of the actual music. Upstream sidesteps this by writing
+        // 32-bit float WAVs, but we want compatible 16-bit PCM output.
+        //
+        // Peak-normalize when the peak exceeds 1.0 so the loudest sample
+        // lands exactly at 1.0. When the peak is already ≤ 1.0 the scale
+        // factor is 1.0 (no-op). This preserves the waveform shape exactly
+        // — only the absolute loudness changes, and only when the source
+        // would have clipped.
+        let absMax = MLX.abs(normalized).max().item(Float.self)
+        let scale: Float = absMax > 1.0 ? (1.0 / absMax) : 1.0
+        let leveled = scale != 1.0 ? normalized * scale : normalized
+        let clamped = clip(leveled, min: -1.0, max: 1.0)
         let scaled = (clamped * Float(32767)).asType(.int16)
         eval(scaled)
 
