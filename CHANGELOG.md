@@ -4,6 +4,32 @@ All notable changes to AnvilApp are documented here.
 
 ---
 
+## [Unreleased] — Phase 10c: Community Sharing + Multi-Adapter Stacking
+
+### Added
+
+- **Community Adapter Browser** (`CommunityBrowserView.swift`) — App Store-like interface for discovering community-shared adapters; fetches curated manifest from GitHub (`PiMPStudios/anvil-adapters`); shows name, author, description, tags, rank/category badges; inline download with circular progress; category filter + search; pull-to-refresh with 1hr cache TTL
+- **HuggingFace Import** (`HuggingFaceImportSheet.swift`) — modal for importing any adapter from a HuggingFace repo URL; validates adapter.json + adapter.safetensors at repo root; shows preview with compatibility warning for category mismatch
+- **CommunityService** (`CommunityService.swift`) — manages manifest fetch, adapter downloads (max 3 concurrent, auto-retry), and HF imports; tracks download state per adapter; 1hr manifest cache
+- **Multi-Adapter Stacking** (`AdapterStackView.swift`) — stacking controls below primary AdapterPicker; per-adapter strength sliders (0.0–1.0, step 0.05); total strength display; picker sheet filtered to compatible available adapters; max 3 simultaneous adapters
+- **AdapterStackManager** (`AdapterStackManager.swift`) — runtime state for primary + 2 additional adapters with strength; promotion-on-delete logic; capacity enforcement; stack save/restore during training
+- **LoRAContribution** (`LoRAContribution.swift`) — per-layer data type holding adapterID, displayName, source, loraA/loraB matrices, and strength for multi-adapter forward pass
+- **CommunityAdapter + AdapterManifest** (`CommunityAdapter.swift`) — Codable types for the curated manifest format; includes author, tags, featured flag, minAppVersion, downloadCount
+- **AdapterSource enum** (`AdapterSource.swift`) — `.local`, `.community`, `.huggingface` provenance tracking for adapters
+- **LoRAInjector stacking methods** — `addContribution`, `clearContributions`, `setStrength`, `removeContribution` for per-layer multi-adapter management
+
+### Changed
+
+- **LoRALinear** — three-path forward pass: (1) training mode (single adapter + dropout), (2) inference stacking (contributions array with per-adapter strength × scaling), (3) legacy single-adapter backward compat
+- **LoRAAdapter** — added `source: AdapterSource` (defaults to `.local` for backward compat via `decodeIfPresent`) and `remoteRepoURL: URL?` for HuggingFace-sourced adapters
+- **AdaptersSettingsView** — segmented control with "My Adapters" / "Community" tabs; source badges for non-local adapters; updated empty state to reference Community tab
+- **TrainingService** — clears adapter stack before training starts, restores after completion (prevents multi-adapter interference with single-adapter training mode)
+- **GenerateView** — integrates AdapterStackView below primary AdapterPicker when stacking is active
+- Design spec: `docs/superpowers/specs/2026-05-06-phase10c-community-stacking.md`
+- Implementation plan: `docs/superpowers/plans/2026-05-06-phase10c-community-stacking.md`
+
+---
+
 ## [Unreleased] — Phase 10b: Advanced LoRA
 
 ### Added
