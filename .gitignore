@@ -10,6 +10,9 @@ DerivedData/
 # macOS
 .DS_Store
 
+# Superpowers (agent workspace state)
+.superpowers/
+
 # Models (never commit weights)
 *.safetensors
 *.bin
