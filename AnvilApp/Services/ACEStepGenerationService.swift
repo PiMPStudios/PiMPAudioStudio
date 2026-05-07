@@ -76,12 +76,19 @@ final class ACEStepGenerationService {
                     // variant. Turbo is trained for 8 steps; Full (base) and
                     // SFT need ~50 steps to converge to good quality. Running
                     // Full or SFT at 8 steps produces unstable / noisy output.
+                    // The user can override via Advanced settings.
                     let loadedDiTID = currentlyLoadedDiTModelID ?? ""
-                    let inferSteps: Int = loadedDiTID.contains("turbo") ? 8 : 50
+                    let autoSteps: Int = loadedDiTID.contains("turbo") ? 8 : 50
+                    let inferSteps: Int = request.stepsOverride ?? autoSteps
+
+                    // Shift defaults to the upstream MLX-handler value (3.0).
+                    // Honor user override when present.
+                    let shift: Float = request.shiftOverride ?? 3.0
 
                     let config = DiffusionConfig(
                         seed: request.seed,
                         method: request.method,
+                        shift: shift,
                         steps: inferSteps,
                         guidanceScale: effectiveGuidance,
                         precision: request.precision

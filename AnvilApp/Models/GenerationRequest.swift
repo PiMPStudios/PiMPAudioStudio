@@ -10,6 +10,8 @@ struct GenerationRequest: Sendable {
     let method: InferMethod
     let guidanceScale: Float
     let precision: Precision
+    let stepsOverride: Int?
+    let shiftOverride: Float?
     let resolvedMode: GenerationMode
     let pipelineOverride: PipelineChoice
 
@@ -22,6 +24,8 @@ struct GenerationRequest: Sendable {
         method: InferMethod = .ode,
         guidanceScale: Float = 1.0,
         precision: Precision = .float16,
+        stepsOverride: Int? = nil,
+        shiftOverride: Float? = nil,
         resolvedMode: GenerationMode = .music,
         pipelineOverride: PipelineChoice = .auto
     ) {
@@ -33,6 +37,8 @@ struct GenerationRequest: Sendable {
         self.method = method
         self.guidanceScale = guidanceScale
         self.precision = precision
+        self.stepsOverride = stepsOverride
+        self.shiftOverride = shiftOverride
         self.resolvedMode = resolvedMode
         self.pipelineOverride = pipelineOverride
     }

@@ -17,6 +17,9 @@ struct GenerateView: View {
     @State private var guidanceScale: Double = 7.5
     @State private var method: InferMethod = .ode
     @State private var precision: Precision = .float16
+    @State private var stepsOverrideText: String = ""
+    @State private var shiftOverride: Double = 3.0
+    @State private var advancedExpanded: Bool = false
     @State private var modeSelection: ModeSelection = .auto
     @State private var pipelineOverride: PipelineChoice = .auto
     @State private var selectedAdapterID: String?
@@ -29,6 +32,7 @@ struct GenerateView: View {
                 promptSection
                 lyricsSection
                 controlsBar
+                advancedSection
                 adapterPickerSection
                 progressSection
                 playerSection
@@ -170,6 +174,8 @@ struct GenerateView: View {
                     method: method,
                     guidanceScale: Float(guidanceScale),
                     precision: precision,
+                    stepsOverride: Int(stepsOverrideText.trimmingCharacters(in: .whitespacesAndNewlines)),
+                    shiftOverride: Float(shiftOverride),
                     resolvedMode: resolvedMode,
                     pipelineOverride: pipelineOverride
                 )
@@ -219,6 +225,69 @@ struct GenerateView: View {
                     activeModelCategory: .aceStepDiT
                 )
             }
+        }
+    }
+
+    private var advancedSection: some View {
+        DisclosureGroup(isExpanded: $advancedExpanded) {
+            VStack(alignment: .leading, spacing: 12) {
+                // Precision
+                HStack {
+                    Text("Precision")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 80, alignment: .leading)
+                    Picker("", selection: $precision) {
+                        ForEach(Precision.allCases, id: \.self) { p in
+                            Text(p.rawValue).tag(p)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(maxWidth: 220)
+                    Spacer()
+                    Text(precision == .float16 ? "Faster, less RAM" : "Slower, more accurate")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+
+                // Steps override
+                HStack {
+                    Text("Steps")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 80, alignment: .leading)
+                    TextField("auto", text: $stepsOverrideText)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(maxWidth: 80)
+                    Text("(blank = auto: 8 turbo / 50 full)")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                    Spacer()
+                }
+
+                // Shift
+                HStack {
+                    Text("Shift")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 80, alignment: .leading)
+                    Slider(value: $shiftOverride, in: 0.5...10.0, step: 0.1)
+                        .frame(maxWidth: 220)
+                    Text(String(format: "%.1f", shiftOverride))
+                        .font(.caption.monospacedDigit())
+                        .frame(width: 36, alignment: .trailing)
+                    Button("Reset") { shiftOverride = 3.0 }
+                        .buttonStyle(.borderless)
+                        .controlSize(.mini)
+                    Spacer()
+                }
+            }
+            .padding(.top, 8)
+        } label: {
+            Text("Advanced")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
