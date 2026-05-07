@@ -126,4 +126,35 @@ public actor WeightConverter {
 
         return result
     }
+
+    /// Load and remap SFX DiT weights from a safetensors file.
+    public func loadSFXDiTWeights(from url: URL) throws -> [(String, MLXArray)] {
+        let raw = try loadSafetensors(from: url)
+        return raw.compactMap { key, value -> (String, MLXArray)? in
+            guard let mapped = SFXDiTNameMap.mapKey(key) else { return nil }
+            return (mapped, value)
+        }
+    }
+
+    /// Load and remap SFX VAE weights from a safetensors file,
+    /// transposing conv1d weights to MLX layout.
+    public func loadSFXVAEWeights(from url: URL) throws -> [(String, MLXArray)] {
+        let raw = try loadSafetensors(from: url)
+        return raw.compactMap { key, value -> (String, MLXArray)? in
+            guard let mapped = SFXVAENameMap.mapKey(key) else { return nil }
+            if SFXVAENameMap.isConv1dWeight(mapped) {
+                return (mapped, SFXVAENameMap.conv1dToMLX(value))
+            }
+            return (mapped, value)
+        }
+    }
+
+    /// Load and remap CLAP encoder weights from a safetensors file.
+    public func loadCLAPWeights(from url: URL) throws -> [(String, MLXArray)] {
+        let raw = try loadSafetensors(from: url)
+        return raw.compactMap { key, value -> (String, MLXArray)? in
+            guard let mapped = CLAPNameMap.mapKey(key) else { return nil }
+            return (mapped, value)
+        }
+    }
 }

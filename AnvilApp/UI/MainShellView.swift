@@ -147,3 +147,9 @@ enum SidebarItem: Hashable {
     case history
     case presets
 }
+
+enum PipelineChoice: String, CaseIterable, Hashable {
+    case auto
+    case aceStep
+    case stableAudio
+}

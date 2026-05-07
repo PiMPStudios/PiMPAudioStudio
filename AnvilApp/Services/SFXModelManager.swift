@@ -140,9 +140,10 @@ final class SFXModelManager: ObservableObject {
     func loadPipeline() async throws {
         guard isModelDownloaded() else { return }
 
-        let ditWeights  = try loadedDiTWeights()
-        let vaeWeights  = try loadedVAEWeights()
-        let clapWeights = try loadedCLAPWeights()
+        let converter = WeightConverter()
+        let ditWeights  = try await converter.loadSFXDiTWeights(from: modelPath.appendingPathComponent("model.safetensors"))
+        let vaeWeights  = try await converter.loadSFXVAEWeights(from: modelPath.appendingPathComponent("vae.safetensors"))
+        let clapWeights = try await converter.loadCLAPWeights(from: modelPath.appendingPathComponent("clap_model.safetensors"))
 
         let clapEncoder = CLAPEncoder(embeddingDim: 512, numLayers: 12, numHeads: 8, vocabSize: 49408)
         await clapEncoder.loadWeights(clapWeights)
@@ -173,39 +174,6 @@ final class SFXModelManager: ObservableObject {
             vae: vae,
             timingEncoder: timingEncoder
         )
-    }
-
-    private func loadedDiTWeights() throws -> [(String, MLXArray)] {
-        let converter = WeightConverter()
-        let url = modelPath.appendingPathComponent("model.safetensors")
-        let raw = try converter.loadSafetensors(from: url)
-        return raw.compactMap { key, value -> (String, MLXArray)? in
-            guard let mapped = SFXDiTNameMap.mapKey(key) else { return nil }
-            return (mapped, value)
-        }
-    }
-
-    private func loadedVAEWeights() throws -> [(String, MLXArray)] {
-        let converter = WeightConverter()
-        let url = modelPath.appendingPathComponent("vae.safetensors")
-        let raw = try converter.loadSafetensors(from: url)
-        return raw.compactMap { key, value -> (String, MLXArray)? in
-            guard let mapped = SFXVAENameMap.mapKey(key) else { return nil }
-            if SFXVAENameMap.isConv1dWeight(mapped) {
-                return (mapped, SFXVAENameMap.conv1dToMLX(value))
-            }
-            return (mapped, value)
-        }
-    }
-
-    private func loadedCLAPWeights() throws -> [(String, MLXArray)] {
-        let converter = WeightConverter()
-        let url = modelPath.appendingPathComponent("clap_model.safetensors")
-        let raw = try converter.loadSafetensors(from: url)
-        return raw.compactMap { key, value -> (String, MLXArray)? in
-            guard let mapped = CLAPNameMap.mapKey(key) else { return nil }
-            return (mapped, value)
-        }
     }
 
     /// Release the in-memory SFX pipeline, freeing GPU memory.
