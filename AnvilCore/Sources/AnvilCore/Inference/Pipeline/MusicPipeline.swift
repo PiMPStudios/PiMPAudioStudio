@@ -6,7 +6,6 @@ public actor MusicPipeline {
     private let diffusion: DiffusionActor
     private var _state: PipelineState = .ready
     private var progressContinuation: AsyncStream<GenerationProgress>.Continuation?
-    private var _progress: AsyncStream<GenerationProgress>?
 
     public static let defaultSampleRate = 44100
     public static let hopLength = 2048
@@ -18,11 +17,9 @@ public actor MusicPipeline {
 
     public var state: PipelineState { _state }
 
-    public var progress: AsyncStream<GenerationProgress> {
-        if let existing = _progress { return existing }
+    public func makeProgressStream() -> AsyncStream<GenerationProgress> {
         let (stream, continuation) = AsyncStream<GenerationProgress>.makeStream()
         self.progressContinuation = continuation
-        self._progress = stream
         return stream
     }
 
@@ -124,6 +121,8 @@ public actor MusicPipeline {
 
         _state = .ready
         progressContinuation?.yield(.complete)
+        progressContinuation?.finish()
+        progressContinuation = nil
 
         return AudioResult(
             samples: audio,

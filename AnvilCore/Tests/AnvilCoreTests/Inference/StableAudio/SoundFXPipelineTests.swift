@@ -42,7 +42,7 @@ struct SoundFXPipelineTests {
     func progressStream() async throws {
         let pipeline = makeTestPipeline()
         let tokenizer = CLAPTokenizer.forTesting()
-        let progressStream = await pipeline.progress
+        let progressStream = await pipeline.makeProgressStream()
 
         let config = SFXDiffusionConfig(steps: 2, guidanceScale: 1.0, seed: 42, latentShape: [1, 16, 64])
 

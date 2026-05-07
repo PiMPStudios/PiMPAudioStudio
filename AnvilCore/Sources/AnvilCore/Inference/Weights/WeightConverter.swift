@@ -3,15 +3,12 @@ import MLX
 
 public actor WeightConverter {
     private var progressContinuation: AsyncStream<ConversionProgress>.Continuation?
-    private var _progress: AsyncStream<ConversionProgress>?
 
     public init() {}
 
-    public var progress: AsyncStream<ConversionProgress> {
-        if let existing = _progress { return existing }
+    public func makeProgressStream() -> AsyncStream<ConversionProgress> {
         let (stream, continuation) = AsyncStream<ConversionProgress>.makeStream()
         self.progressContinuation = continuation
-        self._progress = stream
         return stream
     }
 
@@ -66,6 +63,8 @@ public actor WeightConverter {
             processed.insert(key)
         }
 
+        progressContinuation?.finish()
+        progressContinuation = nil
         return result
     }
 
@@ -89,6 +88,8 @@ public actor WeightConverter {
             }
         }
 
+        progressContinuation?.finish()
+        progressContinuation = nil
         return result
     }
 

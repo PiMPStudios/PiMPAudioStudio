@@ -5,17 +5,14 @@ import MLXRandom
 public actor DiffusionActor {
     private let dit: DiTActor
     private var progressContinuation: AsyncStream<DiffusionProgress>.Continuation?
-    private var _progress: AsyncStream<DiffusionProgress>?
 
     public init(dit: DiTActor) {
         self.dit = dit
     }
 
-    public var progress: AsyncStream<DiffusionProgress> {
-        if let existing = _progress { return existing }
+    public func makeProgressStream() -> AsyncStream<DiffusionProgress> {
         let (stream, continuation) = AsyncStream<DiffusionProgress>.makeStream()
         self.progressContinuation = continuation
-        self._progress = stream
         return stream
     }
 
@@ -120,6 +117,8 @@ public actor DiffusionActor {
             totalTime: totalTime
         )
 
+        progressContinuation?.finish()
+        progressContinuation = nil
         return DiffusionResult(latents: xt, timeCosts: costs)
     }
 
@@ -256,6 +255,8 @@ public actor DiffusionActor {
             totalTime: totalTime
         )
 
+        progressContinuation?.finish()
+        progressContinuation = nil
         return DiffusionResult(latents: xt, timeCosts: costs)
     }
 }

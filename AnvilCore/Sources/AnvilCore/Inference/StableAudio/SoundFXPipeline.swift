@@ -8,7 +8,6 @@ public actor SoundFXPipeline {
     private let diffusion: SFXDiffusionActor
     private let vae: SFXVAEActor
     private var progressContinuation: AsyncStream<GenerationProgress>.Continuation?
-    private var _progress: AsyncStream<GenerationProgress>?
 
     public static let maxDuration: TimeInterval = 47.0
     public static let defaultSampleRate = 44100
@@ -26,11 +25,9 @@ public actor SoundFXPipeline {
         self.timingEncoder = timingEncoder
     }
 
-    public var progress: AsyncStream<GenerationProgress> {
-        if let existing = _progress { return existing }
+    public func makeProgressStream() -> AsyncStream<GenerationProgress> {
         let (stream, continuation) = AsyncStream<GenerationProgress>.makeStream()
         self.progressContinuation = continuation
-        self._progress = stream
         return stream
     }
 
@@ -78,6 +75,8 @@ public actor SoundFXPipeline {
         )
 
         progressContinuation?.yield(.complete)
+        progressContinuation?.finish()
+        progressContinuation = nil
 
         return AudioResult(
             samples: audio,

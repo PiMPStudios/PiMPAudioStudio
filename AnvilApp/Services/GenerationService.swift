@@ -137,7 +137,7 @@ final class GenerationService: ObservableObject {
         let totalSteps = 100
         state = .generating(step: 0, totalSteps: totalSteps, eta: 0)
 
-        let progressStream = await sfxPipeline.progress
+        let progressStream = await sfxPipeline.makeProgressStream()
         let progressTask = Task { [weak self] in
             guard let self else { return }
             for await progress in progressStream {
@@ -213,7 +213,7 @@ final class GenerationService: ObservableObject {
         let totalSteps = config.steps ?? 8
         state = .generating(step: 0, totalSteps: totalSteps, eta: 0)
 
-        let progressStream = await pipeline.progress
+        let progressStream = await pipeline.makeProgressStream()
         let progressTask = Task { [weak self] in
             guard let self else { return }
             for await progress in progressStream {

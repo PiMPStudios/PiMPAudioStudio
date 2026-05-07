@@ -6,17 +6,14 @@ import MLXRandom
 public actor SFXDiffusionActor {
     private let dit: SFXDiTActor
     private var progressContinuation: AsyncStream<GenerationProgress>.Continuation?
-    private var _progress: AsyncStream<GenerationProgress>?
 
     public init(dit: SFXDiTActor) {
         self.dit = dit
     }
 
-    public var progress: AsyncStream<GenerationProgress> {
-        if let existing = _progress { return existing }
+    public func makeProgressStream() -> AsyncStream<GenerationProgress> {
         let (stream, continuation) = AsyncStream<GenerationProgress>.makeStream()
         self.progressContinuation = continuation
-        self._progress = stream
         return stream
     }
 
@@ -70,6 +67,8 @@ public actor SFXDiffusionActor {
             totalTime: totalTime
         )
 
+        progressContinuation?.finish()
+        progressContinuation = nil
         return DiffusionResult(latents: xt, timeCosts: costs)
     }
 
@@ -129,6 +128,8 @@ public actor SFXDiffusionActor {
             totalTime: totalTime
         )
 
+        progressContinuation?.finish()
+        progressContinuation = nil
         return DiffusionResult(latents: xt, timeCosts: costs)
     }
 
