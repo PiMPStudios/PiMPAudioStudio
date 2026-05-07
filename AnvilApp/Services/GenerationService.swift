@@ -111,6 +111,15 @@ final class GenerationService: ObservableObject {
         state = .cancelled
     }
 
+    /// Release all ACE-Step model weights from GPU memory.
+    /// The pipeline will reload weights automatically on the next generation call.
+    func unloadAllWeights() async {
+        await pipeline.unloadDiTWeights()
+        await pipeline.unloadVAEWeights()
+        currentlyLoadedDiTModelID = nil
+        currentlyLoadedVAEModelID = nil
+    }
+
     private func shouldUseStableAudio(request: GenerationRequest) -> Bool {
         switch request.pipelineOverride {
         case .aceStep: return false

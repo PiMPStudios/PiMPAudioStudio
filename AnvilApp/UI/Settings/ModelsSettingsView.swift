@@ -3,6 +3,8 @@ import AnvilCore
 
 struct ModelsSettingsView: View {
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var generationService: GenerationService
+    @EnvironmentObject private var sfxModelManager: SFXModelManager
 
     @State private var aceStepSpecs: [ModelSpec] = []
     @State private var stableAudioSpecs: [ModelSpec] = []
@@ -17,6 +19,7 @@ struct ModelsSettingsView: View {
         Form {
             aceStepSection
             stableAudioSection
+            memorySection
             AddModelView(
                 registry: appState.registry,
                 onModelAdded: { refreshModels() }
@@ -97,6 +100,30 @@ struct ModelsSettingsView: View {
                     onDelete: { showDeleteConfirmation = spec.id },
                     onRemove: { showRemoveConfirmation = spec.id }
                 )
+            }
+        }
+    }
+
+    private var memorySection: some View {
+        Section("Memory") {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Release GPU Memory")
+                        .font(.body)
+                    Text("Unloads all model weights. They reload automatically on next use.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Release") {
+                    Task {
+                        await appState.unloadAllModels(
+                            generationService: generationService,
+                            sfxModelManager: sfxModelManager
+                        )
+                    }
+                }
+                .buttonStyle(.bordered)
             }
         }
     }
