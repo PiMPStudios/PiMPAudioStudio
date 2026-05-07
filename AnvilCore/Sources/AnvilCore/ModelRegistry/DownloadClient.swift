@@ -113,9 +113,28 @@ public actor DownloadClient {
     }
 }
 
-public enum DownloadError: Error, Sendable {
+public enum DownloadError: Error, Sendable, LocalizedError {
     case httpError(statusCode: Int)
     case checksumMismatch(file: String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .httpError(let statusCode):
+            let meaning: String
+            switch statusCode {
+            case 401: meaning = "Unauthorized — authentication or model access may be required"
+            case 403: meaning = "Forbidden — you may need to accept the model's license on HuggingFace"
+            case 404: meaning = "Not Found — the model repository or file does not exist"
+            case 429: meaning = "Too Many Requests — rate limited, please try again later"
+            case 500...599: meaning = "Server error — HuggingFace may be experiencing issues"
+            case -1: meaning = "Unknown — no HTTP response received"
+            default: meaning = HTTPURLResponse.localizedString(forStatusCode: statusCode)
+            }
+            return "Download failed (HTTP \(statusCode)): \(meaning)"
+        case .checksumMismatch(let file):
+            return "Checksum verification failed for '\(file)' — the file may be corrupted"
+        }
+    }
 }
 
 private final class DownloadProgressDelegate: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
