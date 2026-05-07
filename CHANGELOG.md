@@ -4,6 +4,34 @@ All notable changes to AnvilApp are documented here.
 
 ---
 
+## [Unreleased] — Phase 10b: Advanced LoRA
+
+### Added
+
+- **CosineScheduler** (`CosineScheduler.swift`) — learning rate scheduling utility with linear warmup (configurable fraction, default 10%) followed by cosine decay to 0; used by LoRATrainer to dynamically adjust AdamW learning rate each step
+- **TrainingCheckpoint** (`TrainingCheckpoint.swift`) — Codable struct capturing full training state (epoch, globalStep, totalSteps, bestLoss, lossHistory, weights URL, optimizer URL, config, baseModelID) for pause/resume; `CheckpointError` for mismatch detection
+- **TargetLayer enum** — `.selfAttention`, `.crossAttention`, `.mlp` cases with `moduleName` (maps to LoRAInjector property names) and `defaultPatterns` (expands to injection string patterns); `displayName` extension for UI checkboxes
+- **LossCurveView** (`LossCurveView.swift`) — SwiftUI Charts mini line chart displaying per-step loss history during training; auto-scaled Y axis, 120pt height
+- **AdaptersSettingsView** (`AdaptersSettingsView.swift`) — dedicated "Adapters" tab in Settings window; lists all adapters with name, base model badge, rank, loss, date; context menu rename/export/delete; swipe-to-delete; "Merge Two" button; empty state guidance
+- **MergeSheet** (`MergeSheet.swift`) — adapter composition modal with picker A, picker B (filtered to same base model + rank with rank badge), alpha blend slider (0–1), name field; calls `AdapterRegistry.merge()` to create new adapter from `α×A + (1-α)×B`
+- **AdapterRegistry.rename/delete/export/merge** — lifecycle methods for adapter management; rename with atomic move-then-write; delete with cleanup; export copies safetensors + metadata; merge with weighted interpolation and rank validation
+- **Settings "Adapters" tab** — third tab in Settings TabView alongside Intelligence and Models
+
+### Changed
+
+- **LoRAConfig** — renamed `epochs` to `maxEpochs`; changed `targetLayers` from `[String]` to `Set<TargetLayer>`; added `warmupFraction` (default 0.10), `gradientAccumulationSteps` (default 1); added `injectionPatterns` computed property bridging enum to string patterns; added `Hashable` conformance
+- **LoRAAdapter** — properties `id`/`name` changed from `let` to `var` for rename support; added `Hashable` conformance (required for SwiftUI Picker tags)
+- **LoRATrainer** — integrates CosineScheduler for per-step LR updates; per-sample optimizer stepping with LR/progress reporting every `gradientAccumulationSteps` samples; tracks `globalStep`, `lossHistory`, `currentEpoch`; single designated init with optional `resumeFrom` checkpoint parameter; `makeCheckpoint()` for state persistence
+- **TrainingProgress** — extended with `step`, `learningRate`, `estimatedTimeRemaining`, `lossHistory`, `elapsedTime` fields; backward-compatible `estimatedRemaining` accessor
+- **TrainingService** — `TrainingState.training` now wraps `TrainingUIState` struct; added `.paused(TrainingCheckpoint)` state; extended progress callback for new fields
+- **TrainingSheet** — target layer multi-select checkboxes; Advanced disclosure group with warmup slider and gradient accumulation picker; LossCurveView in progress state; current LR and ETA display; conditional Resume/Start buttons for paused state
+- **LoRAInjector** — `inject()` iterates `config.injectionPatterns` (computed from `Set<TargetLayer>`) instead of raw `[String]`
+- **ModelCategory** — added `Hashable` conformance
+- Design spec: `docs/superpowers/specs/2026-05-06-phase10b-advanced-lora.md`
+- Implementation plan: `docs/superpowers/plans/2026-05-06-phase10b-advanced-lora.md`
+
+---
+
 ## [Unreleased] — Phase 10a: LoRA Fine-Tuning
 
 ### Added
@@ -324,4 +352,5 @@ All notable changes to AnvilApp are documented here.
 | 9a | ✅ Complete | Model Management Foundation — SHA256 verification, first-launch redesign, registry split |
 | 9b | ✅ Complete | Model Management UI — ModelsSettingsView, AddModelView, active model tracking, lazy swap runtime |
 | 10a | ✅ Complete | LoRA Fine-Tuning — LoRALinear, LoRAInjector, flow-matching trainer, adapter picker, training sheet |
-| 10b | Planned | Advanced LoRA — target layer picker, LR scheduler, gradient accumulation, adapter composition, management UI |
+| 10b | ✅ Complete | Advanced LoRA — CosineScheduler, target layer picker, gradient accumulation, checkpoint/resume, loss curve, adapter merge/rename/delete/export |
+| 10c | Planned | Community Sharing — adapter sharing/download, versioning, multi-adapter stacking |
