@@ -4,6 +4,31 @@ All notable changes to AnvilApp are documented here.
 
 ---
 
+## [Unreleased] — UI Wiring + Cover-Song Planning
+
+### Added
+
+- **Advanced section in GenerateView** — collapsible disclosure surfacing three diffusion knobs that were already plumbed but never rendered: precision (Float16 / Float32 segmented), inference steps (numeric override; blank = auto: 8 turbo / 50 full), and shift (slider 0.5–10.0 with reset to 3.0). Intended for chasing the audio-quality bug (rules out / confirms numerical drift, schedule-shape, and step-count hypotheses).
+- **`GenerationRequest.stepsOverride` / `shiftOverride`** — Optional Int / Float request fields. When nil, `ACEStepGenerationService` keeps the existing auto-pick (8 turbo / 50 full) and shift=3.0 default.
+- **`GenerationParameters` `@MainActor ObservableObject`** — shared bag for the four user knobs that live in both the inspector sidebar and `GenerateView`: `duration`, `seedText`, `guidanceScale`, `pipelineOverride`. Injected via `@EnvironmentObject` so both surfaces read/write the same instance.
+- **ACE-Step LM model specs** (`ace-step-lm-0.6b`, `ace-step-lm-4b`) and a dedicated **ACE-Step LM** section in `ModelsSettingsView` — model-registry plumbing for upcoming cover-song generation. The 0.6B variant is single-file (1.28 GB); the 4B is sharded (7.85 GB).
+- **`ModelCategory.aceStepLM`** — new enum case wired into `AddModelView`'s expected-files switch.
+- **Cover-song generation Phase 2 design spec** at `docs/superpowers/specs/2026-05-07-cover-song-generation-design.md` (480 lines) — three new modules (AudioTokenizer, AudioTokenDetokenizer, AceStepLM), CoverSongCoordinator, `srcLatentsOverride` parameter on the DiT path, UI changes, phased plan (2A → 2D), open questions, test plan.
+- **Cover-song Phase 2A implementation plan** at `docs/superpowers/plans/2026-05-07-cover-song-phase-2a.md` (13 tasks) — foundation modules only (AudioTokenizer + Detokenizer + AceStepLM + sharded safetensors loader + three name maps + smoke test). Phase 2B/2C/2D deferred. Execution gated on text-to-music audio-quality bug being resolved first.
+- **Audio-quality investigation resumption doc** at `docs/ace-step-audio-quality-investigation.md` — state capture for the long-running text-to-music static-output bug. Covers verified-working pieces, fixes already shipped, hypotheses still open (Float16 drift now ruled out by user testing at f16/200steps/shift=5.1; remaining target is structural conditioning), and how to resume debugging.
+
+### Fixed
+
+- **Lyric Writer download UX cascade** — four overlapping bugs that produced confused state in `IntelligenceSettingsView`:
+  1. `LLMModelManager.isModelDownloaded` returned true on a directory containing only `config.json` + `tokenizer.json` with no safetensors body, because download failures still wrote the JSON files. Now requires at least one `.safetensors` entry.
+  2. The `init()` left a stale `activeModel` selection pointing at a model whose files no longer existed; now sweeps and clears.
+  3. `AppState`'s download-needed gate ran a strict `.idle` check that prevented retry from `.error` and ignored the actual `isModelDownloaded` filesystem truth. Now pattern-matches against `.downloading` specifically and re-checks the filesystem.
+  4. `IntelligenceSettingsView`'s green-checkmark requires both `activeModel` match and `isModelDownloaded` returning true.
+- **Player did not refresh on subsequent generations** — `PlayerView.onAppear { playerService.load(url:) }` only fires the first time the view appears. SwiftUI reuses the same view instance when the parent swaps in a new `GenerationResult`, so generations after the first kept the player stuck on the original track. Added `.onChange(of: fileURL) { _, newURL in playerService.load(url: newURL) }`.
+- **Sidebar Duration / Seed / Guidance fields did nothing** — `MainShellView`'s inspector "Parameters" section rendered `TextField(..., text: .constant(""))` against literal black-hole bindings. Worse, `pipelineOverride` was duplicated as separate `@State` in `MainShellView` and `GenerateView`, so even the sidebar pipeline picker never reached the request. Lifted all four knobs into the new `GenerationParameters` shared object; both surfaces now bind to it.
+
+---
+
 ## [Unreleased] — Post-Restructure Bug Fixes (on-device validation pass)
 
 Real-world testing of the model download restructure surfaced a chain of latent issues — long-standing path-encoding ambiguity, a URLSession async-API misuse, and weight-conversion / tensor-shape assumptions that only became reachable once real weights downloaded successfully. Each fix below has been verified live (downloads finish to 100%, conditioning loads the real tokenizer, weight conversion completes without crashing).
