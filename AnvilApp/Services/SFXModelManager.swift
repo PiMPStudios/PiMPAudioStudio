@@ -22,19 +22,8 @@ final class SFXModelManager: ObservableObject {
 
     /// The model path for the currently active Stable Audio model.
     var modelPath: URL {
-        if let resolved = resolvedModelPath {
-            return resolved
-        }
-        let appSupport = FileManager.default.urls(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask
-        ).first!
-        let base = appSupport
-            .appendingPathComponent("Anvil", isDirectory: true)
-            .appendingPathComponent("models", isDirectory: true)
-
-        // Fall back to built-in stable-audio-open
-        return base.appendingPathComponent("stable-audio-open", isDirectory: true)
+        resolvedModelPath ?? Self.baseModelsDirectory()
+            .appendingPathComponent("stable-audio-open", isDirectory: true)
     }
 
     var isReady: Bool { pipeline != nil }
@@ -46,23 +35,27 @@ final class SFXModelManager: ObservableObject {
         }
     }
 
-    func downloadIfNeeded() async throws {
-        guard downloadState != .downloaded else { return }
-
-        // Get the active spec's repo, or fall back to built-in
-        let activeSpec = await registry.activeSpec(for: .stableAudio)
-        let repoID = activeSpec?.huggingFaceRepo ?? "stabilityai/stable-audio-open-1.0"
-
-        // Resolve and store the model path based on active spec
+    /// Canonical base directory for all Anvil model files.
+    private static func baseModelsDirectory() -> URL {
         let appSupport = FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask
         ).first!
-        let base = appSupport
+        return appSupport
             .appendingPathComponent("Anvil", isDirectory: true)
             .appendingPathComponent("models", isDirectory: true)
+    }
+
+    func downloadIfNeeded() async throws {
+        // Resolve the model path first so modelPath is correct even on early return
+        let activeSpec = await registry.activeSpec(for: .stableAudio)
+        let base = Self.baseModelsDirectory()
         resolvedModelPath = activeSpec.map { base.appendingPathComponent($0.id, isDirectory: true) }
             ?? base.appendingPathComponent("stable-audio-open", isDirectory: true)
+
+        guard downloadState != .downloaded else { return }
+
+        let repoID = activeSpec?.huggingFaceRepo ?? "stabilityai/stable-audio-open-1.0"
 
         let fm = FileManager.default
         try fm.createDirectory(at: modelPath, withIntermediateDirectories: true)
