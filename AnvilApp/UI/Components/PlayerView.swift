@@ -81,6 +81,9 @@ struct PlayerView: View {
         .onAppear {
             playerService.load(url: fileURL)
         }
+        .onChange(of: fileURL) { _, newURL in
+            playerService.load(url: newURL)
+        }
     }
 
     private func timeString(_ time: TimeInterval) -> String {
