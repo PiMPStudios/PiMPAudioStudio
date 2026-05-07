@@ -116,6 +116,7 @@ decode as `.local` (via `decodeIfPresent` with default). No migration needed.
 public struct LoRAContribution: Sendable {
     public let adapterID: String
     public let displayName: String?
+    public let source: AdapterSource
     public let loraA: MLXArray   // [rank, inputDim]
     public let loraB: MLXArray   // [outputDim, rank]
     public var strength: Float
