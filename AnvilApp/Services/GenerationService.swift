@@ -267,7 +267,7 @@ final class GenerationService: ObservableObject {
         do {
             let weightsPath = spec.localPath(for: "model.safetensors", base: baseDir)
             let rawWeights = try await weightConverter.loadSafetensors(from: weightsPath)
-            let weights = await weightConverter.convertDiTWeights(stateDict: rawWeights)
+            let weights = try await weightConverter.convertDiTWeights(stateDict: rawWeights)
             await pipeline.loadDiTWeights(weights, modelID: spec.id)
             currentlyLoadedDiTModelID = spec.id
         } catch {
@@ -327,7 +327,7 @@ final class GenerationService: ObservableObject {
             let vaeFile = spec.files.first(where: { $0.contains("vae") }) ?? "vae.safetensors"
             let weightsPath = spec.localPath(for: vaeFile, base: baseDir)
             let rawWeights = try await weightConverter.loadSafetensors(from: weightsPath)
-            let weights = await weightConverter.convertVAEWeights(stateDict: rawWeights)
+            let weights = try await weightConverter.convertVAEWeights(stateDict: rawWeights)
             await pipeline.loadVAEWeights(weights, modelID: spec.id)
             currentlyLoadedVAEModelID = spec.id
         } catch {

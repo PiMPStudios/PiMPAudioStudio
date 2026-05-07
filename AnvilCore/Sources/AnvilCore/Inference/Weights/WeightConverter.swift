@@ -17,7 +17,7 @@ public actor WeightConverter {
         return dict.sorted { $0.key < $1.key }.map { ($0.key, $0.value) }
     }
 
-    public func convertVAEWeights(stateDict: [(String, MLXArray)]) -> [(String, MLXArray)] {
+    public func convertVAEWeights(stateDict: [(String, MLXArray)]) throws -> [(String, MLXArray)] {
         var result: [(String, MLXArray)] = []
         var processed: Set<String> = []
         let total = stateDict.count
@@ -26,6 +26,7 @@ public actor WeightConverter {
         let allKeys = stateDict.map { $0.0 }.sorted()
 
         for (idx, key) in allKeys.enumerated() {
+            if idx % 50 == 0 { try Task.checkCancellation() }
             if processed.contains(key) { continue }
 
             progressContinuation?.yield(ConversionProgress(
@@ -68,11 +69,12 @@ public actor WeightConverter {
         return result
     }
 
-    public func convertDiTWeights(stateDict: [(String, MLXArray)]) -> [(String, MLXArray)] {
+    public func convertDiTWeights(stateDict: [(String, MLXArray)]) throws -> [(String, MLXArray)] {
         var result: [(String, MLXArray)] = []
         let total = stateDict.count
 
         for (idx, (key, value)) in stateDict.enumerated() {
+            if idx % 50 == 0 { try Task.checkCancellation() }
             progressContinuation?.yield(ConversionProgress(
                 current: idx, total: total, currentTensorName: key
             ))
