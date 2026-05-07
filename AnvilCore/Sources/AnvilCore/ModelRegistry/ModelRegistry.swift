@@ -22,7 +22,7 @@ public actor ModelRegistry {
         ModelSpec(
             id: "ace-step-dit",
             huggingFaceRepo: "ACEStep/ACE-Step-v1-5-DiT",
-            files: ["model.safetensors", "config.json"],
+            files: ["model.safetensors", "tokenizer.json", "config.json"],
             sizeBytes: 3_200_000_000,
             sha256: [:],
             category: .aceStepDiT

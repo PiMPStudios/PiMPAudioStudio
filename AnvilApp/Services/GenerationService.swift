@@ -14,7 +14,7 @@ final class GenerationService: ObservableObject {
 
     private var generationTask: Task<Void, Never>?
     private let pipeline: MusicPipeline
-    private let conditioning: ConditioningActor
+    private var conditioning: ConditioningActor
     private let weightConverter: WeightConverter
     private let historyStore: HistoryStore
     private let outputDirectoryManager: OutputDirectoryManager
@@ -281,6 +281,13 @@ final class GenerationService: ObservableObject {
             let weights = try await weightConverter.convertDiTWeights(stateDict: rawWeights)
             await pipeline.loadDiTWeights(weights, modelID: spec.id)
             currentlyLoadedDiTModelID = spec.id
+
+            // Upgrade the stub conditioning actor to one backed by the real downloaded tokenizer.
+            let tokenizerPath = spec.localPath(for: "tokenizer.json", base: baseDir)
+            if FileManager.default.fileExists(atPath: tokenizerPath.path()),
+               let real = try? ConditioningActor.forTesting(tokenizerURL: tokenizerPath) {
+                conditioning = real
+            }
         } catch {
             // Revert active model to previous working model
             if let previousModelID {

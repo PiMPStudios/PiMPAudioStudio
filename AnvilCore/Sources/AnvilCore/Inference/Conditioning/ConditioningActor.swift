@@ -145,4 +145,23 @@ extension ConditioningActor {
             tokenizerURL: tokenizerURL
         )
     }
+
+    /// Creates a fully functional ConditioningActor using a stub tokenizer.
+    /// Suitable for app launch before model weights are downloaded — all
+    /// inference calls will succeed structurally but produce random outputs
+    /// until `updateTokenizer(from:)` is called after model download.
+    public static func stub() throws -> ConditioningActor {
+        let tokenizer = try AnvilTokenizer.forTesting()
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("AnvilTokenizerForTesting", isDirectory: true)
+        let tokenizerURL = dir.appendingPathComponent("tokenizer.json")
+        return try ConditioningActor(
+            vae: VAEActor(),
+            qwen3: Qwen3Model(),
+            conditionEncoder: ConditionEncoder(),
+            lyricEncoder: LyricEncoder(),
+            timbreEncoder: TimbreEncoder(),
+            tokenizerURL: tokenizerURL
+        )
+    }
 }

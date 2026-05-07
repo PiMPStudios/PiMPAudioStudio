@@ -148,11 +148,10 @@ final class AppServices: ObservableObject {
         let dit = DiTActor(decoder: DiTDecoder())
         let diffusion = DiffusionActor(dit: dit)
         let pipeline = MusicPipeline(vae: vae, diffusion: diffusion)
-        guard let conditioning = try? ConditioningActor.forTesting(
-            tokenizerURL: Bundle.main.url(forResource: "tokenizer", withExtension: "json")
-                ?? FileManager.default.temporaryDirectory.appending(path: "tokenizer.json")
-        ) else {
-            fatalError("Failed to initialize ConditioningActor: tokenizer could not be loaded from bundle")
+        // Use a stub ConditioningActor at launch — no downloaded tokenizer required.
+        // GenerationService swaps in the real one after the ACE-Step model is downloaded.
+        guard let conditioning = try? ConditioningActor.stub() else {
+            fatalError("Failed to create stub ConditioningActor at launch")
         }
         let converter = WeightConverter()
 
