@@ -222,7 +222,19 @@ struct ModelsSettingsView: View {
             do {
                 try await appState.registry.downloadModels([spec]) { _, progress in
                     Task { @MainActor in
-                        statuses[spec.id] = .downloading(progress: progress)
+                        // Each progress event spawns its own Task, and Task
+                        // ordering on a MainActor isn't strictly FIFO — a late
+                        // progress=1.0 event can land after refreshModels() has
+                        // already pulled .ready from the registry, overwriting
+                        // the terminal state with `downloading(1.0)`. Guard
+                        // against downgrading a terminal state from a stale
+                        // progress event.
+                        switch statuses[spec.id] {
+                        case .ready, .failed:
+                            return
+                        default:
+                            statuses[spec.id] = .downloading(progress: progress)
+                        }
                     }
                 }
             } catch {
