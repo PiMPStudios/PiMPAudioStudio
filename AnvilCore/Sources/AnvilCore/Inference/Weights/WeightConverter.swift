@@ -81,9 +81,15 @@ public actor WeightConverter {
 
             guard let mappedKey = TensorNameMap.mapDiTKey(key) else { continue }
 
-            if TensorNameMap.isDiTConv1dWeight(mappedKey) {
+            // The Conv1d/ConvTranspose1d predicates match by substring (`proj_in.weight` /
+            // `proj_out.weight`), but the ACE-Step v1.5 checkpoint contains BOTH the
+            // top-level Conv1d/ConvTranspose1d (3-D weights) AND inner `nn.Linear`
+            // layers named `proj_in`/`proj_out` (2-D weights) inside encoder blocks.
+            // Apply the conv axis remap only when the tensor is actually 3-D — pass
+            // 2-D Linear weights through unchanged.
+            if TensorNameMap.isDiTConv1dWeight(mappedKey) && value.ndim == 3 {
                 result.append((mappedKey, TensorNameMap.conv1dToMLX(value)))
-            } else if TensorNameMap.isDiTConvTransposeWeight(mappedKey) {
+            } else if TensorNameMap.isDiTConvTransposeWeight(mappedKey) && value.ndim == 3 {
                 result.append((mappedKey, TensorNameMap.convTranspose1dToMLX(value)))
             } else {
                 result.append((mappedKey, value))
