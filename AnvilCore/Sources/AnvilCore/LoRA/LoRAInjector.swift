@@ -199,3 +199,125 @@ public enum LoRAInjector {
         }
     }
 }
+
+// MARK: - Multi-Adapter Stacking
+
+extension LoRAInjector {
+
+    /// Apply a full adapter stack to the model. Replaces all current contributions
+    /// on every LoRALinear layer matching the given paths.
+    public static func applyStack(
+        model: DiTDecoder,
+        contributions: [LoRAContribution],
+        paths: [String]
+    ) {
+        clearContributions(model: model, paths: paths)
+
+        for path in paths {
+            guard let (layerIdx, subPath) = parsePath(path),
+                  layerIdx < model.layers.count else { continue }
+
+            let layer = model.layers[layerIdx]
+            guard let loraLinear = resolveLinear(in: layer, path: subPath) as? LoRALinear else {
+                continue
+            }
+
+            var layerContributions: [LoRAContribution] = []
+            for contribution in contributions {
+                layerContributions.append(contribution)
+            }
+            loraLinear.contributions = layerContributions
+        }
+    }
+
+    /// Apply contributions for a single adapter across all LoRALinear layers.
+    /// Weights are keyed by path (e.g. "layers.0.selfAttn.qProj.loraA").
+    public static func addContribution(
+        model: DiTDecoder,
+        adapterID: String,
+        displayName: String?,
+        source: AdapterSource,
+        weights: [(String, MLXArray)],
+        strength: Float,
+        paths: [String]
+    ) {
+        let weightDict = Dictionary(weights, uniquingKeysWith: { _, last in last })
+
+        for path in paths {
+            guard let (layerIdx, subPath) = parsePath(path),
+                  layerIdx < model.layers.count else { continue }
+
+            let layer = model.layers[layerIdx]
+            guard let loraLinear = resolveLinear(in: layer, path: subPath) as? LoRALinear else {
+                continue
+            }
+
+            guard let loraA = weightDict["\(path).loraA"],
+                  let loraB = weightDict["\(path).loraB"] else {
+                continue
+            }
+
+            let contribution = LoRAContribution(
+                adapterID: adapterID,
+                displayName: displayName,
+                source: source,
+                loraA: loraA,
+                loraB: loraB,
+                strength: strength
+            )
+            loraLinear.contributions.append(contribution)
+        }
+    }
+
+    /// Remove all contributions from every LoRALinear layer (revert to base model behavior).
+    public static func clearContributions(model: DiTDecoder, paths: [String]) {
+        for path in paths {
+            guard let (layerIdx, subPath) = parsePath(path),
+                  layerIdx < model.layers.count else { continue }
+
+            let layer = model.layers[layerIdx]
+            if let loraLinear = resolveLinear(in: layer, path: subPath) as? LoRALinear {
+                loraLinear.contributions = []
+            }
+        }
+    }
+
+    /// Update strength for a single adapter across all LoRALinear layers.
+    public static func setStrength(
+        model: DiTDecoder,
+        adapterID: String,
+        strength: Float,
+        paths: [String]
+    ) {
+        for path in paths {
+            guard let (layerIdx, subPath) = parsePath(path),
+                  layerIdx < model.layers.count else { continue }
+
+            let layer = model.layers[layerIdx]
+            if let loraLinear = resolveLinear(in: layer, path: subPath) as? LoRALinear {
+                for i in loraLinear.contributions.indices {
+                    if loraLinear.contributions[i].adapterID == adapterID {
+                        loraLinear.contributions[i].strength = strength
+                    }
+                }
+            }
+        }
+    }
+
+    /// Remove a specific adapter's contributions from all LoRALinear layers.
+    public static func removeContribution(
+        model: DiTDecoder,
+        adapterID: String,
+        paths: [String]
+    ) {
+        for path in paths {
+            guard let (layerIdx, subPath) = parsePath(path),
+                  layerIdx < model.layers.count else { continue }
+
+            let layer = model.layers[layerIdx]
+            if let loraLinear = resolveLinear(in: layer, path: subPath) as? LoRALinear {
+                loraLinear.contributions.removeAll { $0.adapterID == adapterID }
+            }
+        }
+    }
+}
