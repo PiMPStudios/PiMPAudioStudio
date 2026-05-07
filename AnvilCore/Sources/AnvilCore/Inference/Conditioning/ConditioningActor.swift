@@ -44,6 +44,47 @@ public actor ConditioningActor {
         self.tokenizer = try AnvilTokenizer(configURL: tokenizerURL)
     }
 
+    /// Wrap a user caption with the upstream SFT_GEN_PROMPT template. Mirrors
+    /// `acestep/constants.py:SFT_GEN_PROMPT` and the meta string built by
+    /// `acestep/core/generation/handler/metadata_utils.py:_build_metadata_dict`
+    /// when no user-supplied bpm/key/timesig/duration is available. Required:
+    /// the v1.5 DiT was trained on this scaffolded prompt; raw user captions
+    /// land out-of-distribution for the text encoder.
+    private static func wrapPromptForSFT(caption: String, duration: TimeInterval) -> String {
+        let instruction = "Fill the audio semantic mask based on the given conditions:"
+        let metas = """
+        - bpm: N/A
+        - timesignature: N/A
+        - keyscale: N/A
+        - duration: \(Int(duration)) seconds
+        """
+        // Note: `<|endoftext|>` immediately follows metas, no preceding newline.
+        // Trailing newline is part of upstream's template.
+        return """
+        # Instruction
+        \(instruction)
+
+        # Caption
+        \(caption)
+
+        # Metas
+        \(metas)<|endoftext|>
+
+        """
+    }
+
+    /// Wrap lyrics with upstream's `# Languages / # Lyric` template. Mirrors
+    /// `acestep/core/generation/handler/prompt_utils.py:_format_lyrics`.
+    private static func wrapLyricsForSFT(lyrics: String, language: String = "unknown") -> String {
+        return """
+        # Languages
+        \(language)
+
+        # Lyric
+        \(lyrics)<|endoftext|>
+        """
+    }
+
     public func encode(
         text: String,
         lyrics: String,
@@ -51,8 +92,10 @@ public actor ConditioningActor {
         duration: TimeInterval,
         precision: Precision
     ) async throws -> ConditioningResult {
-        let (textIds, textMask) = tokenizer.encodeText(text, maxLength: 256)
-        let (lyricIds, lyricMask) = tokenizer.encodeLyrics(lyrics, maxLength: 2048)
+        let wrappedText = Self.wrapPromptForSFT(caption: text, duration: duration)
+        let wrappedLyrics = Self.wrapLyricsForSFT(lyrics: lyrics)
+        let (textIds, textMask) = tokenizer.encodeText(wrappedText, maxLength: 256)
+        let (lyricIds, lyricMask) = tokenizer.encodeLyrics(wrappedLyrics, maxLength: 2048)
 
         try Task.checkCancellation()
 
