@@ -148,21 +148,26 @@ final class AppServices: ObservableObject {
         let dit = DiTActor(decoder: DiTDecoder())
         let diffusion = DiffusionActor(dit: dit)
         let pipeline = MusicPipeline(vae: vae, diffusion: diffusion)
-        // Use a stub ConditioningActor at launch — no downloaded tokenizer required.
-        // GenerationService swaps in the real one after the ACE-Step model is downloaded.
         guard let conditioning = try? ConditioningActor.stub() else {
             fatalError("Failed to create stub ConditioningActor at launch")
         }
         let converter = WeightConverter()
 
-        return GenerationService(
+        let aceStep = ACEStepGenerationService(
             pipeline: pipeline,
             conditioning: conditioning,
             weightConverter: converter,
-            historyStore: historyStore,
-            outputDirectoryManager: outputManager,
-            sfxModelManager: sfxModelManager,
             registry: registry
+        )
+        let sfx = SFXGenerationService(sfxModelManager: sfxModelManager)
+        let lora = LoRACoordinator(pipeline: pipeline, registry: registry)
+
+        return GenerationService(
+            aceStepService: aceStep,
+            sfxService: sfx,
+            loraCoordinator: lora,
+            historyStore: historyStore,
+            outputDirectoryManager: outputManager
         )
     }
 }

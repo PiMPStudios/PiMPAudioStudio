@@ -19,9 +19,9 @@
 		AA0001020101010101010101 /* GenerationState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002020101010101010101 /* GenerationState.swift */; };
 		AA0001030101010101010101 /* HistoryEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002030101010101010101 /* HistoryEntry.swift */; };
 		AA0001040101010101010101 /* AudioPlayerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002040101010101010101 /* AudioPlayerService.swift */; };
-		EE0001010101010101010101 /* SFXGenerationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE0002010101010101010101 /* SFXGenerationService.swift */; };
-		B10001010101010101010101 /* ACEStepGenerationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10002010101010101010101 /* ACEStepGenerationService.swift */; };
-		C10001010101010101010101 /* LoRACoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10002010101010101010101 /* LoRACoordinator.swift */; };
+		A8984E492F3E46CCB8C7C58A /* SFXGenerationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81034F002E6F4C98B5184537 /* SFXGenerationService.swift */; };
+		70B1B3B4781F4324BCBC8651 /* ACEStepGenerationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40CEF933F1574604A0DDC6BC /* ACEStepGenerationService.swift */; };
+		1379908AD8B347C1BCD48900 /* LoRACoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48C343533500493699EFC3C3 /* LoRACoordinator.swift */; };
 		AA0001050101010101010101 /* GenerationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002050101010101010101 /* GenerationService.swift */; };
 		AA0001060101010101010101 /* HistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002060101010101010101 /* HistoryStore.swift */; };
 		AA0001070101010101010101 /* OutputDirectoryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002070101010101010101 /* OutputDirectoryManager.swift */; };
@@ -109,9 +109,9 @@
 		AA0002020101010101010101 /* GenerationState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationState.swift; sourceTree = "<group>"; };
 		AA0002030101010101010101 /* HistoryEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryEntry.swift; sourceTree = "<group>"; };
 		AA0002040101010101010101 /* AudioPlayerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayerService.swift; sourceTree = "<group>"; };
-		EE0002010101010101010101 /* SFXGenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SFXGenerationService.swift; sourceTree = "<group>"; };
-		B10002010101010101010101 /* ACEStepGenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ACEStepGenerationService.swift; sourceTree = "<group>"; };
-		C10002010101010101010101 /* LoRACoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoRACoordinator.swift; sourceTree = "<group>"; };
+		81034F002E6F4C98B5184537 /* SFXGenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SFXGenerationService.swift; sourceTree = "<group>"; };
+		40CEF933F1574604A0DDC6BC /* ACEStepGenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ACEStepGenerationService.swift; sourceTree = "<group>"; };
+		48C343533500493699EFC3C3 /* LoRACoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoRACoordinator.swift; sourceTree = "<group>"; };
 		AA0002050101010101010101 /* GenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationService.swift; sourceTree = "<group>"; };
 		AA0002060101010101010101 /* HistoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryStore.swift; sourceTree = "<group>"; };
 		AA0002070101010101010101 /* OutputDirectoryManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutputDirectoryManager.swift; sourceTree = "<group>"; };
@@ -231,9 +231,9 @@
 				LL0002010101010101010101 /* AdapterStackManager.swift */,
 				BB0002010101010101010101 /* APIKeyStore.swift */,
 				AA0002040101010101010101 /* AudioPlayerService.swift */,
-				EE0002010101010101010101 /* SFXGenerationService.swift */,
-				B10002010101010101010101 /* ACEStepGenerationService.swift */,
-				C10002010101010101010101 /* LoRACoordinator.swift */,
+				81034F002E6F4C98B5184537 /* SFXGenerationService.swift */,
+				40CEF933F1574604A0DDC6BC /* ACEStepGenerationService.swift */,
+				48C343533500493699EFC3C3 /* LoRACoordinator.swift */,
 				AA0002050101010101010101 /* GenerationService.swift */,
 				AA0002060101010101010101 /* HistoryStore.swift */,
 				BB0002020101010101010101 /* IntentRouter.swift */,
@@ -470,9 +470,9 @@
 				AA0001020101010101010101 /* GenerationState.swift in Sources */,
 				AA0001030101010101010101 /* HistoryEntry.swift in Sources */,
 				AA0001040101010101010101 /* AudioPlayerService.swift in Sources */,
-				EE0001010101010101010101 /* SFXGenerationService.swift in Sources */,
-				B10001010101010101010101 /* ACEStepGenerationService.swift in Sources */,
-				C10001010101010101010101 /* LoRACoordinator.swift in Sources */,
+				A8984E492F3E46CCB8C7C58A /* SFXGenerationService.swift in Sources */,
+				70B1B3B4781F4324BCBC8651 /* ACEStepGenerationService.swift in Sources */,
+				1379908AD8B347C1BCD48900 /* LoRACoordinator.swift in Sources */,
 				AA0001050101010101010101 /* GenerationService.swift in Sources */,
 				AA0001060101010101010101 /* HistoryStore.swift in Sources */,
 				AA0001070101010101010101 /* OutputDirectoryManager.swift in Sources */,
