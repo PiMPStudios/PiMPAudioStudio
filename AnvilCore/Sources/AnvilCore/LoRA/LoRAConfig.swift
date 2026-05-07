@@ -114,6 +114,12 @@ public struct LoRAAdapter: Codable, Sendable, Identifiable, Equatable, Hashable 
     /// Final training loss (nil if training was stopped early).
     public let finalLoss: Float?
 
+    /// Where this adapter came from (defaults to .local for backward compat).
+    public var source: AdapterSource
+
+    /// Original HuggingFace repo URL if imported from HF.
+    public var remoteRepoURL: URL?
+
     public init(
         id: String,
         name: String,
@@ -122,7 +128,9 @@ public struct LoRAAdapter: Codable, Sendable, Identifiable, Equatable, Hashable 
         baseModelCategory: ModelCategory,
         createdAt: Date,
         sampleCount: Int,
-        finalLoss: Float?
+        finalLoss: Float?,
+        source: AdapterSource = .local,
+        remoteRepoURL: URL? = nil
     ) {
         self.id = id
         self.name = name
@@ -132,5 +140,28 @@ public struct LoRAAdapter: Codable, Sendable, Identifiable, Equatable, Hashable 
         self.createdAt = createdAt
         self.sampleCount = sampleCount
         self.finalLoss = finalLoss
+        self.source = source
+        self.remoteRepoURL = remoteRepoURL
+    }
+
+    // Custom Codable for backward compatibility — existing adapters without
+    // `source` field decode as .local.
+    enum CodingKeys: String, CodingKey {
+        case id, name, config, baseModelID, baseModelCategory
+        case createdAt, sampleCount, finalLoss, source, remoteRepoURL
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        config = try container.decode(LoRAConfig.self, forKey: .config)
+        baseModelID = try container.decode(String.self, forKey: .baseModelID)
+        baseModelCategory = try container.decode(ModelCategory.self, forKey: .baseModelCategory)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        sampleCount = try container.decode(Int.self, forKey: .sampleCount)
+        finalLoss = try container.decodeIfPresent(Float.self, forKey: .finalLoss)
+        source = try container.decodeIfPresent(AdapterSource.self, forKey: .source) ?? .local
+        remoteRepoURL = try container.decodeIfPresent(URL.self, forKey: .remoteRepoURL)
     }
 }
