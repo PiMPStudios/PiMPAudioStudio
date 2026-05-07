@@ -107,6 +107,7 @@ public actor DownloadClient {
                     let safeURL = FileManager.default.temporaryDirectory
                         .appending(path: UUID().uuidString)
                     do {
+                        try? FileManager.default.removeItem(at: safeURL)
                         try FileManager.default.moveItem(at: tempURL, to: safeURL)
                         continuation.resume(returning: .success((safeURL, response)))
                     } catch {
@@ -141,9 +142,11 @@ public actor DownloadClient {
 
         let destDir = destination.deletingLastPathComponent()
         try FileManager.default.createDirectory(at: destDir, withIntermediateDirectories: true)
-        if FileManager.default.fileExists(atPath: destination.path()) {
-            try FileManager.default.removeItem(at: destination)
-        }
+        // Unconditionally remove any stale destination. Use URL-based removeItem
+        // (not the String path() variant) to avoid percent-encoding ambiguity
+        // around paths containing spaces like "Application Support". try? swallows
+        // the "no such file" error when the destination doesn't exist yet.
+        try? FileManager.default.removeItem(at: destination)
         try FileManager.default.moveItem(at: tempURL, to: destination)
 
         // Final 100% in case the delegate stopped firing slightly before the end.

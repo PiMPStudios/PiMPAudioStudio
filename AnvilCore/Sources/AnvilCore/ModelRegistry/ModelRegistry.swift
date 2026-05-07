@@ -217,8 +217,12 @@ public actor ModelRegistry {
             return .failed("Unknown model: \(modelID)")
         }
         let allFilesExist = spec.files.allSatisfy { fileSpec in
+            // Use percentEncoded:false so paths containing "Application Support"
+            // (with its space) match the filesystem layout, not the percent-
+            // encoded URL form.
             FileManager.default.fileExists(
-                atPath: spec.localPath(for: fileSpec.localName, base: baseDirectory).path()
+                atPath: spec.localPath(for: fileSpec.localName, base: baseDirectory)
+                    .path(percentEncoded: false)
             )
         }
         return allFilesExist ? .ready : .notDownloaded
