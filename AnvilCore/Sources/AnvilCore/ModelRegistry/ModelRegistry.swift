@@ -60,7 +60,7 @@ public actor ModelRegistry {
         ),
         ModelSpec(
             id: "ace-step-vae",
-            displayName: "ACE-Step VAE + Tokenizer",
+            displayName: "ACE-Step VAE + Text Encoder",
             huggingFaceRepo: "ACE-Step/Ace-Step1.5",
             files: [
                 ModelFileSpec(
@@ -77,6 +77,11 @@ public actor ModelRegistry {
                     remotePath: "Qwen3-Embedding-0.6B/tokenizer.json",
                     localName: "tokenizer.json",
                     sizeBytes: 11_423_705
+                ),
+                ModelFileSpec(
+                    remotePath: "Qwen3-Embedding-0.6B/model.safetensors",
+                    localName: "qwen3_model.safetensors",
+                    sizeBytes: 1_191_586_416
                 )
             ],
             category: .aceStepVAE,

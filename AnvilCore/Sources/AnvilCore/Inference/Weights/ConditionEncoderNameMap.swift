@@ -2,40 +2,38 @@ import Foundation
 
 public enum ConditionEncoderNameMap {
     public static func mapKey(_ key: String) -> String? {
-        // condition_encoder.text_projector.* → conditionEncoder.textProjection.*
-        if key.hasPrefix("condition_encoder.text_projector") {
+        // The ACE-Step v1.5 turbo checkpoint groups conditioning weights under
+        // an `encoder.` subtree (alongside the DiT under `decoder.`):
+        //
+        //     encoder.text_projector.weight
+        //     encoder.lyric_encoder.layers.N.…
+        //     encoder.timbre_encoder.layers.N.…
+        //     encoder.timbre_encoder.special_token
+
+        // Single linear: encoder.text_projector → conditionEncoder.textProjection
+        if key.hasPrefix("encoder.text_projector") {
             return key.replacingOccurrences(
-                of: "condition_encoder.text_projector",
+                of: "encoder.text_projector",
                 with: "conditionEncoder.textProjection"
             )
         }
 
-        // condition_encoder.lyric_encoder.* → lyricEncoder.*
-        if key.hasPrefix("condition_encoder.lyric_encoder.") {
+        // Lyric encoder: encoder.lyric_encoder.* → lyricEncoder.*
+        if key.hasPrefix("encoder.lyric_encoder.") {
             let stripped = key.replacingOccurrences(
-                of: "condition_encoder.lyric_encoder.",
+                of: "encoder.lyric_encoder.",
                 with: "lyricEncoder."
             )
             return mapEncoderKey(stripped)
         }
 
-        // condition_encoder.timbre_encoder.* → timbreEncoder.*
-        if key.hasPrefix("condition_encoder.timbre_encoder.") {
+        // Timbre encoder: encoder.timbre_encoder.* → timbreEncoder.*
+        if key.hasPrefix("encoder.timbre_encoder.") {
             let stripped = key.replacingOccurrences(
-                of: "condition_encoder.timbre_encoder.",
+                of: "encoder.timbre_encoder.",
                 with: "timbreEncoder."
             )
             return mapEncoderKey(stripped)
-        }
-
-        // condition_encoder.timbre_attention_pooler.* → timbreEncoder.attentionPooler.*
-        if key.hasPrefix("condition_encoder.timbre_attention_pooler.") {
-            let sub = String(key.dropFirst("condition_encoder.timbre_attention_pooler.".count))
-            if sub == "special_token" {
-                return "timbreEncoder.attentionPooler.queryTokens"
-            }
-            let mapped = mapLayerKey("timbreEncoder.attentionPooler.\(sub)")
-            return mapped
         }
 
         return nil

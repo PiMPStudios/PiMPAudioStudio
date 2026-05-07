@@ -162,6 +162,26 @@ final class ACEStepGenerationService {
                 } else {
                     logger.info("tokenizer.json not yet downloaded at \(tokenizerFSPath) — keeping stub conditioning actor")
                 }
+
+                // Load conditioning weights:
+                //   - Qwen3 text encoder weights from VAE spec's qwen3_model.safetensors
+                //   - lyric/timbre/text-projector encoder weights from the DiT bundle's
+                //     `encoder.*` subtree (already in `rawWeights` we just loaded)
+                let qwen3Path = vaeSpec.localPath(for: "qwen3_model.safetensors", base: baseDir)
+                let qwen3FSPath = qwen3Path.path(percentEncoded: false)
+                if FileManager.default.fileExists(atPath: qwen3FSPath) {
+                    do {
+                        let qwen3Raw = try await weightConverter.loadSafetensors(from: qwen3Path)
+                        let qwen3Weights = await weightConverter.convertQwen3Weights(from: qwen3Raw)
+                        let condWeights = await weightConverter.convertConditionEncoderWeights(from: rawWeights)
+                        await conditioning.loadWeights(qwen3Weights: qwen3Weights, conditionWeights: condWeights)
+                        logger.info("Loaded conditioning weights: qwen3=\(qwen3Weights.count), condition=\(condWeights.count)")
+                    } catch {
+                        logger.warning("Failed to load conditioning weights — using default-init: \(error.localizedDescription)")
+                    }
+                } else {
+                    logger.info("qwen3_model.safetensors not yet downloaded at \(qwen3FSPath) — text conditioning will use random embeddings")
+                }
             }
         } catch {
             if let previousModelID {

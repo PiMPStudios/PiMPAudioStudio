@@ -7,14 +7,17 @@ public enum Qwen3NameMap {
         // Filter out keys we don't need
         if key.hasPrefix("lm_head.") { return nil }
 
-        // model.embed_tokens.weight → embeddingTable.weight
-        mapped = mapped.replacingOccurrences(of: "model.embed_tokens", with: "embeddingTable")
+        // Some Qwen3 checkpoints prefix every key with `model.` (the full
+        // CausalLM packaging); the ACE-Step v1.5 `Qwen3-Embedding-0.6B`
+        // checkpoint stores them flat (`embed_tokens.weight`, …). Strip
+        // the prefix if present so both layouts load.
+        if mapped.hasPrefix("model.") {
+            mapped = String(mapped.dropFirst("model.".count))
+        }
 
-        // model.norm.weight → norm.weight
-        mapped = mapped.replacingOccurrences(of: "model.norm", with: "norm")
-
-        // model.layers.N.* → layers.N.*
-        mapped = mapped.replacingOccurrences(of: "model.layers.", with: "layers.")
+        // embed_tokens.* → embeddingTable.*
+        mapped = mapped.replacingOccurrences(of: "embed_tokens.", with: "embeddingTable.")
+        // (`norm.*` and `layers.N.*` already match the Swift module — no rename needed.)
 
         // self_attn projections → attention projections
         mapped = mapped.replacingOccurrences(of: ".self_attn.q_proj", with: ".attention.qProj")
