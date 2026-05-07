@@ -57,8 +57,22 @@ public actor ConditioningActor {
         try Task.checkCancellation()
 
         let textHidden = qwen3(inputIds: textIds, attentionMask: textMask)
-        let lyricEmbeddings = qwen3.embedTokens(lyricIds)
-        let lyricHidden = lyricEncoder(embeddings: lyricEmbeddings, attentionMask: lyricMask)
+
+        // Now that we don't apply an encoder_attention_mask in cross-attention
+        // (matching upstream MLX), running LyricEncoder over a PAD-only input
+        // when the user provides no lyrics is dangerous: its 2048-token output
+        // would be attended to at full weight in cross-attention, drowning the
+        // ~5–10 real text tokens 8:1. Bypass with zeros when lyrics are empty
+        // — same pattern as the timbre bypass below. Zero V-projections in
+        // cross-attention contribute nothing regardless of attention weights.
+        let trimmedLyrics = lyrics.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lyricHidden: MLXArray
+        if trimmedLyrics.isEmpty {
+            lyricHidden = MLXArray.zeros([1, 2048, 2048]).asType(precision.mlxDtype)
+        } else {
+            let lyricEmbeddings = qwen3.embedTokens(lyricIds)
+            lyricHidden = lyricEncoder(embeddings: lyricEmbeddings, attentionMask: lyricMask)
+        }
 
         try Task.checkCancellation()
 
