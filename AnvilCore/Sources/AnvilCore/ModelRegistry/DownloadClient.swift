@@ -1,8 +1,5 @@
 import Foundation
 import CryptoKit
-import OSLog
-
-private let logger = Logger(subsystem: "com.pimp.AnvilApp", category: "DownloadClient")
 
 public actor DownloadClient {
     public init() {}
@@ -266,10 +263,7 @@ private final class DownloadOrchestrator: NSObject, URLSessionDownloadDelegate, 
         totalBytesWritten: Int64,
         totalBytesExpectedToWrite: Int64
     ) {
-        guard totalBytesExpectedToWrite > 0 else {
-            logger.debug("[progress] didWriteData fired but totalBytesExpectedToWrite is 0 — ignoring")
-            return
-        }
+        guard totalBytesExpectedToWrite > 0 else { return }
         let progress = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
 
         // Throttle to ~10 Hz so we don't fan out hundreds of @MainActor
@@ -282,7 +276,6 @@ private final class DownloadOrchestrator: NSObject, URLSessionDownloadDelegate, 
         lock.unlock()
 
         guard shouldFire else { return }
-        logger.debug("[progress] firing \(progress, format: .fixed(precision: 4)) (\(totalBytesWritten)/\(totalBytesExpectedToWrite))")
         onProgress(progress)
     }
 }

@@ -60,14 +60,12 @@ final class AppState: ObservableObject {
         currentError = nil
         do {
             try await registry.downloadEssentialModels { [weak self] modelID, progress in
-                NSLog("[AppState] progress callback received: \(modelID) = \(progress)")
                 // DispatchQueue.main.async always defers to a future runloop tick,
                 // which prevents @Published mutations from interleaving with
                 // SwiftUI body evaluations ("Publishing changes from within view
                 // updates" warning). Task { @MainActor … } can run on the
                 // current tick if the actor is free.
                 DispatchQueue.main.async { [weak self] in
-                    NSLog("[AppState] publishing on main: \(modelID) = \(progress)")
                     self?.downloadProgress[modelID] = progress
                 }
             }
