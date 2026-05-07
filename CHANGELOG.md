@@ -4,6 +4,29 @@ All notable changes to AnvilApp are documented here.
 
 ---
 
+## [Unreleased] — Post-Restructure Bug Fixes (on-device validation pass)
+
+Real-world testing of the model download restructure surfaced a chain of latent issues — long-standing path-encoding ambiguity, a URLSession async-API misuse, and weight-conversion / tensor-shape assumptions that only became reachable once real weights downloaded successfully. Each fix below has been verified live (downloads finish to 100%, conditioning loads the real tokenizer, weight conversion completes without crashing).
+
+### Fixed
+
+- **Live download progress UI never advanced past 0%** — three layered bugs:
+  1. `DownloadProgressDelegate.didWriteData` was never called because `URLSession.downloadTask(with:completionHandler:)` suppresses session-level delegate per-task callbacks (Apple-documented behavior). Replaced with the delegate-only `downloadTask(with:)` API + a unified `DownloadOrchestrator` that bridges `didFinishDownloadingTo` / `didCompleteWithError` to a `CheckedContinuation` (with `NSLock`-guarded single-resume).
+  2. Once the delegate started firing, `Task { @MainActor in self.downloadProgress[id] = progress }` could run on the same runloop tick as a SwiftUI body, producing the *"Publishing changes from within view updates is not allowed"* warning at hundreds of Hz. Switched to `DispatchQueue.main.async` (always defers to a future tick).
+  3. URLSession fires `didWriteData` hundreds of times per second; throttled the delegate to ~10 Hz with `NSLock`-guarded `lastFiredAt` timestamping (always passes 100% through). Plus an explicit `onProgress(0.0)` before `task.resume()` and `onProgress(1.0)` after the final move so the bar swaps out of "Waiting…" instantly and never gets stuck shy of complete.
+- **Sandboxed `Application Support` paths broke `FileManager` everywhere** — `URL.path()` (function form) percent-encodes spaces to `%20` on macOS 13+, but `FileManager` String-path APIs (`fileExists(atPath:)`, `isWritableFile(atPath:)`) want decoded filesystem paths. Codebase-wide sweep replaced 8 callsites with `path(percentEncoded: false)`:
+  - `ACEStepGenerationService.loadDiTWeights` tokenizer existence check (most impactful — was silently falling back to a stub `ConditioningActor` that produced wrong-shaped tensors and crashed inference downstream)
+  - `ModelRegistry.status(for:)`, orphan-directory sweep, `deleteModelFiles`, `loadUserSpecs`, `loadActiveModels`
+  - `SFXModelManager` file readiness check
+  - `HistoryStore.loadFromDisk`
+  - `OutputDirectoryManager.hasValidDirectory`
+- **`moveItem` failed with `NSFileWriteFileExistsError`** — a stale partial download at the destination wasn't removed because the same `URL.path()` percent-encoding bug made the existence check skip the file. `DownloadClient` now does `try? FileManager.removeItem(at: destination)` (URL-based, no encoding ambiguity) unconditionally before `moveItem`. Same defensive guard on the intermediate UUID-named temp move inside the orchestrator.
+- **`DownloadError` was opaque on first launch** — added `LocalizedError` conformance with per-status-code descriptions (401 = "Unauthorized — authentication or model access may be required", 403 = license required, 404 = repo doesn't exist, 429 = rate limited, 5xx = server error). Previously surfaced as `"AnvilCore.DownloadError error 0"`.
+- **`WeightConverter.convertDiTWeights` crashed with `[transpose] Received 3 axes for array with 2 dimensions`** — the substring predicates `isDiTConv1dWeight` / `isDiTConvTransposeWeight` matched both the top-level patch projections (Conv1d / ConvTranspose1d, 3-D weights) AND inner encoder `nn.Linear` layers (also named `proj_in`/`proj_out`, 2-D weights). The 2-D Linear weights were routed through the 3-D `transposed(0,2,1)` / `transposed(1,2,0)` axis remap and crashed inside MLX. Added `value.ndim == 3` guards so the conv axis remap fires only on actual 3-D tensors; 2-D Linear weights pass through unchanged.
+- **`ConditioningActor.contextLatents` had wrong sequence length** — `DiTModel.callAsFunction` channel-concatenates `contextLatents` and the noisy `hiddenStates`, requiring matching seq dims. `ConditioningActor` was using a stale `latentFrameRate: Float = 25.0` constant (from upstream's LM-hint pathway) producing 750 frames for 30s, while `MusicPipeline.latentFrames` correctly used `ceil(44100 * duration / 2048) = 646` for the same duration. Crashed at `[concatenate] shapes (1,750,128) vs (1,646,64) along axis -1`. Replaced with `audioSampleRate` + `vaeHopLength` constants and a `latentFrames(forDuration:)` static helper that mirrors `MusicPipeline.latentFrames` exactly.
+
+---
+
 ## [Unreleased] — Model Download Restructure (Phase 1 + 2 + 3)
 
 ### Added
