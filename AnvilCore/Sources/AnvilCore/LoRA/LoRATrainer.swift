@@ -64,38 +64,44 @@ public final class LoRATrainer {
     private var lossHistory: [Float] = []
     private let scheduler: CosineScheduler
     private let totalSteps: Int
-    private let stepsPerEpoch: Int
 
-    public init(model: DiTDecoder, config: LoRAConfig, injectedPaths: [String], datasetSize: Int) {
+    /// Designated initializer.
+    /// - Parameters:
+    ///   - model: DiT decoder with LoRA layers already injected.
+    ///   - config: Training configuration.
+    ///   - injectedPaths: Key paths of injected LoRA layers.
+    ///   - datasetSize: Number of training samples (for scheduler computation).
+    ///   - resumeFrom: Optional checkpoint to resume from.
+    public init(
+        model: DiTDecoder,
+        config: LoRAConfig,
+        injectedPaths: [String],
+        datasetSize: Int,
+        resumeFrom checkpoint: TrainingCheckpoint? = nil
+    ) {
         self.model = model
         self.config = config
         self.injectedPaths = injectedPaths
 
-        // Steps per epoch = ceil(datasetSize / gradientAccumulationSteps)
-        let effectiveSteps = max(1, datasetSize / max(1, config.gradientAccumulationSteps))
-        self.stepsPerEpoch = effectiveSteps
-        self.totalSteps = effectiveSteps * config.maxEpochs
+        // Each epoch processes all samples; optimizer steps once per sample.
+        // LR updates happen every gradientAccumulationSteps samples.
+        // totalSteps = total LR update points across training.
+        let updatesPerEpoch = max(1, datasetSize / max(1, config.gradientAccumulationSteps))
+        self.totalSteps = updatesPerEpoch * config.maxEpochs
 
         self.scheduler = CosineScheduler(
             baseLR: config.learningRate,
             warmupFraction: config.warmupFraction,
             totalSteps: totalSteps
         )
-    }
 
-    /// Resume from a checkpoint. Restores global step, epoch, loss history, and best loss.
-    public convenience init(
-        model: DiTDecoder,
-        config: LoRAConfig,
-        injectedPaths: [String],
-        datasetSize: Int,
-        checkpoint: TrainingCheckpoint
-    ) {
-        self.init(model: model, config: config, injectedPaths: injectedPaths, datasetSize: datasetSize)
-        self.globalStep = checkpoint.globalStep
-        self.currentEpoch = checkpoint.epoch
-        self.lossHistory = checkpoint.lossHistory
-        self.bestLoss = checkpoint.bestLoss ?? .infinity
+        // Restore from checkpoint if provided
+        if let checkpoint {
+            self.globalStep = checkpoint.globalStep
+            self.currentEpoch = checkpoint.epoch
+            self.lossHistory = checkpoint.lossHistory
+            self.bestLoss = checkpoint.bestLoss ?? .infinity
+        }
     }
 
     /// Run the training loop. Returns the best LoRA weights (lowest loss across epochs).
@@ -105,7 +111,7 @@ public final class LoRATrainer {
     ) -> [(String, MLXArray)] {
         guard !dataset.isEmpty else { return [] }
 
-        let accumSteps = min(config.gradientAccumulationSteps, dataset.count)
+        let accumSteps = max(1, min(config.gradientAccumulationSteps, dataset.count))
         let optimizer = AdamW(learningRate: scheduler.learningRate(atStep: globalStep))
         let startTime = Date()
 
@@ -147,7 +153,9 @@ public final class LoRATrainer {
             var epochSamples: Int = 0
             let shuffledIndices = Array(0..<dataset.count).shuffled()
 
-            var accumCount = 0
+            // Per-window tracking for accurate loss reporting
+            var windowLoss: Float = 0
+            var windowSamples: Int = 0
 
             for idx in shuffledIndices {
                 guard !isCancelled else { break }
@@ -169,83 +177,55 @@ public final class LoRATrainer {
                     args.append(mask)
                 }
 
-                // Forward + backward
+                // Forward + backward + step (per-sample optimizer update)
                 let (lossValues, grads) = lossGrad(model, args)
                 let loss = lossValues[0]
                 let lossValue = loss.item(Float.self)
 
+                optimizer.update(model: model, gradients: grads)
+                eval(model.parameters())
+
                 epochLoss += lossValue
                 epochSamples += 1
-                accumCount += 1
+                windowLoss += lossValue
+                windowSamples += 1
 
-                // Step optimizer when accumulation window is full
-                if accumCount >= accumSteps {
-                    // Update LR from scheduler
+                // Update LR and report progress every accumSteps samples
+                if windowSamples >= accumSteps {
                     let currentLR = scheduler.learningRate(atStep: globalStep)
                     optimizer.learningRate = currentLR
-
-                    // Optimizer step (grads from last forward pass; for accum=1 this is correct)
-                    optimizer.update(model: model, gradients: grads)
-                    eval(model.parameters())
-
-                    // Track
-                    let stepLoss = epochLoss / Float(epochSamples)
-                    lossHistory.append(stepLoss)
                     globalStep += 1
+
+                    // Record per-window average loss (not running epoch average)
+                    let avgWindowLoss = windowLoss / Float(windowSamples)
+                    lossHistory.append(avgWindowLoss)
 
                     // Report progress
                     let elapsed = Date().timeIntervalSince(startTime)
-                    let stepsCompleted = globalStep - (startEpoch - 1) * stepsPerEpoch
-                    let stepsRemaining = totalSteps - globalStep
-                    let eta: TimeInterval? = stepsCompleted > 0
-                        ? elapsed / Double(stepsCompleted) * Double(stepsRemaining)
+                    let stepsRemaining = max(0, totalSteps - globalStep)
+                    let eta: TimeInterval? = globalStep > 0
+                        ? elapsed / Double(globalStep) * Double(stepsRemaining)
                         : nil
 
                     onProgress(TrainingProgress(
                         epoch: epoch,
                         totalEpochs: config.maxEpochs,
                         step: globalStep,
-                        loss: stepLoss,
+                        loss: avgWindowLoss,
                         learningRate: currentLR,
                         estimatedTimeRemaining: eta,
                         lossHistory: lossHistory,
                         elapsedTime: elapsed
                     ))
 
-                    // Reset accumulation counter
-                    accumCount = 0
+                    // Reset window for next accumulation period
+                    windowLoss = 0
+                    windowSamples = 0
                 }
             }
 
-            // Handle remaining accumulated samples (partial batch at epoch end)
-            if accumCount > 0 {
-                let currentLR = scheduler.learningRate(atStep: globalStep)
-                optimizer.learningRate = currentLR
-
-                // Use the last computed grads for the partial batch
-                // (In practice with accum=1 this path is not hit)
-                let stepLoss = epochLoss / Float(epochSamples)
-                lossHistory.append(stepLoss)
-                globalStep += 1
-
-                let elapsed = Date().timeIntervalSince(startTime)
-                let stepsCompleted = globalStep - (startEpoch - 1) * stepsPerEpoch
-                let stepsRemaining = totalSteps - globalStep
-                let eta: TimeInterval? = stepsCompleted > 0
-                    ? elapsed / Double(stepsCompleted) * Double(stepsRemaining)
-                    : nil
-
-                onProgress(TrainingProgress(
-                    epoch: epoch,
-                    totalEpochs: config.maxEpochs,
-                    step: globalStep,
-                    loss: stepLoss,
-                    learningRate: currentLR,
-                    estimatedTimeRemaining: eta,
-                    lossHistory: lossHistory,
-                    elapsedTime: elapsed
-                ))
-            }
+            // Partial window at epoch end: discard remaining samples without
+            // incrementing globalStep (no optimizer step was taken for this window).
 
             // Track best weights (per epoch)
             let avgLoss = epochSamples > 0 ? epochLoss / Float(epochSamples) : .infinity

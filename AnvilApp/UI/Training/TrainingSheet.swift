@@ -247,12 +247,13 @@ struct TrainingSheet: View {
                         startTraining()
                     }
                     .buttonStyle(.borderedProminent)
+                } else {
+                    Button("Start Training") {
+                        startTraining()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!canStartTraining)
                 }
-                Button("Start Training") {
-                    startTraining()
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(!canStartTraining)
             }
         }
         .padding()
