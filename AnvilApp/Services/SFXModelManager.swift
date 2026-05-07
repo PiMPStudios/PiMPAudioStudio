@@ -18,9 +18,13 @@ final class SFXModelManager: ObservableObject {
 
     private let registry: ModelRegistry
     private var loadedModelID: String?
+    private var resolvedModelPath: URL?
 
     /// The model path for the currently active Stable Audio model.
     var modelPath: URL {
+        if let resolved = resolvedModelPath {
+            return resolved
+        }
         let appSupport = FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask
@@ -29,7 +33,6 @@ final class SFXModelManager: ObservableObject {
             .appendingPathComponent("Anvil", isDirectory: true)
             .appendingPathComponent("models", isDirectory: true)
 
-        // Use active model's directory if available
         // Fall back to built-in stable-audio-open
         return base.appendingPathComponent("stable-audio-open", isDirectory: true)
     }
@@ -46,14 +49,26 @@ final class SFXModelManager: ObservableObject {
     func downloadIfNeeded() async throws {
         guard downloadState != .downloaded else { return }
 
+        // Get the active spec's repo, or fall back to built-in
+        let activeSpec = await registry.activeSpec(for: .stableAudio)
+        let repoID = activeSpec?.huggingFaceRepo ?? "stabilityai/stable-audio-open-1.0"
+
+        // Resolve and store the model path based on active spec
+        let appSupport = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first!
+        let base = appSupport
+            .appendingPathComponent("Anvil", isDirectory: true)
+            .appendingPathComponent("models", isDirectory: true)
+        resolvedModelPath = activeSpec.map { base.appendingPathComponent($0.id, isDirectory: true) }
+            ?? base.appendingPathComponent("stable-audio-open", isDirectory: true)
+
         let fm = FileManager.default
         try fm.createDirectory(at: modelPath, withIntermediateDirectories: true)
 
         downloadState = .downloading(progress: 0)
 
-        // Get the active spec's repo, or fall back to built-in
-        let activeSpec = await registry.activeSpec(for: .stableAudio)
-        let repoID = activeSpec?.huggingFaceRepo ?? "stabilityai/stable-audio-open-1.0"
         let baseURL = "https://huggingface.co/\(repoID)/resolve/main/"
         let session = URLSession.shared
 
@@ -110,6 +125,9 @@ final class SFXModelManager: ObservableObject {
             guard let spec else { return }
             let baseDir = await registry.baseDirectory
             let dir = spec.localDirectory(base: baseDir)
+
+            // Resolve and store the model path for synchronous access
+            resolvedModelPath = dir
 
             // Check if model files exist at new location
             let hasFiles = spec.files.allSatisfy { file in
