@@ -241,7 +241,7 @@ public actor InpaintCoordinator {
                 continuation.finish()
                 return
             }
-            audio = await sfxVAE.decode(latents: composited)
+            audio = try await sfxVAE.decode(latents: composited)
         }
 
         updateState(latents: composited, audio: audio, request: request)

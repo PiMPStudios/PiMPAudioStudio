@@ -38,11 +38,11 @@ public actor SFXDiffusionActor {
 
             var vt: MLXArray
             if doCFG {
-                let condPred = await dit.predict(latents: xt, timestep: timestep, conditioning: conditioning)
-                let uncondPred = await dit.predict(latents: xt, timestep: timestep, conditioning: MLXArray.zeros(like: conditioning))
+                let condPred = try await dit.predict(latents: xt, timestep: timestep, conditioning: conditioning)
+                let uncondPred = try await dit.predict(latents: xt, timestep: timestep, conditioning: MLXArray.zeros(like: conditioning))
                 vt = uncondPred + config.guidanceScale * (condPred - uncondPred)
             } else {
-                vt = await dit.predict(latents: xt, timestep: timestep, conditioning: conditioning)
+                vt = try await dit.predict(latents: xt, timestep: timestep, conditioning: conditioning)
             }
 
             if stepIdx == config.steps - 1 {
@@ -99,11 +99,11 @@ public actor SFXDiffusionActor {
 
             var vt: MLXArray
             if doCFG {
-                let condPred = await dit.predict(latents: xt, timestep: timestep, conditioning: conditioning)
-                let uncondPred = await dit.predict(latents: xt, timestep: timestep, conditioning: MLXArray.zeros(like: conditioning))
+                let condPred = try await dit.predict(latents: xt, timestep: timestep, conditioning: conditioning)
+                let uncondPred = try await dit.predict(latents: xt, timestep: timestep, conditioning: MLXArray.zeros(like: conditioning))
                 vt = uncondPred + config.guidanceScale * (condPred - uncondPred)
             } else {
-                vt = await dit.predict(latents: xt, timestep: timestep, conditioning: conditioning)
+                vt = try await dit.predict(latents: xt, timestep: timestep, conditioning: conditioning)
             }
 
             if stepIdx == stepCount - 1 {

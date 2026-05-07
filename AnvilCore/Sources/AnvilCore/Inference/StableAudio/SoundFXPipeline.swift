@@ -65,7 +65,7 @@ public actor SoundFXPipeline {
 
         // 5. VAE decode
         progressContinuation?.yield(.decoding)
-        let audio = await vae.decode(latents: diffResult.latents)
+        let audio = try await vae.decode(latents: diffResult.latents)
 
         let totalTime = Date().timeIntervalSince(totalStart)
         let costs = TimeCosts(
