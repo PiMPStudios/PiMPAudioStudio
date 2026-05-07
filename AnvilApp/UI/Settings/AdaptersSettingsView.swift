@@ -2,13 +2,48 @@ import SwiftUI
 import AnvilCore
 
 struct AdaptersSettingsView: View {
+    enum Tab: String, CaseIterable {
+        case myAdapters = "My Adapters"
+        case community = "Community"
+    }
+
+    @State private var selectedTab: Tab = .myAdapters
+    @StateObject private var communityService = CommunityService()
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Segmented control
+            Picker("", selection: $selectedTab) {
+                ForEach(Tab.allCases, id: \.self) { tab in
+                    Text(tab.rawValue).tag(tab)
+                }
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal)
+            .padding(.top, 12)
+            .padding(.bottom, 8)
+
+            Divider()
+
+            // Tab content
+            switch selectedTab {
+            case .myAdapters:
+                MyAdaptersListView()
+            case .community:
+                CommunityBrowserView(service: communityService)
+            }
+        }
+    }
+}
+
+// MARK: - My Adapters (extracted from original)
+
+private struct MyAdaptersListView: View {
     @State private var adapters: [LoRAAdapter] = []
     @State private var showingMergeSheet = false
     @State private var renamingAdapter: LoRAAdapter?
     @State private var renameText: String = ""
     @State private var errorMessage: String?
-    @State private var showingExportPanel = false
-    @State private var exportAdapterID: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -73,7 +108,7 @@ struct AdaptersSettingsView: View {
             Text("No Adapters Yet")
                 .font(.headline)
                 .foregroundStyle(.secondary)
-            Text("Train one from History using the \"Train LoRA\" button.")
+            Text("Train one from History or download from the Community tab.")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
             Spacer()
@@ -107,9 +142,20 @@ struct AdaptersSettingsView: View {
     private func adapterRow(_ adapter: LoRAAdapter) -> some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
-                Text(adapter.name)
-                    .font(.body)
-                    .fontWeight(.medium)
+                HStack(spacing: 6) {
+                    Text(adapter.name)
+                        .font(.body)
+                        .fontWeight(.medium)
+                    // Source badge
+                    if adapter.source != .local {
+                        Text(adapter.source.rawValue.capitalized)
+                            .font(.caption2)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(.blue.opacity(0.1))
+                            .clipShape(Capsule())
+                    }
+                }
                 HStack(spacing: 8) {
                     Text(adapter.baseModelCategory.rawValue)
                         .font(.caption2)
