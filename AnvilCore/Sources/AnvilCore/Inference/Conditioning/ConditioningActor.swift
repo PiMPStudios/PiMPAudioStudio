@@ -12,6 +12,12 @@ public actor ConditioningActor {
     private let timbreEncoder: TimbreEncoder
     private let conditionEncoder: ConditionEncoder
     private let tokenizer: AnvilTokenizer
+    /// Trained "silence" latent prior (shape `[1, 15000, 64]`) — used as the
+    /// `src_latents` half of `context_latents` when generating from text
+    /// only (no reference audio). Loaded from `silence_latent.pt` shipped
+    /// alongside each ACE-Step DiT checkpoint. `nil` falls back to a zeros
+    /// tensor (smoke test mode).
+    private var silenceLatent: MLXArray?
 
     static let timbreFixFrame = 750
     /// Audio sample rate matching MusicPipeline.defaultSampleRate (v1.5 VAE: 48000).
@@ -167,22 +173,42 @@ public actor ConditioningActor {
             let chunkMask = MLXArray.ones(referenceLatents.shape).asType(precision.mlxDtype)
             contextLatents = concatenated([referenceLatents, chunkMask], axis: -1)
         } else {
-            // Smoke test for GPT-5.5's silence_latent hypothesis: upstream
-            // text2music builds context_latents = cat([silence_latent_slice,
-            // ones]) along the channel axis. The "ones" half is the
-            // chunk_mask, telling the DiT "generate the whole sequence." We
-            // were sending [zeros, zeros] which says "no source latent, no
-            // generate mask" — the model interprets that as a degenerate
-            // condition.
+            // Match upstream text2music context construction:
+            //   context_latents = cat([silence_latent[:, :tFrames, :], ones], axis=-1)
             //
-            // Step 1 smoke test: keep src_latents as zeros (no silence_latent
-            // loader yet) but flip the mask half to ones. This isolates the
-            // mask contribution from the silence_latent body contribution.
-            // Step 2 (separate fix): load silence_latent.pt and replace the
-            // zero src_latent half with its `[:tFrames, :]` slice.
-            let zerosSrc = MLXArray.zeros([1, tFrames, 64])
+            // (acestep/models/turbo/modeling_acestep_v15_turbo.py:1680, 1931
+            // and equivalent in base/sft variants.)
+            //
+            // The first half (64 channels) is the trained silence_latent —
+            // a learned "no source audio" prior. The second half (64 channels)
+            // is the chunk_mask = ones, telling the DiT to generate the full
+            // sequence. Falling back to zeros for src_latents was the latest
+            // remaining structural mismatch (caught by GPT-5.5 review):
+            // matched the mask side correctly but left the source body as
+            // zeros, putting the model in a degenerate prior it wasn't
+            // trained for.
+            let srcLatents: MLXArray
+            if let silence = silenceLatent {
+                // silence has shape [1, 15000, 64]; tFrames typically 750.
+                // (Tile if duration would exceed 600s — upstream tiles too.)
+                let available = silence.shape[1]
+                if tFrames <= available {
+                    srcLatents = silence[0..., 0..<tFrames, 0...]
+                } else {
+                    let repeats = Int(ceil(Double(tFrames) / Double(available)))
+                    var tiled = silence
+                    for _ in 1..<repeats {
+                        tiled = concatenated([tiled, silence], axis: 1)
+                    }
+                    srcLatents = tiled[0..., 0..<tFrames, 0...]
+                }
+            } else {
+                // Fall back to zeros if silence_latent.pt isn't loaded —
+                // produces still-functional but slightly noisy output.
+                srcLatents = MLXArray.zeros([1, tFrames, 64])
+            }
             let onesMask = MLXArray.ones([1, tFrames, 64])
-            contextLatents = concatenated([zerosSrc, onesMask], axis: -1)
+            contextLatents = concatenated([srcLatents, onesMask], axis: -1)
                 .asType(precision.mlxDtype)
         }
 
@@ -220,6 +246,17 @@ public actor ConditioningActor {
         } else {
             let padding = MLXArray.zeros([latents.shape[0], Self.timbreFixFrame - currentFrames, 64])
             return concatenated([latents, padding], axis: 1)
+        }
+    }
+
+    /// Load the per-DiT-checkpoint `silence_latent.pt` tensor. Pass `nil` to
+    /// clear (e.g., when unloading weights). Shape must be `[1, ≥1, 64]`.
+    public func setSilenceLatent(_ latent: MLXArray?) {
+        self.silenceLatent = latent
+        if let l = latent {
+            condLogger.info("[ConditioningActor.setSilenceLatent] loaded shape=\(l.shape)")
+        } else {
+            condLogger.info("[ConditioningActor.setSilenceLatent] cleared")
         }
     }
 

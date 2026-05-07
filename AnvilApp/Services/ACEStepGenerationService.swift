@@ -199,6 +199,26 @@ final class ACEStepGenerationService {
                     logger.info("qwen3_model.safetensors not yet downloaded at \(qwen3FSPath) — text conditioning will use random embeddings")
                 }
             }
+
+            // Load silence_latent.pt (the trained "no source audio" prior).
+            // Lives next to model.safetensors in each DiT checkpoint dir.
+            // Required for proper text2music context_latents construction —
+            // see ConditioningActor.encode for how it's used.
+            let silencePath = spec.localPath(for: "silence_latent.pt", base: baseDir)
+            let silenceFSPath = silencePath.path(percentEncoded: false)
+            if FileManager.default.fileExists(atPath: silenceFSPath) {
+                do {
+                    let silence = try SilenceLatentLoader.load(from: silencePath)
+                    await conditioning.setSilenceLatent(silence)
+                    logger.info("Loaded silence_latent.pt shape=\(silence.shape)")
+                } catch {
+                    logger.warning("Failed to load silence_latent.pt — falling back to zeros: \(error.localizedDescription)")
+                    await conditioning.setSilenceLatent(nil)
+                }
+            } else {
+                logger.info("silence_latent.pt not present at \(silenceFSPath) — falling back to zeros for text2music src_latents")
+                await conditioning.setSilenceLatent(nil)
+            }
         } catch {
             if let previousModelID {
                 try? await registry.setActiveModel(id: previousModelID, for: .aceStepDiT)

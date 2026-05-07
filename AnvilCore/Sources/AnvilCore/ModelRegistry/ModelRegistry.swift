@@ -34,6 +34,11 @@ public actor ModelRegistry {
                     remotePath: "acestep-v15-turbo/config.json",
                     localName: "config.json",
                     sizeBytes: 1_968
+                ),
+                ModelFileSpec(
+                    remotePath: "acestep-v15-turbo/silence_latent.pt",
+                    localName: "silence_latent.pt",
+                    sizeBytes: 3_841_215
                 )
             ],
             category: .aceStepDiT,
@@ -53,6 +58,11 @@ public actor ModelRegistry {
                     remotePath: "config.json",
                     localName: "config.json",
                     sizeBytes: 1_940
+                ),
+                ModelFileSpec(
+                    remotePath: "silence_latent.pt",
+                    localName: "silence_latent.pt",
+                    sizeBytes: 3_841_215
                 )
             ],
             category: .aceStepDiT,
@@ -72,6 +82,11 @@ public actor ModelRegistry {
                     remotePath: "config.json",
                     localName: "config.json",
                     sizeBytes: 1_940
+                ),
+                ModelFileSpec(
+                    remotePath: "silence_latent.pt",
+                    localName: "silence_latent.pt",
+                    sizeBytes: 3_841_215
                 )
             ],
             category: .aceStepDiT,
