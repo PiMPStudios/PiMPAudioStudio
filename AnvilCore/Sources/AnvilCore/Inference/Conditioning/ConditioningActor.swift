@@ -65,7 +65,27 @@ public actor ConditioningActor {
         // referenceLatents is [B, 750, 64] — raw VAE latent space fed to timbreEncoder
         // contextLatents is [B, T, 128] = cat([src_latents, chunk_mask], axis:-1)
         let referenceLatents = try await prepareReferenceLatents(referenceAudio, precision: precision)
-        let timbreTokens = timbreEncoder(latents: referenceLatents, attentionMask: nil)
+
+        // The v1.5 turbo/full/sft checkpoints don't ship weights for the
+        // TimbreEncoder.AttentionPooler subtree (only the special_token,
+        // which is also shape-mismatched with our [1,5,2048] queryTokens
+        // and gets skipped in ConditionEncoderNameMap). When the user has
+        // not provided reference audio, running the timbre encoder over
+        // zero latents pushes them through the default-init random
+        // AttentionPooler, yielding ~5 RANDOM tokens that then get
+        // concatenated into encoder_states with mask=1 (always attended).
+        // For short prompts like "slow dark guitar riff" — only 5-10 real
+        // text tokens vs the 5 random timbre tokens — that random signal
+        // dilutes prompt-following by ~50%. Pass zeros directly when
+        // there's no reference audio so the cross-attention's V-projection
+        // contributes nothing from this path.
+        let timbreTokens: MLXArray
+        if referenceAudio == nil {
+            // 5 query tokens of zeros at model hidden size (2048).
+            timbreTokens = MLXArray.zeros([1, 5, 2048]).asType(precision.mlxDtype)
+        } else {
+            timbreTokens = timbreEncoder(latents: referenceLatents, attentionMask: nil)
+        }
 
         try Task.checkCancellation()
 
