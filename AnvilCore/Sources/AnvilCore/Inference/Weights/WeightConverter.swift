@@ -41,12 +41,14 @@ public actor WeightConverter {
                 }
                 var fused = VAENameMap.fuseWeightNorm(weightG: g, weightV: v)
                 let fusedKey = VAENameMap.fusedKeyName(key)
+                // isConvTranspose still inspects the snake_case `conv_t1`
+                // form, so axis-remap detection runs BEFORE renaming.
                 if VAENameMap.isConvTranspose(fusedKey) {
                     fused = VAENameMap.convTranspose1dToMLX(fused)
                 } else {
                     fused = VAENameMap.conv1dToMLX(fused)
                 }
-                result.append((fusedKey, fused))
+                result.append((VAENameMap.mapKey(fusedKey), fused))
                 processed.insert(key)
                 processed.insert(vKey)
                 continue
@@ -57,9 +59,9 @@ public actor WeightConverter {
             guard let value = dict[key] else { continue }
 
             if VAENameMap.isSnakeParam(key) {
-                result.append((key, VAENameMap.squeezeSnakeParam(value)))
+                result.append((VAENameMap.mapKey(key), VAENameMap.squeezeSnakeParam(value)))
             } else {
-                result.append((key, value))
+                result.append((VAENameMap.mapKey(key), value))
             }
             processed.insert(key)
         }
