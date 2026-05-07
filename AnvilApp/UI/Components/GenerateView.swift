@@ -9,19 +9,16 @@ struct GenerateView: View {
     @EnvironmentObject private var lyricWriterManager: LyricWriterManager
     @EnvironmentObject private var sfxModelManager: SFXModelManager
     @EnvironmentObject private var stackManager: AdapterStackManager
+    @EnvironmentObject private var generationParameters: GenerationParameters
 
     @State private var promptText: String = ""
     @State private var lyricsText: String = ""
-    @State private var duration: Double = 30
-    @State private var seed: String = ""
-    @State private var guidanceScale: Double = 7.5
     @State private var method: InferMethod = .ode
     @State private var precision: Precision = .float16
     @State private var stepsOverrideText: String = ""
     @State private var shiftOverride: Double = 3.0
     @State private var advancedExpanded: Bool = false
     @State private var modeSelection: ModeSelection = .auto
-    @State private var pipelineOverride: PipelineChoice = .auto
     @State private var selectedAdapterID: String?
     @AppStorage("selectedAdapterID") private var persistedAdapterID: String = ""
 
@@ -145,7 +142,7 @@ struct GenerateView: View {
                             lyricWriterManager.writeLyrics(
                                 prompt: promptText,
                                 style: "",
-                                duration: duration,
+                                duration: generationParameters.duration,
                                 into: $lyricsText
                             )
                         }
@@ -170,14 +167,14 @@ struct GenerateView: View {
                     text: promptText,
                     lyrics: lyricsText,
                     duration: effectiveDuration,
-                    seed: Int(seed),
+                    seed: generationParameters.seed,
                     method: method,
-                    guidanceScale: Float(guidanceScale),
+                    guidanceScale: Float(generationParameters.guidanceScale),
                     precision: precision,
                     stepsOverride: Int(stepsOverrideText.trimmingCharacters(in: .whitespacesAndNewlines)),
                     shiftOverride: Float(shiftOverride),
                     resolvedMode: resolvedMode,
-                    pipelineOverride: pipelineOverride
+                    pipelineOverride: generationParameters.pipelineOverride
                 )
                 generationService.generate(request: request)
             }
@@ -328,13 +325,13 @@ struct GenerateView: View {
 
     private var effectiveDuration: TimeInterval {
         if shouldUseStableAudio {
-            return min(duration, 47.0)
+            return min(generationParameters.duration, 47.0)
         }
-        return duration
+        return generationParameters.duration
     }
 
     private var shouldUseStableAudio: Bool {
-        switch pipelineOverride {
+        switch generationParameters.pipelineOverride {
         case .aceStep: return false
         case .stableAudio: return true
         case .auto: return resolvedMode == .soundFX || resolvedMode == .ambient

@@ -16,6 +16,7 @@
 		C7C3DB52C2251429C55B8EAF /* AnvilCore in Frameworks */ = {isa = PBXBuildFile; productRef = E3CDBF8443FB369FB268D4A5 /* AnvilCore */; };
 		C8FD5C2133B259E0AEC730DF /* MainShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43F636E7106FD40FD32886A4 /* MainShellView.swift */; };
 		AA0001010101010101010101 /* GenerationRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002010101010101010101 /* GenerationRequest.swift */; };
+		CC0001000000000000000001 /* GenerationParameters.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC0002000000000000000001 /* GenerationParameters.swift */; };
 		AA0001020101010101010101 /* GenerationState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002020101010101010101 /* GenerationState.swift */; };
 		AA0001030101010101010101 /* HistoryEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002030101010101010101 /* HistoryEntry.swift */; };
 		AA0001040101010101010101 /* AudioPlayerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002040101010101010101 /* AudioPlayerService.swift */; };
@@ -106,6 +107,7 @@
 		9E46D5718C7768D91073FCEE /* AnvilAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AnvilAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		FC923278BD1DFB05336E01E3 /* AppStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStateTests.swift; sourceTree = "<group>"; };
 		AA0002010101010101010101 /* GenerationRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationRequest.swift; sourceTree = "<group>"; };
+		CC0002000000000000000001 /* GenerationParameters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationParameters.swift; sourceTree = "<group>"; };
 		AA0002020101010101010101 /* GenerationState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationState.swift; sourceTree = "<group>"; };
 		AA0002030101010101010101 /* HistoryEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryEntry.swift; sourceTree = "<group>"; };
 		AA0002040101010101010101 /* AudioPlayerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayerService.swift; sourceTree = "<group>"; };
@@ -218,6 +220,7 @@
 			children = (
 				BB00020D0101010101010101 /* GenerationMode.swift */,
 				AA0002010101010101010101 /* GenerationRequest.swift */,
+				CC0002000000000000000001 /* GenerationParameters.swift */,
 				AA0002020101010101010101 /* GenerationState.swift */,
 				AA0002030101010101010101 /* HistoryEntry.swift */,
 			);
@@ -467,6 +470,7 @@
 				0AF9779F80608B35F17064E4 /* AnvilAppApp.swift in Sources */,
 				A7E26898FC333EE4A7BCF31A /* AppState.swift in Sources */,
 				AA0001010101010101010101 /* GenerationRequest.swift in Sources */,
+				CC0001000000000000000001 /* GenerationParameters.swift in Sources */,
 				AA0001020101010101010101 /* GenerationState.swift in Sources */,
 				AA0001030101010101010101 /* HistoryEntry.swift in Sources */,
 				AA0001040101010101010101 /* AudioPlayerService.swift in Sources */,

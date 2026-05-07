@@ -14,6 +14,7 @@ struct AnvilAppApp: App {
     @StateObject private var lyricWriterManager: LyricWriterManager
     @StateObject private var sfxModelManager: SFXModelManager
     @StateObject private var adapterStackManager = AdapterStackManager()
+    @StateObject private var generationParameters = GenerationParameters()
 
     init() {
         let apiKeys = APIKeyStore()
@@ -58,6 +59,7 @@ struct AnvilAppApp: App {
                 .environmentObject(lyricWriterManager)
                 .environmentObject(sfxModelManager)
                 .environmentObject(adapterStackManager)
+                .environmentObject(generationParameters)
                 .task(id: outputManager.directory) {
                     services.configure(outputManager: outputManager)
                 }

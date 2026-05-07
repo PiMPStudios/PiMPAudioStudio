@@ -6,8 +6,8 @@ struct MainShellView: View {
     @EnvironmentObject private var outputManager: OutputDirectoryManager
     @EnvironmentObject private var sfxModelManager: SFXModelManager
     @EnvironmentObject private var llmManager: LLMModelManager
+    @EnvironmentObject private var generationParameters: GenerationParameters
     @State private var selectedSidebarItem: SidebarItem = .generate
-    @State private var pipelineOverride: PipelineChoice = .auto
     @State private var editAudioURL: URL?
     @State private var editOriginalPrompt: String?
 
@@ -107,7 +107,7 @@ struct MainShellView: View {
                         .foregroundStyle(.secondary)
                 }
                 if sfxModelManager.downloadState == .downloaded {
-                    Picker("Override", selection: $pipelineOverride) {
+                    Picker("Override", selection: $generationParameters.pipelineOverride) {
                         Text("Auto").tag(PipelineChoice.auto)
                         Text("ACE-Step (Music)").tag(PipelineChoice.aceStep)
                         Text("Stable Audio (SFX)").tag(PipelineChoice.stableAudio)
@@ -116,9 +116,21 @@ struct MainShellView: View {
                 }
             }
             Section("Parameters") {
-                LabeledContent("Duration") { TextField("30s", text: .constant("")) }
-                LabeledContent("Seed") { TextField("Random", text: .constant("")) }
-                LabeledContent("Guidance") { TextField("1.0", text: .constant("")) }
+                LabeledContent("Duration") {
+                    HStack(spacing: 4) {
+                        TextField("30", value: $generationParameters.duration, format: .number)
+                            .multilineTextAlignment(.trailing)
+                        Text("s").foregroundStyle(.secondary)
+                    }
+                }
+                LabeledContent("Seed") {
+                    TextField("Random", text: $generationParameters.seedText)
+                        .multilineTextAlignment(.trailing)
+                }
+                LabeledContent("Guidance") {
+                    TextField("7.5", value: $generationParameters.guidanceScale, format: .number.precision(.fractionLength(1)))
+                        .multilineTextAlignment(.trailing)
+                }
             }
             Section("Model") {
                 Text("ACE-Step DiT v1.5")
@@ -134,7 +146,7 @@ struct MainShellView: View {
     }
 
     private var resolvedPipelineName: String {
-        switch pipelineOverride {
+        switch generationParameters.pipelineOverride {
         case .aceStep: return "ACE-Step"
         case .stableAudio: return "Stable Audio"
         case .auto: return "Auto"

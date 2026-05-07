@@ -2,6 +2,9 @@ import Foundation
 import MLX
 import MLXFast
 import MLXNN
+import OSLog
+
+private let vaeLogger = Logger(subsystem: "com.pimp.AnvilApp", category: "VAEActor")
 
 public enum VAEActorError: Error, LocalizedError, Sendable {
     case weightsNotLoaded
@@ -25,7 +28,14 @@ public actor VAEActor {
         guard let vae else { throw VAEActorError.weightsNotLoaded }
         let input = precision == .float16 ? latents.asType(.float16) : latents
         let audio = VAETiledDecode.decode(input, using: vae)
-        return precision == .float16 ? audio.asType(.float32) : audio
+        let resolved = precision == .float16 ? audio.asType(.float32) : audio
+
+        let absA = MLX.abs(resolved)
+        let absMean = absA.mean().item(Float.self)
+        let absMax = absA.max().item(Float.self)
+        vaeLogger.info("[VAEActor.decode] in shape=\(latents.shape) → out shape=\(resolved.shape) abs_mean=\(absMean) abs_max=\(absMax)")
+
+        return resolved
     }
 
     public func encodeSample(audio: MLXArray, precision: Precision) throws -> MLXArray {
@@ -46,6 +56,17 @@ public actor VAEActor {
         if vae == nil {
             vae = AutoEncoderOobleck()
         }
+
+        // Diagnostic: same matched/unmatched key check as DiTActor.
+        let modelKeys = Set(vae!.parameters().flattened().map { $0.0 })
+        let suppliedKeys = Set(weights.map { $0.0 })
+        let matched = suppliedKeys.intersection(modelKeys).count
+        let supExtra = suppliedKeys.subtracting(modelKeys)
+        let modExtra = modelKeys.subtracting(suppliedKeys)
+        vaeLogger.info("[VAEActor.loadWeights] supplied=\(suppliedKeys.count) model=\(modelKeys.count) matched=\(matched)")
+        vaeLogger.info("[VAEActor.loadWeights] supplied-but-no-model-param (first 12): \(Array(supExtra.sorted().prefix(12)))")
+        vaeLogger.info("[VAEActor.loadWeights] model-param-but-no-supplied (first 12): \(Array(modExtra.sorted().prefix(12)))")
+
         vae!.update(parameters: ModuleParameters.unflattened(weights))
         eval(vae!.parameters())
         loadedModelID = modelID
