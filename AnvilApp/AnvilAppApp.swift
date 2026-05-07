@@ -148,8 +148,11 @@ final class AppServices: ObservableObject {
         let dit = DiTActor(decoder: DiTDecoder())
         let diffusion = DiffusionActor(dit: dit)
         let pipeline = MusicPipeline(vae: vae, diffusion: diffusion)
-        guard let conditioning = try? ConditioningActor.stub() else {
-            fatalError("Failed to create stub ConditioningActor at launch")
+        let conditioning: ConditioningActor
+        do {
+            conditioning = try ConditioningActor.stub()
+        } catch {
+            fatalError("Failed to create stub ConditioningActor at launch: \(error)")
         }
         let converter = WeightConverter()
 
