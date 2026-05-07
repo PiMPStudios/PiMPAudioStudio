@@ -18,6 +18,7 @@ struct GenerateView: View {
     @State private var stepsOverrideText: String = ""
     @State private var shiftOverride: Double = 3.0
     @State private var advancedExpanded: Bool = false
+    @AppStorage("audioDebugVerbose") private var audioDebugVerbose: Bool = false
     @State private var modeSelection: ModeSelection = .auto
     @State private var selectedAdapterID: String?
     @AppStorage("selectedAdapterID") private var persistedAdapterID: String = ""
@@ -277,6 +278,19 @@ struct GenerateView: View {
                     Button("Reset") { shiftOverride = 3.0 }
                         .buttonStyle(.borderless)
                         .controlSize(.mini)
+                    Spacer()
+                }
+
+                // Verbose audio diagnostics
+                HStack {
+                    Toggle(isOn: $audioDebugVerbose) {
+                        Text("Verbose audio diagnostics")
+                            .font(.caption)
+                    }
+                    .toggleStyle(.checkbox)
+                    Text("(filter Xcode console: \"AUDIODIAG\")")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
                     Spacer()
                 }
             }

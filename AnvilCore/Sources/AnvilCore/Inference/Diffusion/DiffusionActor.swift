@@ -33,11 +33,21 @@ public actor DiffusionActor {
         let C = shape.channels
 
         var xt = DiffusionSampler.generateNoise(shape: [bsz, T, C], seed: config.seed)
+        AudioDiagnostics.note("config", "shift=\(config.shift) steps=\(config.steps ?? -1) method=\(config.method) guidance=\(config.guidanceScale) precision=\(config.precision) seed=\(config.seed.map(String.init) ?? "random")")
+        AudioDiagnostics.tensor("init/xt(noise)", xt)
+        AudioDiagnostics.tensor("init/encoderStates", encoderStates)
+        AudioDiagnostics.tensor("init/contextLatents", contextLatents)
+        if let mask = encoderMask {
+            AudioDiagnostics.tensor("init/encoderMask", mask)
+        } else {
+            AudioDiagnostics.note("init/encoderMask", "nil")
+        }
 
         let schedule = TimestepSchedule.compute(
             shift: config.shift, timesteps: nil, inferSteps: config.steps
         )
         let numSteps = schedule.count
+        AudioDiagnostics.floats("schedule", schedule)
 
         let doCFG = config.guidanceScale > 1.0
         var encHS = encoderStates
@@ -87,6 +97,7 @@ public actor DiffusionActor {
                 cache: cache,
                 useCache: !doCFG
             )
+            AudioDiagnostics.tensor("step\(stepIdx)/vt(t=\(String(format: "%.4f", currentT)))", vt)
 
             var velocity = vt
 

@@ -26,9 +26,11 @@ public actor VAEActor {
 
     public func decode(latents: MLXArray, precision: Precision) throws -> MLXArray {
         guard let vae else { throw VAEActorError.weightsNotLoaded }
+        AudioDiagnostics.tensor("vae/in_latents", latents)
         let input = precision == .float16 ? latents.asType(.float16) : latents
         let audio = VAETiledDecode.decode(input, using: vae)
         let resolved = precision == .float16 ? audio.asType(.float32) : audio
+        AudioDiagnostics.tensor("vae/out_audio", resolved)
 
         let absA = MLX.abs(resolved)
         let absMean = absA.mean().item(Float.self)

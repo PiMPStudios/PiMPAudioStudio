@@ -126,19 +126,24 @@ public actor ConditioningActor {
             contextLatents = MLXArray.zeros([1, tFrames, 128])
         }
 
+        let result: ConditioningResult
         if precision == .float16 {
-            return ConditioningResult(
+            result = ConditioningResult(
                 encoderStates: encoderStates.asType(.float16),
                 encoderMask: encoderMask,
                 contextLatents: contextLatents.asType(.float16)
             )
+        } else {
+            result = ConditioningResult(
+                encoderStates: encoderStates,
+                encoderMask: encoderMask,
+                contextLatents: contextLatents
+            )
         }
-
-        return ConditioningResult(
-            encoderStates: encoderStates,
-            encoderMask: encoderMask,
-            contextLatents: contextLatents
-        )
+        AudioDiagnostics.tensor("cond/encoderStates", result.encoderStates)
+        AudioDiagnostics.tensor("cond/encoderMask", result.encoderMask)
+        AudioDiagnostics.tensor("cond/contextLatents", result.contextLatents)
+        return result
     }
 
     private func prepareReferenceLatents(_ referenceAudio: MLXArray?, precision: Precision) async throws -> MLXArray {
