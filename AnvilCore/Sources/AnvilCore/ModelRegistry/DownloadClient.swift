@@ -231,6 +231,9 @@ private final class ManagedTaskHolder: @unchecked Sendable {
 
 private final class DownloadProgressDelegate: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
     private let onProgress: @Sendable (Double) -> Void
+    private let lock = NSLock()
+    private var lastFiredAt: Date = .distantPast
+    private static let throttleInterval: TimeInterval = 0.1   // 10 Hz
 
     init(onProgress: @Sendable @escaping (Double) -> Void) {
         self.onProgress = onProgress
@@ -250,6 +253,19 @@ private final class DownloadProgressDelegate: NSObject, URLSessionDownloadDelega
         totalBytesExpectedToWrite: Int64
     ) {
         guard totalBytesExpectedToWrite > 0 else { return }
-        onProgress(Double(totalBytesWritten) / Double(totalBytesExpectedToWrite))
+        let progress = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
+
+        // Throttle delegate callbacks to ~10 Hz so we don't fan out hundreds
+        // of @MainActor publishes per second to SwiftUI. Always pass 100%
+        // through so the final state is never lost.
+        lock.lock()
+        let now = Date()
+        let elapsed = now.timeIntervalSince(lastFiredAt)
+        let shouldFire = progress >= 1.0 || elapsed >= Self.throttleInterval
+        if shouldFire { lastFiredAt = now }
+        lock.unlock()
+
+        guard shouldFire else { return }
+        onProgress(progress)
     }
 }
