@@ -71,14 +71,23 @@ final class ACEStepGenerationService {
                     let effectiveGuidance: Float = request.guidanceScale > 1.0
                         ? request.guidanceScale
                         : 7.5
+
+                    // Auto-pick diffusion step count based on the active DiT
+                    // variant. Turbo is trained for 8 steps; Full (base) and
+                    // SFT need ~50 steps to converge to good quality. Running
+                    // Full or SFT at 8 steps produces unstable / noisy output.
+                    let loadedDiTID = currentlyLoadedDiTModelID ?? ""
+                    let inferSteps: Int = loadedDiTID.contains("turbo") ? 8 : 50
+
                     let config = DiffusionConfig(
                         seed: request.seed,
                         method: request.method,
+                        steps: inferSteps,
                         guidanceScale: effectiveGuidance,
                         precision: request.precision
                     )
 
-                    let totalSteps = config.steps ?? 8
+                    let totalSteps = inferSteps
                     continuation.yield(.generating(step: 0, totalSteps: totalSteps, eta: 0))
 
                     let progressStream = await pipeline.makeProgressStream()
