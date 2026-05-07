@@ -379,4 +379,4 @@ All notable changes to AnvilApp are documented here.
 | 9b | ✅ Complete | Model Management UI — ModelsSettingsView, AddModelView, active model tracking, lazy swap runtime |
 | 10a | ✅ Complete | LoRA Fine-Tuning — LoRALinear, LoRAInjector, flow-matching trainer, adapter picker, training sheet |
 | 10b | ✅ Complete | Advanced LoRA — CosineScheduler, target layer picker, gradient accumulation, checkpoint/resume, loss curve, adapter merge/rename/delete/export |
-| 10c | Planned | Community Sharing — adapter sharing/download, versioning, multi-adapter stacking |
+| 10c | ✅ Complete | Community Sharing + Stacking — curated manifest browser, HuggingFace import, multi-adapter stacking (Inject-All) with real-time strength sliders |
