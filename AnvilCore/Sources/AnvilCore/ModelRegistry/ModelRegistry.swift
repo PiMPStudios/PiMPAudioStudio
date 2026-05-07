@@ -20,35 +20,96 @@ public actor ModelRegistry {
 
     public static let builtInSpecs: [ModelSpec] = [
         ModelSpec(
-            id: "ace-step-dit",
-            displayName: "ACE-Step DiT (placeholder)",
-            huggingFaceRepo: "ACEStep/ACE-Step-v1-5-DiT",
+            id: "ace-step-dit-turbo",
+            displayName: "ACE-Step v1.5 Turbo",
+            huggingFaceRepo: "ACE-Step/Ace-Step1.5",
             files: [
-                ModelFileSpec(remotePath: "model.safetensors", sizeBytes: 3_000_000_000),
-                ModelFileSpec(remotePath: "tokenizer.json", sizeBytes: 11_000_000),
-                ModelFileSpec(remotePath: "config.json", sizeBytes: 2_000)
+                ModelFileSpec(
+                    remotePath: "acestep-v15-turbo/model.safetensors",
+                    localName: "model.safetensors",
+                    sizeBytes: 4_787_825_604
+                ),
+                ModelFileSpec(
+                    remotePath: "acestep-v15-turbo/config.json",
+                    localName: "config.json",
+                    sizeBytes: 1_968
+                )
             ],
-            category: .aceStepDiT
+            category: .aceStepDiT,
+            variantFamily: "ace-step-1.5"
+        ),
+        ModelSpec(
+            id: "ace-step-dit-base",
+            displayName: "ACE-Step v1.5 Full",
+            huggingFaceRepo: "ACE-Step/acestep-v15-base",
+            files: [
+                ModelFileSpec(
+                    remotePath: "model.safetensors",
+                    localName: "model.safetensors",
+                    sizeBytes: 4_787_825_604
+                ),
+                ModelFileSpec(
+                    remotePath: "config.json",
+                    localName: "config.json",
+                    sizeBytes: 1_940
+                )
+            ],
+            category: .aceStepDiT,
+            variantFamily: "ace-step-1.5"
         ),
         ModelSpec(
             id: "ace-step-vae",
-            displayName: "ACE-Step VAE (placeholder)",
-            huggingFaceRepo: "ACEStep/ACE-Step-v1-5-VAE",
+            displayName: "ACE-Step VAE + Tokenizer",
+            huggingFaceRepo: "ACE-Step/Ace-Step1.5",
             files: [
-                ModelFileSpec(remotePath: "vae.safetensors", sizeBytes: 800_000_000),
-                ModelFileSpec(remotePath: "config.json", sizeBytes: 500)
+                ModelFileSpec(
+                    remotePath: "vae/diffusion_pytorch_model.safetensors",
+                    localName: "vae.safetensors",
+                    sizeBytes: 337_431_388
+                ),
+                ModelFileSpec(
+                    remotePath: "vae/config.json",
+                    localName: "config.json",
+                    sizeBytes: 425
+                ),
+                ModelFileSpec(
+                    remotePath: "Qwen3-Embedding-0.6B/tokenizer.json",
+                    localName: "tokenizer.json",
+                    sizeBytes: 11_423_705
+                )
             ],
-            category: .aceStepVAE
+            category: .aceStepVAE,
+            variantFamily: "ace-step-1.5"
         ),
         ModelSpec(
             id: "stable-audio-open",
-            displayName: "Stable Audio Open 1.0 (placeholder)",
+            displayName: "Stable Audio Open 1.0",
             huggingFaceRepo: "stabilityai/stable-audio-open-1.0",
             files: [
-                ModelFileSpec(remotePath: "model.safetensors", sizeBytes: 1_200_000_000),
-                ModelFileSpec(remotePath: "config.json", sizeBytes: 4_000)
+                ModelFileSpec(
+                    remotePath: "model.safetensors",
+                    localName: "model.safetensors",
+                    sizeBytes: 4_853_889_016
+                ),
+                ModelFileSpec(
+                    remotePath: "model_config.json",
+                    localName: "config.json",
+                    sizeBytes: 4_172
+                ),
+                ModelFileSpec(
+                    remotePath: "vae_model.ckpt",
+                    localName: "vae_model.ckpt",
+                    sizeBytes: 624_474_947
+                ),
+                ModelFileSpec(
+                    remotePath: "vae_model_config.json",
+                    localName: "vae_config.json",
+                    sizeBytes: 3_608
+                )
             ],
-            category: .stableAudio
+            category: .stableAudio,
+            variantFamily: nil,
+            requiresAuth: true
         ),
         ModelSpec(
             id: "lyric-llm",
@@ -79,14 +140,14 @@ public actor ModelRegistry {
 
     /// The ACE-Step model IDs required for initial setup.
     public static let essentialModelIDs: Set<String> = [
-        "ace-step-dit",
+        "ace-step-dit-turbo",
         "ace-step-vae"
     ]
 
     // MARK: - Active Model Tracking
 
     private static let defaultActiveModels: [ModelCategory: String] = [
-        .aceStepDiT: "ace-step-dit",
+        .aceStepDiT: "ace-step-dit-turbo",
         .aceStepVAE: "ace-step-vae",
         .stableAudio: "stable-audio-open",
         .lyricLLM: "lyric-llm"
@@ -105,6 +166,39 @@ public actor ModelRegistry {
         self.client = client
         loadUserSpecs()
         loadActiveModels()
+        migrateLegacyModelIDsIfNeeded()
+    }
+
+    /// One-shot migration from Phase-1 placeholder spec IDs to Phase-2 real IDs.
+    /// Maps legacy `ace-step-dit` active ID to the new Turbo default and sweeps
+    /// orphan model directories whose names don't match any current spec ID.
+    /// Gated on `UserDefaults` flag so this runs exactly once.
+    private func migrateLegacyModelIDsIfNeeded() {
+        let migrationKey = "com.pimp.AnvilApp.modelMigration.v1"
+        guard !UserDefaults.standard.bool(forKey: migrationKey) else { return }
+
+        if activeModels[.aceStepDiT] == "ace-step-dit" {
+            activeModels[.aceStepDiT] = "ace-step-dit-turbo"
+            logger.info("Migrated legacy active DiT 'ace-step-dit' → 'ace-step-dit-turbo'")
+        }
+
+        let validIDs = Set(allSpecs.map(\.id))
+        if let entries = try? FileManager.default.contentsOfDirectory(
+            at: baseDirectory, includingPropertiesForKeys: nil
+        ) {
+            for entry in entries {
+                let name = entry.lastPathComponent
+                var isDir: ObjCBool = false
+                FileManager.default.fileExists(atPath: entry.path(), isDirectory: &isDir)
+                guard isDir.boolValue, name != "user-models.json" else { continue }
+                if !validIDs.contains(name) {
+                    try? FileManager.default.removeItem(at: entry)
+                    logger.info("Removed orphan model directory: \(name)")
+                }
+            }
+        }
+
+        UserDefaults.standard.set(true, forKey: migrationKey)
     }
 
     // MARK: - Status
