@@ -20,13 +20,13 @@ public actor ConditioningActor {
         lyricEncoder: LyricEncoder,
         timbreEncoder: TimbreEncoder,
         tokenizerURL: URL
-    ) {
+    ) throws {
         self.vae = vae
         self.qwen3 = qwen3
         self.conditionEncoder = conditionEncoder
         self.lyricEncoder = lyricEncoder
         self.timbreEncoder = timbreEncoder
-        self.tokenizer = try! AnvilTokenizer(configURL: tokenizerURL)
+        self.tokenizer = try AnvilTokenizer(configURL: tokenizerURL)
     }
 
     public func encode(
@@ -35,7 +35,7 @@ public actor ConditioningActor {
         referenceAudio: MLXArray?,
         duration: TimeInterval,
         precision: Precision
-    ) async -> ConditioningResult {
+    ) async throws -> ConditioningResult {
         let (textIds, textMask) = tokenizer.encodeText(text, maxLength: 256)
         let (lyricIds, lyricMask) = tokenizer.encodeLyrics(lyrics, maxLength: 2048)
 
@@ -45,7 +45,7 @@ public actor ConditioningActor {
 
         // referenceLatents is [B, 750, 64] — raw VAE latent space fed to timbreEncoder
         // contextLatents is [B, T, 128] = cat([src_latents, chunk_mask], axis:-1)
-        let referenceLatents = await prepareReferenceLatents(referenceAudio, precision: precision)
+        let referenceLatents = try await prepareReferenceLatents(referenceAudio, precision: precision)
         let timbreTokens = timbreEncoder(latents: referenceLatents, attentionMask: nil)
 
         let (encoderStates, encoderMask) = conditionEncoder(
@@ -81,12 +81,12 @@ public actor ConditioningActor {
         )
     }
 
-    private func prepareReferenceLatents(_ referenceAudio: MLXArray?, precision: Precision) async -> MLXArray {
+    private func prepareReferenceLatents(_ referenceAudio: MLXArray?, precision: Precision) async throws -> MLXArray {
         guard let ref = referenceAudio else {
             return MLXArray.zeros([1, Self.timbreFixFrame, 64])
         }
 
-        let latents = await vae.encodeSample(audio: ref, precision: precision)
+        let latents = try await vae.encodeSample(audio: ref, precision: precision)
         let currentFrames = latents.shape[1]
         if currentFrames == Self.timbreFixFrame {
             return latents
@@ -129,8 +129,8 @@ public actor ConditioningActor {
 }
 
 extension ConditioningActor {
-    public static func forTesting(tokenizerURL: URL) -> ConditioningActor {
-        return ConditioningActor(
+    public static func forTesting(tokenizerURL: URL) throws -> ConditioningActor {
+        return try ConditioningActor(
             vae: VAEActor(),
             qwen3: Qwen3Model(),
             conditionEncoder: ConditionEncoder(),

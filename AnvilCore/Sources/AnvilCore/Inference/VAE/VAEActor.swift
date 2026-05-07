@@ -3,6 +3,16 @@ import MLX
 import MLXFast
 import MLXNN
 
+public enum VAEActorError: Error, LocalizedError, Sendable {
+    case weightsNotLoaded
+
+    public var errorDescription: String? {
+        switch self {
+        case .weightsNotLoaded: return "VAE weights have not been loaded."
+        }
+    }
+}
+
 public actor VAEActor {
     private var vae: AutoEncoderOobleck?
     public private(set) var loadedModelID: String?
@@ -11,28 +21,22 @@ public actor VAEActor {
         self.vae = vae
     }
 
-    public func decode(latents: MLXArray, precision: Precision) -> MLXArray {
-        guard let vae else {
-            fatalError("VAEActor.decode called without loaded weights")
-        }
+    public func decode(latents: MLXArray, precision: Precision) throws -> MLXArray {
+        guard let vae else { throw VAEActorError.weightsNotLoaded }
         let input = precision == .float16 ? latents.asType(.float16) : latents
         let audio = VAETiledDecode.decode(input, using: vae)
         return precision == .float16 ? audio.asType(.float32) : audio
     }
 
-    public func encodeSample(audio: MLXArray, precision: Precision) -> MLXArray {
-        guard let vae else {
-            fatalError("VAEActor.encodeSample called without loaded weights")
-        }
+    public func encodeSample(audio: MLXArray, precision: Precision) throws -> MLXArray {
+        guard let vae else { throw VAEActorError.weightsNotLoaded }
         let input = precision == .float16 ? audio.asType(.float16) : audio
         let latents = vae.encodeSample(input)
         return precision == .float16 ? latents.asType(.float32) : latents
     }
 
-    public func encodeMean(audio: MLXArray, precision: Precision) -> MLXArray {
-        guard let vae else {
-            fatalError("VAEActor.encodeMean called without loaded weights")
-        }
+    public func encodeMean(audio: MLXArray, precision: Precision) throws -> MLXArray {
+        guard let vae else { throw VAEActorError.weightsNotLoaded }
         let input = precision == .float16 ? audio.asType(.float16) : audio
         let latents = vae.encodeMean(input)
         return precision == .float16 ? latents.asType(.float32) : latents

@@ -60,12 +60,12 @@ public actor InpaintCoordinator {
         samples: MLXArray,
         sampleRate: Int,
         precision: Precision = .float32
-    ) async -> AudioLoadResult {
+    ) async throws -> AudioLoadResult {
         self.sampleRate = sampleRate
         let numSamples = samples.shape[1]
         self.totalDuration = Double(numSamples) / Double(sampleRate)
 
-        let latents = await vaeActor.encodeMean(audio: samples, precision: precision)
+        let latents = try await vaeActor.encodeMean(audio: samples, precision: precision)
         self.currentLatents = latents
         self.currentAudio = samples
         self.latentFrames = latents.shape[1]
@@ -165,7 +165,7 @@ public actor InpaintCoordinator {
                 shift: 3.0
             )
 
-            let conditioning = await condActor.encode(
+            let conditioning = try await condActor.encode(
                 text: request.regionPrompt,
                 lyrics: "",
                 referenceAudio: nil,
@@ -234,7 +234,7 @@ public actor InpaintCoordinator {
         let audio: MLXArray
         switch request.pipeline {
         case .aceStep, .auto:
-            audio = await vaeActor.decode(latents: composited, precision: .float32)
+            audio = try await vaeActor.decode(latents: composited, precision: .float32)
         case .stableAudio:
             guard let sfxVAE = sfxVAEActor else {
                 continuation.yield(.failed("SFX VAE not available"))

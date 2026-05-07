@@ -227,7 +227,7 @@ final class TrainingService: ObservableObject {
             .reshaped([1, 1, audioData.samples.count])
 
         // Encode to latent via VAE
-        let latent = await vae.encodeMean(audio: audioArray, precision: .float16)
+        let latent = try await vae.encodeMean(audio: audioArray, precision: .float16)
 
         // Encode text conditioning
         let actualDuration: TimeInterval
@@ -237,7 +237,7 @@ final class TrainingService: ObservableObject {
             actualDuration = Double(audioData.samples.count) / Double(audioData.sampleRate)
         }
 
-        let cond = await conditioning.encode(
+        let cond = try await conditioning.encode(
             text: prompt,
             lyrics: lyrics,
             referenceAudio: nil,

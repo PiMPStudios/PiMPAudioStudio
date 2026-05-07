@@ -148,10 +148,12 @@ final class AppServices: ObservableObject {
         let dit = DiTActor(decoder: DiTDecoder())
         let diffusion = DiffusionActor(dit: dit)
         let pipeline = MusicPipeline(vae: vae, diffusion: diffusion)
-        let conditioning = ConditioningActor.forTesting(
+        guard let conditioning = try? ConditioningActor.forTesting(
             tokenizerURL: Bundle.main.url(forResource: "tokenizer", withExtension: "json")
                 ?? FileManager.default.temporaryDirectory.appending(path: "tokenizer.json")
-        )
+        ) else {
+            fatalError("Failed to initialize ConditioningActor: tokenizer could not be loaded from bundle")
+        }
         let converter = WeightConverter()
 
         return GenerationService(

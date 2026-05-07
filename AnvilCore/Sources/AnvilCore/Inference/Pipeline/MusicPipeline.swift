@@ -66,8 +66,8 @@ public actor MusicPipeline {
     }
 
     /// Encode audio to latent mean (used for training dataset preparation).
-    public func encodeMean(audio: MLXArray, precision: Precision) async -> MLXArray {
-        await vae.encodeMean(audio: audio, precision: precision)
+    public func encodeMean(audio: MLXArray, precision: Precision) async throws -> MLXArray {
+        try await vae.encodeMean(audio: audio, precision: precision)
     }
 
     /// Run LoRA training through the actor chain.
@@ -110,7 +110,7 @@ public actor MusicPipeline {
         )
 
         progressContinuation?.yield(.decoding)
-        let audio = await vae.decode(latents: diffResult.latents, precision: config.precision)
+        let audio = try await vae.decode(latents: diffResult.latents, precision: config.precision)
 
         let totalTime = Date().timeIntervalSince(totalStart)
         let costs = TimeCosts(
@@ -140,7 +140,7 @@ public actor MusicPipeline {
         config: DiffusionConfig,
         conditioning: ConditioningActor
     ) async throws -> AudioResult {
-        let cond = await conditioning.encode(
+        let cond = try await conditioning.encode(
             text: text,
             lyrics: lyrics,
             referenceAudio: referenceAudio,
