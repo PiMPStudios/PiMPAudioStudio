@@ -14,6 +14,8 @@ final class SFXModelManager: ObservableObject {
     @Published var downloadState: SFXDownloadState = .notDownloaded
     @Published var pipeline: SoundFXPipeline?
 
+    private(set) var tokenizer: CLAPTokenizer?
+
     private let registry: ModelRegistry
     private var loadedModelID: String?
 
@@ -127,13 +129,59 @@ final class SFXModelManager: ObservableObject {
     func loadPipeline() async throws {
         guard isModelDownloaded() else { return }
 
+        let converter = WeightConverter()
+
+        // Load and convert DiT weights
+        let ditURL = modelPath.appendingPathComponent("model.safetensors")
+        let ditRaw = try converter.loadSafetensors(from: ditURL)
+        var ditConverted: [(String, MLXArray)] = []
+        for (key, value) in ditRaw {
+            guard let mapped = SFXDiTNameMap.mapKey(key) else { continue }
+            ditConverted.append((mapped, value))
+        }
+
+        // Load and convert VAE weights (simple key remap + conv1d transpose)
+        let vaeURL = modelPath.appendingPathComponent("vae.safetensors")
+        let sfxVaeRaw = try converter.loadSafetensors(from: vaeURL)
+        var sfxVaeConverted: [(String, MLXArray)] = []
+        for (key, value) in sfxVaeRaw {
+            guard let mapped = SFXVAENameMap.mapKey(key) else { continue }
+            if SFXVAENameMap.isConv1dWeight(mapped) {
+                sfxVaeConverted.append((mapped, SFXVAENameMap.conv1dToMLX(value)))
+            } else {
+                sfxVaeConverted.append((mapped, value))
+            }
+        }
+
+        // Load and convert CLAP weights
+        let clapURL = modelPath.appendingPathComponent("clap_model.safetensors")
+        let clapRaw = try converter.loadSafetensors(from: clapURL)
+        var clapConverted: [(String, MLXArray)] = []
+        for (key, value) in clapRaw {
+            guard let mapped = CLAPNameMap.mapKey(key) else { continue }
+            clapConverted.append((mapped, value))
+        }
+
+        // Create actors and load weights
         let clapEncoder = CLAPEncoder(embeddingDim: 512, numLayers: 12, numHeads: 8, vocabSize: 49408)
+        await clapEncoder.loadWeights(clapConverted)
+
         let timingEncoder = TimingEncoder(embeddingDim: 256)
+
         let ditConfig = SFXDiTConfig(hiddenSize: 1024, numLayers: 24, numHeads: 16, latentDim: 64, conditioningDim: 768)
         let dit = SFXDiTActor(config: ditConfig)
+        try await dit.loadWeights(ditConverted)
+
         let diffusion = SFXDiffusionActor(dit: dit)
+
         let vaeConfig = SFXVAEConfig(latentDim: 64, outputChannels: 2, sampleRate: 44100, upsampleRatios: [8, 8, 4, 2])
         let vae = SFXVAEActor(config: vaeConfig)
+        await vae.loadWeights(sfxVaeConverted)
+
+        // Load the real CLAPTokenizer from tokenizer.json
+        let tokenizerURL = modelPath.appendingPathComponent("tokenizer.json")
+        let configURL = modelPath.appendingPathComponent("config.json")
+        self.tokenizer = try CLAPTokenizer(vocabularyURL: tokenizerURL, configURL: configURL)
 
         let sfxPipeline = SoundFXPipeline(
             clap: clapEncoder,

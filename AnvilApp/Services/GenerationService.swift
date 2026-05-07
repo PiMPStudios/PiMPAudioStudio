@@ -157,7 +157,9 @@ final class GenerationService: ObservableObject {
         defer { progressTask.cancel() }
 
         let clampedDuration = min(request.duration, 47.0)
-        let tokenizer = CLAPTokenizer.forTesting()
+        guard let tokenizer = sfxModelManager.tokenizer else {
+            throw GenerationError.modelNotReady
+        }
         let config = SFXDiffusionConfig(
             steps: totalSteps,
             guidanceScale: request.guidanceScale > 1.0 ? request.guidanceScale : 7.0,
