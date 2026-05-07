@@ -129,19 +129,21 @@ final class GenerationService: ObservableObject {
         }
     }
 
-    private func generateWithStableAudio(request: GenerationRequest) async throws -> AudioResult {
-        // Check for active model swap before readiness check
+    private func ensureSFXPipelineReady() async throws -> SoundFXPipeline {
         try await sfxModelManager.ensureActiveModel()
-
         if !sfxModelManager.isReady {
             state = .downloadingModel(progress: 0)
             try await sfxModelManager.downloadIfNeeded()
             try await sfxModelManager.loadPipeline()
         }
-
-        guard let sfxPipeline = sfxModelManager.pipeline else {
+        guard let pipeline = sfxModelManager.pipeline else {
             throw GenerationError.pipelineNotReady
         }
+        return pipeline
+    }
+
+    private func generateWithStableAudio(request: GenerationRequest) async throws -> AudioResult {
+        let sfxPipeline = try await ensureSFXPipelineReady()
 
         let totalSteps = 100
         state = .generating(step: 0, totalSteps: totalSteps, eta: 0)
