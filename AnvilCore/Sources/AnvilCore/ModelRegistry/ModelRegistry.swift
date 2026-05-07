@@ -14,6 +14,7 @@ public enum ModelStatus: Sendable, Equatable {
 public actor ModelRegistry {
     public let baseDirectory: URL
     private let client: DownloadClient
+    private let tokenProvider: (@Sendable () async -> String?)?
     private var statuses: [String: ModelStatus] = [:]
 
     // MARK: - Built-in Models
@@ -161,9 +162,14 @@ public actor ModelRegistry {
 
     // MARK: - Init
 
-    public init(baseDirectory: URL, client: DownloadClient = DownloadClient()) {
+    public init(
+        baseDirectory: URL,
+        client: DownloadClient = DownloadClient(),
+        tokenProvider: (@Sendable () async -> String?)? = nil
+    ) {
         self.baseDirectory = baseDirectory
         self.client = client
+        self.tokenProvider = tokenProvider
         loadUserSpecs()
         loadActiveModels()
         migrateLegacyModelIDsIfNeeded()
@@ -237,6 +243,17 @@ public actor ModelRegistry {
             guard status(for: spec.id) != .ready else { continue }
             statuses[spec.id] = .downloading(progress: 0)
 
+            let bearerToken: String?
+            if spec.requiresAuth {
+                bearerToken = await tokenProvider?()
+                if (bearerToken ?? "").isEmpty {
+                    statuses[spec.id] = .failed("HuggingFace token required")
+                    throw DownloadError.authRequired(repo: spec.huggingFaceRepo)
+                }
+            } else {
+                bearerToken = nil
+            }
+
             for fileSpec in spec.files {
                 let destination = spec.localPath(for: fileSpec.localName, base: baseDirectory)
 
@@ -246,7 +263,7 @@ public actor ModelRegistry {
                         file: fileSpec.remotePath,
                         to: destination,
                         expectedHash: fileSpec.sha256,
-                        bearerToken: nil,
+                        bearerToken: bearerToken,
                         onProgress: { [id = spec.id] progress in
                             Task { [weak self] in
                                 await self?.setStatus(id, to: .downloading(progress: progress))
@@ -258,6 +275,13 @@ public actor ModelRegistry {
                         }
                     )
                 } catch {
+                    if let httpError = error as? DownloadError,
+                       case .httpError(let code) = httpError,
+                       (code == 401 || code == 403),
+                       bearerToken != nil {
+                        statuses[spec.id] = .failed("HuggingFace rejected the token")
+                        throw DownloadError.authForbidden(repo: spec.huggingFaceRepo)
+                    }
                     let message: String
                     if case DownloadError.checksumMismatch = error {
                         message = "Model verification failed. The file may be corrupted or tampered with."
