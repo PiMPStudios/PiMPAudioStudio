@@ -72,18 +72,49 @@ struct ModelsSettingsView: View {
 
     private var aceStepSection: some View {
         Section("ACE-Step (Music)") {
-            ForEach(aceStepSpecs) { spec in
-                ModelRow(
-                    spec: spec,
-                    isActive: activeModels[spec.category] == spec.id,
-                    status: statuses[spec.id] ?? .notDownloaded,
-                    isBuiltIn: appState.registry.isBuiltIn(id: spec.id),
-                    onSetActive: { setActive(spec) },
-                    onDownload: { download(spec) },
-                    onDelete: { showDeleteConfirmation = spec.id },
-                    onRemove: { showRemoveConfirmation = spec.id }
-                )
+            let ditSpecs = aceStepSpecs.filter { $0.category == .aceStepDiT }
+            let vaeSpecs = aceStepSpecs.filter { $0.category == .aceStepVAE }
+            let ditByFamily = Dictionary(grouping: ditSpecs) { $0.variantFamily ?? "ungrouped" }
+
+            ForEach(ditByFamily.keys.sorted(), id: \.self) { family in
+                let variants = (ditByFamily[family] ?? []).sorted(by: { $0.id < $1.id })
+                if variants.count > 1 {
+                    Text(familyDisplayName(family))
+                        .font(.headline)
+                        .padding(.top, 4)
+                    ForEach(variants, id: \.id) { spec in
+                        modelRow(for: spec)
+                            .padding(.leading, 12)
+                    }
+                } else if let only = variants.first {
+                    modelRow(for: only)
+                }
             }
+
+            ForEach(vaeSpecs, id: \.id) { spec in
+                modelRow(for: spec)
+            }
+        }
+    }
+
+    private func modelRow(for spec: ModelSpec) -> some View {
+        ModelRow(
+            spec: spec,
+            isActive: activeModels[spec.category] == spec.id,
+            status: statuses[spec.id] ?? .notDownloaded,
+            isBuiltIn: appState.registry.isBuiltIn(id: spec.id),
+            onSetActive: { setActive(spec) },
+            onDownload: { download(spec) },
+            onDelete: { showDeleteConfirmation = spec.id },
+            onRemove: { showRemoveConfirmation = spec.id }
+        )
+    }
+
+    private func familyDisplayName(_ family: String) -> String {
+        switch family {
+        case "ace-step-1.5": return "ACE-Step v1.5"
+        case "ungrouped":    return ""
+        default:             return family.replacingOccurrences(of: "-", with: " ").capitalized
         }
     }
 
