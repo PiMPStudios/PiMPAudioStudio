@@ -39,12 +39,13 @@ public struct DiffusionConfig: Sendable {
     public init(
         seed: Int? = nil,
         method: InferMethod = .ode,
-        // Upstream's user-facing inference defaults shift=1.0 (linear timestep
-        // schedule). The upstream MLX util defaults shift=3.0 but inference
-        // always overrides with the user value. We were inheriting the MLX
-        // util default, which produces a strongly compressed (less linear)
-        // schedule unsuitable for ACE-Step v1.5 inference.
-        shift: Float = 1.0,
+        // Upstream MLX-specific handler (acestep/core/generation/handler/
+        // diffusion.py) defaults shift=3.0 — that's the actual MLX inference
+        // default, used end-to-end in production. (The Python-only
+        // inference.py defaults 1.0, but that's a different code path.)
+        // The pre-baked 8-step Turbo schedule in shiftTimesteps[3.0] also
+        // assumes 3.0.
+        shift: Float = 3.0,
         steps: Int? = nil,
         guidanceScale: Float = 1.0,
         cfgIntervalStart: Float = 0.0,
