@@ -23,10 +23,11 @@ public actor DownloadClient {
         file: String,
         to destination: URL,
         expectedHash: String?,
+        bearerToken: String? = nil,
         onProgress: @Sendable @escaping (Double) -> Void,
         onRetry: @Sendable @escaping () -> Void
     ) async throws {
-        try await downloadFile(repo: repo, file: file, to: destination, onProgress: onProgress)
+        try await downloadFile(repo: repo, file: file, to: destination, bearerToken: bearerToken, onProgress: onProgress)
 
         guard let hash = expectedHash, !hash.isEmpty else { return }
 
@@ -37,7 +38,7 @@ public actor DownloadClient {
         try? FileManager.default.removeItem(at: destination)
         onRetry()
 
-        try await downloadFile(repo: repo, file: file, to: destination, onProgress: onProgress)
+        try await downloadFile(repo: repo, file: file, to: destination, bearerToken: bearerToken, onProgress: onProgress)
 
         let retryVerified = await verifySHA256(file: destination, expected: hash)
         if retryVerified { return }
@@ -52,24 +53,36 @@ public actor DownloadClient {
         repo: String,
         file: String,
         to destination: URL,
+        bearerToken: String? = nil,
         onProgress: @Sendable @escaping (Double) -> Void
     ) async throws {
-        try await downloadFile(repo: repo, file: file, to: destination, onProgress: onProgress)
+        try await downloadFile(
+            repo: repo,
+            file: file,
+            to: destination,
+            bearerToken: bearerToken,
+            onProgress: onProgress
+        )
     }
 
     private func downloadFile(
         repo: String,
         file: String,
         to destination: URL,
+        bearerToken: String?,
         onProgress: @Sendable @escaping (Double) -> Void
     ) async throws {
-        let url = huggingFaceURL(repo: repo, file: file)
+        var request = URLRequest(url: huggingFaceURL(repo: repo, file: file))
+        if let token = bearerToken, !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
         let delegate = DownloadProgressDelegate(onProgress: onProgress)
         let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
 
         try await withTaskCancellationHandler {
             defer { session.invalidateAndCancel() }
-            let (tempURL, response) = try await session.download(from: url)
+            let (tempURL, response) = try await session.download(for: request)
 
             guard let httpResponse = response as? HTTPURLResponse,
                   (200...299).contains(httpResponse.statusCode) else {
@@ -116,6 +129,8 @@ public actor DownloadClient {
 public enum DownloadError: Error, Sendable, LocalizedError {
     case httpError(statusCode: Int)
     case checksumMismatch(file: String)
+    case authRequired(repo: String)
+    case authForbidden(repo: String)
 
     public var errorDescription: String? {
         switch self {
@@ -133,6 +148,10 @@ public enum DownloadError: Error, Sendable, LocalizedError {
             return "Download failed (HTTP \(statusCode)): \(meaning)"
         case .checksumMismatch(let file):
             return "Checksum verification failed for '\(file)' — the file may be corrupted"
+        case .authRequired(let repo):
+            return "\(repo) is a gated model. Add a HuggingFace access token in Settings → Models, and accept the model's license on huggingface.co."
+        case .authForbidden(let repo):
+            return "HuggingFace rejected the access token for \(repo). Verify the token is valid and that the model license has been accepted."
         }
     }
 }
