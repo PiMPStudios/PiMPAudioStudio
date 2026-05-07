@@ -1,6 +1,6 @@
 import Foundation
 
-public enum ModelCategory: String, Codable, Sendable {
+public enum ModelCategory: String, Codable, Sendable, Hashable {
     case aceStepDiT
     case aceStepVAE
     case stableAudio

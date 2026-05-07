@@ -89,7 +89,7 @@ public struct LoRAConfig: Codable, Sendable, Equatable, Hashable {
 }
 
 /// A saved LoRA adapter with metadata.
-public struct LoRAAdapter: Codable, Sendable, Identifiable, Equatable {
+public struct LoRAAdapter: Codable, Sendable, Identifiable, Equatable, Hashable {
     /// Directory name used as identifier.
     public var id: String
 
