@@ -19,7 +19,7 @@ public enum VAETiledDecode {
 
         let numSteps = computeTileCount(latentFrames: latentFrames)
         var decodedParts: [MLXArray] = []
-        var upsampleFactor: Double?
+        var upsampleFactor: Double = 0.0
 
         for idx in 0..<numSteps {
             let coreStart = idx * stride
@@ -31,10 +31,10 @@ public enum VAETiledDecode {
             let audioChunk = vae.decode(chunk)
             eval(audioChunk)
 
-            if upsampleFactor == nil {
+            if upsampleFactor == 0.0 {
                 upsampleFactor = Double(audioChunk.shape[1]) / Double(chunk.shape[1])
             }
-            let factor = upsampleFactor!
+            let factor = upsampleFactor
 
             let trimStart = Int((Double(coreStart - winStart) * factor).rounded())
             let trimEnd = Int((Double(winEnd - coreEnd) * factor).rounded())

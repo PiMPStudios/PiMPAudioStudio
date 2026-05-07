@@ -40,16 +40,22 @@ public class Qwen3Model: Module {
         )
     }
 
-    public func callAsFunction(inputIds: MLXArray) -> MLXArray {
+    public func callAsFunction(inputIds: MLXArray, attentionMask: MLXArray? = nil) -> MLXArray {
         var hiddenStates = embeddingTable(inputIds)
         let seqLen = hiddenStates.shape[1]
         let positionCosSin = rotaryEmbedding.forward(seqLen: seqLen)
+
+        // Convert binary mask [B, seqLen] (1=real, 0=pad) to additive mask (0, -1e9)
+        // so that attention scores for padding positions become -inf before softmax.
+        let additiveMask: MLXArray? = attentionMask.map { mask in
+            (1.0 - mask.asType(.float32)) * -1e9
+        }
 
         for layer in layers {
             hiddenStates = layer(
                 hiddenStates: hiddenStates,
                 positionCosSin: positionCosSin,
-                attentionMask: nil
+                attentionMask: additiveMask
             )
         }
 

@@ -41,7 +41,7 @@ public actor ConditioningActor {
 
         try Task.checkCancellation()
 
-        let textHidden = qwen3(inputIds: textIds)
+        let textHidden = qwen3(inputIds: textIds, attentionMask: textMask)
         let lyricEmbeddings = qwen3.embedTokens(lyricIds)
         let lyricHidden = lyricEncoder(embeddings: lyricEmbeddings, attentionMask: lyricMask)
 
