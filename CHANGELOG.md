@@ -4,7 +4,7 @@ All notable changes to AnvilApp are documented here.
 
 ---
 
-## [Unreleased] — Model Download Restructure (Phase 1 + 2)
+## [Unreleased] — Model Download Restructure (Phase 1 + 2 + 3)
 
 ### Added
 
@@ -15,6 +15,10 @@ All notable changes to AnvilApp are documented here.
 - **`DownloadError.authRequired` / `.authForbidden`** — distinct cases for "no token configured for gated repo" vs "token rejected by HF".
 - **`ModelsSettingsView` variant grouping** — Turbo and Full render as indented sibling rows under an "ACE-Step v1.5" sub-header.
 - **One-shot migration shim** — maps legacy active-model ID `ace-step-dit` to `ace-step-dit-turbo` and sweeps orphan model directories. Gated on `UserDefaults` flag `com.pimp.AnvilApp.modelMigration.v1`.
+- **HuggingFace access token storage** — `APIKeyStore` gains a `huggingface` provider with id `"huggingface"` and env-var fallback `HUGGINGFACE_API_KEY`. Token persists in the macOS Keychain.
+- **HF token UI** in `ModelsSettingsView` — secure field + Save button + link to `huggingface.co/settings/tokens`, prefilled from existing Keychain value on view appear.
+- **`ModelRegistry.tokenProvider` injection** — registry takes an optional `@Sendable () async -> String?` closure. Wired at app launch from `APIKeyStore.huggingFaceToken()`.
+- **Auth pre-flight gate** — `downloadModels` resolves the bearer token for any spec with `requiresAuth: true` before the network call; missing token throws `DownloadError.authRequired(repo:)`. HTTP 401/403 with token present remaps to `DownloadError.authForbidden(repo:)`.
 
 ### Changed
 
