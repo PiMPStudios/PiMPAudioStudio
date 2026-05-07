@@ -78,6 +78,9 @@ struct AnvilAppApp: App {
                 ModelsSettingsView()
                     .tabItem { Label("Models", systemImage: "cube.box") }
                     .environmentObject(appState)
+
+                AdaptersSettingsView()
+                    .tabItem { Label("Adapters", systemImage: "puzzlepiece.extension") }
             }
             .frame(minWidth: 550, minHeight: 450)
         }

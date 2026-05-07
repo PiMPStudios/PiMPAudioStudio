@@ -47,6 +47,8 @@
 		BB00010E0101010101010101 /* ModelsSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00020E0101010101010101 /* ModelsSettingsView.swift */; };
 		BB00010F0101010101010101 /* AddModelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00020F0101010101010101 /* AddModelView.swift */; };
 		GG0001010101010101010101 /* AdapterPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = GG0002010101010101010101 /* AdapterPicker.swift */; };
+		HH0001010101010101010101 /* AdaptersSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = HH0002010101010101010101 /* AdaptersSettingsView.swift */; };
+		II0001010101010101010101 /* MergeSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = II0002010101010101010101 /* MergeSheet.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -102,6 +104,8 @@
 		BB00020E0101010101010101 /* ModelsSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsSettingsView.swift; sourceTree = "<group>"; };
 		BB00020F0101010101010101 /* AddModelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddModelView.swift; sourceTree = "<group>"; };
 		GG0002010101010101010101 /* AdapterPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdapterPicker.swift; sourceTree = "<group>"; };
+		HH0002010101010101010101 /* AdaptersSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdaptersSettingsView.swift; sourceTree = "<group>"; };
+		II0002010101010101010101 /* MergeSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MergeSheet.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -218,6 +222,8 @@
 				BB00020F0101010101010101 /* AddModelView.swift */,
 				BB00020C0101010101010101 /* IntelligenceSettingsView.swift */,
 				BB00020E0101010101010101 /* ModelsSettingsView.swift */,
+				HH0002010101010101010101 /* AdaptersSettingsView.swift */,
+				II0002010101010101010101 /* MergeSheet.swift */,
 			);
 			path = Settings;
 			sourceTree = "<group>";
@@ -386,6 +392,8 @@
 				BB00010E0101010101010101 /* ModelsSettingsView.swift in Sources */,
 				BB00010F0101010101010101 /* AddModelView.swift in Sources */,
 				GG0001010101010101010101 /* AdapterPicker.swift in Sources */,
+				HH0001010101010101010101 /* AdaptersSettingsView.swift in Sources */,
+				II0001010101010101010101 /* MergeSheet.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
