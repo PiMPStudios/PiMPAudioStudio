@@ -44,18 +44,6 @@ func applyRotaryPosEmb(
     return (qEmbed, kEmbed)
 }
 
-/// Apply rotary embedding to queries only. Used in cross-attention where
-/// queries (latent positions) and keys (encoder positions) need different
-/// rotary tables.
-func applyRotaryToQOnly(q: MLXArray, cos: MLXArray, sin: MLXArray) -> MLXArray {
-    return (q * cos) + (rotateHalf(q) * sin)
-}
-
-/// Apply rotary embedding to keys only.
-func applyRotaryToKOnly(k: MLXArray, cos: MLXArray, sin: MLXArray) -> MLXArray {
-    return (k * cos) + (rotateHalf(k) * sin)
-}
-
 // MARK: - Sliding Window Mask
 
 public func createSlidingWindowMask(seqLen: Int, windowSize: Int, dtype: DType = .float32)
@@ -148,7 +136,6 @@ public class DiTAttention: Module {
     public func callAsFunction(
         hiddenStates: MLXArray,
         positionCosSin: (cos: MLXArray, sin: MLXArray)?,
-        encoderPositionCosSin: (cos: MLXArray, sin: MLXArray)? = nil,
         attentionMask: MLXArray?,
         encoderHiddenStates: MLXArray?,
         cache: CrossAttentionCache?,
@@ -169,31 +156,12 @@ public class DiTAttention: Module {
                 let cached = cache.get(layerIdx: layerIdx)!
                 k = cached.key
                 v = cached.value
-                // Q rotary still has to be applied — caching only saves K/V
-                // (which were rotated when first computed).
-                if let (cosVal, sinVal) = positionCosSin {
-                    q = applyRotaryToQOnly(q: q, cos: cosVal, sin: sinVal)
-                }
             } else {
                 let encL = enc.shape[1]
                 k = kProj(enc)
                 k = kNorm(k.reshaped([b, encL, numKVHeads, headDim]))
                 k = k.transposed(0, 2, 1, 3)
                 v = vProj(enc).reshaped([b, encL, numKVHeads, headDim]).transposed(0, 2, 1, 3)
-
-                // Match upstream CustomerAttnProcessor2_0 (acestep/models/
-                // customer_attention_processor.py:353-358):
-                //   query rotated by rotary_freqs_cis (latent positions)
-                //   key   rotated by rotary_freqs_cis_cross (encoder positions)
-                // Different rotary tables per side because Q comes from the
-                // audio latent stream, K/V come from the text encoder stream.
-                if let (cosVal, sinVal) = positionCosSin {
-                    q = applyRotaryToQOnly(q: q, cos: cosVal, sin: sinVal)
-                }
-                if let (encCos, encSin) = encoderPositionCosSin {
-                    k = applyRotaryToKOnly(k: k, cos: encCos, sin: encSin)
-                }
-
                 if let cache = cache, useCache {
                     cache.update(key: k, value: v, layerIdx: layerIdx)
                 }
@@ -315,7 +283,6 @@ public class DiTLayer: Module {
     public func callAsFunction(
         hiddenStates: MLXArray,
         positionCosSin: (cos: MLXArray, sin: MLXArray),
-        encoderPositionCosSin: (cos: MLXArray, sin: MLXArray)? = nil,
         temb: MLXArray,
         selfAttnMask: MLXArray?,
         encoderHiddenStates: MLXArray?,
@@ -348,9 +315,7 @@ public class DiTLayer: Module {
         // which made the conditional prediction barely differ from the noise
         // input (vt ≈ xt → x0_pred ≈ 0 → static after VAE decode).
         let crossOut = crossAttn(
-            hiddenStates: h,
-            positionCosSin: positionCosSin,
-            encoderPositionCosSin: encoderPositionCosSin,
+            hiddenStates: h, positionCosSin: nil,
             attentionMask: encoderAttentionMask,
             encoderHiddenStates: encoderHiddenStates,
             cache: cache, useCache: useCache
