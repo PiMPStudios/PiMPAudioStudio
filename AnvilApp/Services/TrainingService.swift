@@ -42,17 +42,21 @@ final class TrainingService: ObservableObject {
     private let registry: ModelRegistry
     private var trainingTask: Task<Void, Never>?
     private var isStopping = false
+    private let stackManager: AdapterStackManager?
+    private var savedStack: [(adapter: LoRAAdapter, strength: Float)] = []
 
     init(
         pipeline: MusicPipeline,
         vae: VAEActor,
         conditioning: ConditioningActor,
-        registry: ModelRegistry
+        registry: ModelRegistry,
+        stackManager: AdapterStackManager? = nil
     ) {
         self.pipeline = pipeline
         self.vae = vae
         self.conditioning = conditioning
         self.registry = registry
+        self.stackManager = stackManager
     }
 
     /// Start training with selected history entries and/or imported audio files.
@@ -77,6 +81,12 @@ final class TrainingService: ObservableObject {
             guard let self else { return }
 
             do {
+                // Clear stack during training (restore after)
+                if let sm = self.stackManager, sm.isStacking {
+                    self.savedStack = sm.additionalAdapters
+                    sm.clearStack()
+                }
+
                 // 1. Prepare dataset
                 let totalSamples = entries.count + importedFiles.count
                 self.state = .preparingDataset(current: 0, total: totalSamples)
@@ -174,6 +184,14 @@ final class TrainingService: ObservableObject {
                 self.state = .cancelled
             } catch {
                 self.state = .failed(error.localizedDescription)
+            }
+
+            // Restore stack if it was cleared
+            if let sm = self.stackManager, !self.savedStack.isEmpty {
+                for entry in self.savedStack {
+                    sm.addToStack(entry.adapter, strength: entry.strength)
+                }
+                self.savedStack = []
             }
 
             self.trainingTask = nil
