@@ -139,12 +139,17 @@ final class ACEStepGenerationService {
             currentlyLoadedDiTModelID = spec.id
 
             // Upgrade stub ConditioningActor to one backed by the real downloaded tokenizer.
-            let tokenizerPath = spec.localPath(for: "tokenizer.json", base: baseDir)
-            if FileManager.default.fileExists(atPath: tokenizerPath.path()) {
-                if let real = try? ConditioningActor.make(tokenizerURL: tokenizerPath) {
-                    conditioning = real
+            // tokenizer.json lives in the VAE spec's local directory (shared between DiT variants).
+            if let vaeSpec = await registry.activeSpec(for: .aceStepVAE) {
+                let tokenizerPath = vaeSpec.localPath(for: "tokenizer.json", base: baseDir)
+                if FileManager.default.fileExists(atPath: tokenizerPath.path()) {
+                    if let real = try? ConditioningActor.make(tokenizerURL: tokenizerPath) {
+                        conditioning = real
+                    } else {
+                        logger.warning("Could not upgrade ConditioningActor from tokenizer at \(tokenizerPath.path()) — using stub")
+                    }
                 } else {
-                    logger.warning("Could not upgrade ConditioningActor from tokenizer at \(tokenizerPath.path()) — using stub")
+                    logger.info("tokenizer.json not yet downloaded at \(tokenizerPath.path()) — keeping stub conditioning actor")
                 }
             }
         } catch {
