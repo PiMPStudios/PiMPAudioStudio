@@ -4,6 +4,22 @@ All notable changes to AnvilApp are documented here.
 
 ---
 
+## [Unreleased] — Build Fixes & Project Hygiene
+
+### Fixed
+
+- **`AppState.checkSetupStatus()`** — replaced `allSatisfy` with async closure (unsupported by Swift stdlib) with a sequential `for` loop that `await`s each `registry.isModelReady` call
+- **`GenerationService`** — corrected wrong error case `.modelNotReady` → `.pipelineNotReady`; added missing `try` to `pipeline.injectLoRA(config:)` and `pipeline.loadLoRAWeights(_:adapterID:)` call sites
+- **`MainShellView`** — added `import AnvilCore` so `PipelineChoice` resolves to `AnvilCore.PipelineChoice` (which already defines all cases + `displayName`); removed locally-duplicated `PipelineChoice` enum that would have caused a redeclaration conflict
+- **`AudioBufferConverter`** — replaced unavailable `vDSP.convertElements(of:to:)` for `Float → Int16` with the correct `vDSP_vfix16(_:_:_:_:_:)` from Accelerate
+- **`ModelsSettingsView`** — split chained `+ await` expression into sequential `let` bindings (Swift requires `await` as the outermost operator); replaced removed `ShapeStyle.accent` with `Color.accentColor`
+
+### Changed
+
+- **Xcode project (`project.pbxproj`)** — registered 22 Swift source files that existed on disk (committed to git) but were never added to the Xcode target: all 11 `UI/Editor/` views (`EditorView`, `EditorState`, `EditorToolbar`, `EditorPromptArea`, `EditorControlsBar`, `EditorWaveformView`, `DSPPaletteView`, `EQControlView`, `PitchShiftControlView`, `ReverbControlView`, `TimeStretchControlView`), all 8 `DSP/` files (`AVAudioEngineDSP`, `AudioBufferConverter`, `DSPParameters`, `DSPProcessor`, `LPCFormantShifter`, `Resampler`, `SimpleDSP`, `WSOLAProcessor`), plus `BackgroundDownloadIndicator`, `EditorService`, `LossCurveView`, `HuggingFaceImportSheet`, and `AdapterStackView`
+
+---
+
 ## [Unreleased] — Polish & Hardening Phase 2
 
 ### Added
