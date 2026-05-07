@@ -14,7 +14,7 @@ struct GenerateView: View {
     @State private var lyricsText: String = ""
     @State private var duration: Double = 30
     @State private var seed: String = ""
-    @State private var guidanceScale: Double = 1.0
+    @State private var guidanceScale: Double = 7.5
     @State private var method: InferMethod = .ode
     @State private var precision: Precision = .float16
     @State private var modeSelection: ModeSelection = .auto

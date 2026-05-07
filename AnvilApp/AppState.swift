@@ -89,6 +89,12 @@ final class AppState: ObservableObject {
             let sfxObserver = Task { @MainActor [weak self] in
                 for await state in sfxManager.$downloadState.values {
                     guard let self else { return }
+                    // Don't downgrade a terminal background phase from a
+                    // stale event delivered after the download finished.
+                    switch self.backgroundDownloadPhase {
+                    case .complete, .failed: return
+                    default: break
+                    }
                     if case .downloading(let progress) = state {
                         self.backgroundDownloadPhase = .downloading(
                             modelName: "Stable Audio Open", progress: progress
@@ -116,6 +122,12 @@ final class AppState: ObservableObject {
             let llmObserver = Task { @MainActor [weak self] in
                 for await state in llmManager.$downloadState.values {
                     guard let self else { return }
+                    // Don't downgrade a terminal background phase from a
+                    // stale event delivered after the download finished.
+                    switch self.backgroundDownloadPhase {
+                    case .complete, .failed: return
+                    default: break
+                    }
                     if case .downloading(let progress) = state {
                         self.backgroundDownloadPhase = .downloading(
                             modelName: "Lyric Writer", progress: progress

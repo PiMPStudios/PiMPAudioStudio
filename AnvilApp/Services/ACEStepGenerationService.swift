@@ -64,10 +64,17 @@ final class ACEStepGenerationService {
                     try Task.checkCancellation()
                     continuation.yield(.conditioning)
 
+                    // Guard against guidance values that disable CFG. ACE-Step is
+                    // an instruction-tuned diffusion model — guidance ≤ 1.0 runs
+                    // the unconditional path and produces near-silent noise.
+                    // Mirror SFXGenerationService's defensive fallback here.
+                    let effectiveGuidance: Float = request.guidanceScale > 1.0
+                        ? request.guidanceScale
+                        : 7.5
                     let config = DiffusionConfig(
                         seed: request.seed,
                         method: request.method,
-                        guidanceScale: request.guidanceScale,
+                        guidanceScale: effectiveGuidance,
                         precision: request.precision
                     )
 
