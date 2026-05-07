@@ -15,6 +15,7 @@ struct AddModelView: View {
     private var categoryOptions: [(ModelCategory, String)] {
         [
             (.aceStepDiT, "ACE-Step DiT (Music)"),
+            (.aceStepLM, "ACE-Step LM (Cover Songs)"),
             (.stableAudio, "Stable Audio (SFX)")
         ]
     }
@@ -161,6 +162,7 @@ struct AddModelView: View {
         switch category {
         case .aceStepDiT: return ["model.safetensors", "config.json"]
         case .aceStepVAE: return ["vae.safetensors", "config.json"]
+        case .aceStepLM: return ["model.safetensors", "tokenizer.json", "config.json"]
         case .stableAudio: return ["model.safetensors", "config.json"]
         case .lyricLLM: return ["model.safetensors", "tokenizer.json", "config.json"]
         }

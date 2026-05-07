@@ -136,6 +136,47 @@ public actor ModelRegistry {
             variantFamily: nil,
             requiresAuth: true
         ),
+        // 5 Hz Audio→Token Language Models for cover-song generation
+        // (audio→audio conditioning). Optional — pick one based on
+        // quality/disk/RAM budget. Inference plumbing is a follow-up
+        // phase; these specs land first so the Settings UI can show
+        // them and users can begin downloading in advance.
+        ModelSpec(
+            id: "ace-step-lm-0.6b",
+            displayName: "ACE-Step LM 0.6B",
+            huggingFaceRepo: "ACE-Step/acestep-5Hz-lm-0.6B",
+            files: [
+                ModelFileSpec(remotePath: "model.safetensors", sizeBytes: 1_325_804_024),
+                ModelFileSpec(remotePath: "config.json", sizeBytes: 1_386),
+                ModelFileSpec(remotePath: "tokenizer.json", sizeBytes: 24_321_939),
+                ModelFileSpec(remotePath: "tokenizer_config.json", sizeBytes: 14_072_925),
+                ModelFileSpec(remotePath: "special_tokens_map.json", sizeBytes: 1_824_199),
+                ModelFileSpec(remotePath: "added_tokens.json", sizeBytes: 2_217_787),
+                ModelFileSpec(remotePath: "merges.txt", sizeBytes: 1_671_853),
+                ModelFileSpec(remotePath: "vocab.json", sizeBytes: 2_776_833)
+            ],
+            category: .aceStepLM,
+            variantFamily: "ace-step-lm"
+        ),
+        ModelSpec(
+            id: "ace-step-lm-4b",
+            displayName: "ACE-Step LM 4B",
+            huggingFaceRepo: "ACE-Step/acestep-5Hz-lm-4B",
+            files: [
+                ModelFileSpec(remotePath: "model-00001-of-00002.safetensors", sizeBytes: 4_999_914_896),
+                ModelFileSpec(remotePath: "model-00002-of-00002.safetensors", sizeBytes: 3_379_239_240),
+                ModelFileSpec(remotePath: "model.safetensors.index.json", sizeBytes: 32_818),
+                ModelFileSpec(remotePath: "config.json", sizeBytes: 1_562),
+                ModelFileSpec(remotePath: "tokenizer.json", sizeBytes: 24_321_939),
+                ModelFileSpec(remotePath: "tokenizer_config.json", sizeBytes: 14_072_925),
+                ModelFileSpec(remotePath: "special_tokens_map.json", sizeBytes: 1_824_199),
+                ModelFileSpec(remotePath: "added_tokens.json", sizeBytes: 2_217_787),
+                ModelFileSpec(remotePath: "merges.txt", sizeBytes: 1_671_853),
+                ModelFileSpec(remotePath: "vocab.json", sizeBytes: 2_776_833)
+            ],
+            category: .aceStepLM,
+            variantFamily: "ace-step-lm"
+        ),
         ModelSpec(
             id: "lyric-llm",
             displayName: "Phi-3 Mini 4k Instruct",

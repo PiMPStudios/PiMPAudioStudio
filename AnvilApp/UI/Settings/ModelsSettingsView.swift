@@ -9,6 +9,7 @@ struct ModelsSettingsView: View {
 
     @State private var huggingFaceToken: String = ""
     @State private var aceStepSpecs: [ModelSpec] = []
+    @State private var aceStepLMSpecs: [ModelSpec] = []
     @State private var stableAudioSpecs: [ModelSpec] = []
     @State private var activeModels: [ModelCategory: String] = [:]
     @State private var statuses: [String: ModelStatus] = [:]
@@ -21,6 +22,7 @@ struct ModelsSettingsView: View {
         Form {
             huggingFaceTokenSection
             aceStepSection
+            aceStepLMSection
             stableAudioSection
             memorySection
             AddModelView(
@@ -158,6 +160,31 @@ struct ModelsSettingsView: View {
         }
     }
 
+    private var aceStepLMSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Used for cover-song generation (audio→audio). Pick one variant — bigger is higher quality but slower.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            ForEach(aceStepLMSpecs.sorted(by: { $0.id < $1.id })) { spec in
+                ModelRow(
+                    spec: spec,
+                    isActive: activeModels[spec.category] == spec.id,
+                    status: statuses[spec.id] ?? .notDownloaded,
+                    isBuiltIn: appState.registry.isBuiltIn(id: spec.id),
+                    onSetActive: { setActive(spec) },
+                    onDownload: { download(spec) },
+                    onDelete: { showDeleteConfirmation = spec.id },
+                    onRemove: { showRemoveConfirmation = spec.id }
+                )
+            }
+        } header: {
+            Text("ACE-Step LM (cover songs)")
+        }
+    }
+
     private var memorySection: some View {
         Section("Memory") {
             HStack {
@@ -189,16 +216,17 @@ struct ModelsSettingsView: View {
             let ditSpecs = await registry.specs(for: .aceStepDiT)
             let vaeSpecs = await registry.specs(for: .aceStepVAE)
             aceStepSpecs = ditSpecs + vaeSpecs
+            aceStepLMSpecs = await registry.specs(for: .aceStepLM)
             stableAudioSpecs = await registry.specs(for: .stableAudio)
 
             var newStatuses: [String: ModelStatus] = [:]
-            for spec in aceStepSpecs + stableAudioSpecs {
+            for spec in aceStepSpecs + aceStepLMSpecs + stableAudioSpecs {
                 newStatuses[spec.id] = await registry.status(for: spec.id)
             }
             statuses = newStatuses
 
             activeModels = [:]
-            for cat: ModelCategory in [.aceStepDiT, .aceStepVAE, .stableAudio] {
+            for cat: ModelCategory in [.aceStepDiT, .aceStepVAE, .aceStepLM, .stableAudio] {
                 if let id = await registry.activeModelID(for: cat) {
                     activeModels[cat] = id
                 }

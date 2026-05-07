@@ -3,6 +3,12 @@ import Foundation
 public enum ModelCategory: String, Codable, Sendable, Hashable {
     case aceStepDiT
     case aceStepVAE
+    /// 5 Hz Audio→Token Language Model used to produce 25 Hz LM hints
+    /// for cover-song generation (audio→audio conditioning). Multiple
+    /// variants exist (0.6B / 1.7B / 4B); the user picks one based on
+    /// quality vs disk/RAM budget. Optional — only needed when the user
+    /// wants to generate covers from an input audio clip.
+    case aceStepLM
     case stableAudio
     case lyricLLM
 }
