@@ -16,10 +16,10 @@ struct AnvilAppApp: App {
     @StateObject private var adapterStackManager = AdapterStackManager()
 
     init() {
-        let appState = AppState()
+        let apiKeys = APIKeyStore()
+        let appState = AppState(apiKeyStore: apiKeys)
         let outputManager = OutputDirectoryManager()
         let playerService = AudioPlayerService()
-        let apiKeys = APIKeyStore()
         let manager = LLMModelManager()
         let router = IntentRouter(llm: manager.llmActor)
         let enhancer = PromptEnhancer(llm: manager.llmActor)

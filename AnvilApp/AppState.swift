@@ -25,6 +25,20 @@ final class AppState: ObservableObject {
         self.init(registry: ModelRegistry(baseDirectory: modelsDir))
     }
 
+    convenience init(apiKeyStore: APIKeyStore) {
+        let modelsDir = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        )[0].appending(path: "Anvil/models")
+        let tokenProvider: @Sendable () async -> String? = { [apiKeyStore] in
+            await MainActor.run { apiKeyStore.huggingFaceToken() }
+        }
+        self.init(registry: ModelRegistry(
+            baseDirectory: modelsDir,
+            tokenProvider: tokenProvider
+        ))
+    }
+
     init(registry: ModelRegistry) {
         self.registry = registry
         Task { await checkSetupStatus() }
