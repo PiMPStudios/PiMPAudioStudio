@@ -105,22 +105,26 @@ public struct AnvilTokenizer: Sendable {
         var tokenIds = box.tokenizer.encode(text: text)
 
         // Truncate if the text encodes to more tokens than maxLength.
+        // (maxLength is now a truncation CAP, not a pad-to length — matches
+        // upstream's `padding="longest", truncation=True, max_length=N` in
+        // acestep/core/generation/handler/conditioning_text.py.)
         if tokenIds.count > maxLength {
             tokenIds = Array(tokenIds.prefix(maxLength))
         }
 
-        let realCount = tokenIds.count
-        let padCount = maxLength - realCount
-
-        // Build Int32 arrays padded with 0.
+        // For an empty/whitespace input the encoder may produce zero tokens.
+        // Returning a [1, 0] tensor breaks downstream concatenation; emit a
+        // single PAD-with-mask=0 entry as a degenerate-but-shaped placeholder.
+        let realCount = max(tokenIds.count, 1)
         var idsFlat = tokenIds.map { Int32($0) }
-        idsFlat += [Int32](repeating: 0, count: padCount)
+        var maskFlat = [Int32](repeating: 1, count: tokenIds.count)
+        if idsFlat.isEmpty {
+            idsFlat = [0]
+            maskFlat = [0]
+        }
 
-        var maskFlat = [Int32](repeating: 1, count: realCount)
-        maskFlat += [Int32](repeating: 0, count: padCount)
-
-        let ids = MLXArray(idsFlat).reshaped([1, maxLength])
-        let mask = MLXArray(maskFlat).reshaped([1, maxLength])
+        let ids = MLXArray(idsFlat).reshaped([1, realCount])
+        let mask = MLXArray(maskFlat).reshaped([1, realCount])
         return (ids, mask)
     }
 
