@@ -1,6 +1,9 @@
 import Foundation
 import MLX
 import MLXNN
+import OSLog
+
+private let logger = Logger(subsystem: "com.pimp.AnvilApp", category: "DiTActor")
 
 public enum DiTActorError: Error, LocalizedError, Sendable {
     case weightsNotLoaded
@@ -55,6 +58,20 @@ public actor DiTActor {
         if decoder == nil {
             decoder = decoderFactory()
         }
+
+        // Diagnostic: build the set of model parameter paths and the set
+        // of supplied weight paths, then report how many supplied keys
+        // actually correspond to a real parameter path.
+        let modelParams = decoder!.parameters().flattened()
+        let modelKeys = Set(modelParams.map { $0.0 })
+        let suppliedKeys = Set(weights.map { $0.0 })
+        let matched = suppliedKeys.intersection(modelKeys).count
+        let onlyInSupplied = suppliedKeys.subtracting(modelKeys)
+        let onlyInModel = modelKeys.subtracting(suppliedKeys)
+        logger.info("[DiTActor] supplied=\(suppliedKeys.count) model=\(modelKeys.count) matched=\(matched)")
+        logger.info("[DiTActor] supplied-but-no-model-param (first 12): \(Array(onlyInSupplied.sorted().prefix(12)))")
+        logger.info("[DiTActor] model-param-but-no-supplied (first 12): \(Array(onlyInModel.sorted().prefix(12)))")
+
         decoder!.update(parameters: ModuleParameters.unflattened(weights))
         eval(decoder!.parameters())
         loadedModelID = modelID
