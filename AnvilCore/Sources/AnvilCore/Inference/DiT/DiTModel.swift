@@ -14,6 +14,7 @@ public class DiTDecoder: Module {
     let normOut: RMSNorm
     let projOut: ConvTransposed1d
     let scaleShiftTable: MLXArray
+    let nullConditionEmb: MLXArray   // [1, 1, hidden_size] learned "no conditioning" token for CFG
     let layerTypes: [String]
     let slidingWindow: Int
 
@@ -77,6 +78,7 @@ public class DiTDecoder: Module {
             kernelSize: patchSize, stride: patchSize, padding: 0
         )
         self.scaleShiftTable = MLXArray.zeros([1, 2, hiddenSize])
+        self.nullConditionEmb = MLXArray.zeros([1, 1, hiddenSize])
     }
 
     private func getSlidingMask(seqLen: Int) -> MLXArray {

@@ -1,6 +1,9 @@
 import Foundation
 import MLX
 import MLXRandom
+import OSLog
+
+private let diagLogger = Logger(subsystem: "com.pimp.AnvilApp", category: "DiffusionActor")
 
 public actor DiffusionActor {
     private let dit: DiTActor
@@ -41,8 +44,19 @@ public actor DiffusionActor {
         var ctx = contextLatents
         var encMask = encoderMask
         if doCFG {
-            let nullExpanded = MLXArray.zeros(like: encHS)
-            encHS = concatenated([encHS, nullExpanded], axis: 0)
+            // Match upstream MLX (acestep/models/mlx/dit_generate.py:188): the
+            // CFG unconditional branch uses the LEARNED `null_condition_emb`
+            // token broadcast to encoder_states shape, NOT zeros. Zeros are
+            // out-of-distribution for the trained DiT, making the unconditional
+            // prediction garbage so CFG (cond - uncond) injects noise on top
+            // of the conditional pred instead of isolating the prompt direction.
+            let nullEmb: MLXArray
+            if let nullCond = await dit.nullConditionEmbedding() {
+                nullEmb = MLX.broadcast(nullCond, to: encHS.shape).asType(encHS.dtype)
+            } else {
+                nullEmb = MLXArray.zeros(like: encHS)
+            }
+            encHS = concatenated([encHS, nullEmb], axis: 0)
             ctx = concatenated([ctx, ctx], axis: 0)
             encMask = encoderMask.map { concatenated([$0, $0], axis: 0) }
         }
@@ -117,6 +131,15 @@ public actor DiffusionActor {
             totalTime: totalTime
         )
 
+        // Diagnostic: dump final latent magnitude so we can tell if the
+        // diffusion is producing reasonable-magnitude latents (~1-5 typical
+        // for VAE latent space) or near-zero latents (which would explain
+        // silent audio output).
+        let absXt = MLX.abs(xt)
+        let absMean = absXt.mean().item(Float.self)
+        let absMax = absXt.max().item(Float.self)
+        diagLogger.info("[DiffusionActor] final latent shape=\(xt.shape) abs_mean=\(absMean) abs_max=\(absMax)")
+
         progressContinuation?.finish()
         progressContinuation = nil
         return DiffusionResult(latents: xt, timeCosts: costs)
@@ -185,8 +208,19 @@ public actor DiffusionActor {
         var ctx = contextLatents
         var encMask = encoderMask
         if doCFG {
-            let nullExpanded = MLXArray.zeros(like: encHS)
-            encHS = concatenated([encHS, nullExpanded], axis: 0)
+            // Match upstream MLX (acestep/models/mlx/dit_generate.py:188): the
+            // CFG unconditional branch uses the LEARNED `null_condition_emb`
+            // token broadcast to encoder_states shape, NOT zeros. Zeros are
+            // out-of-distribution for the trained DiT, making the unconditional
+            // prediction garbage so CFG (cond - uncond) injects noise on top
+            // of the conditional pred instead of isolating the prompt direction.
+            let nullEmb: MLXArray
+            if let nullCond = await dit.nullConditionEmbedding() {
+                nullEmb = MLX.broadcast(nullCond, to: encHS.shape).asType(encHS.dtype)
+            } else {
+                nullEmb = MLXArray.zeros(like: encHS)
+            }
+            encHS = concatenated([encHS, nullEmb], axis: 0)
             ctx = concatenated([ctx, ctx], axis: 0)
             encMask = encoderMask.map { concatenated([$0, $0], axis: 0) }
         }

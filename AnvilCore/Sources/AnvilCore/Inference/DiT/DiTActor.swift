@@ -87,6 +87,15 @@ public actor DiTActor {
         loadedModelID = nil
     }
 
+    /// Returns the learned `null_condition_emb` (shape [1, 1, hiddenSize])
+    /// after weights are loaded. Used by DiffusionActor for the CFG
+    /// unconditional branch — broadcasting this token across the encoder
+    /// length matches what the model saw during training. Returns nil when
+    /// no DiT weights are loaded yet.
+    public func nullConditionEmbedding() -> MLXArray? {
+        return decoder?.nullConditionEmb
+    }
+
     // MARK: - LoRA
 
     private var injectedPaths: [String] = []

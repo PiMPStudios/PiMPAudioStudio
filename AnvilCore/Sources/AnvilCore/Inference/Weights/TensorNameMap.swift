@@ -30,6 +30,12 @@ public enum TensorNameMap {
     /// of the upstream model graph, plus rotary embedding buffers which are
     /// recomputed on the MLX side).
     public static func mapDiTKey(_ key: String) -> String? {
+        // Top-level learned "no conditioning" embedding, used for CFG
+        // unconditional branch. Lives at the safetensors root, not inside
+        // `decoder.`. Maps to our DiTDecoder's `nullConditionEmb` property.
+        if key == "null_condition_emb" {
+            return "nullConditionEmb"
+        }
         guard key.hasPrefix("decoder.") else { return nil }
         var stripped = String(key.dropFirst("decoder.".count))
 
