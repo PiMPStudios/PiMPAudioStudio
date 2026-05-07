@@ -11,11 +11,11 @@ public actor ConditioningActor {
     private let tokenizer: AnvilTokenizer
 
     static let timbreFixFrame = 750
-    /// Audio sample rate matching MusicPipeline.defaultSampleRate.
-    static let audioSampleRate: Int = 44100
-    /// VAE downsampling factor (product of [2,4,4,8,8] from upstream config).
-    /// `hop_length = 2048` per upstream `models/mlx/vae_model.py`.
-    static let vaeHopLength: Int = 2048
+    /// Audio sample rate matching MusicPipeline.defaultSampleRate (v1.5 VAE: 48000).
+    static let audioSampleRate: Int = 48000
+    /// Total VAE downsampling = product of `downsampling_ratios` `[2,4,4,6,10]` from
+    /// the ACE-Step v1.5 `vae/config.json` = 1920. 48000/1920 = 25 latent fps.
+    static let vaeHopLength: Int = 1920
 
     /// Number of latent frames produced by the VAE for `duration` seconds of
     /// audio at `audioSampleRate`. Must match `MusicPipeline.latentFrames` so

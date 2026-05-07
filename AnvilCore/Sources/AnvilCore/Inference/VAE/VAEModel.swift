@@ -12,7 +12,7 @@ public class OobleckEncoder: Module, UnaryLayer {
     public init(
         encoderHiddenSize: Int = 128,
         audioChannels: Int = 2,
-        downsamplingRatios: [Int] = [2, 4, 4, 8, 8],
+        downsamplingRatios: [Int] = [2, 4, 4, 6, 10],   // v1.5 VAE config
         channelMultiples: [Int] = [1, 2, 4, 8, 16]
     ) {
         let cm = [1] + channelMultiples
@@ -58,7 +58,7 @@ public class OobleckDecoder: Module, UnaryLayer {
         channels: Int = 128,
         inputChannels: Int = 64,
         audioChannels: Int = 2,
-        upsamplingRatios: [Int] = [8, 8, 4, 4, 2],
+        upsamplingRatios: [Int] = [10, 6, 4, 4, 2],   // reverse of v1.5 downsamplingRatios
         channelMultiples: [Int] = [1, 2, 4, 8, 16]
     ) {
         let cm = [1] + channelMultiples
@@ -102,7 +102,12 @@ public class AutoEncoderOobleck: Module {
 
     public init(
         encoderHiddenSize: Int = 128,
-        downsamplingRatios: [Int] = [2, 4, 4, 8, 8],
+        // ACE-Step v1.5 VAE config: [2, 4, 4, 6, 10] (total stride = 1920).
+        // The earlier [2, 4, 4, 8, 8] (stride 2048) is from upstream's docstring
+        // for a different/older variant — instantiating with those strides against
+        // v1.5 weights produces a Conv1d/ConvTranspose graph whose tensor shapes
+        // don't match what's loaded, yielding near-silent decoded audio.
+        downsamplingRatios: [Int] = [2, 4, 4, 6, 10],
         channelMultiples: [Int] = [1, 2, 4, 8, 16],
         decoderChannels: Int = 128,
         decoderInputChannels: Int = 64,

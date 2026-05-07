@@ -7,8 +7,13 @@ public actor MusicPipeline {
     private var _state: PipelineState = .ready
     private var progressContinuation: AsyncStream<GenerationProgress>.Continuation?
 
-    public static let defaultSampleRate = 44100
-    public static let hopLength = 2048
+    /// Audio sample rate of the ACE-Step v1.5 VAE (read from
+    /// `vae/config.json`'s `sampling_rate` field — 48000 Hz).
+    public static let defaultSampleRate = 48000
+    /// Total VAE downsampling = product of `downsampling_ratios`
+    /// `[2, 4, 4, 6, 10]` from the v1.5 VAE config = 1920. Latent frames
+    /// per second = sampleRate / hopLength = 48000 / 1920 = 25.
+    public static let hopLength = 1920
 
     public init(vae: VAEActor, diffusion: DiffusionActor) {
         self.vae = vae
