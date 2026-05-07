@@ -4,6 +4,31 @@ All notable changes to AnvilApp are documented here.
 
 ---
 
+## [Unreleased] — Model Download Restructure (Phase 1 + 2)
+
+### Added
+
+- **`ModelFileSpec`** — explicit `remotePath`/`localName`/`sha256`/`sizeBytes` per file in a model spec, replacing the flat `files: [String]` array. Lets one HuggingFace repo's subdirectory layout map to flat local filenames that consumer code already expects.
+- **`ModelSpec.variantFamily`** — groups related specs (e.g. ACE-Step Turbo and Full) under one UI section.
+- **`ModelSpec.requiresAuth`** — flags gated repos so downloads attach `Authorization: Bearer` headers and pre-flight on token presence.
+- **`ace-step-dit-base`** — Full ACE-Step v1.5 DiT variant (4.8 GB, higher quality, slower) at `ACE-Step/acestep-v15-base`.
+- **`DownloadError.authRequired` / `.authForbidden`** — distinct cases for "no token configured for gated repo" vs "token rejected by HF".
+- **`ModelsSettingsView` variant grouping** — Turbo and Full render as indented sibling rows under an "ACE-Step v1.5" sub-header.
+- **One-shot migration shim** — maps legacy active-model ID `ace-step-dit` to `ace-step-dit-turbo` and sweeps orphan model directories. Gated on `UserDefaults` flag `com.pimp.AnvilApp.modelMigration.v1`.
+
+### Changed
+
+- **`ModelRegistry.builtInSpecs`** — placeholder repo IDs replaced with verified `ACE-Step/Ace-Step1.5` and `ACE-Step/acestep-v15-base` paths and exact file sizes from the HF API.
+- **`ace-step-dit` → `ace-step-dit-turbo` (default)** — Turbo variant is now the out-of-the-box DiT model. Lower memory, 8-step diffusion. Full variant available in Settings → Models.
+- **`ace-step-vae` now bundles `tokenizer.json`** — shared between DiT variants. `ACEStepGenerationService.loadDiTWeights` now looks up the tokenizer from the active VAE spec's local directory (was: DiT spec's directory).
+- **`DownloadClient`** — switched to `URLRequest`-based download API to support per-request headers; new `bearerToken: String?` parameter on `downloadAndVerify` and `download` (defaults nil).
+
+### Fixed
+
+- **HTTP 401 "DownloadError error 0" on first launch** — placeholder repos `ACEStep/ACE-Step-v1-5-DiT` and `ACEStep/ACE-Step-v1-5-VAE` did not exist on HuggingFace. Now resolves to real, verified repo paths.
+
+---
+
 ## [Unreleased] — GenerationService Split
 
 ### Added
