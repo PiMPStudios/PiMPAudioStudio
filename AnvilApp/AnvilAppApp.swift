@@ -25,7 +25,11 @@ struct AnvilAppApp: App {
         let enhancer = PromptEnhancer(llm: manager.llmActor)
         let lyricManager = LyricWriterManager(apiKeyStore: apiKeys)
         let sfxManager = SFXModelManager(registry: appState.registry)
-        let services = AppServices(sfxModelManager: sfxManager, registry: appState.registry)
+        let services = AppServices(
+            sfxModelManager: sfxManager,
+            registry: appState.registry,
+            outputManager: outputManager
+        )
 
         _appState = StateObject(wrappedValue: appState)
         _outputManager = StateObject(wrappedValue: outputManager)
@@ -95,37 +99,41 @@ final class AppServices: ObservableObject {
     @Published var generationService: GenerationService
 
     private var currentOutputManager: OutputDirectoryManager?
+    private var currentDirectory: URL?
     private let sfxModelManager: SFXModelManager
     private let registry: ModelRegistry
 
-    init(sfxModelManager: SFXModelManager, registry: ModelRegistry) {
+    init(
+        sfxModelManager: SFXModelManager,
+        registry: ModelRegistry,
+        outputManager: OutputDirectoryManager
+    ) {
         self.sfxModelManager = sfxModelManager
         self.registry = registry
-        let tempDir = FileManager.default.temporaryDirectory
-        let store = HistoryStore(directory: tempDir)
-        let outputMgr = OutputDirectoryManager()
+        self.currentOutputManager = outputManager
+        self.currentDirectory = outputManager.directory
 
+        let dir = outputManager.directory ?? FileManager.default.temporaryDirectory
+        let store = HistoryStore(directory: dir)
         self.historyStore = store
         self.generationService = Self.makeGenerationService(
             historyStore: store,
-            outputManager: outputMgr,
+            outputManager: outputManager,
             sfxModelManager: sfxModelManager,
             registry: registry
         )
     }
 
+    /// Rebuilds `historyStore` and `generationService` when the output directory
+    /// changes. SwiftUI's `.task(id: outputManager.directory)` fires this on the
+    /// initial appear (no-op since `init` already wired the real manager) and
+    /// again whenever the user picks a new directory.
     func configure(outputManager: OutputDirectoryManager) {
-        guard currentOutputManager !== outputManager || outputManager.directory != nil else {
-            currentOutputManager = outputManager
-            generationService = Self.makeGenerationService(
-                historyStore: historyStore,
-                outputManager: outputManager,
-                sfxModelManager: sfxModelManager,
-                registry: registry
-            )
+        if currentOutputManager === outputManager && currentDirectory == outputManager.directory {
             return
         }
         currentOutputManager = outputManager
+        currentDirectory = outputManager.directory
 
         let dir = outputManager.directory ?? FileManager.default.temporaryDirectory
         let store = HistoryStore(directory: dir)
