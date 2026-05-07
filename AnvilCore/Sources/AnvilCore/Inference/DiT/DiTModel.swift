@@ -124,8 +124,14 @@ public class DiTDecoder: Module {
 
         let seqLen = h.shape[1]
 
-        // Position embeddings
+        // Position embeddings — separate tables for latent (Q in self+cross,
+        // K in self) and encoder (K/V in cross). Match upstream
+        // ace_step_transformer.py:444-449 which calls self.rotary_emb twice
+        // with seq_len=hidden_states.shape[1] and seq_len=
+        // encoder_hidden_states.shape[1] respectively.
         let (cos, sin) = rotaryEmb.forward(seqLen: seqLen)
+        let encoderSeqLen = encStates.shape[1]
+        let (encCos, encSin) = rotaryEmb.forward(seqLen: encoderSeqLen)
 
         // Sliding mask
         let hasSlidingLayer = layerTypes.contains("sliding_attention")
@@ -148,6 +154,7 @@ public class DiTDecoder: Module {
             h = layer(
                 hiddenStates: h,
                 positionCosSin: (cos, sin),
+                encoderPositionCosSin: (encCos, encSin),
                 temb: timestepProj,
                 selfAttnMask: selfAttnMask,
                 encoderHiddenStates: encStates,
