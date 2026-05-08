@@ -140,11 +140,29 @@ class SFXCrossAttention: Module {
         self.out = Linear(hiddenSize, hiddenSize, bias: false)
     }
 
+    /// Cross-attention into the conditioning stream.
+    ///
+    /// `conditioning` may be either:
+    ///   - `[B, condDim]` — legacy flat embedding (auto-expanded to a
+    ///     length-1 sequence), or
+    ///   - `[B, condLen, condDim]` — sequence form used by the new
+    ///     T5+projection pipeline (`[timing_token, text_token_0, …,
+    ///     text_token_L-1]`).
+    ///
+    /// Both shapes route through the same K/V projection; the only
+    /// difference is `condLen`.
     func callAsFunction(_ x: MLXArray, conditioning: MLXArray) -> MLXArray {
         let B = x.shape[0]
         let L = x.shape[1]
 
-        let cond = conditioning.expandedDimensions(axis: 1)
+        // Normalize to 3D: pre-existing CLAP path passes [B, condDim],
+        // the new SAO/T5 path passes [B, condLen, condDim].
+        let cond: MLXArray
+        if conditioning.shape.count == 2 {
+            cond = conditioning.expandedDimensions(axis: 1)
+        } else {
+            cond = conditioning
+        }
         let condLen = cond.shape[1]
 
         let queries = q(x).reshaped([B, L, numHeads, headDim]).transposed(0, 2, 1, 3)

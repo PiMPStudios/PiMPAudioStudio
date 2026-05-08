@@ -165,15 +165,6 @@ public actor WeightConverter {
         }
     }
 
-    /// Load and remap CLAP encoder weights from a safetensors file.
-    public func loadCLAPWeights(from url: URL) throws -> [(String, MLXArray)] {
-        let raw = try loadSafetensors(from: url)
-        return raw.compactMap { key, value -> (String, MLXArray)? in
-            guard let mapped = CLAPNameMap.mapKey(key) else { return nil }
-            return (mapped, value)
-        }
-    }
-
     /// Load T5-base encoder weights for Stable Audio Open. The HF safetensors
     /// uses HuggingFace's standard T5 naming
     /// (`encoder.block.N.layer.0.SelfAttention.q.weight`, etc.). We map onto

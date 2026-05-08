@@ -13,7 +13,6 @@ public actor InpaintCoordinator {
     private let diffusionActor: DiffusionActor?
     private let sfxDiffusionActor: SFXDiffusionActor?
     private let conditioningActor: ConditioningActor?
-    private let clapEncoder: CLAPEncoder?
     private let historyManager: EditHistoryManager
 
     private var currentLatents: MLXArray?
@@ -35,15 +34,13 @@ public actor InpaintCoordinator {
         sfxVAEActor: SFXVAEActor? = nil,
         diffusionActor: DiffusionActor? = nil,
         sfxDiffusionActor: SFXDiffusionActor? = nil,
-        conditioningActor: ConditioningActor? = nil,
-        clapEncoder: CLAPEncoder? = nil
+        conditioningActor: ConditioningActor? = nil
     ) {
         self.vaeActor = vaeActor
         self.sfxVAEActor = sfxVAEActor
         self.diffusionActor = diffusionActor
         self.sfxDiffusionActor = sfxDiffusionActor
         self.conditioningActor = conditioningActor
-        self.clapEncoder = clapEncoder
         self.historyManager = EditHistoryManager()
     }
 
@@ -189,38 +186,15 @@ public actor InpaintCoordinator {
             denoised = result.latents
 
         case .stableAudio:
-            guard let sfxDiff = sfxDiffusionActor,
-                  let clap = clapEncoder else {
-                continuation.yield(.failed("Stable Audio pipeline not available"))
-                continuation.finish()
-                return
-            }
-
-            let schedule = TimestepMapper.truncatedSchedule(
-                strength: request.strength,
-                totalSteps: 100,
-                shift: 1.0
-            )
-
-            let clapEmbedding = try await clap.encode(
-                text: request.regionPrompt,
-                tokenizer: CLAPTokenizer.forTesting()
-            )
-
-            let sfxConfig = SFXDiffusionConfig(
-                steps: schedule.count,
-                guidanceScale: request.guidanceScale,
-                seed: request.seed,
-                latentShape: latents.shape
-            )
-
-            let result = try await sfxDiff.inpaint(
-                startLatents: noisedLatents,
-                schedule: schedule,
-                conditioning: clapEmbedding,
-                config: sfxConfig
-            )
-            denoised = result.latents
+            // Stable Audio Open inpaint pathway needs the T5 + projection
+            // conditioning chain (paralleling the music generation
+            // SoundFXPipeline rewire). The legacy CLAP-based inpaint was
+            // removed when CLAPEncoder/Tokenizer were retired; T5 inpaint
+            // wiring is a follow-up once SAO end-to-end Generate is
+            // confirmed working.
+            continuation.yield(.failed("Stable Audio inpainting is temporarily unavailable while the T5 + projection re-architecture lands. ACE-Step inpainting is unaffected."))
+            continuation.finish()
+            return
         }
 
         let composited = LatentBlender.composite(

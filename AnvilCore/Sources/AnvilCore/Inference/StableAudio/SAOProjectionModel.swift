@@ -27,7 +27,12 @@ public final class SAOProjectionConfig: Sendable {
     public init(
         textInputDim: Int = 768,
         outputDim: Int = 768,
-        timingDim: Int = 2
+        // 256 matches the default embedding produced by `TimingEncoder`
+        // (128 sin + 128 cos features split across start + duration). The
+        // actual projection_model.safetensors Linear will load with its
+        // own in/out shape; if that disagrees with this default at runtime
+        // the SFXModelManager weight diff will surface the mismatch.
+        timingDim: Int = 256
     ) {
         self.textInputDim = textInputDim
         self.outputDim = outputDim

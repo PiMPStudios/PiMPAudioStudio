@@ -99,9 +99,24 @@ public final class T5GatedMLP: Module, UnaryLayer {
 
 // MARK: - T5Attention (self-attention with relative-position bias)
 //
-// Skeleton: declares the four projection matrices and the relative-bias
-// embedding. Real bucket-bias computation pending.
+// T5 quirks vs standard attention:
+//   • No 1/sqrt(d_k) scale on Q·Kᵀ (T5 uses raw dot products).
+//   • Position information comes from a learned per-head BIAS added to
+//     scores before softmax, NOT from RoPE or absolute positional
+//     embeddings. The bias depends on a bucketed relative position
+//     (signed bucket index for bidirectional encoder).
+//   • The bias is computed ONCE per forward (in block 0, which owns
+//     `relative_attention_bias`) and threaded through subsequent blocks.
+//
+// References:
+//   transformers/src/transformers/models/t5/modeling_t5.py
+//     class T5Attention.{_relative_position_bucket, compute_bias, forward}
 public final class T5SelfAttention: Module {
+    public let numHeads: Int
+    public let dKV: Int
+    public let relativeAttentionNumBuckets: Int
+    public let relativeAttentionMaxDistance: Int
+
     public var q: Linear
     public var k: Linear
     public var v: Linear
@@ -114,6 +129,10 @@ public final class T5SelfAttention: Module {
     public var relativeAttentionBias: Embedding?
 
     public init(config: T5Config, hasRelativeBias: Bool) {
+        self.numHeads = config.numHeads
+        self.dKV = config.dKV
+        self.relativeAttentionNumBuckets = config.relativeAttentionNumBuckets
+        self.relativeAttentionMaxDistance = config.relativeAttentionMaxDistance
         let inner = config.numHeads * config.dKV
         self.q = Linear(config.dModel, inner, bias: false)
         self.k = Linear(config.dModel, inner, bias: false)
@@ -124,14 +143,105 @@ public final class T5SelfAttention: Module {
             : nil
     }
 
-    /// Stub forward: returns the input unchanged (identity) so downstream
-    /// layers don't crash on shape mismatch. Replace with real
-    /// scaled-dot-product attention + relative-position bias when enabling.
-    public func callAsFunction(_ x: MLXArray) -> MLXArray {
-        // TODO: implement T5 self-attention with relative-bias.
-        // For now: q*k^T/sqrt(d_k) + bias, softmax, @v, then o-projection
-        // is intentionally unwired. Identity passthrough keeps shapes valid.
-        x
+    /// Build the `[1, numHeads, qLen, kLen]` position-bias tensor used by
+    /// every block in the encoder forward. Bidirectional bucketing per
+    /// HuggingFace T5; mirrors `_relative_position_bucket(bidirectional=True)`.
+    public func computePositionBias(queryLength: Int, keyLength: Int) -> MLXArray {
+        guard let bias = relativeAttentionBias else {
+            // Caller should only invoke this on block 0 (which owns the
+            // bias embedding). Fallback returns a zero tensor of the right
+            // shape so callers can short-circuit instead of branching.
+            return MLXArray.zeros([1, numHeads, queryLength, keyLength])
+        }
+
+        // memory_position - context_position → [qLen, kLen] signed deltas.
+        let qPos = MLXArray(Array(0..<queryLength).map { Int32($0) })
+            .reshaped([queryLength, 1])
+        let kPos = MLXArray(Array(0..<keyLength).map { Int32($0) })
+            .reshaped([1, keyLength])
+        let relPos = kPos - qPos
+
+        let buckets = Self.relativePositionBucket(
+            relativePosition: relPos,
+            numBuckets: relativeAttentionNumBuckets,
+            maxDistance: relativeAttentionMaxDistance
+        )
+
+        // Embedding lookup: [qLen, kLen, numHeads] → permute [numHeads, qLen, kLen]
+        // → expand to [1, numHeads, qLen, kLen] for batch broadcast.
+        let values = bias(buckets)                       // [qLen, kLen, numHeads]
+        let permuted = values.transposed(2, 0, 1)        // [numHeads, qLen, kLen]
+        return permuted.expandedDimensions(axis: 0)      // [1, numHeads, qLen, kLen]
+    }
+
+    /// Bidirectional bucket map from signed `memory - context` distances to
+    /// indices in `[0, numBuckets)`. Half the buckets cover positive
+    /// direction, half cover negative direction, with logarithmic spacing
+    /// for distances ≥ numBuckets / 4.
+    public static func relativePositionBucket(
+        relativePosition: MLXArray,
+        numBuckets: Int = 32,
+        maxDistance: Int = 128
+    ) -> MLXArray {
+        let halfBuckets = numBuckets / 2
+        // Direction half: 0 if relPos <= 0, halfBuckets if relPos > 0.
+        let directionOffset = MLX.where(
+            relativePosition .> 0,
+            MLXArray(Int32(halfBuckets)),
+            MLXArray(Int32(0))
+        )
+        // Magnitude.
+        let absRel = MLX.abs(relativePosition)
+
+        // Small distances: identity mapping into the lower-half bucket.
+        let maxExact = halfBuckets / 2
+        let isSmall = absRel .< Int32(maxExact)
+
+        // Large distances: log-scale spread across the upper-half bucket
+        // range, clamped to numBuckets - 1.
+        let absFloat = absRel.asType(.float32)
+        let logRatio = log(absFloat / Float(maxExact))
+            / log(Float(maxDistance) / Float(maxExact))
+        let large = (
+            MLXArray(Float(maxExact))
+            + logRatio * Float(halfBuckets - maxExact)
+        ).asType(.int32)
+        let largeClamped = MLX.minimum(large, MLXArray(Int32(halfBuckets - 1)))
+
+        let magnitudeBucket = MLX.where(isSmall, absRel.asType(.int32), largeClamped)
+        return directionOffset + magnitudeBucket
+    }
+
+    /// Self-attention forward. `attentionMask` is the additive mask form
+    /// (`0` for valid, large-negative for pad) shaped broadcastable to
+    /// `[B, 1, qLen, kLen]`. `positionBias` may be precomputed by block 0
+    /// and reused by later blocks; pass `nil` on block 0 to compute fresh.
+    public func callAsFunction(
+        _ x: MLXArray,
+        attentionMask: MLXArray? = nil,
+        positionBias: MLXArray? = nil
+    ) -> (output: MLXArray, positionBias: MLXArray) {
+        let bsz = x.shape[0]
+        let seqL = x.shape[1]
+
+        // Q/K/V projections, reshape to [B, numHeads, seqL, dKV].
+        let qOut = q(x).reshaped([bsz, seqL, numHeads, dKV]).transposed(0, 2, 1, 3)
+        let kOut = k(x).reshaped([bsz, seqL, numHeads, dKV]).transposed(0, 2, 1, 3)
+        let vOut = v(x).reshaped([bsz, seqL, numHeads, dKV]).transposed(0, 2, 1, 3)
+
+        // Resolve / compute the per-head additive bias.
+        var bias = positionBias ?? computePositionBias(queryLength: seqL, keyLength: seqL)
+        if let mask = attentionMask {
+            bias = bias + mask
+        }
+
+        // Scores: Q · Kᵀ (NO scale — T5 quirk).
+        let scores = matmul(qOut, kOut.transposed(0, 1, 3, 2)) + bias
+        let attn = softmax(scores, axis: -1)
+        let context = matmul(attn, vOut)
+            .transposed(0, 2, 1, 3)
+            .reshaped([bsz, seqL, numHeads * dKV])
+        return (o(context), bias)
     }
 }
 
@@ -149,17 +259,24 @@ public final class T5Block: Module {
         self.layer1_mlp = T5GatedMLP(config: config)
     }
 
-    public func callAsFunction(_ x: MLXArray) -> MLXArray {
-        // Pre-norm residual blocks. Stub forward uses real RMSNorm + MLP
-        // (those layers are real); attention is currently identity so this
-        // is mostly an MLP-only forward. Sufficient to keep shapes correct
-        // through the encoder stack.
+    /// Pre-norm residual block: norm → attn → residual → norm → MLP →
+    /// residual. Position bias propagates from block 0; subsequent blocks
+    /// receive the same tensor and re-add it inside their attention.
+    public func callAsFunction(
+        _ x: MLXArray,
+        attentionMask: MLXArray?,
+        positionBias: MLXArray?
+    ) -> (output: MLXArray, positionBias: MLXArray) {
         var h = x
-        let a = layer0_attn(layer0_norm(h))
+        let (a, returnedBias) = layer0_attn(
+            layer0_norm(h),
+            attentionMask: attentionMask,
+            positionBias: positionBias
+        )
         h = h + a
         let f = layer1_mlp(layer1_norm(h))
         h = h + f
-        return h
+        return (h, returnedBias)
     }
 }
 
@@ -185,14 +302,33 @@ public final class T5Encoder: Module {
     /// Encode a batch of token-id sequences into hidden states.
     /// - Parameters:
     ///   - inputIds: `[B, L]` Int32 token ids
-    ///   - attentionMask: `[B, L]` 0/1 mask (currently unused — full T5
-    ///     forward will fold this into attention).
+    ///   - attentionMask: `[B, L]` 0/1 mask. Pad positions (mask=0) get a
+    ///     large-negative bias added before softmax so they're effectively
+    ///     ignored.
     /// - Returns: `[B, L, dModel]` encoder hidden states.
     public func callAsFunction(inputIds: MLXArray, attentionMask: MLXArray? = nil) -> MLXArray {
-        _ = attentionMask // pending real attention impl
         var h = shared(inputIds)
+
+        // Build the additive attention mask once. Shape: [B, 1, 1, L].
+        let additiveMask: MLXArray? = attentionMask.map { mask in
+            // mask is 1 for valid, 0 for pad. Convert to additive form:
+            //   valid → 0.0, pad → -1e9
+            let neg = (1.0 - mask.asType(.float32)) * Float(-1e9)
+            return neg.expandedDimensions(axes: [1, 2])
+        }
+
+        // Block 0 owns the relative-bias embedding; its returned position
+        // bias (already augmented with the additive mask) is reused by
+        // blocks 1..N to avoid recomputing.
+        var positionBias: MLXArray? = nil
         for block in blocks {
-            h = block(h)
+            let (newH, newBias) = block(
+                h,
+                attentionMask: additiveMask,
+                positionBias: positionBias
+            )
+            h = newH
+            positionBias = newBias
         }
         h = finalLayerNorm(h)
         return h

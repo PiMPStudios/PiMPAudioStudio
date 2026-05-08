@@ -51,14 +51,18 @@ public actor SoundFXPipeline {
         let (textIds, textMask) = tokenizer.encodeText(text, maxLength: 128)
         let textHidden = t5(inputIds: textIds, attentionMask: textMask)
 
-        // 2. Timing scalars [seconds_start, seconds_total]. Real SAO uses
-        // sinusoidal/Fourier embeddings; the projection model expects
-        // raw 2-D timing input here for the skeleton path.
-        let timing: [Float] = [0.0, Float(clampedDuration)]
-        let timingScalars = MLXArray(timing).reshaped([1, 2])
+        // 2. Sinusoidal/Fourier timing features for [seconds_start,
+        // seconds_total]. `TimingEncoder.encode` returns shape
+        // `[1, embeddingDim]` with sin/cos of log-spaced frequencies for
+        // each input scalar — the standard Fourier-feature embedding the
+        // projection_model is trained to consume.
+        let timingEmbed = timingEncoder.encode(
+            startSeconds: 0.0,
+            durationSeconds: Float(clampedDuration)
+        )
 
         // 3. Project both streams into the DiT conditioning dim.
-        let projected = projection(textHidden: textHidden, timing: timingScalars)
+        let projected = projection(textHidden: textHidden, timing: timingEmbed)
         let textCond = projected.text          // [1, L, embed]
         let timingCond = projected.timing      // [1, embed]
 
