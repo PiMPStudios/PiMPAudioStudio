@@ -8,6 +8,7 @@ All notable changes to AnvilApp are documented here.
 
 ### Added
 
+- **Native local Lyric Writer inference path** — `LLMActor` now loads the downloaded MLX Llama 3.2 3B Instruct 4-bit safetensors and runs a minimal quantized Llama forward pass in MLX-Swift instead of treating the model as loaded with an empty placeholder. Local lyric generation now streams decoded tokens from the on-device model path.
 - **ACE-Step quality troubleshooting notes** — `docs/ace-step-audio-quality-investigation.md` now captures the 2026-05-07 breakthrough from static/noise to recognizable music, plus the current low-hanging follow-ups: Float32 baseline testing, SFT/Base 50-step A/Bs, prompt/meta whitespace parity, VAE decode parity, and DiT patch/unpatch parity.
 - **Advanced section in GenerateView** — collapsible disclosure surfacing three diffusion knobs that were already plumbed but never rendered: precision (Float16 / Float32 segmented), inference steps (numeric override; blank = auto: 8 Turbo / 50 Base or SFT), and shift (slider 0.5–10.0 with reset to 3.0). Intended for chasing the audio-quality bug and now for controlled quality A/Bs.
 - **`GenerationRequest.stepsOverride` / `shiftOverride`** — Optional Int / Float request fields. When nil, `ACEStepGenerationService` keeps the existing auto-pick (8 Turbo / 50 Base or SFT) and shift=3.0 default.
@@ -19,6 +20,7 @@ All notable changes to AnvilApp are documented here.
 
 ### Fixed
 
+- **Write Lyrics could click but produce nothing locally** — the local LLM actor was never auto-loaded on generation, app startup did not always hand the initial `llmActor` to `LyricWriterManager`, and the default downloaded Llama model was not auto-activated after background download. The app now auto-activates a downloaded default model when no active local LLM is set, wires the initial actor on view appear, and lazy-loads model weights before local lyric generation.
 - **ACE-Step Generate view restarted into Float16** — the first recognizable-music baseline was produced under Float32, but `GenerateView` reset to Float16 on every app launch and `GenerationRequest` also defaulted to Float16. Default generation precision is now Float32 so fresh launches keep the known-good quality baseline; Float16 remains selectable as an explicit speed/RAM tradeoff.
 - **LoRA adapters could silently cross DiT variants** — the picker only filters by broad `aceStepDiT` category, so an adapter trained for Turbo/Base/SFT could be selected while another DiT variant was active. `LoRACoordinator` now checks `adapter.baseModelID` against the active DiT model before injection and skips mismatches with a log warning.
 - **Lyric Writer download UX cascade** — four overlapping bugs that produced confused state in `IntelligenceSettingsView`:

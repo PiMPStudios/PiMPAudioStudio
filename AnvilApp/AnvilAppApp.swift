@@ -68,6 +68,12 @@ struct AnvilAppApp: App {
                     promptEnhancer.updateLLM(llm)
                     lyricWriterManager.updateLLM(llm)
                 }
+                .onAppear {
+                    intentRouter.updateLLM(modelManager.llmActor)
+                    promptEnhancer.updateLLM(modelManager.llmActor)
+                    lyricWriterManager.updateLLM(modelManager.llmActor)
+                    lyricWriterManager.refreshAPIBackends()
+                }
                 .onChange(of: apiKeyStore.availableProviders) { _, _ in
                     lyricWriterManager.refreshAPIBackends()
                 }

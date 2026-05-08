@@ -86,6 +86,15 @@ final class LLMModelManager: ObservableObject {
             UserDefaults.standard.removeObject(forKey: activeModelKey)
         }
 
+        // Auto-activate the default local writer if it is already on disk.
+        // Background download can complete before the user opens Settings, and
+        // Write Lyrics should work after that without a separate Activate click.
+        if activeModel == nil,
+           let downloadedDefault = availableModels.first(where: { $0.isDefault && isModelDownloaded($0) }) {
+            self.activeModel = downloadedDefault
+            UserDefaults.standard.set(downloadedDefault.id, forKey: activeModelKey)
+        }
+
         // Create actor if active model is already downloaded
         if let active = activeModel, isModelDownloaded(active) {
             let path = modelsDirectory.appendingPathComponent(active.id)
@@ -138,6 +147,9 @@ final class LLMModelManager: ObservableObject {
 
         downloadState = .idle
         persistModels()
+        if activeModel == nil {
+            setActiveModel(spec)
+        }
     }
 
     /// Removes a downloaded model from disk and clears actor if active.

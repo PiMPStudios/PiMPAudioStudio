@@ -35,7 +35,7 @@ struct LocalLyricWriter: LyricWriter {
                 let stream = await actor.generate(
                     systemPrompt: systemPrompt,
                     userPrompt: userPrompt,
-                    maxTokens: 512,
+                    maxTokens: 256,
                     temperature: 0.8
                 )
                 for await chunk in stream {
