@@ -131,25 +131,20 @@ final class SFXModelManager: ObservableObject {
         let ditWeights = try await converter.loadSFXDiTWeights(from: modelPath.appendingPathComponent("model.safetensors"))
         let vaeWeights = try await converter.loadSFXVAEWeights(from: modelPath.appendingPathComponent("vae.safetensors"))
 
-        // T5-base text encoder + projection_model. Skeleton today —
-        // `T5Encoder.callAsFunction` returns a shape-correct stub; real
-        // bucket-bias attention math lands in a follow-up. Spec is
-        // `isRunnable: false` so end-to-end Generate against this pipeline
-        // is gated until the forward pass is enabled.
+        // T5-base text encoder.
         let t5Weights = try await converter.loadT5Weights(from: modelPath.appendingPathComponent("text_encoder.safetensors"))
-        let projectionWeights = try await converter.loadSAOProjectionWeights(from: modelPath.appendingPathComponent("projection.safetensors"))
 
         let t5 = T5Encoder(config: .t5Base)
         t5.update(parameters: ModuleParameters.unflattened(t5Weights))
 
-        let projection = SAOProjectionModel()
-        projection.update(parameters: ModuleParameters.unflattened(projectionWeights))
+        // SAO number conditioner (seconds_start + seconds_total timing).
+        let conditionerWeights = try await converter.loadSAOProjectionWeights(from: modelPath.appendingPathComponent("projection.safetensors"))
 
-        let timingEncoder = TimingEncoder(embeddingDim: 256)
+        let conditioner = SAONumberConditioner()
+        conditioner.update(parameters: ModuleParameters.unflattened(conditionerWeights))
 
-        let ditConfig = SFXDiTConfig(
-            hiddenSize: 1024, numLayers: 24, numHeads: 16, latentDim: 64, conditioningDim: 768
-        )
+        // DiT — full SAO 1.0 architecture (hiddenSize=1536, GQA 24/12 heads).
+        let ditConfig = SFXDiTConfig.sao
         let dit = SFXDiTActor(config: ditConfig)
         try await dit.loadWeights(ditWeights)
 
@@ -161,17 +156,16 @@ final class SFXModelManager: ObservableObject {
         let vae = SFXVAEActor(config: vaeConfig)
         await vae.loadWeights(vaeWeights)
 
-        // T5 tokenizer ships at `tokenizer/tokenizer.json` upstream; we save
-        // it locally as `tokenizer.json` next to the other SAO files.
+        // T5 tokenizer ships at `tokenizer/tokenizer.json` upstream; saved
+        // locally as `tokenizer.json` alongside the other SAO model files.
         let tokenizerURL = modelPath.appendingPathComponent("tokenizer.json")
         self.tokenizer = try AnvilTokenizer(configURL: tokenizerURL)
 
         self.pipeline = SoundFXPipeline(
             t5: t5,
-            projection: projection,
+            conditioner: conditioner,
             diffusion: diffusion,
-            vae: vae,
-            timingEncoder: timingEncoder
+            vae: vae
         )
     }
 

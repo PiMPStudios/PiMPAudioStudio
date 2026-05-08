@@ -144,10 +144,15 @@ public actor WeightConverter {
     }
 
     /// Load and remap SFX DiT weights from a safetensors file.
+    /// Conv1d weights (preprocess_conv, postprocess_conv) are transposed from
+    /// PyTorch layout [out, in, kernel] to MLX layout [out, kernel, in].
     public func loadSFXDiTWeights(from url: URL) throws -> [(String, MLXArray)] {
         let raw = try loadSafetensors(from: url)
         return raw.compactMap { key, value -> (String, MLXArray)? in
             guard let mapped = SFXDiTNameMap.mapKey(key) else { return nil }
+            if SFXDiTNameMap.isConv1dWeight(mapped) {
+                return (mapped, SFXDiTNameMap.conv1dToMLX(value))
+            }
             return (mapped, value)
         }
     }

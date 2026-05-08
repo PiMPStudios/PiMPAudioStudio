@@ -7,8 +7,8 @@ import MLXRandom
 struct DiffusionSamplerTests {
     @Test("ODE step reduces noise")
     func odeStepBasic() {
-        let xt = MLXArray(converting: [1.0, 2.0, 3.0] as [Double], type: Float.self).reshaped([1, 1, 3])
-        let vt = MLXArray(converting: [0.5, 0.5, 0.5] as [Double], type: Float.self).reshaped([1, 1, 3])
+        let xt = MLXArray(converting: [1.0, 2.0, 3.0]).reshaped([1, 1, 3])
+        let vt = MLXArray(converting: [0.5, 0.5, 0.5]).reshaped([1, 1, 3])
         let result = DiffusionSampler.odeStep(xt: xt, vt: vt, currentT: 1.0, nextT: 0.5)
         eval(result)
         let vals = result.reshaped([-1]).asArray(Float.self)
@@ -19,8 +19,8 @@ struct DiffusionSamplerTests {
 
     @Test("Final step computes x0 correctly")
     func finalStep() {
-        let xt = MLXArray(converting: [2.0, 4.0] as [Double], type: Float.self).reshaped([1, 1, 2])
-        let vt = MLXArray(converting: [1.0, 2.0] as [Double], type: Float.self).reshaped([1, 1, 2])
+        let xt = MLXArray(converting: [2.0, 4.0]).reshaped([1, 1, 2])
+        let vt = MLXArray(converting: [1.0, 2.0]).reshaped([1, 1, 2])
         let result = DiffusionSampler.finalStep(xt: xt, vt: vt, currentT: 0.5)
         eval(result)
         let vals = result.reshaped([-1]).asArray(Float.self)
@@ -30,8 +30,8 @@ struct DiffusionSamplerTests {
 
     @Test("APG with scale 1.0 returns pred_cond unchanged")
     func apgNoGuidance() {
-        let predCond = MLXArray(converting: [1.0, 2.0, 3.0] as [Double], type: Float.self).reshaped([1, 1, 3])
-        let predUncond = MLXArray(converting: [0.5, 1.0, 1.5] as [Double], type: Float.self).reshaped([1, 1, 3])
+        let predCond = MLXArray(converting: [1.0, 2.0, 3.0]).reshaped([1, 1, 3])
+        let predUncond = MLXArray(converting: [0.5, 1.0, 1.5]).reshaped([1, 1, 3])
         let result = DiffusionSampler.apgForward(
             predCond: predCond, predUncond: predUncond,
             guidanceScale: 1.0, momentum: nil
@@ -45,8 +45,8 @@ struct DiffusionSamplerTests {
 
     @Test("APG with scale > 1.0 differs from pred_cond")
     func apgWithGuidance() {
-        let predCond = MLXArray(converting: [1.0, 0.0, 0.0] as [Double], type: Float.self).reshaped([1, 1, 3])
-        let predUncond = MLXArray(converting: [0.0, 1.0, 0.0] as [Double], type: Float.self).reshaped([1, 1, 3])
+        let predCond = MLXArray(converting: [1.0, 0.0, 0.0]).reshaped([1, 1, 3])
+        let predUncond = MLXArray(converting: [0.0, 1.0, 0.0]).reshaped([1, 1, 3])
         let result = DiffusionSampler.apgForward(
             predCond: predCond, predUncond: predUncond,
             guidanceScale: 3.0, momentum: nil

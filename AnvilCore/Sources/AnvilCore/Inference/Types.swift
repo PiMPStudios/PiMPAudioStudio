@@ -180,18 +180,53 @@ public struct SFXDiffusionConfig: Sendable {
     }
 }
 
-public struct SFXDiTConfig: Codable, Sendable {
-    public let hiddenSize: Int
-    public let numLayers: Int
-    public let numHeads: Int
-    public let latentDim: Int
-    public let conditioningDim: Int
+public struct SFXDiTConfig: Sendable {
+    // Core architecture dims (from actual SAO weight inspection)
+    public let hiddenSize: Int          // 1536
+    public let numLayers: Int           // 24
+    public let numHeads: Int            // 24 (Q heads + self-attn heads)
+    public let numKVHeads: Int          // 12 (cross-attn KV heads, GQA 2:1)
+    public let headDim: Int             // 64
+    public let latentDim: Int           // 64
+    public let conditioningDim: Int     // 768 (T5-base output → cross-attn)
+    public let ffIntermediateDim: Int   // 6144 (GEGLU up-branch)
+    public let rotaryDim: Int           // 32  (partial RoPE, first 32 of 64 head dims)
+    public let timestepFeaturesDim: Int // 256 (FourierFeatures output = 2 × halfDim)
+    public let globalCondDim: Int       // 1536 (concat startEmbed[768] + totalEmbed[768])
+    public let condTokenDim: Int        // 768 (prepend-cond token dim, unused in std fwd)
 
-    public init(hiddenSize: Int, numLayers: Int, numHeads: Int, latentDim: Int, conditioningDim: Int) {
+    /// All new fields default to values derived from the five core params so
+    /// existing call sites (`SFXDiTConfig(hiddenSize:numLayers:numHeads:latentDim:conditioningDim:)`)
+    /// continue to compile without modification.
+    public init(
+        hiddenSize: Int = 1536,
+        numLayers: Int = 24,
+        numHeads: Int = 24,
+        latentDim: Int = 64,
+        conditioningDim: Int = 768,
+        numKVHeads: Int? = nil,
+        headDim: Int? = nil,
+        ffIntermediateDim: Int? = nil,
+        rotaryDim: Int? = nil,
+        timestepFeaturesDim: Int = 256,
+        globalCondDim: Int? = nil,
+        condTokenDim: Int? = nil
+    ) {
         self.hiddenSize = hiddenSize
         self.numLayers = numLayers
         self.numHeads = numHeads
         self.latentDim = latentDim
         self.conditioningDim = conditioningDim
+        let hd = headDim ?? max(1, hiddenSize / numHeads)
+        self.headDim = hd
+        self.numKVHeads = numKVHeads ?? max(1, numHeads / 2)
+        self.ffIntermediateDim = ffIntermediateDim ?? (hiddenSize * 4)
+        self.rotaryDim = rotaryDim ?? (hd / 2)
+        self.timestepFeaturesDim = timestepFeaturesDim
+        self.globalCondDim = globalCondDim ?? (conditioningDim * 2)
+        self.condTokenDim = condTokenDim ?? conditioningDim
     }
+
+    /// Full Stable Audio Open 1.0 configuration.
+    public static let sao = SFXDiTConfig()
 }

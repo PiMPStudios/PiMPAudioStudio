@@ -45,6 +45,7 @@ struct MusicPipelineTests {
         let result = try await pipeline.generate(
             encoderStates: encoderStates,
             contextLatents: contextLatents,
+            encoderMask: nil,
             duration: 0.5,
             config: config
         )

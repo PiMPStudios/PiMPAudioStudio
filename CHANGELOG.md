@@ -4,6 +4,46 @@ All notable changes to AnvilApp are documented here.
 
 ---
 
+## [Unreleased] — Stable Audio Open: complete DiT architecture rewrite, pipeline live
+
+### Added
+
+- **`SAONumberConditioner`** (`SAOProjectionModel.swift`) — replaces the previous erroneous `SAOProjectionModel` text-projection design. Stable Audio Open uses *timing* conditioning (not text projection): two `SAOSingleConditioner` instances (start-seconds and total-seconds), each with a learned Fourier frequency bank `[128, 1]` and a `Linear(257 → 768, bias)` projection. Start/total embeds are concatenated `[B, 1536]` and passed through a `toGlobalEmbed` MLP into the DiT's global conditioning stream. T5 text `[B, L, 768]` feeds cross-attention directly without any projection head.
+- **Correct SAO DiT architecture verified against actual checkpoint** — full inspection of the 745-key `stable_audio_open_1_0.safetensors` produced the definitive architecture: `hiddenSize=1536`, 24 layers, 24 Q heads / 12 KV heads (GQA 2:1), `headDim=64`, `ffIntermediateDim=6144` (GEGLU: split `gate_up → gate/up → up * gelu(gate)`), partial RoPE on first 32 of 64 head dims (`rotaryDim=32`), pre-norm LayerNorm before each sub-layer. All values corrected in `SFXDiTModel.swift`.
+- **GEGLU feed-forward network** (`SAODiTFFN`) — replaces the prior SwiGLU approximation. Correct projection is a single `gate_up` weight `[2·intermediate, hidden]` split into gate and up halves at runtime; `output = up × gelu(gate)` then projected back via `down`.
+- **Grouped-Query Attention in SAO cross-attention** (`SAODiTCrossAttention`) — 24 Q heads / 12 KV heads; KV expanded 2× via `MLX.repeated(_:count:axis:)` before attending.
+- **Partial RoPE** (`SAODiTSelfAttention`) — rotary position encoding applied only to the first 32 dims of each 64-dim head; remaining 32 dims pass through unchanged. Frequencies computed analytically from `ropeTheta=1_000_000` at forward time (not loaded from checkpoint; `inv_freq` keys are dropped by `SFXDiTNameMap`).
+- **`SAOFourierFeatures`** — learned frequency bank `[128, 1]` loaded from checkpoint (`model.model.embedding.fourier_embedder.weight`); constructs `[B, 257]` timing embedding (128 sin + 128 cos + scalar).
+
+### Changed
+
+- **`stable-audio-open` spec flipped to `isRunnable: true`** — SAO SFX generation is now active in the pipeline. The prior `isRunnable: false` runtime gate and `runtimeNote` about re-architecture in progress have been removed from `ModelRegistry`. Auto-mode can now route to Stable Audio when SAO weights are present.
+- **`SFXDiTNameMap`** — updated to handle the complete 745-key checkpoint: strips `model.model.` prefix, drops `rotary_emb.inv_freq` keys, remaps Sequential `.0.` to `fc1` / `.1.` to `fc2`, reroutes `gate_up_proj` → GEGLU `gateUp`, maps LayerNorm `gamma`/`beta` → `weight`/`bias`, transposes Conv1d axes `[out, in, kernel] → [out, kernel, in]`.
+- **`SAOProjectionNameMap`** — updated for `SAONumberConditioner` key paths (`model.conditioning.conditioners.0/1.{fourier_embedder,dense_layer}.{weight,bias}`).
+
+### Fixed
+
+- **Test suite repaired: 10 stale test files updated for API drift** — accumulated API changes since these tests were last edited had broken compilation:
+  - `ModelSpecTests.swift` — rewrote for new `ModelSpec(id:displayName:huggingFaceRepo:files:[ModelFileSpec]:category:)` init (old `[String]` files + `sizeBytes`/`sha256` init removed)
+  - `ModelRegistryTests.swift` — `"ace-step-dit"` → `"ace-step-dit-turbo"` (force-unwrap crashed on renamed model ID); `file` → `file.localName` in loop
+  - `AppStateTests.swift` — same `file.localName` fix
+  - `ConditioningActorTests.swift` — `forTesting()` → `stub()`; added missing `try` to `async throws encode()`
+  - `DiTModelTests.swift` — added `encoderAttentionMask: nil` to all `decoder()` / `actor.step()` call sites; `actorStep()` changed to `async throws`
+  - `InpaintCoordinatorTests.swift` — `loadAudio()` now throws; added `try` to all 6 call sites; 5 test functions changed to `async throws`
+  - `DiffusionSamplerTests.swift` — removed obsolete `type: Float.self` parameter (MLX-Swift 0.31.3 dropped it from `MLXArray(converting:)`)
+  - `WAVWriterTests.swift` — replaced `MLXArray(converting:type:)` with `MLXArray(converting: [...], [1, 4])` (flat + shape)
+  - `Qwen3ModelTests.swift` — replaced `MLXArray(converting: [Int], type: .int32)` with `MLXArray([Int])` (correct Int32 init)
+  - `WeightConverterTests.swift` — added `try` to `convertVAEWeights`/`convertDiTWeights` (now throws); fixed all 4 `mapDiTKey` test cases to use `"decoder."` prefix and camelCase expectations
+  - `EditHistoryManagerTests.swift` — added missing `import Foundation` (`Data` not in scope)
+  - `MusicPipelineTests.swift` — added `encoderMask: nil` to `pipeline.generate(...)` call (new required parameter)
+- **SFX tests fixed for weight-loading requirement** — `SFXDiffusionTests` and `SoundFXPipelineTests` created actors without calling `loadWeights()` first; `SFXDiTActor.predict()` and `SFXVAEActor.decode()` both `throw .weightsNotLoaded` without loaded weights, so every test hit a runtime error instead of testing the target logic. Added `randomDiTWeights()` and `randomVAEWeights(config:)` factories that build correctly-shaped random weight arrays, and call `try await dit.loadWeights()` / `await vae.loadWeights()` before any inference call.
+
+### Removed
+
+- **`SAOProjectionModel` text-projection design** — the erroneous `Linear(768 → 768)` text projection + `Linear(256 → 768)` timing projection has been removed. SAO does not project T5 text embeddings; the projection model in the upstream checkpoint is a timing conditioner only. The `SAOProjectionModel` type has been replaced with `SAONumberConditioner` in the same file.
+
+---
+
 ## [Unreleased] — Memory release, SFX routing safety, Stable Audio Open re-architecture
 
 ### Added

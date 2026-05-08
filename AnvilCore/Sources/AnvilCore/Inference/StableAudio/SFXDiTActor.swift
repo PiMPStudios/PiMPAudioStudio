@@ -27,9 +27,19 @@ public actor SFXDiTActor {
         loaded = true
     }
 
-    public func predict(latents: MLXArray, timestep: MLXArray, conditioning: MLXArray) throws -> MLXArray {
+    public func predict(
+        latents: MLXArray,
+        timestep: MLXArray,
+        crossCond: MLXArray,
+        globalCond: MLXArray
+    ) throws -> MLXArray {
         guard loaded else { throw SFXDiTActorError.weightsNotLoaded }
-        let result = model.forward(latents: latents, timestep: timestep, conditioning: conditioning)
+        let result = model.forward(
+            latents: latents,
+            timestep: timestep,
+            crossCond: crossCond,
+            globalCond: globalCond
+        )
         eval(result)
         return result
     }

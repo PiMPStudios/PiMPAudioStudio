@@ -41,7 +41,7 @@ struct Qwen3ModelTests {
     @Test("Qwen3Model forward produces [B, T, 1024]")
     func qwen3ModelForwardShape() {
         let model = Qwen3Model()
-        let inputIds = MLXArray(converting: [1, 2, 3, 4, 5], type: .int32).reshaped([1, 5])
+        let inputIds = MLXArray([1, 2, 3, 4, 5]).reshaped([1, 5])
         let output = model(inputIds: inputIds)
         #expect(output.shape == [1, 5, 1024])
     }
@@ -49,7 +49,7 @@ struct Qwen3ModelTests {
     @Test("Qwen3Model embedTokens returns embeddings only")
     func qwen3EmbedTokensShape() {
         let model = Qwen3Model()
-        let inputIds = MLXArray(converting: [1, 2, 3], type: .int32).reshaped([1, 3])
+        let inputIds = MLXArray([1, 2, 3]).reshaped([1, 3])
         let embeddings = model.embedTokens(inputIds)
         #expect(embeddings.shape == [1, 3, 1024])
     }

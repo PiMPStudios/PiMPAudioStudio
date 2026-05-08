@@ -1,15 +1,23 @@
 // AnvilCore/Sources/AnvilCore/Inference/StableAudio/SoundFXPipeline.swift
+//
+// Stable Audio Open end-to-end pipeline:
+//   1. T5-base tokenise + encode text → [B, L, 768] crossCond
+//   2. SAONumberConditioner encode (seconds_start=0, seconds_total=duration)
+//      → concat [B, 1536] globalCond
+//   3. Diffusion ODE (crossCond + globalCond → predicted velocity → latents)
+//   4. Oobleck VAE decode → audio samples
+//
+// The public `generate(text:duration:config:tokenizer:)` entry point handles
+// steps 1–4.  The overload `generate(precomputedText:duration:config:)` accepts
+// already-encoded T5 hidden states and is used in unit tests to avoid needing
+// a real tokenizer file.
+
 import Foundation
 import MLX
 
 public actor SoundFXPipeline {
-    /// Stable Audio Open conditioning stack: T5-base text encoder →
-    /// projection model → cross-attn into DiT. Replaces the prior CLAP
-    /// path; CLAPEncoder/Tokenizer remain in the codebase for backward-
-    /// compatible tests but are no longer on the runtime path.
     private let t5: T5Encoder
-    private let projection: SAOProjectionModel
-    private let timingEncoder: TimingEncoder
+    private let conditioner: SAONumberConditioner
     private let diffusion: SFXDiffusionActor
     private let vae: SFXVAEActor
     private var progressContinuation: AsyncStream<GenerationProgress>.Continuation?
@@ -20,16 +28,14 @@ public actor SoundFXPipeline {
 
     public init(
         t5: T5Encoder,
-        projection: SAOProjectionModel,
+        conditioner: SAONumberConditioner,
         diffusion: SFXDiffusionActor,
-        vae: SFXVAEActor,
-        timingEncoder: TimingEncoder
+        vae: SFXVAEActor
     ) {
-        self.t5 = t5
-        self.projection = projection
-        self.diffusion = diffusion
-        self.vae = vae
-        self.timingEncoder = timingEncoder
+        self.t5          = t5
+        self.conditioner = conditioner
+        self.diffusion   = diffusion
+        self.vae         = vae
     }
 
     public func makeProgressStream() -> AsyncStream<GenerationProgress> {
@@ -38,48 +44,59 @@ public actor SoundFXPipeline {
         return stream
     }
 
+    // MARK: - Primary entry point (tokenizes text internally)
+
     public func generate(
         text: String,
         duration: TimeInterval,
         config: SFXDiffusionConfig,
         tokenizer: AnvilTokenizer
     ) async throws -> AudioResult {
+        // 1. T5 text encoding.
+        let (textIds, textMask) = tokenizer.encodeText(text, maxLength: 128)
+        let textHidden = t5(inputIds: textIds, attentionMask: textMask) // [1, L, 768]
+
+        return try await generate(precomputedText: textHidden, duration: duration, config: config)
+    }
+
+    // MARK: - Overload for pre-encoded text (tests + external callers)
+
+    /// Generate audio from pre-encoded T5 hidden states.
+    /// - Parameters:
+    ///   - precomputedText: `[B, L, conditioningDim]` T5-base last hidden state
+    ///   - duration: output duration; clamped to `maxDuration`
+    ///   - config: diffusion sampler configuration
+    public func generate(
+        precomputedText textHidden: MLXArray,
+        duration: TimeInterval,
+        config: SFXDiffusionConfig
+    ) async throws -> AudioResult {
         let totalStart = Date()
         let clampedDuration = min(duration, Self.maxDuration)
 
-        // 1. T5 text encoding (max_length 128 per SAO model_config.json).
-        let (textIds, textMask) = tokenizer.encodeText(text, maxLength: 128)
-        let textHidden = t5(inputIds: textIds, attentionMask: textMask)
-
-        // 2. Sinusoidal/Fourier timing features for [seconds_start,
-        // seconds_total]. `TimingEncoder.encode` returns shape
-        // `[1, embeddingDim]` with sin/cos of log-spaced frequencies for
-        // each input scalar — the standard Fourier-feature embedding the
-        // projection_model is trained to consume.
-        let timingEmbed = timingEncoder.encode(
+        // 2. Number conditioner: encode seconds_start=0 and seconds_total.
+        let (startEmb, totalEmb) = conditioner(
             startSeconds: 0.0,
-            durationSeconds: Float(clampedDuration)
+            totalSeconds: Float(clampedDuration)
         )
+        // Concatenate along the last axis: [1, 768] + [1, 768] → [1, 1536].
+        let globalCond = concatenated([startEmb, totalEmb], axis: -1)  // [1, globalCondDim]
 
-        // 3. Project both streams into the DiT conditioning dim.
-        let projected = projection(textHidden: textHidden, timing: timingEmbed)
-        let textCond = projected.text          // [1, L, embed]
-        let timingCond = projected.timing      // [1, embed]
+        // crossCond: [B, L, conditioningDim] = T5 hidden states.
+        let crossCond = textHidden
 
-        // 4. Combine for downstream cross-attn. Real SAO concatenates the
-        // projected timing token onto the front of the text sequence; the
-        // skeleton matches that shape so the DiT call signature is stable.
-        let timingTok = timingCond.expandedDimensions(axis: 1)  // [1, 1, embed]
-        let conditioning = concatenated([timingTok, textCond], axis: 1)
-
-        // 4. Diffusion
+        // 3. Diffusion.
         progressContinuation?.yield(.diffusion(DiffusionProgress(
             currentStep: 0, totalSteps: config.steps, elapsedTime: 0
         )))
 
-        let diffResult = try await diffusion.sample(conditioning: conditioning, config: config)
+        let diffResult = try await diffusion.sample(
+            crossCond: crossCond,
+            globalCond: globalCond,
+            config: config
+        )
 
-        // 5. VAE decode
+        // 4. VAE decode.
         progressContinuation?.yield(.decoding)
         let audio = try await vae.decode(latents: diffResult.latents)
 

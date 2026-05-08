@@ -13,17 +13,9 @@
 //   relative_buckets = 32
 //   relative_max_distance = 128
 //
-// This file is the structural skeleton: every module is declared with the
-// correct parameter shapes so weight loading via the snake_case→camelCase
-// `WeightConverter` path resolves cleanly. The forward pass is a stub that
-// returns a zero tensor of the correct output shape so the rest of the
-// pipeline (projection model → DiT conditioning) can be plumbed without
-// crashing on type mismatches.
-//
-// Real T5 forward math (relative-bias attention, gated GLU MLPs, layer
-// norms, encoder stack) lands in a follow-up commit when full Stable Audio
-// Open re-architecture is enabled. Until then the spec is marked
-// `isRunnable: false` so users can't accidentally run a stubbed pipeline.
+// Full encoder-only forward pass: embedding lookup → 12 pre-norm transformer
+// blocks (gated-GELU FFN, self-attention with learned relative-position bias
+// propagated from block 0) → RMS final norm → [B, L, 768] hidden states.
 
 import Foundation
 import MLX
@@ -73,27 +65,25 @@ public final class T5Config: Sendable {
 // T5 uses a simplified RMS-norm variant: x * rsqrt(mean(x^2) + eps), with no
 // bias and a learned per-feature gain. MLXNN.RMSNorm matches this exactly.
 
-// MARK: - T5DenseGatedActDense (FFN)
+// MARK: - T5DenseActDense (FFN)
 //
-// T5 v1.1 / mT5 uses gated-GELU FFNs:
-//   wi_0(x)  = Linear(d_model, d_ff, bias=False)
-//   wi_1(x)  = Linear(d_model, d_ff, bias=False)
-//   gated_x  = gelu(wi_0(x)) * wi_1(x)
-//   out      = wo(gated_x)   // Linear(d_ff, d_model, bias=False)
-public final class T5GatedMLP: Module, UnaryLayer {
-    @ModuleInfo(key: "wi_0") public var wi0: Linear
-    @ModuleInfo(key: "wi_1") public var wi1: Linear
+// T5 v1.0 (the variant used by Stable Audio Open) uses a standard dense-ReLU-dense FFN:
+//   wi(x)  = Linear(d_model, d_ff, bias=False)
+//   out    = wo(relu(wi(x)))  // Linear(d_ff, d_model, bias=False)
+//
+// HF checkpoint key: DenseReluDense.wi.weight / DenseReluDense.wo.weight
+// T5NameMap routes both to layer1_mlp.wi.weight / layer1_mlp.wo.weight.
+public final class T5DenseActDense: Module, UnaryLayer {
+    public var wi: Linear
     public var wo: Linear
 
     public init(config: T5Config) {
-        self._wi0.wrappedValue = Linear(config.dModel, config.dFF, bias: false)
-        self._wi1.wrappedValue = Linear(config.dModel, config.dFF, bias: false)
+        self.wi = Linear(config.dModel, config.dFF, bias: false)
         self.wo = Linear(config.dFF, config.dModel, bias: false)
     }
 
     public func callAsFunction(_ x: MLXArray) -> MLXArray {
-        // gelu approx; T5v1.1 uses GELU "new" / GELU
-        wo(gelu(wi0(x)) * wi1(x))
+        wo(relu(wi(x)))
     }
 }
 
@@ -250,13 +240,13 @@ public final class T5Block: Module {
     public var layer0_norm: RMSNorm
     public var layer0_attn: T5SelfAttention
     public var layer1_norm: RMSNorm
-    public var layer1_mlp: T5GatedMLP
+    public var layer1_mlp: T5DenseActDense
 
     public init(config: T5Config, hasRelativeBias: Bool) {
         self.layer0_norm = RMSNorm(dimensions: config.dModel, eps: config.layerNormEpsilon)
         self.layer0_attn = T5SelfAttention(config: config, hasRelativeBias: hasRelativeBias)
         self.layer1_norm = RMSNorm(dimensions: config.dModel, eps: config.layerNormEpsilon)
-        self.layer1_mlp = T5GatedMLP(config: config)
+        self.layer1_mlp = T5DenseActDense(config: config)
     }
 
     /// Pre-norm residual block: norm → attn → residual → norm → MLP →

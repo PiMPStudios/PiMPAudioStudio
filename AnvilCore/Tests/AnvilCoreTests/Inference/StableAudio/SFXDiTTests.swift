@@ -6,21 +6,28 @@ import MLXRandom
 
 @Suite("SFX DiT")
 struct SFXDiTTests {
+    // Small test config — all new fields derive from the five core params.
     let config = SFXDiTConfig(
-        hiddenSize: 256,
-        numLayers: 2,
+        hiddenSize: 128,
+        numLayers: 1,
         numHeads: 4,
         latentDim: 64,
-        conditioningDim: 512
+        conditioningDim: 32
+        // Derived: headDim=32, numKVHeads=2, ffIntermediateDim=512,
+        //          rotaryDim=16, globalCondDim=64, condTokenDim=32
     )
 
     @Test("Forward pass produces correct output shape")
     func forwardShape() {
         let model = SFXDiTModel(config: config)
-        let latents = MLXRandom.normal([1, 16, 64])
-        let timestep = MLXArray([0.5])
-        let conditioning = MLXRandom.normal([1, 512])
-        let output = model.forward(latents: latents, timestep: timestep, conditioning: conditioning)
+        let latents    = MLXRandom.normal([1, 16, 64])
+        let timestep   = MLXArray([0.5])
+        let crossCond  = MLXRandom.normal([1, 4, config.conditioningDim])
+        let globalCond = MLXRandom.normal([1, config.globalCondDim])
+        let output = model.forward(
+            latents: latents, timestep: timestep,
+            crossCond: crossCond, globalCond: globalCond
+        )
         #expect(output.shape == [1, 16, 64])
     }
 
@@ -28,21 +35,29 @@ struct SFXDiTTests {
     func actorPredict() async throws {
         let actor = SFXDiTActor(config: config)
         try await actor.loadWeights(randomDiTWeights())
-        let latents = MLXRandom.normal([1, 16, 64])
-        let timestep = MLXArray([0.5])
-        let conditioning = MLXRandom.normal([1, 512])
-        let output = try await actor.predict(latents: latents, timestep: timestep, conditioning: conditioning)
+        let latents    = MLXRandom.normal([1, 16, 64])
+        let timestep   = MLXArray([0.5])
+        let crossCond  = MLXRandom.normal([1, 4, config.conditioningDim])
+        let globalCond = MLXRandom.normal([1, config.globalCondDim])
+        let output = try await actor.predict(
+            latents: latents, timestep: timestep,
+            crossCond: crossCond, globalCond: globalCond
+        )
         #expect(output.shape == [1, 16, 64])
     }
 
     @Test("Predict throws when weights not loaded")
     func predictThrowsWithoutWeights() async {
-        let actor = SFXDiTActor(config: config)
-        let latents = MLXRandom.normal([1, 16, 64])
-        let timestep = MLXArray([0.5])
-        let conditioning = MLXRandom.normal([1, 512])
+        let actor      = SFXDiTActor(config: config)
+        let latents    = MLXRandom.normal([1, 16, 64])
+        let timestep   = MLXArray([0.5])
+        let crossCond  = MLXRandom.normal([1, 4, config.conditioningDim])
+        let globalCond = MLXRandom.normal([1, config.globalCondDim])
         await #expect(throws: SFXDiTActorError.weightsNotLoaded) {
-            try await actor.predict(latents: latents, timestep: timestep, conditioning: conditioning)
+            try await actor.predict(
+                latents: latents, timestep: timestep,
+                crossCond: crossCond, globalCond: globalCond
+            )
         }
     }
 
@@ -51,58 +66,81 @@ struct SFXDiTTests {
         let actor = SFXDiTActor(config: config)
         try await actor.loadWeights(randomDiTWeights())
         await actor.unloadWeights()
-        let latents = MLXRandom.normal([1, 16, 64])
-        let timestep = MLXArray([0.5])
-        let conditioning = MLXRandom.normal([1, 512])
+        let latents    = MLXRandom.normal([1, 16, 64])
+        let timestep   = MLXArray([0.5])
+        let crossCond  = MLXRandom.normal([1, 4, config.conditioningDim])
+        let globalCond = MLXRandom.normal([1, config.globalCondDim])
         await #expect(throws: SFXDiTActorError.weightsNotLoaded) {
-            try await actor.predict(latents: latents, timestep: timestep, conditioning: conditioning)
+            try await actor.predict(
+                latents: latents, timestep: timestep,
+                crossCond: crossCond, globalCond: globalCond
+            )
         }
     }
 
     @Test("Actor loadWeights marks as loaded")
     func actorLoadWeights() async throws {
         let actor = SFXDiTActor(config: config)
-        let loaded = await actor.isLoaded
-        #expect(!loaded)
+        #expect(await actor.isLoaded == false)
         try await actor.loadWeights(randomDiTWeights())
-        let loadedAfter = await actor.isLoaded
-        #expect(loadedAfter)
+        #expect(await actor.isLoaded == true)
     }
 
+    // MARK: - Weight factory
+
     private func randomDiTWeights() -> [(String, MLXArray)] {
-        var weights: [(String, MLXArray)] = []
-        weights.append(("proj_in.weight", MLXRandom.normal([256, 64])))
-        weights.append(("proj_in.bias", MLXArray.zeros([256])))
-        weights.append(("time_embed.0.weight", MLXRandom.normal([256, 256])))
-        weights.append(("time_embed.0.bias", MLXArray.zeros([256])))
-        weights.append(("time_embed.2.weight", MLXRandom.normal([256, 256])))
-        weights.append(("time_embed.2.bias", MLXArray.zeros([256])))
-        weights.append(("cond_proj.weight", MLXRandom.normal([256, 512])))
-        weights.append(("cond_proj.bias", MLXArray.zeros([256])))
-        for i in 0..<2 {
-            let prefix = "blocks.\(i)"
-            weights.append(("\(prefix).norm1.weight", MLXArray.ones([256])))
-            weights.append(("\(prefix).norm1.bias", MLXArray.zeros([256])))
-            weights.append(("\(prefix).attn.qkv.weight", MLXRandom.normal([768, 256])))
-            weights.append(("\(prefix).attn.out.weight", MLXRandom.normal([256, 256])))
-            weights.append(("\(prefix).norm2.weight", MLXArray.ones([256])))
-            weights.append(("\(prefix).norm2.bias", MLXArray.zeros([256])))
-            weights.append(("\(prefix).cross_attn.q.weight", MLXRandom.normal([256, 256])))
-            weights.append(("\(prefix).cross_attn.kv.weight", MLXRandom.normal([512, 256])))
-            weights.append(("\(prefix).cross_attn.out.weight", MLXRandom.normal([256, 256])))
-            weights.append(("\(prefix).norm3.weight", MLXArray.ones([256])))
-            weights.append(("\(prefix).norm3.bias", MLXArray.zeros([256])))
-            weights.append(("\(prefix).mlp.fc1.weight", MLXRandom.normal([1024, 256])))
-            weights.append(("\(prefix).mlp.fc1.bias", MLXArray.zeros([1024])))
-            weights.append(("\(prefix).mlp.fc2.weight", MLXRandom.normal([256, 1024])))
-            weights.append(("\(prefix).mlp.fc2.bias", MLXArray.zeros([256])))
-            weights.append(("\(prefix).adaLN.weight", MLXRandom.normal([768, 256])))
-            weights.append(("\(prefix).adaLN.bias", MLXArray.zeros([768])))
+        let H      = config.hiddenSize
+        let L      = config.latentDim
+        let halfF  = config.timestepFeaturesDim / 2
+        let condD  = config.conditioningDim
+        let globalD = config.globalCondDim
+        let condTD = config.condTokenDim
+        let nH     = config.numHeads
+        let nKV    = config.numKVHeads
+        let hD     = config.headDim
+        let ffDim  = config.ffIntermediateDim
+        var w: [(String, MLXArray)] = []
+
+        // Conv1d — already in MLX layout [out, kernel, in]
+        w.append(("preprocess_conv.weight",  MLXRandom.normal([H, 1, L])))
+        w.append(("timestep_features.weight", MLXRandom.normal([halfF, 1])))
+
+        // Embed MLPs
+        let embedCfg: [(String, Int)] = [
+            ("to_timestep_embed", config.timestepFeaturesDim),
+            ("to_cond_embed",     condTD),
+            ("to_global_embed",   globalD),
+        ]
+        for (name, inDim) in embedCfg {
+            w.append(("\(name).fc1.weight", MLXRandom.normal([H, inDim])))
+            w.append(("\(name).fc1.bias",   MLXArray.zeros([H])))
+            w.append(("\(name).fc2.weight", MLXRandom.normal([H, H])))
+            w.append(("\(name).fc2.bias",   MLXArray.zeros([H])))
         }
-        weights.append(("proj_out.weight", MLXRandom.normal([64, 256])))
-        weights.append(("proj_out.bias", MLXArray.zeros([64])))
-        weights.append(("final_norm.weight", MLXArray.ones([256])))
-        weights.append(("final_norm.bias", MLXArray.zeros([256])))
-        return weights
+
+        // Transformer layers
+        for i in 0..<config.numLayers {
+            let p = "transformer.layers.\(i)"
+            w.append(("\(p).norm1.weight", MLXArray.ones([H])))
+            w.append(("\(p).norm1.bias",   MLXArray.zeros([H])))
+            w.append(("\(p).self_attn.to_qkv.weight", MLXRandom.normal([3 * nH * hD, H])))
+            w.append(("\(p).self_attn.to_out.weight", MLXRandom.normal([H, nH * hD])))
+            w.append(("\(p).norm2.weight", MLXArray.ones([H])))
+            w.append(("\(p).norm2.bias",   MLXArray.zeros([H])))
+            w.append(("\(p).cross_attn.to_q.weight",  MLXRandom.normal([nH * hD, H])))
+            w.append(("\(p).cross_attn.to_kv.weight", MLXRandom.normal([2 * nKV * hD, condD])))
+            w.append(("\(p).cross_attn.to_out.weight", MLXRandom.normal([H, nH * hD])))
+            w.append(("\(p).norm3.weight", MLXArray.ones([H])))
+            w.append(("\(p).norm3.bias",   MLXArray.zeros([H])))
+            w.append(("\(p).ff.gate_up.weight", MLXRandom.normal([2 * ffDim, H])))
+            w.append(("\(p).ff.out.weight",     MLXRandom.normal([H, ffDim])))
+        }
+
+        // Final norm + output conv
+        w.append(("transformer.norm.weight",  MLXArray.ones([H])))
+        w.append(("transformer.norm.bias",    MLXArray.zeros([H])))
+        w.append(("postprocess_conv.weight",  MLXRandom.normal([L, 1, H])))
+
+        return w
     }
 }

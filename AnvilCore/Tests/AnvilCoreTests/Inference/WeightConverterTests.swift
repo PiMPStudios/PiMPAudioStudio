@@ -40,30 +40,32 @@ struct WeightConverterTests {
 
     @Test("DiT proj_in key remapping")
     func ditProjInRemap() {
-        let key = "proj_in.1.weight"
+        // Keys require "decoder." prefix; Sequential ".1." wrapper is stripped.
+        let key = "decoder.proj_in.1.weight"
         let mapped = TensorNameMap.mapDiTKey(key)
-        #expect(mapped == "proj_in.weight")
+        #expect(mapped == "projIn.weight")
     }
 
     @Test("DiT proj_out key remapping")
     func ditProjOutRemap() {
-        let key = "proj_out.1.weight"
+        let key = "decoder.proj_out.1.weight"
         let mapped = TensorNameMap.mapDiTKey(key)
-        #expect(mapped == "proj_out.weight")
+        #expect(mapped == "projOut.weight")
     }
 
     @Test("DiT rotary_emb keys are skipped")
     func ditRotarySkipped() {
-        let key = "rotary_emb.inv_freq"
+        let key = "decoder.layers.0.rotary_emb.inv_freq"
         let mapped = TensorNameMap.mapDiTKey(key)
         #expect(mapped == nil)
     }
 
     @Test("DiT normal keys pass through")
     func ditPassthrough() {
-        let key = "layers.0.self_attn.q_proj.weight"
+        // "decoder." prefix stripped; snake_case components camelCased.
+        let key = "decoder.layers.0.self_attn.q_proj.weight"
         let mapped = TensorNameMap.mapDiTKey(key)
-        #expect(mapped == "layers.0.self_attn.q_proj.weight")
+        #expect(mapped == "layers.0.selfAttn.qProj.weight")
     }
 
     @Test("WeightConverter converts VAE state dict")
@@ -76,7 +78,7 @@ struct WeightConverterTests {
             ("encoder.block.0.res_unit1.snake1.beta", MLXArray.zeros([1, 128, 1])),
         ]
         let converter = WeightConverter()
-        let result = await converter.convertVAEWeights(stateDict: stateDict)
+        let result = try await converter.convertVAEWeights(stateDict: stateDict)
 
         let keys = result.map { $0.0 }
         #expect(keys.contains("encoder.conv1.weight"))
@@ -103,7 +105,7 @@ struct WeightConverterTests {
             ("rotary_emb.inv_freq", MLXArray.ones([64])),
         ]
         let converter = WeightConverter()
-        let result = await converter.convertDiTWeights(stateDict: stateDict)
+        let result = try await converter.convertDiTWeights(stateDict: stateDict)
 
         let keys = result.map { $0.0 }
         #expect(keys.contains("proj_in.weight"))

@@ -1,77 +1,99 @@
 // AnvilCore/Sources/AnvilCore/Inference/StableAudio/SAOProjectionModel.swift
 //
-// Stable Audio Open's "projection_model" — maps T5-base hidden states (768)
-// into the DiT cross-attention conditioning embedding space and combines
-// the T5 stream with the timing (seconds_start / seconds_total) stream.
+// Stable Audio Open projection_model.safetensors — two NumberConditioner
+// instances that encode scalar timing values (seconds_start, seconds_total)
+// into conditioning embeddings for the DiT.
 //
-// Skeleton: minimal Linear(768 → 768) + a placeholder timing-projection.
-// Real architecture lands when Stable Audio Open re-architecture is
-// enabled. Until then SAO spec is `isRunnable: false` so users can't
-// accidentally run a stubbed pipeline.
+// Each SAOSingleConditioner:
+//   1. time_positional_embedding: learned Fourier frequency bank [128]
+//   2. embedder: Linear(257 → 768, bias=True)
+//      257 = 1 raw scalar value + 128 sin features + 128 cos features
+// Output of each conditioner: [1, 768].
+//
+// T5-base hidden states [B, L, 768] pass directly to DiT cross-attention;
+// there is NO text-projection layer in the real model.
+//
+// The two conditioner outputs are concatenated → [B, 1536] = globalCondDim
+// and fed into SFXDiTModel.toGlobalEmbed.
+//
+// Actual safetensors key layout (pass-through in SAOProjectionNameMap):
+//   start_number_conditioner.time_positional_embedding.frequencies  [128]
+//   start_number_conditioner.embedder.weight                        [768, 257]
+//   start_number_conditioner.embedder.bias                          [768]
+//   end_number_conditioner.time_positional_embedding.frequencies    [128]
+//   end_number_conditioner.embedder.weight                          [768, 257]
+//   end_number_conditioner.embedder.bias                            [768]
 
 import Foundation
 import MLX
 import MLXNN
 
-public final class SAOProjectionConfig: Sendable {
-    /// T5-base hidden size = 768 — input dimension from text encoder.
-    public let textInputDim: Int
-    /// DiT conditioning dimension. Stable Audio Open's transformer expects
-    /// `cross_attention_embed_dim = 768` for T5 conditioning. Confirm
-    /// against `transformer/config.json` once we have it loaded; the
-    /// skeleton uses 768 as a safe default.
-    public let outputDim: Int
-    /// Number of scalar timing features (seconds_start + seconds_total).
-    public let timingDim: Int
+// MARK: - Learned Fourier embedding
 
-    public init(
-        textInputDim: Int = 768,
-        outputDim: Int = 768,
-        // 256 matches the default embedding produced by `TimingEncoder`
-        // (128 sin + 128 cos features split across start + duration). The
-        // actual projection_model.safetensors Linear will load with its
-        // own in/out shape; if that disagrees with this default at runtime
-        // the SFXModelManager weight diff will surface the mismatch.
-        timingDim: Int = 256
-    ) {
-        self.textInputDim = textInputDim
-        self.outputDim = outputDim
-        self.timingDim = timingDim
+/// Wraps the `time_positional_embedding.frequencies` [numFrequencies] buffer.
+/// Encodes a scalar float value into a [1 + 2·numFrequencies] feature vector:
+///   [value, sin(2π·freq₀·value), …, cos(2π·freq₀·value), …]
+public final class SAOFourierEmbedding: Module {
+    /// Learned frequency bank, shape [numFrequencies].
+    public var frequencies: MLXArray
+
+    public init(numFrequencies: Int = 128) {
+        self.frequencies = MLXArray.zeros([numFrequencies])
+    }
+
+    public func encode(_ value: Float) -> MLXArray {
+        let t    = MLXArray(value)                              // scalar
+        let args = 2 * Float.pi * frequencies * t              // [numFrequencies]
+        return concatenated(
+            [t.reshaped([1]), sin(args), cos(args)], axis: 0
+        )                                                       // [1 + 2·numFrequencies]
     }
 }
 
-public final class SAOProjectionModel: Module {
-    public let config: SAOProjectionConfig
-    /// Text-stream projection. Real model may use a multi-layer MLP; the
-    /// skeleton uses a single Linear so weight loading still resolves.
-    @ModuleInfo(key: "text_projection")
-    public var textProjection: Linear
-    /// Timing-stream projection. Maps `[seconds_start, seconds_total]`
-    /// (or sinusoidal embedding thereof) into the same DiT embedding dim.
-    @ModuleInfo(key: "timing_projection")
-    public var timingProjection: Linear
+// MARK: - Single timing conditioner
 
-    public init(config: SAOProjectionConfig = SAOProjectionConfig()) {
-        self.config = config
-        self._textProjection.wrappedValue =
-            Linear(config.textInputDim, config.outputDim, bias: false)
-        self._timingProjection.wrappedValue =
-            Linear(config.timingDim, config.outputDim, bias: false)
+public final class SAOSingleConditioner: Module {
+    @ModuleInfo(key: "time_positional_embedding")
+    public var fourier: SAOFourierEmbedding
+    /// Linear(257, outputDim, bias=True).
+    public var embedder: Linear
+
+    public init(numFrequencies: Int = 128, outputDim: Int = 768) {
+        let featureDim = 1 + 2 * numFrequencies               // 257
+        self._fourier.wrappedValue = SAOFourierEmbedding(numFrequencies: numFrequencies)
+        self.embedder = Linear(featureDim, outputDim, bias: true)
     }
 
-    /// Project T5 hidden states + scalar timing features into DiT
-    /// conditioning. Skeleton: returns `textProjection(textHidden)` and
-    /// ignores timing (until real architecture lands).
-    /// - Parameters:
-    ///   - textHidden: `[B, L, textInputDim]` T5 last-hidden-state.
-    ///   - timing: `[B, timingDim]` raw `[seconds_start, seconds_total]`.
-    /// - Returns: `(textCond, timingCond)` ready for DiT cross-attn / sum.
+    /// Encode a scalar timing value → [1, outputDim].
+    public func callAsFunction(_ value: Float) -> MLXArray {
+        let features = fourier.encode(value)                   // [257]
+        return embedder(features.expandedDimensions(axis: 0)) // [1, outputDim]
+    }
+}
+
+// MARK: - Dual conditioner: seconds_start + seconds_total
+
+public final class SAONumberConditioner: Module {
+    @ModuleInfo(key: "start_number_conditioner")
+    public var startCond: SAOSingleConditioner
+    @ModuleInfo(key: "end_number_conditioner")
+    public var totalCond: SAOSingleConditioner
+
+    public init(numFrequencies: Int = 128, outputDim: Int = 768) {
+        self._startCond.wrappedValue = SAOSingleConditioner(
+            numFrequencies: numFrequencies, outputDim: outputDim
+        )
+        self._totalCond.wrappedValue = SAOSingleConditioner(
+            numFrequencies: numFrequencies, outputDim: outputDim
+        )
+    }
+
+    /// Encode start and total duration.
+    /// - Returns: `(startEmbed, totalEmbed)` each shaped `[1, outputDim]`.
     public func callAsFunction(
-        textHidden: MLXArray,
-        timing: MLXArray
-    ) -> (text: MLXArray, timing: MLXArray) {
-        let textCond = textProjection(textHidden)
-        let timingCond = timingProjection(timing)
-        return (textCond, timingCond)
+        startSeconds: Float,
+        totalSeconds: Float
+    ) -> (startEmbed: MLXArray, totalEmbed: MLXArray) {
+        (startCond(startSeconds), totalCond(totalSeconds))
     }
 }

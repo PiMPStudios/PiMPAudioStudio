@@ -17,8 +17,14 @@ public actor SFXDiffusionActor {
         return stream
     }
 
+    /// Run the ODE diffusion sampler.
+    ///
+    /// - Parameters:
+    ///   - crossCond:  `[B, L, conditioningDim]` T5-base hidden states
+    ///   - globalCond: `[B, globalCondDim]` concat(startEmbed, totalEmbed)
     public func sample(
-        conditioning: MLXArray,
+        crossCond: MLXArray,
+        globalCond: MLXArray,
         config: SFXDiffusionConfig
     ) async throws -> DiffusionResult {
         let totalStart = Date()
@@ -38,11 +44,21 @@ public actor SFXDiffusionActor {
 
             var vt: MLXArray
             if doCFG {
-                let condPred = try await dit.predict(latents: xt, timestep: timestep, conditioning: conditioning)
-                let uncondPred = try await dit.predict(latents: xt, timestep: timestep, conditioning: MLXArray.zeros(like: conditioning))
+                let condPred = try await dit.predict(
+                    latents: xt, timestep: timestep,
+                    crossCond: crossCond, globalCond: globalCond
+                )
+                let uncondPred = try await dit.predict(
+                    latents: xt, timestep: timestep,
+                    crossCond: MLXArray.zeros(like: crossCond),
+                    globalCond: globalCond
+                )
                 vt = uncondPred + config.guidanceScale * (condPred - uncondPred)
             } else {
-                vt = try await dit.predict(latents: xt, timestep: timestep, conditioning: conditioning)
+                vt = try await dit.predict(
+                    latents: xt, timestep: timestep,
+                    crossCond: crossCond, globalCond: globalCond
+                )
             }
 
             if stepIdx == config.steps - 1 {
@@ -72,10 +88,14 @@ public actor SFXDiffusionActor {
         return DiffusionResult(latents: xt, timeCosts: costs)
     }
 
+    /// Inpaint using a partial-noise schedule.  Stable Audio inpainting is
+    /// currently gated in `InpaintCoordinator`; this method signature is
+    /// preserved for future use.
     public func inpaint(
         startLatents: MLXArray,
         schedule: [Float],
-        conditioning: MLXArray,
+        crossCond: MLXArray,
+        globalCond: MLXArray,
         config: SFXDiffusionConfig
     ) async throws -> DiffusionResult {
         let totalStart = Date()
@@ -99,11 +119,21 @@ public actor SFXDiffusionActor {
 
             var vt: MLXArray
             if doCFG {
-                let condPred = try await dit.predict(latents: xt, timestep: timestep, conditioning: conditioning)
-                let uncondPred = try await dit.predict(latents: xt, timestep: timestep, conditioning: MLXArray.zeros(like: conditioning))
+                let condPred = try await dit.predict(
+                    latents: xt, timestep: timestep,
+                    crossCond: crossCond, globalCond: globalCond
+                )
+                let uncondPred = try await dit.predict(
+                    latents: xt, timestep: timestep,
+                    crossCond: MLXArray.zeros(like: crossCond),
+                    globalCond: globalCond
+                )
                 vt = uncondPred + config.guidanceScale * (condPred - uncondPred)
             } else {
-                vt = try await dit.predict(latents: xt, timestep: timestep, conditioning: conditioning)
+                vt = try await dit.predict(
+                    latents: xt, timestep: timestep,
+                    crossCond: crossCond, globalCond: globalCond
+                )
             }
 
             if stepIdx == stepCount - 1 {

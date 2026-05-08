@@ -22,7 +22,7 @@ import Foundation
         let dir = spec.localDirectory(base: tempDir)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         for file in spec.files {
-            try Data("stub".utf8).write(to: spec.localPath(for: file, base: tempDir))
+            try Data("stub".utf8).write(to: spec.localPath(for: file.localName, base: tempDir))
         }
     }
 

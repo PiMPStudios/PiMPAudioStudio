@@ -1,200 +1,411 @@
 // AnvilCore/Sources/AnvilCore/Inference/StableAudio/SFXDiTModel.swift
+//
+// Stable Audio Open 1.0 Diffusion Transformer.
+//
+// Architecture (from actual HF weight inspection of
+// stabilityai/stable-audio-open-1.0 model.safetensors — 745 keys):
+//
+//   hiddenSize          = 1536   numLayers = 24
+//   numHeads            = 24     headDim   = 64
+//   numKVHeads          = 12     (cross-attn GQA 2:1)
+//   latentDim           = 64     conditioningDim = 768 (T5-base)
+//   ffIntermediateDim   = 6144   (GEGLU up-branch; combined proj = 12288)
+//   rotaryDim           = 32     (partial RoPE, first 32 of 64 head dims)
+//   timestepFeaturesDim = 256    (FourierFeatures output = 2 × 128)
+//   globalCondDim       = 1536   (concat startEmbed[768] + totalEmbed[768])
+//
+// Forward pass:
+//   1. preprocess_conv  Conv1d(latentDim→hiddenSize, k=1)
+//   2. timestepFeatures.encode(t)      → [B, 256] Fourier features
+//   3. toTimestepEmbed MLP(256→H→H)    → [B, H] tEmb
+//   4. toGlobalEmbed MLP(1536→H→H)(g) → [B, H]  added to tEmb
+//   5. broadcast-add combined global embed across the sequence
+//   6. 24 × SAODiTLayer (pre-norm self-attn w/ RoPE, cross-attn, GEGLU FFN)
+//   7. transformer.norm LayerNorm(H)
+//   8. postprocess_conv Conv1d(H→latentDim, k=1)
+//
+// Swift module paths mirror SFXDiTNameMap output (HF keys → module paths).
+
 import Foundation
 import MLX
 import MLXNN
 import MLXFast
 
-public class SFXDiTModel: Module {
-    let projIn: Linear
-    let timeEmbed: SFXTimestepEmbedding
-    let condProj: Linear
-    let blocks: [SFXDiTBlock]
-    let finalNorm: LayerNorm
-    let projOut: Linear
-    let config: SFXDiTConfig
+// MARK: - Learned Fourier features for the diffusion timestep
+
+/// Wraps the learned `timestep_features.weight` buffer [halfDim, 1].
+/// stable_audio_tools uses `register_buffer` so the bank is saved in the
+/// checkpoint and must be loaded, not recomputed from scratch.
+public final class SAOFourierFeatures: Module {
+    /// Frequency bank, shape [halfDim, 1].
+    public var weight: MLXArray
+
+    public init(halfDim: Int = 128) {
+        self.weight = MLXArray.zeros([halfDim, 1])
+    }
+
+    /// Encode scalar timestep(s) → [B, 2·halfDim].
+    /// Mirrors: `f = 2π · t @ weight.T;  cat([sin(f), cos(f)], dim=-1)`.
+    public func encode(_ t: MLXArray) -> MLXArray {
+        let bT = t.reshaped([-1, 1]).asType(.float32)               // [B, 1]
+        let angles = 2 * Float.pi * matmul(bT, weight.transposed()) // [B, halfDim]
+        return concatenated([sin(angles), cos(angles)], axis: -1)   // [B, 2·halfDim]
+    }
+}
+
+// MARK: - Two-layer MLP with bias and SiLU
+//
+// Used for to_timestep_embed / to_cond_embed / to_global_embed.
+// Upstream: nn.Sequential(Linear+bias, SiLU, Linear+bias).
+// SFXDiTNameMap maps index 0 → fc1 and index 2 → fc2.
+
+public final class SAOBiasMLP: Module, UnaryLayer {
+    public var fc1: Linear
+    public var fc2: Linear
+
+    public init(inputDim: Int, hiddenDim: Int, outputDim: Int? = nil) {
+        let out = outputDim ?? hiddenDim
+        self.fc1 = Linear(inputDim, hiddenDim, bias: true)
+        self.fc2 = Linear(hiddenDim, out, bias: true)
+    }
+
+    public func callAsFunction(_ x: MLXArray) -> MLXArray {
+        fc2(saoSiLU(fc1(x)))
+    }
+}
+
+// MARK: - Self-attention with partial RoPE
+//
+// RoPE is applied only to the first `rotaryDim` channels per head;
+// the remaining headDim − rotaryDim channels pass through unchanged.
+
+public final class SAODiTSelfAttention: Module {
+    let numHeads: Int
+    let headDim: Int
+    let rotaryDim: Int
+
+    @ModuleInfo(key: "to_qkv") public var toQKV: Linear
+    @ModuleInfo(key: "to_out") public var toOut: Linear
+
+    public init(hiddenSize: Int, numHeads: Int, headDim: Int, rotaryDim: Int) {
+        self.numHeads = numHeads
+        self.headDim = headDim
+        self.rotaryDim = rotaryDim
+        let inner = numHeads * headDim
+        self._toQKV.wrappedValue = Linear(hiddenSize, inner * 3, bias: false)
+        self._toOut.wrappedValue = Linear(inner, hiddenSize, bias: false)
+    }
+
+    public func callAsFunction(
+        _ x: MLXArray,
+        cosEmb: MLXArray,
+        sinEmb: MLXArray
+    ) -> MLXArray {
+        let B = x.shape[0]
+        let L = x.shape[1]
+        let qkvOut = toQKV(x).reshaped([B, L, 3, numHeads, headDim])
+        var q = qkvOut[0..., 0..., 0].transposed(0, 2, 1, 3)   // [B, H, L, D]
+        var k = qkvOut[0..., 0..., 1].transposed(0, 2, 1, 3)
+        let v = qkvOut[0..., 0..., 2].transposed(0, 2, 1, 3)
+
+        (q, k) = applyPartialRoPE(q: q, k: k, cosEmb: cosEmb, sinEmb: sinEmb)
+
+        let scale = Float(1.0 / sqrt(Float(headDim)))
+        let ctx = MLXFast.scaledDotProductAttention(
+            queries: q, keys: k, values: v, scale: scale, mask: nil
+        )
+        return toOut(ctx.transposed(0, 2, 1, 3).reshaped([B, L, -1]))
+    }
+
+    private func applyPartialRoPE(
+        q: MLXArray,
+        k: MLXArray,
+        cosEmb: MLXArray,   // [1, 1, L, rotaryDim]
+        sinEmb: MLXArray    // [1, 1, L, rotaryDim]
+    ) -> (MLXArray, MLXArray) {
+        let qRot  = q[0..., 0..., 0..., 0..<rotaryDim]
+        let qPass = q[0..., 0..., 0..., rotaryDim...]
+        let kRot  = k[0..., 0..., 0..., 0..<rotaryDim]
+        let kPass = k[0..., 0..., 0..., rotaryDim...]
+        let qFull = concatenated([rotateVec(qRot, cos: cosEmb, sin: sinEmb), qPass], axis: -1)
+        let kFull = concatenated([rotateVec(kRot, cos: cosEmb, sin: sinEmb), kPass], axis: -1)
+        return (qFull, kFull)
+    }
+
+    // Standard RoPE: out = x * cos + rotate_half(x) * sin.
+    private func rotateVec(_ x: MLXArray, cos: MLXArray, sin: MLXArray) -> MLXArray {
+        let half = rotaryDim / 2
+        let x1 = x[0..., 0..., 0..., 0..<half]
+        let x2 = x[0..., 0..., 0..., half...]
+        return x * cos + concatenated([-x2, x1], axis: -1) * sin
+    }
+}
+
+// MARK: - Cross-attention with GQA (24 Q heads, 12 KV heads)
+
+public final class SAODiTCrossAttention: Module {
+    let numQHeads: Int
+    let numKVHeads: Int
+    let headDim: Int
+
+    @ModuleInfo(key: "to_q")   public var toQ: Linear
+    @ModuleInfo(key: "to_kv")  public var toKV: Linear
+    @ModuleInfo(key: "to_out") public var toOut: Linear
+
+    public init(
+        hiddenSize: Int,
+        numQHeads: Int,
+        numKVHeads: Int,
+        headDim: Int,
+        condDim: Int
+    ) {
+        self.numQHeads  = numQHeads
+        self.numKVHeads = numKVHeads
+        self.headDim    = headDim
+        self._toQ.wrappedValue   = Linear(hiddenSize, numQHeads * headDim, bias: false)
+        self._toKV.wrappedValue  = Linear(condDim, numKVHeads * headDim * 2, bias: false)
+        self._toOut.wrappedValue = Linear(numQHeads * headDim, hiddenSize, bias: false)
+    }
+
+    public func callAsFunction(_ x: MLXArray, conditioning: MLXArray) -> MLXArray {
+        let B       = x.shape[0]
+        let L       = x.shape[1]
+        let condLen = conditioning.shape[1]
+
+        let q  = toQ(x).reshaped([B, L, numQHeads, headDim]).transposed(0, 2, 1, 3)
+        let kv = toKV(conditioning).reshaped([B, condLen, 2, numKVHeads, headDim])
+        var k  = kv[0..., 0..., 0].transposed(0, 2, 1, 3)   // [B, numKVHeads, condLen, D]
+        var v  = kv[0..., 0..., 1].transposed(0, 2, 1, 3)
+
+        // Expand each KV head to cover ratio Q heads.
+        let ratio = numQHeads / numKVHeads
+        if ratio > 1 {
+            k = repeated(k, count: ratio, axis: 1)
+            v = repeated(v, count: ratio, axis: 1)
+        }
+
+        let scale = Float(1.0 / sqrt(Float(headDim)))
+        let ctx = MLXFast.scaledDotProductAttention(
+            queries: q, keys: k, values: v, scale: scale, mask: nil
+        )
+        return toOut(ctx.transposed(0, 2, 1, 3).reshaped([B, L, -1]))
+    }
+}
+
+// MARK: - GEGLU feed-forward network
+//
+// Upstream: FeedForward { GEGLU(dim, inner).proj → split → up * gelu(gate) }
+//           followed by Linear(inner, dim).
+// Weight keys after SFXDiTNameMap:
+//   ff.ff.0.proj.weight  → ff.gate_up.weight  [2·intermediate, hidden]
+//   ff.ff.2.weight       → ff.out.weight       [hidden, intermediate]
+
+public final class SAODiTFFN: Module {
+    @ModuleInfo(key: "gate_up") public var gateUp: Linear
+    @ModuleInfo(key: "out")     public var projOut: Linear
+
+    public init(hiddenSize: Int, intermediateDim: Int) {
+        self._gateUp.wrappedValue  = Linear(hiddenSize, intermediateDim * 2, bias: false)
+        self._projOut.wrappedValue = Linear(intermediateDim, hiddenSize, bias: false)
+    }
+
+    public func callAsFunction(_ x: MLXArray) -> MLXArray {
+        let proj = gateUp(x)
+        let half = proj.shape.last! / 2
+        let up   = proj[0..., 0..., 0..<half]
+        let gate = proj[0..., 0..., half...]
+        return projOut(up * saoGELU(gate))
+    }
+}
+
+// MARK: - Single transformer layer (pre-norm: self-attn → cross-attn → FFN)
+
+public final class SAODiTLayer: Module {
+    public var norm1: LayerNorm
+    @ModuleInfo(key: "self_attn")  public var selfAttn: SAODiTSelfAttention
+    public var norm2: LayerNorm
+    @ModuleInfo(key: "cross_attn") public var crossAttn: SAODiTCrossAttention
+    public var norm3: LayerNorm
+    @ModuleInfo(key: "ff")         public var ff: SAODiTFFN
 
     public init(config: SFXDiTConfig) {
-        self.config = config
-        self.projIn = Linear(config.latentDim, config.hiddenSize)
-        self.timeEmbed = SFXTimestepEmbedding(hiddenSize: config.hiddenSize)
-        self.condProj = Linear(config.conditioningDim, config.hiddenSize)
-        self.blocks = (0..<config.numLayers).map { _ in
-            SFXDiTBlock(hiddenSize: config.hiddenSize, numHeads: config.numHeads, condDim: config.hiddenSize)
-        }
-        self.finalNorm = LayerNorm(dimensions: config.hiddenSize)
-        self.projOut = Linear(config.hiddenSize, config.latentDim)
-    }
-
-    public func forward(latents: MLXArray, timestep: MLXArray, conditioning: MLXArray) -> MLXArray {
-        var hidden = projIn(latents)
-        let tEmb = timeEmbed(timestep)
-        let condEmb = condProj(conditioning)
-
-        for block in blocks {
-            hidden = block(hidden, timeEmbedding: tEmb, conditioning: condEmb)
-        }
-
-        hidden = finalNorm(hidden)
-        return projOut(hidden)
-    }
-}
-
-class SFXTimestepEmbedding: Module {
-    let fc1: Linear
-    let fc2: Linear
-    let hiddenSize: Int
-
-    init(hiddenSize: Int) {
-        self.hiddenSize = hiddenSize
-        self.fc1 = Linear(hiddenSize, hiddenSize)
-        self.fc2 = Linear(hiddenSize, hiddenSize)
-    }
-
-    func callAsFunction(_ t: MLXArray) -> MLXArray {
-        let halfDim = hiddenSize / 2
-        let freqs = exp(
-            MLXArray(Array(0..<halfDim).map { Float($0) }) * (-log(Float(10000.0)) / Float(halfDim))
+        self.norm1 = LayerNorm(dimensions: config.hiddenSize)
+        self._selfAttn.wrappedValue = SAODiTSelfAttention(
+            hiddenSize: config.hiddenSize,
+            numHeads: config.numHeads,
+            headDim: config.headDim,
+            rotaryDim: config.rotaryDim
         )
-        let angles = t.reshaped([-1, 1]) * freqs.reshaped([1, -1])
-        let emb = concatenated([sin(angles), cos(angles)], axis: 1)
-        var h = fc1(emb)
-        h = sfxSilu(h)
-        return fc2(h)
-    }
-}
-
-class SFXDiTBlock: Module {
-    let norm1: LayerNorm
-    let attn: SFXSelfAttention
-    let norm2: LayerNorm
-    let crossAttn: SFXCrossAttention
-    let norm3: LayerNorm
-    let mlp: SFXMLP
-    let adaLN: Linear
-
-    init(hiddenSize: Int, numHeads: Int, condDim: Int) {
-        self.norm1 = LayerNorm(dimensions: hiddenSize)
-        self.attn = SFXSelfAttention(hiddenSize: hiddenSize, numHeads: numHeads)
-        self.norm2 = LayerNorm(dimensions: hiddenSize)
-        self.crossAttn = SFXCrossAttention(hiddenSize: hiddenSize, numHeads: numHeads, condDim: condDim)
-        self.norm3 = LayerNorm(dimensions: hiddenSize)
-        self.mlp = SFXMLP(hiddenSize: hiddenSize)
-        self.adaLN = Linear(hiddenSize, hiddenSize * 3)
+        self.norm2 = LayerNorm(dimensions: config.hiddenSize)
+        self._crossAttn.wrappedValue = SAODiTCrossAttention(
+            hiddenSize: config.hiddenSize,
+            numQHeads: config.numHeads,
+            numKVHeads: config.numKVHeads,
+            headDim: config.headDim,
+            condDim: config.conditioningDim
+        )
+        self.norm3 = LayerNorm(dimensions: config.hiddenSize)
+        self._ff.wrappedValue = SAODiTFFN(
+            hiddenSize: config.hiddenSize,
+            intermediateDim: config.ffIntermediateDim
+        )
     }
 
-    func callAsFunction(_ x: MLXArray, timeEmbedding: MLXArray, conditioning: MLXArray) -> MLXArray {
-        let adaln = adaLN(timeEmbedding)
-        let chunks = adaln.reshaped([adaln.shape[0], 3, -1])
-        let scale1 = chunks[0..., 0]
-        let shift1 = chunks[0..., 1]
-        let gate = sigmoid(chunks[0..., 2])
-
-        var h = norm1(x) * (1.0 + scale1.expandedDimensions(axis: 1)) + shift1.expandedDimensions(axis: 1)
-        h = x + attn(h)
-        h = h + crossAttn(norm2(h), conditioning: conditioning)
-        h = h + gate.expandedDimensions(axis: 1) * mlp(norm3(h))
+    public func callAsFunction(
+        _ x: MLXArray,
+        crossCond: MLXArray,
+        cosEmb: MLXArray,
+        sinEmb: MLXArray
+    ) -> MLXArray {
+        var h = x
+        h = h + selfAttn(norm1(h), cosEmb: cosEmb, sinEmb: sinEmb)
+        h = h + crossAttn(norm2(h), conditioning: crossCond)
+        h = h + ff(norm3(h))
         return h
     }
 }
 
-class SFXSelfAttention: Module {
-    let qkv: Linear
-    let out: Linear
-    let numHeads: Int
-    let headDim: Int
+// MARK: - Transformer stack with final layer-norm
 
-    init(hiddenSize: Int, numHeads: Int) {
-        self.numHeads = numHeads
-        self.headDim = hiddenSize / numHeads
-        self.qkv = Linear(hiddenSize, hiddenSize * 3, bias: false)
-        self.out = Linear(hiddenSize, hiddenSize, bias: false)
+public final class SAODiTTransformer: Module {
+    public var layers: [SAODiTLayer]
+    public var norm: LayerNorm
+
+    public init(config: SFXDiTConfig) {
+        self.layers = (0..<config.numLayers).map { _ in SAODiTLayer(config: config) }
+        self.norm   = LayerNorm(dimensions: config.hiddenSize)
     }
 
-    func callAsFunction(_ x: MLXArray) -> MLXArray {
-        let B = x.shape[0]
-        let L = x.shape[1]
-        let qkvOut = qkv(x).reshaped([B, L, 3, numHeads, headDim])
-        let q = qkvOut[0..., 0..., 0].transposed(0, 2, 1, 3)
-        let k = qkvOut[0..., 0..., 1].transposed(0, 2, 1, 3)
-        let v = qkvOut[0..., 0..., 2].transposed(0, 2, 1, 3)
-
-        let scale = Float(1.0 / sqrt(Float(headDim)))
-        let attn = MLXFast.scaledDotProductAttention(queries: q, keys: k, values: v, scale: scale, mask: nil)
-        let merged = attn.transposed(0, 2, 1, 3).reshaped([B, L, -1])
-        return out(merged)
-    }
-}
-
-class SFXCrossAttention: Module {
-    let q: Linear
-    let kv: Linear
-    let out: Linear
-    let numHeads: Int
-    let headDim: Int
-
-    init(hiddenSize: Int, numHeads: Int, condDim: Int) {
-        self.numHeads = numHeads
-        self.headDim = hiddenSize / numHeads
-        self.q = Linear(hiddenSize, hiddenSize, bias: false)
-        self.kv = Linear(condDim, hiddenSize * 2, bias: false)
-        self.out = Linear(hiddenSize, hiddenSize, bias: false)
-    }
-
-    /// Cross-attention into the conditioning stream.
-    ///
-    /// `conditioning` may be either:
-    ///   - `[B, condDim]` — legacy flat embedding (auto-expanded to a
-    ///     length-1 sequence), or
-    ///   - `[B, condLen, condDim]` — sequence form used by the new
-    ///     T5+projection pipeline (`[timing_token, text_token_0, …,
-    ///     text_token_L-1]`).
-    ///
-    /// Both shapes route through the same K/V projection; the only
-    /// difference is `condLen`.
-    func callAsFunction(_ x: MLXArray, conditioning: MLXArray) -> MLXArray {
-        let B = x.shape[0]
-        let L = x.shape[1]
-
-        // Normalize to 3D: pre-existing CLAP path passes [B, condDim],
-        // the new SAO/T5 path passes [B, condLen, condDim].
-        let cond: MLXArray
-        if conditioning.shape.count == 2 {
-            cond = conditioning.expandedDimensions(axis: 1)
-        } else {
-            cond = conditioning
+    public func callAsFunction(
+        _ x: MLXArray,
+        crossCond: MLXArray,
+        cosEmb: MLXArray,
+        sinEmb: MLXArray
+    ) -> MLXArray {
+        var h = x
+        for layer in layers {
+            h = layer(h, crossCond: crossCond, cosEmb: cosEmb, sinEmb: sinEmb)
         }
-        let condLen = cond.shape[1]
+        return norm(h)
+    }
+}
 
-        let queries = q(x).reshaped([B, L, numHeads, headDim]).transposed(0, 2, 1, 3)
-        let kvOut = kv(cond).reshaped([B, condLen, 2, numHeads, headDim])
-        let keys = kvOut[0..., 0..., 0].transposed(0, 2, 1, 3)
-        let values = kvOut[0..., 0..., 1].transposed(0, 2, 1, 3)
+// MARK: - Top-level diffusion transformer
 
-        let scale = Float(1.0 / sqrt(Float(headDim)))
-        let attn = MLXFast.scaledDotProductAttention(
-            queries: queries, keys: keys, values: values, scale: scale, mask: nil
+public final class SFXDiTModel: Module {
+    public let config: SFXDiTConfig
+
+    @ModuleInfo(key: "preprocess_conv")   public var preprocessConv: Conv1d
+    @ModuleInfo(key: "timestep_features") public var timestepFeatures: SAOFourierFeatures
+    @ModuleInfo(key: "to_timestep_embed") public var toTimestepEmbed: SAOBiasMLP
+    @ModuleInfo(key: "to_cond_embed")     public var toCondEmbed: SAOBiasMLP
+    @ModuleInfo(key: "to_global_embed")   public var toGlobalEmbed: SAOBiasMLP
+    public var transformer: SAODiTTransformer
+    @ModuleInfo(key: "postprocess_conv")  public var postprocessConv: Conv1d
+
+    public init(config: SFXDiTConfig = .sao) {
+        self.config = config
+        let halfDim = config.timestepFeaturesDim / 2
+        self._preprocessConv.wrappedValue = Conv1d(
+            inputChannels: config.latentDim,
+            outputChannels: config.hiddenSize,
+            kernelSize: 1,
+            bias: false
         )
-        let merged = attn.transposed(0, 2, 1, 3).reshaped([B, L, -1])
-        return out(merged)
+        self._timestepFeatures.wrappedValue = SAOFourierFeatures(halfDim: halfDim)
+        self._toTimestepEmbed.wrappedValue  = SAOBiasMLP(
+            inputDim: config.timestepFeaturesDim,
+            hiddenDim: config.hiddenSize
+        )
+        self._toCondEmbed.wrappedValue = SAOBiasMLP(
+            inputDim: config.condTokenDim,
+            hiddenDim: config.hiddenSize
+        )
+        self._toGlobalEmbed.wrappedValue = SAOBiasMLP(
+            inputDim: config.globalCondDim,
+            hiddenDim: config.hiddenSize
+        )
+        self.transformer = SAODiTTransformer(config: config)
+        self._postprocessConv.wrappedValue = Conv1d(
+            inputChannels: config.hiddenSize,
+            outputChannels: config.latentDim,
+            kernelSize: 1,
+            bias: false
+        )
+    }
+
+    /// Predict the velocity field for the given noisy latents.
+    ///
+    /// - Parameters:
+    ///   - latents:    `[B, T, latentDim]` noisy latent frames
+    ///   - timestep:   `[B]` or `[1]` continuous diffusion time ∈ (0, 1]
+    ///   - crossCond:  `[B, L, conditioningDim]` T5-base hidden states
+    ///   - globalCond: `[B, globalCondDim]` concat(startEmbed, totalEmbed)
+    ///                 from `SAONumberConditioner`
+    /// - Returns: `[B, T, latentDim]` predicted velocity
+    public func forward(
+        latents: MLXArray,
+        timestep: MLXArray,
+        crossCond: MLXArray,
+        globalCond: MLXArray
+    ) -> MLXArray {
+        let seqLen = latents.shape[1]
+
+        // 1. Project latents into transformer hidden space.
+        var h = preprocessConv(latents)                            // [B, T, hiddenSize]
+
+        // 2. Timestep Fourier encoding → MLP → global conditioning.
+        let tFeats = timestepFeatures.encode(timestep)             // [B, timestepFeaturesDim]
+        var gEmb   = toTimestepEmbed(tFeats)                       // [B, hiddenSize]
+
+        // 3. Add number-conditioner global embedding.
+        gEmb = gEmb + toGlobalEmbed(globalCond)                    // [B, hiddenSize]
+
+        // 4. Broadcast-add global embed to every sequence position.
+        h = h + gEmb.expandedDimensions(axis: 1)                  // [B, T, hiddenSize]
+
+        // 5. Precompute partial-RoPE embeddings for this sequence length.
+        let (cosEmb, sinEmb) = SFXDiTModel.computeRoPE(
+            seqLen: seqLen,
+            rotaryDim: config.rotaryDim
+        )
+
+        // 6. Transformer layers (self-attn, cross-attn, FFN).
+        h = transformer(h, crossCond: crossCond, cosEmb: cosEmb, sinEmb: sinEmb)
+
+        // 7. Project back to latent space.
+        return postprocessConv(h)                                  // [B, T, latentDim]
+    }
+
+    // MARK: - RoPE helper
+
+    /// Compute cos/sin position embeddings for partial RoPE.
+    /// Returns `[1, 1, seqLen, rotaryDim]` tensors for broadcasting over heads and batch.
+    public static func computeRoPE(
+        seqLen: Int,
+        rotaryDim: Int,
+        base: Float = 10000.0
+    ) -> (MLXArray, MLXArray) {
+        let halfDim = rotaryDim / 2
+        let invFreq = MLXArray((0..<halfDim).map { i -> Float in
+            1.0 / pow(base, Float(2 * i) / Float(rotaryDim))
+        })                                                                         // [halfDim]
+        let pos    = MLXArray((0..<seqLen).map { Float($0) })                     // [seqLen]
+        let angles = pos.reshaped([seqLen, 1]) * invFreq.reshaped([1, halfDim])   // [seqLen, halfDim]
+        // Duplicate for the rotate-half pattern → [seqLen, rotaryDim].
+        let doubled = concatenated([angles, angles], axis: -1)
+        let cosE = cos(doubled).reshaped([1, 1, seqLen, rotaryDim])
+        let sinE = sin(doubled).reshaped([1, 1, seqLen, rotaryDim])
+        return (cosE, sinE)
     }
 }
 
-class SFXMLP: Module {
-    let fc1: Linear
-    let fc2: Linear
+// MARK: - Private activation helpers
 
-    init(hiddenSize: Int) {
-        self.fc1 = Linear(hiddenSize, hiddenSize * 4)
-        self.fc2 = Linear(hiddenSize * 4, hiddenSize)
-    }
+private func saoSiLU(_ x: MLXArray) -> MLXArray { x * sigmoid(x) }
 
-    func callAsFunction(_ x: MLXArray) -> MLXArray {
-        var h = fc1(x)
-        h = sfxSilu(h)
-        return fc2(h)
-    }
-}
-
-private func sfxSilu(_ x: MLXArray) -> MLXArray {
-    x * sigmoid(x)
+private func saoGELU(_ x: MLXArray) -> MLXArray {
+    // Tanh-approximate GELU — matches torch.nn.functional.gelu default behaviour.
+    let c = Float(sqrt(2.0 / Double.pi))
+    return 0.5 * x * (1 + tanh(c * (x + 0.044715 * x * x * x)))
 }

@@ -193,12 +193,7 @@ public actor ModelRegistry {
             category: .stableAudio,
             variantFamily: nil,
             requiresAuth: true,
-            // Plumbing for T5 + projection is in place but the forward path
-            // is a skeleton — Generate against this spec will surface a
-            // clear "not yet runnable" error rather than crash. ACE-Step
-            // music generation is unaffected.
-            isRunnable: false,
-            runtimeNote: "Stable Audio Open re-architecture in progress (T5 + projection). Music generation via ACE-Step is unaffected; Auto routing safely falls back when this spec is selected."
+            isRunnable: true
         ),
         // 5 Hz Audio→Token Language Models for cover-song generation
         // (audio→audio conditioning). Optional — pick one based on

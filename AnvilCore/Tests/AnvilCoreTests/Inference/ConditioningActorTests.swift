@@ -6,8 +6,8 @@ import MLX
 struct ConditioningActorTests {
     @Test("ConditioningActor encode produces correct shapes (text-only)")
     func encodeTextOnly() async throws {
-        let actor = try ConditioningActor.forTesting()
-        let result = await actor.encode(
+        let actor = try ConditioningActor.stub()
+        let result = try await actor.encode(
             text: "A dreamy synthwave track",
             lyrics: "Floating through the neon lights",
             referenceAudio: nil,
@@ -24,9 +24,9 @@ struct ConditioningActorTests {
 
     @Test("ConditioningActor encode with reference audio")
     func encodeWithReference() async throws {
-        let actor = try ConditioningActor.forTesting()
+        let actor = try ConditioningActor.stub()
         let refAudio = MLXArray.zeros([1, 800, 64])
-        let result = await actor.encode(
+        let result = try await actor.encode(
             text: "A pop song",
             lyrics: "Hey hey hey",
             referenceAudio: refAudio,
@@ -40,8 +40,8 @@ struct ConditioningActorTests {
 
     @Test("ConditioningActor contextLatents uses zeros for text-only")
     func contextLatentsZerosPath() async throws {
-        let actor = try ConditioningActor.forTesting()
-        let result = await actor.encode(
+        let actor = try ConditioningActor.stub()
+        let result = try await actor.encode(
             text: "Test",
             lyrics: "",
             referenceAudio: nil,

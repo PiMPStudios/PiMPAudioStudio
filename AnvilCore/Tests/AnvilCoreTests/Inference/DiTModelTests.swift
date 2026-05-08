@@ -35,6 +35,7 @@ struct DiTModelTests {
             timestepR: timestepR,
             encoderHiddenStates: encoderStates,
             contextLatents: contextLatents,
+            encoderAttentionMask: nil,
             cache: nil,
             useCache: false
         )
@@ -73,6 +74,7 @@ struct DiTModelTests {
             timestepR: timestepR,
             encoderHiddenStates: encoderStates,
             contextLatents: contextLatents,
+            encoderAttentionMask: nil,
             cache: cache,
             useCache: true
         )
@@ -112,6 +114,7 @@ struct DiTModelTests {
             timestepR: timestepR,
             encoderHiddenStates: encoderStates,
             contextLatents: contextLatents,
+            encoderAttentionMask: nil,
             cache: nil,
             useCache: false
         )
@@ -119,7 +122,7 @@ struct DiTModelTests {
     }
 
     @Test("DiTActor step returns correct shape")
-    func actorStep() async {
+    func actorStep() async throws {
         let decoder = DiTDecoder(
             hiddenSize: 256,
             intermediateSize: 512,
@@ -142,12 +145,13 @@ struct DiTModelTests {
         let encoderStates = MLXArray.zeros([1, 50, 256])
         let contextLatents = MLXArray.zeros([1, 20, 128])
 
-        let (output, cache) = await actor.step(
+        let (output, cache) = try await actor.step(
             noisyLatents: noisyLatents,
             timestep: 0.5,
             timestepR: 0.5,
             encoderStates: encoderStates,
             contextLatents: contextLatents,
+            encoderAttentionMask: nil,
             cache: nil,
             useCache: true
         )

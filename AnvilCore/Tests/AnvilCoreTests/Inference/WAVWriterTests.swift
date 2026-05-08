@@ -35,7 +35,7 @@ struct WAVWriterTests {
 
     @Test("Clamps samples to [-1, 1] range")
     func clampsSamples() throws {
-        let samples = MLXArray(converting: [[2.0, -2.0, 0.5, -0.5]], type: Float.self)
+        let samples = MLXArray(converting: [2.0, -2.0, 0.5, -0.5], [1, 4])
         let url = FileManager.default.temporaryDirectory
             .appending(path: "test_clamp.wav")
 
