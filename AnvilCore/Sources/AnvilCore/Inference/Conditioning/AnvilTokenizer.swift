@@ -20,28 +20,39 @@ public struct AnvilTokenizer: Sendable {
 
     // MARK: - Init
 
-    /// Load a BPE tokenizer from a `tokenizer.json` file on disk.
+    /// Load a tokenizer from a `tokenizer.json` file on disk.
     ///
-    /// The file is expected to follow the Hugging Face `tokenizer.json`
-    /// schema, with `model.type`, `model.vocab`, and `model.merges` keys.
-    /// A companion `tokenizer_config.json` is optional but must be present
-    /// in the same directory if the tokenizer class cannot be inferred.
+    /// Supports BPE (GPT-2, Qwen, Llama…) and Unigram/SentencePiece (T5…)
+    /// tokenizers. A companion `tokenizer_config.json` in the same directory
+    /// is used when present; otherwise the tokenizer class is inferred from
+    /// the `model.type` field in `tokenizer.json` to avoid routing T5/Unigram
+    /// tokenizers through `BPETokenizer` (which crashes when merges is empty).
+    ///
+    /// swift-transformers class mapping:
+    ///   model.type "Unigram" → tokenizer_class "T5Tokenizer"  → UnigramTokenizer
+    ///   anything else        → tokenizer_class "PreTrainedTokenizer" → BPETokenizer
     public init(configURL: URL) throws {
-        let tokenizerData = try Self.loadConfig(from: configURL)
+        // Parse the raw JSON once so we can inspect model.type before building
+        // the Config — Config's dynamic-member API doesn't expose NSString dicts.
+        let rawJSON = try Data(contentsOf: configURL)
+        let rawDict = (try? JSONSerialization.jsonObject(with: rawJSON)) as? [NSString: Any] ?? [:]
+        let tokenizerData = Config(rawDict)
 
-        // Build a minimal tokenizerConfig that declares PreTrainedTokenizer.
-        // The `from(tokenizerConfig:tokenizerData:)` factory uses the
-        // `tokenizer_class` key to select an implementation class.
         let tokenizerConfigURL = configURL
             .deletingLastPathComponent()
             .appendingPathComponent("tokenizer_config.json")
 
         let tokenizerConfig: Config
-        if FileManager.default.fileExists(atPath: tokenizerConfigURL.path) {
+        if FileManager.default.fileExists(atPath: tokenizerConfigURL.path(percentEncoded: false)) {
             tokenizerConfig = try Self.loadConfig(from: tokenizerConfigURL)
         } else {
-            // Fall back to a minimal config pointing at the generic BPE class.
-            tokenizerConfig = Config(["tokenizer_class": "PreTrainedTokenizer"] as [NSString: Any])
+            // Infer the tokenizer class from model.type so that Unigram/T5
+            // tokenizers (which have empty merges) don't route to BPETokenizer
+            // and crash with "BPETokenizer requires merges".
+            let modelType = (rawDict["model"] as? [NSString: Any])
+                .flatMap { $0["type"] as? String } ?? "BPE"
+            let tokenizerClass = modelType == "Unigram" ? "T5Tokenizer" : "PreTrainedTokenizer"
+            tokenizerConfig = Config([NSString("tokenizer_class"): tokenizerClass] as [NSString: Any])
         }
 
         let tokenizer = try AutoTokenizer.from(
