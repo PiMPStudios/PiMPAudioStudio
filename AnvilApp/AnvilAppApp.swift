@@ -93,6 +93,15 @@ struct AnvilAppApp: App {
                     .tabItem { Label("Models", systemImage: "cube.box") }
                     .environmentObject(appState)
                     .environmentObject(apiKeyStore)
+                    // SwiftUI's `Settings` scene is a separate scene from
+                    // `WindowGroup`, so environment objects injected on
+                    // ContentView do NOT propagate here. The Release GPU
+                    // Memory button accesses `generationService` and
+                    // `sfxModelManager` — without explicit injection here,
+                    // tapping it fatal-errors with "No ObservableObject of
+                    // type GenerationService found."
+                    .environmentObject(services.generationService)
+                    .environmentObject(sfxModelManager)
 
                 AdaptersSettingsView()
                     .tabItem { Label("Adapters", systemImage: "puzzlepiece.extension") }
