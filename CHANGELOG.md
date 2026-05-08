@@ -4,6 +4,43 @@ All notable changes to AnvilApp are documented here.
 
 ---
 
+## [Unreleased] — Memory release, SFX routing safety, Stable Audio Open re-architecture
+
+### Added
+
+- **MLX GPU cache flush on Release** — the Settings → Models → Release GPU Memory button now calls `MLX.GPU.clearCache()` and `MLX.GPU.resetPeakMemory()` after the existing weight unload. MLX-Swift maintains an internal allocator pool that is NOT returned to the OS just by setting model references to nil; without `clearCache()` Activity Monitor saw no drop. User-verified: 90% RAM → 24% RAM after Release. Before/after `active` / `cache` / `peak` snapshots are logged via OSLog (`subsystem:com.pimp.AnvilApp category:GenerationService.unload`) so the delta is visible in the Xcode console.
+- **SFX-routing safety guard** — `GenerationService.shouldUseStableAudio` now checks `SFXModelManager.isPipelineLoadable()` before letting Auto-mode flip to Stable Audio. If the SFX install is incomplete (typical case while SAO re-architecture is in progress), Auto silently falls back to ACE-Step with a log warning instead of crashing on a missing-file open. New `isPipelineLoadable()` returns true only when ALL files `loadPipeline()` will read are present.
+- **Stable Audio Open T5 + projection architecture (plumbing complete; runtime gated)** — replaces the prior CLAP-based SFX text encoder with the actual upstream architecture used by `stabilityai/stable-audio-open-1.0`: T5-base text encoder + projection_model + Oobleck VAE.
+  - New `T5Encoder.swift` — full T5-base implementation: vocab=32128, d_model=768, 12 layers, 12 heads, d_kv=64, d_ff=3072, T5v1.1 gated-GELU MLP, pre-norm blocks, RMS norm, no scale on attention scores (T5 quirk), bidirectional relative-position bucket bias propagated from block 0 through the encoder stack, additive attention mask from input mask.
+  - New `T5SelfAttention.relativePositionBucket(...)` and `computePositionBias(...)` mirroring `_relative_position_bucket(bidirectional=True)` and `compute_bias(...)` in HF's `transformers/models/t5/modeling_t5.py`.
+  - New `SAOProjectionModel.swift` — text + timing projection (768 → 768 text path; 256 → 768 timing path) into the DiT cross-attn embedding dim.
+  - New `T5NameMap.swift` and `SAOProjectionNameMap.swift` — map HF safetensors keys (`encoder.block.N.layer.[01].*`, `text_projection.weight`, etc.) onto our Swift module paths.
+  - `WeightConverter` gains `loadT5Weights` and `loadSAOProjectionWeights`.
+  - `SoundFXPipeline.generate` now: tokenize via T5 → T5 encode → Fourier-feature timing via existing `TimingEncoder` → `SAOProjectionModel` → cross-attn into the DiT.
+  - `SFXModelManager.loadPipeline` constructs T5 + projection via `Module.update(parameters:)`; tokenizer changed from CLAP-specific to general `AnvilTokenizer` (T5 ships its own `tokenizer.json`).
+  - `SFXCrossAttention` (in `SFXDiTModel`) now handles both 2D `[B, condDim]` (legacy CLAP path, preserved for symmetry) and 3D `[B, condLen, condDim]` (new T5 + projection sequence path) by detecting `conditioning.shape.count`.
+  - ModelRegistry SAO spec rewritten: drops `clap_model.safetensors` (does not exist upstream); adds `text_encoder/model.safetensors`, `text_encoder/config.json`, `tokenizer/spiece.model`, `tokenizer/tokenizer.json`, `projection_model/diffusion_pytorch_model.safetensors`, `projection_model/config.json`. VAE switched from `vae_model.ckpt` to `vae/diffusion_pytorch_model.safetensors` (same weights in MLX-loadable format). Spec marked `isRunnable: false` with a `runtimeNote` until on-device verification.
+- **Diffusion Advanced section disclosure persistence** — the `audioDebugVerbose` toggle, `precision` segmented control, manual `steps` override, and `shift` slider rendered in the Advanced disclosure now read/write through `@AppStorage` / `@State` correctly across app launches (Float32 default — see "Fixed" below).
+
+### Fixed
+
+- **Settings → Release GPU Memory crashed the app** — SwiftUI's `Settings { }` scene is a separate scene from `WindowGroup { }`, so environment objects injected on `ContentView` do NOT propagate. `ModelsSettingsView` declares four `@EnvironmentObject` dependencies but the Settings scene only injected `appState` and `apiKeyStore`. Most of the view rendered fine because the missing two were not accessed during static body evaluation, but the Release button calls `generationService.unloadAllWeights()` and `sfxModelManager.unloadPipeline()` — tapping it fatal-errored with `SwiftUICore/EnvironmentObject.swift:93: No ObservableObject of type GenerationService found`. Now injects both `services.generationService` and `sfxModelManager` into the ModelsSettingsView tab. Inline comment in `AnvilAppApp.swift` warns future maintainers about the WindowGroup → Settings env-propagation gotcha.
+- **Release GPU Memory did not actually free RAM** — even after the Settings crash was fixed, clicking Release dropped DiT/VAE references but RAM stayed pinned because MLX-Swift's GPU allocator pool wasn't being returned to the OS. Adding `MLX.GPU.clearCache()` after the existing unload chain dropped user-reported usage from 90% → 24%.
+- **Generate crashed when prompt enhancer rewrote a music prompt with "atmospheric/soundscape/foreboding" wording** — `IntentRouter`'s LLM classifier flipped Auto from Music to Ambient on those mood words, routing through the Stable Audio pipeline, which then hit `MLX Error: [load_safetensors] Failed to open file …/stable-audio-open/vae.safetensors`. Two stacked bugs: (1) the SFX VAE filename mismatch (registry was downloading `vae_model.ckpt` but `loadPipeline()` wanted `vae.safetensors`), and (2) the over-eager classifier. The runtime guard above prevents the crash; the spec update + IntentRouter tuning fix the underlying causes.
+- **IntentRouter false-positive on enhanced music prompts** — replaced the 1-line system prompt with a 5-rule rubric + 7 worked examples. Mood/atmosphere words alone (atmospheric, soundscape, foreboding, ominous, ethereal, haunting, dreamy, moody) no longer mean ambient; any instrument / genre / BPM / structure mention forces music; "ambient music" ≠ "ambient SFX" (an ambient pad is still music); ambiguous tie-breaks to music.
+- **SFXModelManager.downloadIfNeeded was using a parallel hardcoded download list** — the old path tried flat URLs at the repo root (`vae.safetensors`, `clap_model.safetensors`) that 404'd because the upstream repo has the safetensors VAE in a `vae/` subdir and no CLAP file at all. It also did not carry HF auth bearer tokens for the gated SAO repo. Collapsed onto the registry-driven download, which already handles `remotePath → localName` mapping AND the bearer-token authentication.
+
+### Removed
+
+- **Legacy CLAP encoder/tokenizer (Stable Audio Open re-architecture)** — `CLAPEncoder`, `CLAPTokenizer`, `CLAPNameMap`, their tests, and `WeightConverter.loadCLAPWeights` are gone. They were designed against a CLAP-text-encoder model family (e.g. AudioLDM/MusicGen), but Stable Audio Open uses T5 + projection. The replacement T5 stack lands in this same release. `InpaintCoordinator`'s SFX inpaint branch lost its CLAP encoder dependency; it now yields a clear "Stable Audio inpainting temporarily unavailable during T5 re-architecture" message instead of compiling against the removed types. ACE-Step inpaint is unaffected.
+
+### Known Gaps
+
+- **Stable Audio Open spec is `isRunnable: false`** — the runtime guard prevents Auto routing to it. Explicit override will refuse to activate the spec until on-device verification of the new T5 + projection chain succeeds. Music generation via ACE-Step is unaffected.
+- **`SAOProjectionModel` shape defaults are educated guesses** — `Linear(textInputDim=768, outputDim=768)` and `Linear(timingDim=256, outputDim=768)`. The actual `projection.safetensors` shapes will be discovered via the `[supplied/model/matched]` diagnostic at first load and the config defaults adjusted in a one-line follow-up.
+
+---
+
 ## [Unreleased] — ACE-Step Quality Baseline + UI Wiring
 
 ### Added
