@@ -1,5 +1,9 @@
 import Foundation
 import AnvilCore
+import MLX
+import OSLog
+
+private let memLogger = Logger(subsystem: "com.pimp.AnvilApp", category: "GenerationService.unload")
 
 struct GenerationResult: Sendable {
     let fileURL: URL
@@ -105,8 +109,32 @@ final class GenerationService: ObservableObject {
     }
 
     func unloadAllWeights() async {
+        // Snapshot MLX GPU memory before/after so the user can see the
+        // actual delta in the Xcode console. MLX-Swift maintains an internal
+        // allocator pool that is NOT returned to the OS just by setting
+        // model references to nil — `clearCache()` is required.
+        let before = MLX.GPU.snapshot()
+        memLogger.info("[unloadAllWeights] before active=\(before.activeMemory) cache=\(before.cacheMemory) peak=\(before.peakMemory)")
+
         await aceStepService.unloadWeights()
         await loraCoordinator.clearAll()
+
+        // Return MLX's GPU allocator pool to the OS. Without this, even
+        // after DiT/VAE weights are released, multi-GB stays "held" by MLX
+        // and Activity Monitor doesn't drop. This is the actual fix for
+        // "Release didn't actually free memory."
+        MLX.GPU.clearCache()
+        MLX.GPU.resetPeakMemory()
+
+        let after = MLX.GPU.snapshot()
+        memLogger.info("[unloadAllWeights] after  active=\(after.activeMemory) cache=\(after.cacheMemory) peak=\(after.peakMemory)")
+        memLogger.info("[unloadAllWeights] delta active=-\(before.activeMemory - after.activeMemory) cache=-\(before.cacheMemory - after.cacheMemory)")
+
+        // NOTE: Conditioning sub-modules (Qwen3 ~1.2 GB, lyric/timbre/
+        // condition encoders, silence_latent) are NOT unloaded here yet —
+        // their fields are `let` on ConditioningActor and need a refactor
+        // to make replaceable. Tracked as a follow-up: most of the savings
+        // already come from DiT (4.8 GB) + VAE (0.3 GB) + clearCache.
     }
 
     private func shouldUseStableAudio(request: GenerationRequest) -> Bool {
