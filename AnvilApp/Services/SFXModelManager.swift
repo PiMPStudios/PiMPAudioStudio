@@ -65,40 +65,23 @@ final class SFXModelManager: ObservableObject {
         let baseURL = "https://huggingface.co/\(repoID)/resolve/main/"
         let session = URLSession.shared
 
-        // Metadata files
-        let metadataFiles = ["config.json", "tokenizer.json"]
-        for (idx, file) in metadataFiles.enumerated() {
-            try Task.checkCancellation()
-            guard let url = URL(string: baseURL + file) else { continue }
-            let (data, response) = try await session.data(from: url)
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-                let msg = "Failed to download \(file)"
-                downloadState = .error(msg)
-                throw SFXDownloadError.downloadFailed(file)
+        // Use the registry-driven download path so we honor the spec's
+        // remotePath → localName mapping (e.g., the VAE lives at
+        // `vae/diffusion_pytorch_model.safetensors` upstream but is saved
+        // locally as `vae.safetensors`). The previous parallel
+        // hardcoded-list path assumed flat filenames at the repo root —
+        // which gave 404s on the safetensors VAE — and didn't carry HF
+        // auth headers for gated models.
+        if let spec = activeSpec {
+            try await registry.downloadModels([spec]) { _, progress in
+                Task { @MainActor in
+                    self.downloadState = .downloading(progress: Float(progress))
+                }
             }
-            try data.write(to: modelPath.appendingPathComponent(file))
-            downloadState = .downloading(progress: Float(idx + 1) / Float(metadataFiles.count) * 0.1)
         }
-
-        // Weight files (large — use download task)
-        let weightFiles = ["model.safetensors", "vae.safetensors", "clap_model.safetensors"]
-        for (idx, file) in weightFiles.enumerated() {
-            try Task.checkCancellation()
-            guard let url = URL(string: baseURL + file) else { continue }
-            let dest = modelPath.appendingPathComponent(file)
-            let (tempURL, response) = try await session.download(from: url)
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-                let msg = "Failed to download \(file)"
-                downloadState = .error(msg)
-                throw SFXDownloadError.downloadFailed(file)
-            }
-            if fm.fileExists(atPath: dest.path) {
-                try fm.removeItem(at: dest)
-            }
-            try fm.moveItem(at: tempURL, to: dest)
-            let progress = 0.1 + Float(idx + 1) / Float(weightFiles.count) * 0.9
-            downloadState = .downloading(progress: progress)
-        }
+        _ = baseURL  // intentionally unused now — registry handles URLs
+        _ = session  // intentionally unused now — registry uses DownloadClient
+        _ = fm       // intentionally unused now
 
         downloadState = .downloaded
     }

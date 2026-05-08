@@ -136,15 +136,21 @@ public actor ModelRegistry {
                     localName: "config.json",
                     sizeBytes: 4_172
                 ),
+                // Use the safetensors version of the VAE — the legacy
+                // `vae_model.ckpt` is a PyTorch zip we can't natively load
+                // through MLX-Swift's `loadArrays`. The safetensors file at
+                // `vae/diffusion_pytorch_model.safetensors` (624 MB) carries
+                // identical weights and is loadable by `WeightConverter
+                // .loadSFXVAEWeights`.
                 ModelFileSpec(
-                    remotePath: "vae_model.ckpt",
-                    localName: "vae_model.ckpt",
-                    sizeBytes: 624_474_947
+                    remotePath: "vae/diffusion_pytorch_model.safetensors",
+                    localName: "vae.safetensors",
+                    sizeBytes: 624_490_240
                 ),
                 ModelFileSpec(
-                    remotePath: "vae_model_config.json",
+                    remotePath: "vae/config.json",
                     localName: "vae_config.json",
-                    sizeBytes: 3_608
+                    sizeBytes: 350
                 )
             ],
             category: .stableAudio,
