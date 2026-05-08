@@ -173,4 +173,32 @@ public actor WeightConverter {
             return (mapped, value)
         }
     }
+
+    /// Load T5-base encoder weights for Stable Audio Open. The HF safetensors
+    /// uses HuggingFace's standard T5 naming
+    /// (`encoder.block.N.layer.0.SelfAttention.q.weight`, etc.). We map onto
+    /// our `T5Encoder` Module's path layout
+    /// (`blocks.N.layer0_attn.q.weight`, etc.). Skeleton mapping is
+    /// best-effort — keys that don't resolve are dropped (logged via the
+    /// existing `compactMap` filter and surfaced by the per-module supplied/
+    /// matched diagnostic on load).
+    public func loadT5Weights(from url: URL) throws -> [(String, MLXArray)] {
+        let raw = try loadSafetensors(from: url)
+        return raw.compactMap { key, value -> (String, MLXArray)? in
+            guard let mapped = T5NameMap.mapKey(key) else { return nil }
+            return (mapped, value)
+        }
+    }
+
+    /// Load SAO projection_model weights from a safetensors file. The HF
+    /// keys are typically simple (`text_projection.weight`,
+    /// `timing_projection.weight`) and align directly with our
+    /// `SAOProjectionModel` ModuleInfo keys.
+    public func loadSAOProjectionWeights(from url: URL) throws -> [(String, MLXArray)] {
+        let raw = try loadSafetensors(from: url)
+        return raw.compactMap { key, value -> (String, MLXArray)? in
+            guard let mapped = SAOProjectionNameMap.mapKey(key) else { return nil }
+            return (mapped, value)
+        }
+    }
 }

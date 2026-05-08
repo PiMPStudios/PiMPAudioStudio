@@ -1,6 +1,7 @@
 // AnvilApp/Services/SFXModelManager.swift
 import Foundation
 import AnvilCore
+import MLXNN
 
 enum SFXDownloadState: Equatable, Sendable {
     case notDownloaded
@@ -14,7 +15,10 @@ final class SFXModelManager: ObservableObject {
     @Published var downloadState: SFXDownloadState = .notDownloaded
     @Published var pipeline: SoundFXPipeline?
 
-    private(set) var tokenizer: CLAPTokenizer?
+    /// HF tokenizer for the T5-base text encoder (loads from `tokenizer.json`
+    /// shipped under SAO's `tokenizer/` dir). Replaces the previous
+    /// CLAPTokenizer wiring.
+    private(set) var tokenizer: AnvilTokenizer?
 
     private let registry: ModelRegistry
     private var loadedModelID: String?
@@ -124,12 +128,22 @@ final class SFXModelManager: ObservableObject {
         guard isModelDownloaded() else { return }
 
         let converter = WeightConverter()
-        let ditWeights  = try await converter.loadSFXDiTWeights(from: modelPath.appendingPathComponent("model.safetensors"))
-        let vaeWeights  = try await converter.loadSFXVAEWeights(from: modelPath.appendingPathComponent("vae.safetensors"))
-        let clapWeights = try await converter.loadCLAPWeights(from: modelPath.appendingPathComponent("clap_model.safetensors"))
+        let ditWeights = try await converter.loadSFXDiTWeights(from: modelPath.appendingPathComponent("model.safetensors"))
+        let vaeWeights = try await converter.loadSFXVAEWeights(from: modelPath.appendingPathComponent("vae.safetensors"))
 
-        let clapEncoder = CLAPEncoder(embeddingDim: 512, numLayers: 12, numHeads: 8, vocabSize: 49408)
-        await clapEncoder.loadWeights(clapWeights)
+        // T5-base text encoder + projection_model. Skeleton today —
+        // `T5Encoder.callAsFunction` returns a shape-correct stub; real
+        // bucket-bias attention math lands in a follow-up. Spec is
+        // `isRunnable: false` so end-to-end Generate against this pipeline
+        // is gated until the forward pass is enabled.
+        let t5Weights = try await converter.loadT5Weights(from: modelPath.appendingPathComponent("text_encoder.safetensors"))
+        let projectionWeights = try await converter.loadSAOProjectionWeights(from: modelPath.appendingPathComponent("projection.safetensors"))
+
+        let t5 = T5Encoder(config: .t5Base)
+        t5.update(parameters: ModuleParameters.unflattened(t5Weights))
+
+        let projection = SAOProjectionModel()
+        projection.update(parameters: ModuleParameters.unflattened(projectionWeights))
 
         let timingEncoder = TimingEncoder(embeddingDim: 256)
 
@@ -147,12 +161,14 @@ final class SFXModelManager: ObservableObject {
         let vae = SFXVAEActor(config: vaeConfig)
         await vae.loadWeights(vaeWeights)
 
+        // T5 tokenizer ships at `tokenizer/tokenizer.json` upstream; we save
+        // it locally as `tokenizer.json` next to the other SAO files.
         let tokenizerURL = modelPath.appendingPathComponent("tokenizer.json")
-        let configURL    = modelPath.appendingPathComponent("config.json")
-        self.tokenizer = try CLAPTokenizer(vocabularyURL: tokenizerURL, configURL: configURL)
+        self.tokenizer = try AnvilTokenizer(configURL: tokenizerURL)
 
         self.pipeline = SoundFXPipeline(
-            clap: clapEncoder,
+            t5: t5,
+            projection: projection,
             diffusion: diffusion,
             vae: vae,
             timingEncoder: timingEncoder
@@ -190,11 +206,19 @@ final class SFXModelManager: ObservableObject {
     /// gap that crashes generation on entry to the SFX path).
     func isPipelineLoadable() -> Bool {
         let fm = FileManager.default
+        // Match the file list that `loadPipeline()` actually reads. CLAP
+        // (`clap_model.safetensors`) is no longer required — replaced by
+        // the T5 text encoder + projection model. Until the T5 forward
+        // pass is enabled this method returns false until ALL the new
+        // files are present, which is what the spec downloader provides
+        // when `requiresAuth` HF auth is configured.
         let required = [
             "config.json",
             "model.safetensors",
             "vae.safetensors",
-            "clap_model.safetensors",
+            "text_encoder.safetensors",
+            "projection.safetensors",
+            "tokenizer.json",
         ]
         return required.allSatisfy { name in
             fm.fileExists(

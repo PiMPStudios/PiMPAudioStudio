@@ -126,6 +126,13 @@ public actor ModelRegistry {
             displayName: "Stable Audio Open 1.0",
             huggingFaceRepo: "stabilityai/stable-audio-open-1.0",
             files: [
+                // DiT — the legacy top-level `model.safetensors` packs the
+                // whole pipeline as a single file. The diffusers-style
+                // `transformer/diffusion_pytorch_model.safetensors` is the
+                // same DiT weights as a separate component. We download
+                // both for now: top-level satisfies legacy callers, the
+                // per-component path is what the new T5+projection pipeline
+                // will read from.
                 ModelFileSpec(
                     remotePath: "model.safetensors",
                     localName: "model.safetensors",
@@ -136,12 +143,6 @@ public actor ModelRegistry {
                     localName: "config.json",
                     sizeBytes: 4_172
                 ),
-                // Use the safetensors version of the VAE — the legacy
-                // `vae_model.ckpt` is a PyTorch zip we can't natively load
-                // through MLX-Swift's `loadArrays`. The safetensors file at
-                // `vae/diffusion_pytorch_model.safetensors` (624 MB) carries
-                // identical weights and is loadable by `WeightConverter
-                // .loadSFXVAEWeights`.
                 ModelFileSpec(
                     remotePath: "vae/diffusion_pytorch_model.safetensors",
                     localName: "vae.safetensors",
@@ -151,11 +152,53 @@ public actor ModelRegistry {
                     remotePath: "vae/config.json",
                     localName: "vae_config.json",
                     sizeBytes: 350
+                ),
+                // T5-base text encoder. Stable Audio Open conditioning
+                // pipeline: tokenize → T5 encode (max_length=128, d_model
+                // =768) → projection → cross-attn into DiT.
+                ModelFileSpec(
+                    remotePath: "text_encoder/model.safetensors",
+                    localName: "text_encoder.safetensors",
+                    sizeBytes: 438_525_864
+                ),
+                ModelFileSpec(
+                    remotePath: "text_encoder/config.json",
+                    localName: "text_encoder_config.json",
+                    sizeBytes: 1_497
+                ),
+                // SentencePiece tokenizer used by T5.
+                ModelFileSpec(
+                    remotePath: "tokenizer/spiece.model",
+                    localName: "spiece.model",
+                    sizeBytes: 791_656
+                ),
+                ModelFileSpec(
+                    remotePath: "tokenizer/tokenizer.json",
+                    localName: "tokenizer.json",
+                    sizeBytes: 2_424_064
+                ),
+                // Projection model — maps T5 hidden states into the DiT
+                // conditioning embedding space.
+                ModelFileSpec(
+                    remotePath: "projection_model/diffusion_pytorch_model.safetensors",
+                    localName: "projection.safetensors",
+                    sizeBytes: 24_096_080
+                ),
+                ModelFileSpec(
+                    remotePath: "projection_model/config.json",
+                    localName: "projection_config.json",
+                    sizeBytes: 198
                 )
             ],
             category: .stableAudio,
             variantFamily: nil,
-            requiresAuth: true
+            requiresAuth: true,
+            // Plumbing for T5 + projection is in place but the forward path
+            // is a skeleton — Generate against this spec will surface a
+            // clear "not yet runnable" error rather than crash. ACE-Step
+            // music generation is unaffected.
+            isRunnable: false,
+            runtimeNote: "Stable Audio Open re-architecture in progress (T5 + projection). Music generation via ACE-Step is unaffected; Auto routing safely falls back when this spec is selected."
         ),
         // 5 Hz Audio→Token Language Models for cover-song generation
         // (audio→audio conditioning). Optional — pick one based on

@@ -3,7 +3,12 @@ import Foundation
 import MLX
 
 public actor SoundFXPipeline {
-    private let clap: CLAPEncoder
+    /// Stable Audio Open conditioning stack: T5-base text encoder →
+    /// projection model → cross-attn into DiT. Replaces the prior CLAP
+    /// path; CLAPEncoder/Tokenizer remain in the codebase for backward-
+    /// compatible tests but are no longer on the runtime path.
+    private let t5: T5Encoder
+    private let projection: SAOProjectionModel
     private let timingEncoder: TimingEncoder
     private let diffusion: SFXDiffusionActor
     private let vae: SFXVAEActor
@@ -14,12 +19,14 @@ public actor SoundFXPipeline {
     public static let hopLength = 1024
 
     public init(
-        clap: CLAPEncoder,
+        t5: T5Encoder,
+        projection: SAOProjectionModel,
         diffusion: SFXDiffusionActor,
         vae: SFXVAEActor,
         timingEncoder: TimingEncoder
     ) {
-        self.clap = clap
+        self.t5 = t5
+        self.projection = projection
         self.diffusion = diffusion
         self.vae = vae
         self.timingEncoder = timingEncoder
@@ -35,26 +42,31 @@ public actor SoundFXPipeline {
         text: String,
         duration: TimeInterval,
         config: SFXDiffusionConfig,
-        tokenizer: CLAPTokenizer
+        tokenizer: AnvilTokenizer
     ) async throws -> AudioResult {
         let totalStart = Date()
         let clampedDuration = min(duration, Self.maxDuration)
 
-        // 1. CLAP text encoding
-        let clapEmbedding: MLXArray
-        let clapLoaded = await clap.isLoaded
-        if clapLoaded {
-            clapEmbedding = try await clap.encode(text: text, tokenizer: tokenizer)
-        } else {
-            // Fallback: use zero embedding for unloaded model (testing)
-            clapEmbedding = MLXArray.zeros([1, 512])
-        }
+        // 1. T5 text encoding (max_length 128 per SAO model_config.json).
+        let (textIds, textMask) = tokenizer.encodeText(text, maxLength: 128)
+        let textHidden = t5(inputIds: textIds, attentionMask: textMask)
 
-        // 2. Timing conditioning
-        let timingEmbedding = timingEncoder.encode(startSeconds: 0.0, durationSeconds: Float(clampedDuration))
+        // 2. Timing scalars [seconds_start, seconds_total]. Real SAO uses
+        // sinusoidal/Fourier embeddings; the projection model expects
+        // raw 2-D timing input here for the skeleton path.
+        let timing: [Float] = [0.0, Float(clampedDuration)]
+        let timingScalars = MLXArray(timing).reshaped([1, 2])
 
-        // 3. Combine conditioning
-        let conditioning = concatenated([clapEmbedding, timingEmbedding], axis: 1)
+        // 3. Project both streams into the DiT conditioning dim.
+        let projected = projection(textHidden: textHidden, timing: timingScalars)
+        let textCond = projected.text          // [1, L, embed]
+        let timingCond = projected.timing      // [1, embed]
+
+        // 4. Combine for downstream cross-attn. Real SAO concatenates the
+        // projected timing token onto the front of the text sequence; the
+        // skeleton matches that shape so the DiT call signature is stable.
+        let timingTok = timingCond.expandedDimensions(axis: 1)  // [1, 1, embed]
+        let conditioning = concatenated([timingTok, textCond], axis: 1)
 
         // 4. Diffusion
         progressContinuation?.yield(.diffusion(DiffusionProgress(
