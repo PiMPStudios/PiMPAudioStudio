@@ -163,15 +163,4 @@ final class AppState: ObservableObject {
         backgroundDownloadPhase = .complete
     }
 
-    /// Release all in-memory model weights across ACE-Step and SFX pipelines.
-    ///
-    /// Weights reload automatically on the next generation call.
-    /// Useful on memory pressure or when switching tasks away from the app.
-    func unloadAllModels(
-        generationService: GenerationService,
-        sfxModelManager: SFXModelManager
-    ) async {
-        await generationService.unloadAllWeights()
-        sfxModelManager.unloadPipeline()
-    }
 }

@@ -21,21 +21,17 @@ struct GeminiLyricWriter: LyricWriter {
                 request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-                let linesPerSection = Int(duration / 15)
-                let systemPrompt = """
-                    You are a songwriter. Write lyrics for a song based on the user's description. \
-                    Use section markers: [Verse], [Chorus], [Bridge], [Outro]. Match the mood, genre, \
-                    and energy of the description. Target duration: \(Int(duration)) seconds (roughly \
-                    \(linesPerSection) lines per section). Output only the lyrics with section markers. \
-                    No commentary.
-                    """
+                let plan = LyricWritingPlan.make(duration: duration)
 
                 let body: [String: Any] = [
                     "system_instruction": [
-                        "parts": [["text": systemPrompt]]
+                        "parts": [["text": plan.systemPrompt]]
+                    ],
+                    "generationConfig": [
+                        "maxOutputTokens": plan.maxTokens
                     ],
                     "contents": [
-                        ["parts": [["text": "Style: \(style)\n\n\(prompt)"]]]
+                        ["parts": [["text": plan.userPrompt(prompt: prompt, style: style)]]]
                     ]
                 ]
 

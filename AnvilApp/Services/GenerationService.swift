@@ -135,7 +135,7 @@ final class GenerationService: ObservableObject {
     }
 
     private func runACEStep(request: GenerationRequest) async throws -> AudioResult {
-        for try await event in aceStepService.generate(request: request) {
+        for try await event in await aceStepService.generate(request: request) {
             switch event {
             case .loadingWeights(let progress):
                 self.state = .loadingWeights(progress: progress)

@@ -17,6 +17,14 @@ public actor WeightConverter {
         return dict.sorted { $0.key < $1.key }.map { ($0.key, $0.value) }
     }
 
+    public func loadSafetensors(from urls: [URL]) throws -> [(String, MLXArray)] {
+        var result: [(String, MLXArray)] = []
+        for url in urls.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+            result.append(contentsOf: try loadSafetensors(from: url))
+        }
+        return result.sorted { $0.0 < $1.0 }
+    }
+
     public func convertVAEWeights(stateDict: [(String, MLXArray)]) throws -> [(String, MLXArray)] {
         var result: [(String, MLXArray)] = []
         var processed: Set<String> = []

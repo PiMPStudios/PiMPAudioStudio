@@ -2,8 +2,191 @@ import Foundation
 import MLX
 import MLXNN
 
+public struct DiTConfig: Codable, Sendable, Equatable {
+    public let hiddenSize: Int
+    public let encoderHiddenSize: Int
+    public let intermediateSize: Int
+    public let numHiddenLayers: Int
+    public let numAttentionHeads: Int
+    public let numKeyValueHeads: Int
+    public let headDim: Int
+    public let rmsNormEps: Float
+    public let attentionBias: Bool
+    public let inChannels: Int
+    public let audioAcousticHiddenDim: Int
+    public let patchSize: Int
+    public let slidingWindow: Int
+    public let layerTypes: [String]
+    public let ropeTheta: Float
+    public let maxPositionEmbeddings: Int
+    public let textHiddenDim: Int
+    public let timbreHiddenDim: Int
+    public let isTurbo: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case hiddenSize = "hidden_size"
+        case encoderHiddenSize = "encoder_hidden_size"
+        case intermediateSize = "intermediate_size"
+        case numHiddenLayers = "num_hidden_layers"
+        case numAttentionHeads = "num_attention_heads"
+        case numKeyValueHeads = "num_key_value_heads"
+        case headDim = "head_dim"
+        case rmsNormEps = "rms_norm_eps"
+        case attentionBias = "attention_bias"
+        case inChannels = "in_channels"
+        case audioAcousticHiddenDim = "audio_acoustic_hidden_dim"
+        case patchSize = "patch_size"
+        case slidingWindow = "sliding_window"
+        case layerTypes = "layer_types"
+        case ropeTheta = "rope_theta"
+        case maxPositionEmbeddings = "max_position_embeddings"
+        case textHiddenDim = "text_hidden_dim"
+        case timbreHiddenDim = "timbre_hidden_dim"
+        case isTurbo = "is_turbo"
+    }
+
+    public static let v15Base = DiTConfig(
+        hiddenSize: 2048,
+        encoderHiddenSize: 2048,
+        intermediateSize: 6144,
+        numHiddenLayers: 24,
+        numAttentionHeads: 16,
+        numKeyValueHeads: 8,
+        headDim: 128,
+        rmsNormEps: 1e-6,
+        attentionBias: false,
+        inChannels: 192,
+        audioAcousticHiddenDim: 64,
+        patchSize: 2,
+        slidingWindow: 128,
+        layerTypes: (0..<24).map { ($0 + 1) % 2 != 0 ? "sliding_attention" : "full_attention" },
+        ropeTheta: 1_000_000,
+        maxPositionEmbeddings: 32768,
+        textHiddenDim: 1024,
+        timbreHiddenDim: 64,
+        isTurbo: false
+    )
+
+    public init(
+        hiddenSize: Int,
+        encoderHiddenSize: Int,
+        intermediateSize: Int,
+        numHiddenLayers: Int,
+        numAttentionHeads: Int,
+        numKeyValueHeads: Int,
+        headDim: Int,
+        rmsNormEps: Float,
+        attentionBias: Bool,
+        inChannels: Int,
+        audioAcousticHiddenDim: Int,
+        patchSize: Int,
+        slidingWindow: Int,
+        layerTypes: [String],
+        ropeTheta: Float,
+        maxPositionEmbeddings: Int,
+        textHiddenDim: Int,
+        timbreHiddenDim: Int,
+        isTurbo: Bool
+    ) {
+        self.hiddenSize = hiddenSize
+        self.encoderHiddenSize = encoderHiddenSize
+        self.intermediateSize = intermediateSize
+        self.numHiddenLayers = numHiddenLayers
+        self.numAttentionHeads = numAttentionHeads
+        self.numKeyValueHeads = numKeyValueHeads
+        self.headDim = headDim
+        self.rmsNormEps = rmsNormEps
+        self.attentionBias = attentionBias
+        self.inChannels = inChannels
+        self.audioAcousticHiddenDim = audioAcousticHiddenDim
+        self.patchSize = patchSize
+        self.slidingWindow = slidingWindow
+        self.layerTypes = layerTypes.count == numHiddenLayers
+            ? layerTypes
+            : (0..<numHiddenLayers).map { ($0 + 1) % 2 != 0 ? "sliding_attention" : "full_attention" }
+        self.ropeTheta = ropeTheta
+        self.maxPositionEmbeddings = maxPositionEmbeddings
+        self.textHiddenDim = textHiddenDim
+        self.timbreHiddenDim = timbreHiddenDim
+        self.isTurbo = isTurbo
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let defaults = Self.v15Base
+        let hiddenSize = try container.decodeIfPresent(Int.self, forKey: .hiddenSize)
+            ?? defaults.hiddenSize
+        let numHiddenLayers = try container.decodeIfPresent(Int.self, forKey: .numHiddenLayers)
+            ?? defaults.numHiddenLayers
+        let layerTypes = try container.decodeIfPresent([String].self, forKey: .layerTypes)
+            ?? (0..<numHiddenLayers).map { ($0 + 1) % 2 != 0 ? "sliding_attention" : "full_attention" }
+
+        self.init(
+            hiddenSize: hiddenSize,
+            encoderHiddenSize: try container.decodeIfPresent(Int.self, forKey: .encoderHiddenSize)
+                ?? defaults.encoderHiddenSize,
+            intermediateSize: try container.decodeIfPresent(Int.self, forKey: .intermediateSize)
+                ?? defaults.intermediateSize,
+            numHiddenLayers: numHiddenLayers,
+            numAttentionHeads: try container.decodeIfPresent(Int.self, forKey: .numAttentionHeads)
+                ?? defaults.numAttentionHeads,
+            numKeyValueHeads: try container.decodeIfPresent(Int.self, forKey: .numKeyValueHeads)
+                ?? defaults.numKeyValueHeads,
+            headDim: try container.decodeIfPresent(Int.self, forKey: .headDim)
+                ?? defaults.headDim,
+            rmsNormEps: try container.decodeIfPresent(Float.self, forKey: .rmsNormEps)
+                ?? defaults.rmsNormEps,
+            attentionBias: try container.decodeIfPresent(Bool.self, forKey: .attentionBias)
+                ?? defaults.attentionBias,
+            inChannels: try container.decodeIfPresent(Int.self, forKey: .inChannels)
+                ?? defaults.inChannels,
+            audioAcousticHiddenDim: try container.decodeIfPresent(Int.self, forKey: .audioAcousticHiddenDim)
+                ?? defaults.audioAcousticHiddenDim,
+            patchSize: try container.decodeIfPresent(Int.self, forKey: .patchSize)
+                ?? defaults.patchSize,
+            slidingWindow: try container.decodeIfPresent(Int.self, forKey: .slidingWindow)
+                ?? defaults.slidingWindow,
+            layerTypes: layerTypes,
+            ropeTheta: try container.decodeIfPresent(Float.self, forKey: .ropeTheta)
+                ?? defaults.ropeTheta,
+            maxPositionEmbeddings: try container.decodeIfPresent(Int.self, forKey: .maxPositionEmbeddings)
+                ?? defaults.maxPositionEmbeddings,
+            textHiddenDim: try container.decodeIfPresent(Int.self, forKey: .textHiddenDim)
+                ?? defaults.textHiddenDim,
+            timbreHiddenDim: try container.decodeIfPresent(Int.self, forKey: .timbreHiddenDim)
+                ?? defaults.timbreHiddenDim,
+            isTurbo: try container.decodeIfPresent(Bool.self, forKey: .isTurbo)
+                ?? defaults.isTurbo
+        )
+    }
+
+    public static func load(from url: URL) throws -> DiTConfig {
+        let data = try Data(contentsOf: url)
+        return try JSONDecoder().decode(DiTConfig.self, from: data)
+    }
+
+    public var isSupportedBySwiftRuntime: Bool {
+        encoderHiddenSize == 2048
+            && textHiddenDim == 1024
+            && timbreHiddenDim == 64
+            && inChannels == 192
+            && audioAcousticHiddenDim == 64
+            && patchSize == 2
+    }
+
+    public var runtimeSupportNote: String? {
+        guard !isSupportedBySwiftRuntime else { return nil }
+        return "This ACE-Step DiT can be downloaded, but this build cannot run it yet. It declares encoder_hidden_size=\(encoderHiddenSize), text_hidden_dim=\(textHiddenDim), timbre_hidden_dim=\(timbreHiddenDim), in_channels=\(inChannels), audio_acoustic_hidden_dim=\(audioAcousticHiddenDim), patch_size=\(patchSize); the current Swift conditioning runtime requires 2048/1024/64/192/64/2."
+    }
+
+    public var variantFamily: String {
+        hiddenSize >= 2560 || numHiddenLayers >= 32 ? "ace-step-1.5-xl" : "ace-step-1.5"
+    }
+}
+
 public class DiTDecoder: Module {
     let hiddenSize: Int
+    let encoderHiddenSize: Int
     let patchSize: Int
     let rotaryEmb: RotaryEmbedding
     let projIn: Conv1d
@@ -22,6 +205,7 @@ public class DiTDecoder: Module {
 
     public init(
         hiddenSize: Int = 2048,
+        encoderHiddenSize: Int = 2048,
         intermediateSize: Int = 6144,
         numHiddenLayers: Int = 24,
         numAttentionHeads: Int = 16,
@@ -38,6 +222,7 @@ public class DiTDecoder: Module {
         maxPositionEmbeddings: Int = 32768
     ) {
         self.hiddenSize = hiddenSize
+        self.encoderHiddenSize = encoderHiddenSize
         self.patchSize = patchSize
         self.slidingWindow = slidingWindow
 
@@ -55,7 +240,7 @@ public class DiTDecoder: Module {
         )
         self.timeEmbed = TimestepEmbedding(inChannels: 256, timeEmbedDim: hiddenSize)
         self.timeEmbedR = TimestepEmbedding(inChannels: 256, timeEmbedDim: hiddenSize)
-        self.conditionEmbedder = Linear(hiddenSize, hiddenSize, bias: true)
+        self.conditionEmbedder = Linear(encoderHiddenSize, hiddenSize, bias: true)
 
         self.layers = (0..<numHiddenLayers).map { i in
             DiTLayer(
@@ -78,7 +263,28 @@ public class DiTDecoder: Module {
             kernelSize: patchSize, stride: patchSize, padding: 0
         )
         self.scaleShiftTable = MLXArray.zeros([1, 2, hiddenSize])
-        self.nullConditionEmb = MLXArray.zeros([1, 1, hiddenSize])
+        self.nullConditionEmb = MLXArray.zeros([1, 1, encoderHiddenSize])
+    }
+
+    public convenience init(config: DiTConfig) {
+        self.init(
+            hiddenSize: config.hiddenSize,
+            encoderHiddenSize: config.encoderHiddenSize,
+            intermediateSize: config.intermediateSize,
+            numHiddenLayers: config.numHiddenLayers,
+            numAttentionHeads: config.numAttentionHeads,
+            numKeyValueHeads: config.numKeyValueHeads,
+            headDim: config.headDim,
+            rmsNormEps: config.rmsNormEps,
+            attentionBias: config.attentionBias,
+            inChannels: config.inChannels,
+            audioAcousticHiddenDim: config.audioAcousticHiddenDim,
+            patchSize: config.patchSize,
+            slidingWindow: config.slidingWindow,
+            layerTypes: config.layerTypes,
+            ropeTheta: config.ropeTheta,
+            maxPositionEmbeddings: config.maxPositionEmbeddings
+        )
     }
 
     private func getSlidingMask(seqLen: Int) -> MLXArray {

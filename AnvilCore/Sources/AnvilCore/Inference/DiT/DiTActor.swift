@@ -15,12 +15,26 @@ public enum DiTActorError: Error, LocalizedError, Sendable {
 
 public actor DiTActor {
     private var decoder: DiTDecoder?
-    private let decoderFactory: () -> DiTDecoder
+    private var decoderConfig: DiTConfig
     public private(set) var loadedModelID: String?
 
     public init(decoder: DiTDecoder) {
         self.decoder = decoder
-        self.decoderFactory = { DiTDecoder() }
+        self.decoderConfig = .v15Base
+    }
+
+    public init(config: DiTConfig = .v15Base) {
+        self.decoder = DiTDecoder(config: config)
+        self.decoderConfig = config
+    }
+
+    public func configure(config: DiTConfig) {
+        guard config != decoderConfig else { return }
+        decoderConfig = config
+        decoder = nil
+        loadedModelID = nil
+        injectedPaths = []
+        injectedAdapterID = nil
     }
 
     public func step(
@@ -56,7 +70,7 @@ public actor DiTActor {
 
     public func loadWeights(_ weights: [(String, MLXArray)], modelID: String) {
         if decoder == nil {
-            decoder = decoderFactory()
+            decoder = DiTDecoder(config: decoderConfig)
         }
 
         // Diagnostic: build the set of model parameter paths and the set

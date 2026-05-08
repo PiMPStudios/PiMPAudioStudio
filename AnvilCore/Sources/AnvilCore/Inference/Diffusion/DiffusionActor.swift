@@ -160,6 +160,10 @@ public actor DiffusionActor {
         await dit.loadWeights(weights, modelID: modelID)
     }
 
+    public func configureDiT(config: DiTConfig) async {
+        await dit.configure(config: config)
+    }
+
     public func unloadDiTWeights() async {
         await dit.unloadWeights()
     }

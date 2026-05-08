@@ -21,22 +21,15 @@ struct ClaudeLyricWriter: LyricWriter {
                 request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
                 request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
 
-                let linesPerSection = Int(duration / 15)
-                let systemPrompt = """
-                    You are a songwriter. Write lyrics for a song based on the user's description. \
-                    Use section markers: [Verse], [Chorus], [Bridge], [Outro]. Match the mood, genre, \
-                    and energy of the description. Target duration: \(Int(duration)) seconds (roughly \
-                    \(linesPerSection) lines per section). Output only the lyrics with section markers. \
-                    No commentary.
-                    """
+                let plan = LyricWritingPlan.make(duration: duration)
 
                 let body: [String: Any] = [
                     "model": "claude-sonnet-4-20250514",
-                    "max_tokens": 1024,
+                    "max_tokens": plan.maxTokens,
                     "stream": true,
-                    "system": systemPrompt,
+                    "system": plan.systemPrompt,
                     "messages": [
-                        ["role": "user", "content": "Style: \(style)\n\n\(prompt)"]
+                        ["role": "user", "content": plan.userPrompt(prompt: prompt, style: style)]
                     ]
                 ]
 

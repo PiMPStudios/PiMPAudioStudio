@@ -7,8 +7,7 @@ private let logger = Logger(subsystem: "com.pimp.AnvilApp", category: "ACEStepGe
 
 /// Handles ACE-Step generation: weight loading (DiT + VAE), ConditioningActor lifecycle,
 /// and diffusion. Internal to the GenerationService facade.
-@MainActor
-final class ACEStepGenerationService {
+actor ACEStepGenerationService {
     enum Event {
         case loadingWeights(progress: Float)
         case conditioning
@@ -24,6 +23,7 @@ final class ACEStepGenerationService {
 
     private var currentlyLoadedDiTModelID: String?
     private var currentlyLoadedVAEModelID: String?
+    private var currentlyLoadedDiTConfig: DiTConfig?
 
     init(
         pipeline: MusicPipeline,
@@ -78,7 +78,9 @@ final class ACEStepGenerationService {
                     // Full or SFT at 8 steps produces unstable / noisy output.
                     // The user can override via Advanced settings.
                     let loadedDiTID = currentlyLoadedDiTModelID ?? ""
-                    let autoSteps: Int = loadedDiTID.contains("turbo") ? 8 : 50
+                    let autoSteps: Int = (currentlyLoadedDiTConfig?.isTurbo == true || loadedDiTID.contains("turbo"))
+                        ? 8
+                        : 50
                     let inferSteps: Int = request.stepsOverride ?? autoSteps
 
                     // Shift defaults to the upstream MLX-handler value (3.0).
@@ -139,6 +141,7 @@ final class ACEStepGenerationService {
         await pipeline.unloadDiTWeights()
         await pipeline.unloadVAEWeights()
         currentlyLoadedDiTModelID = nil
+        currentlyLoadedDiTConfig = nil
         currentlyLoadedVAEModelID = nil
     }
 
@@ -153,13 +156,22 @@ final class ACEStepGenerationService {
 
         await pipeline.unloadDiTWeights()
         currentlyLoadedDiTModelID = nil
+        currentlyLoadedDiTConfig = nil
 
         do {
-            let weightsPath = spec.localPath(for: "model.safetensors", base: baseDir)
-            let rawWeights = try await weightConverter.loadSafetensors(from: weightsPath)
+            let configPath = spec.localPath(for: "config.json", base: baseDir)
+            let ditConfig = try DiTConfig.load(from: configPath)
+            guard ditConfig.isSupportedBySwiftRuntime else {
+                throw GenerationError.modelNotConfigured(ditConfig.runtimeSupportNote ?? "Unsupported ACE-Step DiT architecture")
+            }
+            await pipeline.configureDiT(config: ditConfig)
+
+            let weightPaths = ditWeightPaths(for: spec, baseDir: baseDir)
+            let rawWeights = try await weightConverter.loadSafetensors(from: weightPaths)
             let weights = try await weightConverter.convertDiTWeights(stateDict: rawWeights)
             await pipeline.loadDiTWeights(weights, modelID: spec.id)
             currentlyLoadedDiTModelID = spec.id
+            currentlyLoadedDiTConfig = ditConfig
 
             // Upgrade stub ConditioningActor to one backed by the real downloaded tokenizer.
             // tokenizer.json lives in the VAE spec's local directory (shared between DiT variants).
@@ -225,6 +237,19 @@ final class ACEStepGenerationService {
             }
             throw error
         }
+    }
+
+    private func ditWeightPaths(for spec: ModelSpec, baseDir: URL) -> [URL] {
+        let paths = spec.files
+            .filter { file in
+                file.localName == "model.safetensors"
+                    || (file.localName.hasPrefix("model-") && file.localName.hasSuffix(".safetensors"))
+            }
+            .map { spec.localPath(for: $0.localName, base: baseDir) }
+
+        return paths.isEmpty
+            ? [spec.localPath(for: "model.safetensors", base: baseDir)]
+            : paths
     }
 
     private func loadVAEWeights() async throws {

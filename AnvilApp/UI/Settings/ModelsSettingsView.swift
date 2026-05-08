@@ -17,6 +17,7 @@ struct ModelsSettingsView: View {
     @State private var showRemoveConfirmation: String?
     @State private var errorMessage: String?
     @State private var refreshTask: Task<Void, Never>?
+    @State private var isReleasingMemory: Bool = false
 
     var body: some View {
         Form {
@@ -27,7 +28,10 @@ struct ModelsSettingsView: View {
             memorySection
             AddModelView(
                 registry: appState.registry,
-                onModelAdded: { refreshModels() }
+                onModelAdded: { refreshModels() },
+                onModelStatusChanged: { id, status in
+                    statuses[id] = status
+                }
             )
         }
         .formStyle(.grouped)
@@ -101,6 +105,10 @@ struct ModelsSettingsView: View {
             let vaeSpecs = aceStepSpecs.filter { $0.category == .aceStepVAE }
             let ditByFamily = Dictionary(grouping: ditSpecs) { $0.variantFamily ?? "ungrouped" }
 
+            Text("Pick one DiT quality/speed tier. All tiers share the VAE + Text Encoder below.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
             ForEach(ditByFamily.keys.sorted(), id: \.self) { family in
                 let variants = (ditByFamily[family] ?? []).sorted(by: { $0.id < $1.id })
                 if variants.count > 1 {
@@ -116,8 +124,17 @@ struct ModelsSettingsView: View {
                 }
             }
 
+            if !vaeSpecs.isEmpty {
+                Text("Shared Components")
+                    .font(.headline)
+                    .padding(.top, 6)
+                Text("Required once for every ACE-Step music tier. This is the 48 kHz VAE decoder plus Qwen text encoder/tokenizer, not a separate quality choice.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             ForEach(vaeSpecs, id: \.id) { spec in
                 modelRow(for: spec)
+                    .padding(.leading, 12)
             }
         }
     }
@@ -138,6 +155,7 @@ struct ModelsSettingsView: View {
     private func familyDisplayName(_ family: String) -> String {
         switch family {
         case "ace-step-1.5": return "ACE-Step v1.5"
+        case "ace-step-1.5-xl": return "ACE-Step v1.5 XL"
         case "ungrouped":    return ""
         default:             return family.replacingOccurrences(of: "-", with: " ").capitalized
         }
@@ -197,14 +215,26 @@ struct ModelsSettingsView: View {
                 }
                 Spacer()
                 Button("Release") {
-                    Task {
-                        await appState.unloadAllModels(
-                            generationService: generationService,
-                            sfxModelManager: sfxModelManager
-                        )
-                    }
+                    releaseMemory()
                 }
                 .buttonStyle(.bordered)
+                .disabled(isReleasingMemory)
+                if isReleasingMemory {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+            }
+        }
+    }
+
+    private func releaseMemory() {
+        guard !isReleasingMemory else { return }
+        isReleasingMemory = true
+        Task {
+            await generationService.unloadAllWeights()
+            sfxModelManager.unloadPipeline()
+            await MainActor.run {
+                isReleasingMemory = false
             }
         }
     }
@@ -315,6 +345,15 @@ private struct ModelRow: View {
                     Text(spec.displayName)
                         .font(.body)
                         .fontWeight(isActive ? .semibold : .regular)
+                    if let label = qualityLabel {
+                        Text(label)
+                            .font(.caption2)
+                            .fontWeight(.semibold)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(qualityColor.opacity(0.14), in: Capsule())
+                            .foregroundStyle(qualityColor)
+                    }
                     if isActive {
                         Image(systemName: "checkmark.circle.fill")
                             .foregroundStyle(Color.accentColor)
@@ -324,6 +363,16 @@ private struct ModelRow: View {
                 Text(spec.totalSizeFormatted)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                if let description = tierDescription {
+                    Text(description)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                if !spec.isRunnable, let note = spec.runtimeNote {
+                    Text(note)
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                }
             }
 
             Spacer()
@@ -334,6 +383,50 @@ private struct ModelRow: View {
         }
         .padding(.vertical, 2)
         .listRowBackground(isActive ? Color.accentColor.opacity(0.08) : nil)
+    }
+
+    private var qualityLabel: String? {
+        if !spec.isRunnable { return "Download only" }
+        switch spec.id {
+        case "ace-step-dit-turbo": return "Good / fastest"
+        case "ace-step-dit-base":  return "Better"
+        case "ace-step-dit-sft":   return "Best"
+        case "ace-step-vae":       return "Shared"
+        case let id where id.contains("xl"): return "XL / experimental"
+        default:                   return nil
+        }
+    }
+
+    private var qualityColor: Color {
+        if !spec.isRunnable { return .orange }
+        switch spec.id {
+        case "ace-step-dit-turbo": return .blue
+        case "ace-step-dit-base":  return .orange
+        case "ace-step-dit-sft":   return .purple
+        case "ace-step-vae":       return .secondary
+        case let id where id.contains("xl"): return .purple
+        default:                   return .secondary
+        }
+    }
+
+    private var tierDescription: String? {
+        if !spec.isRunnable {
+            return "Checkpoint layout is supported for download, but runtime architecture support is pending."
+        }
+        switch spec.id {
+        case "ace-step-dit-turbo":
+            return "Fast 8-step music model; best for quick iteration."
+        case "ace-step-dit-base":
+            return "Full 50-step base model; slower, usually more coherent than Turbo."
+        case "ace-step-dit-sft":
+            return "Instruction-tuned 50-step model; intended highest-quality text-to-music tier."
+        case "ace-step-vae":
+            return "Shared VAE decoder + Qwen text encoder used by Turbo, Full, and SFT."
+        case let id where id.contains("xl"):
+            return "4B DiT checkpoint; higher-capacity but much slower and heavier than SFT."
+        default:
+            return nil
+        }
     }
 
     @ViewBuilder
@@ -378,7 +471,7 @@ private struct ModelRow: View {
         switch status {
         case .ready:
             HStack(spacing: 4) {
-                if !isActive {
+                if !isActive && spec.isRunnable {
                     Button("Set Active") { onSetActive() }
                         .controlSize(.small)
                 }

@@ -162,7 +162,7 @@ final class AppServices: ObservableObject {
         registry: ModelRegistry
     ) -> GenerationService {
         let vae = VAEActor()
-        let dit = DiTActor(decoder: DiTDecoder())
+        let dit = DiTActor(config: .v15Base)
         let diffusion = DiffusionActor(dit: dit)
         let pipeline = MusicPipeline(vae: vae, diffusion: diffusion)
         let conditioning: ConditioningActor

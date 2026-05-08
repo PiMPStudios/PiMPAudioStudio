@@ -13,29 +13,16 @@ struct LocalLyricWriter: LyricWriter {
     }
 
     func write(prompt: String, style: String, duration: TimeInterval) -> AsyncStream<String> {
-        let linesEstimate = max(Int(duration / 15), 4)
-        let systemPrompt = """
-            You are a songwriter. Write lyrics for a song based on the user's description. \
-            Use section markers: [Verse], [Chorus], [Bridge], [Outro]. \
-            Match the mood, genre, and energy of the description. \
-            Target duration: \(Int(duration)) seconds (roughly \(linesEstimate) lines per section). \
-            Output only the lyrics with section markers. No commentary.
-            """
-
-        let userPrompt: String
-        if style.isEmpty {
-            userPrompt = prompt
-        } else {
-            userPrompt = "\(prompt)\nStyle: \(style)"
-        }
+        let plan = LyricWritingPlan.make(duration: duration)
+        let userPrompt = plan.userPrompt(prompt: prompt, style: style)
 
         let actor = llm
         return AsyncStream { continuation in
             let task = Task {
                 let stream = await actor.generate(
-                    systemPrompt: systemPrompt,
+                    systemPrompt: plan.systemPrompt,
                     userPrompt: userPrompt,
-                    maxTokens: 256,
+                    maxTokens: plan.maxTokens,
                     temperature: 0.8
                 )
                 for await chunk in stream {

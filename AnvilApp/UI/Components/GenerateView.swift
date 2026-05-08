@@ -258,7 +258,7 @@ struct GenerateView: View {
                     TextField("auto", text: $stepsOverrideText)
                         .textFieldStyle(.roundedBorder)
                         .frame(maxWidth: 80)
-                    Text("(blank = auto: 8 Turbo / 50 Base or SFT)")
+                    Text("(blank = auto: 8 Turbo / 50 Base, SFT, or XL)")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                     Spacer()

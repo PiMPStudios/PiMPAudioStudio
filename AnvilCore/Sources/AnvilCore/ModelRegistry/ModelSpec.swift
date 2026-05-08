@@ -45,6 +45,23 @@ public struct ModelSpec: Sendable, Identifiable, Codable {
     public let variantFamily: String?
     /// When true, downloads attach `Authorization: Bearer <token>` and gate on token presence.
     public let requiresAuth: Bool
+    /// Downloads are allowed, but generation should not load this model yet.
+    /// Used for model families the registry can discover before the Swift
+    /// runtime can instantiate the matching architecture.
+    public let isRunnable: Bool
+    public let runtimeNote: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case displayName
+        case huggingFaceRepo
+        case files
+        case category
+        case variantFamily
+        case requiresAuth
+        case isRunnable
+        case runtimeNote
+    }
 
     public init(
         id: String,
@@ -53,7 +70,9 @@ public struct ModelSpec: Sendable, Identifiable, Codable {
         files: [ModelFileSpec],
         category: ModelCategory,
         variantFamily: String? = nil,
-        requiresAuth: Bool = false
+        requiresAuth: Bool = false,
+        isRunnable: Bool = true,
+        runtimeNote: String? = nil
     ) {
         self.id = id
         self.displayName = displayName
@@ -62,6 +81,34 @@ public struct ModelSpec: Sendable, Identifiable, Codable {
         self.category = category
         self.variantFamily = variantFamily
         self.requiresAuth = requiresAuth
+        self.isRunnable = isRunnable
+        self.runtimeNote = runtimeNote
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(String.self, forKey: .id)
+        self.displayName = try container.decode(String.self, forKey: .displayName)
+        self.huggingFaceRepo = try container.decode(String.self, forKey: .huggingFaceRepo)
+        self.files = try container.decode([ModelFileSpec].self, forKey: .files)
+        self.category = try container.decode(ModelCategory.self, forKey: .category)
+        self.variantFamily = try container.decodeIfPresent(String.self, forKey: .variantFamily)
+        self.requiresAuth = try container.decodeIfPresent(Bool.self, forKey: .requiresAuth) ?? false
+        self.isRunnable = try container.decodeIfPresent(Bool.self, forKey: .isRunnable) ?? true
+        self.runtimeNote = try container.decodeIfPresent(String.self, forKey: .runtimeNote)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(displayName, forKey: .displayName)
+        try container.encode(huggingFaceRepo, forKey: .huggingFaceRepo)
+        try container.encode(files, forKey: .files)
+        try container.encode(category, forKey: .category)
+        try container.encodeIfPresent(variantFamily, forKey: .variantFamily)
+        try container.encode(requiresAuth, forKey: .requiresAuth)
+        try container.encode(isRunnable, forKey: .isRunnable)
+        try container.encodeIfPresent(runtimeNote, forKey: .runtimeNote)
     }
 
     public var totalSizeBytes: Int64 {

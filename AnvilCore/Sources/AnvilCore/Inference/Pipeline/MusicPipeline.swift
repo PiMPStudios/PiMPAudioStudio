@@ -40,6 +40,10 @@ public actor MusicPipeline {
         await diffusion.loadDiTWeights(weights, modelID: modelID)
     }
 
+    public func configureDiT(config: DiTConfig) async {
+        await diffusion.configureDiT(config: config)
+    }
+
     public func unloadDiTWeights() async {
         await diffusion.unloadDiTWeights()
     }

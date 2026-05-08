@@ -431,6 +431,9 @@ public actor ModelRegistry {
         guard spec.category == category else {
             throw RegistryError.categoryMismatch(expected: category, got: spec.category)
         }
+        guard spec.isRunnable else {
+            throw RegistryError.modelNotRunnable(spec.displayName, spec.runtimeNote)
+        }
         guard isModelReady(id) else {
             throw RegistryError.modelNotReady(id)
         }
@@ -484,10 +487,48 @@ public actor ModelRegistry {
         do {
             let data = try Data(contentsOf: url)
             userSpecs = try JSONDecoder().decode([ModelSpec].self, from: data)
+            if refreshRuntimeMetadataForDownloadedACEModels() {
+                saveUserSpecs()
+            }
         } catch {
             logger.error("Failed to load user-models.json: \(error.localizedDescription). Starting with empty list.")
             userSpecs = []
         }
+    }
+
+    private func refreshRuntimeMetadataForDownloadedACEModels() -> Bool {
+        var changed = false
+        userSpecs = userSpecs.map { spec in
+            guard spec.category == .aceStepDiT else { return spec }
+            let configURL = spec.localPath(for: "config.json", base: baseDirectory)
+            guard FileManager.default.fileExists(atPath: configURL.path(percentEncoded: false)),
+                  let config = try? DiTConfig.load(from: configURL) else {
+                return spec
+            }
+
+            let runtimeNote = config.runtimeSupportNote
+            let variantFamily = config.variantFamily
+            let isRunnable = runtimeNote == nil
+            guard spec.isRunnable != isRunnable
+                    || spec.runtimeNote != runtimeNote
+                    || spec.variantFamily != variantFamily else {
+                return spec
+            }
+
+            changed = true
+            return ModelSpec(
+                id: spec.id,
+                displayName: spec.displayName,
+                huggingFaceRepo: spec.huggingFaceRepo,
+                files: spec.files,
+                category: spec.category,
+                variantFamily: variantFamily,
+                requiresAuth: spec.requiresAuth,
+                isRunnable: isRunnable,
+                runtimeNote: runtimeNote
+            )
+        }
+        return changed
     }
 
     private func saveUserSpecs() {
@@ -541,6 +582,7 @@ public enum RegistryError: Error, Sendable, LocalizedError {
     case unknownModel(String)
     case categoryMismatch(expected: ModelCategory, got: ModelCategory)
     case modelNotReady(String)
+    case modelNotRunnable(String, String?)
 
     public var errorDescription: String? {
         switch self {
@@ -554,6 +596,8 @@ public enum RegistryError: Error, Sendable, LocalizedError {
             return "Category mismatch: expected \(expected.rawValue), got \(got.rawValue)."
         case .modelNotReady(let id):
             return "Model '\(id)' is not downloaded yet."
+        case .modelNotRunnable(let name, let note):
+            return note ?? "\(name) can be downloaded, but this build cannot run it yet."
         }
     }
 }

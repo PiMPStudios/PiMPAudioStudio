@@ -32,21 +32,15 @@ struct OpenAILyricWriter: LyricWriter {
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
 
-                let linesPerSection = Int(duration / 15)
-                let systemPrompt = """
-                    You are a songwriter. Write lyrics for a song based on the user's description. \
-                    Use section markers: [Verse], [Chorus], [Bridge], [Outro]. Match the mood, genre, \
-                    and energy of the description. Target duration: \(Int(duration)) seconds (roughly \
-                    \(linesPerSection) lines per section). Output only the lyrics with section markers. \
-                    No commentary.
-                    """
+                let plan = LyricWritingPlan.make(duration: duration)
 
                 let body: [String: Any] = [
                     "model": model,
                     "stream": true,
+                    "max_tokens": plan.maxTokens,
                     "messages": [
-                        ["role": "system", "content": systemPrompt],
-                        ["role": "user", "content": "Style: \(style)\n\n\(prompt)"]
+                        ["role": "system", "content": plan.systemPrompt],
+                        ["role": "user", "content": plan.userPrompt(prompt: prompt, style: style)]
                     ]
                 ]
 
