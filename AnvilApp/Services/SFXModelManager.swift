@@ -151,7 +151,7 @@ final class SFXModelManager: ObservableObject {
         let diffusion = SFXDiffusionActor(dit: dit)
 
         let vaeConfig = SFXVAEConfig(
-            latentDim: 64, outputChannels: 2, sampleRate: 44100, upsampleRatios: [8, 8, 4, 2]
+            latentDim: 64, outputChannels: 2, sampleRate: 44100, upsampleRatios: [8, 8, 4, 4, 2]
         )
         let vae = SFXVAEActor(config: vaeConfig)
         await vae.loadWeights(vaeWeights)

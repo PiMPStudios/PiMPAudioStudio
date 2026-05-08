@@ -44,66 +44,71 @@ struct SFXVAETests {
         }
     }
 
-    @Test("Encode throws when weights not loaded")
-    func encodeThrowsWithoutWeights() async {
-        let actor = SFXVAEActor(config: config)
-        let audio = MLXRandom.normal([1, 2048, 2])
-        await #expect(throws: SFXVAEActorError.weightsNotLoaded) {
-            try await actor.encode(audio: audio)
-        }
-    }
-
     // MARK: - Helpers
 
-    /// Produces random-shaped weights matching SFXVAEModel's parameter structure for the test
-    /// config: latentDim=64, outputChannels=2, upsampleRatios=[8,8,4,2].
+    /// Produces random-shaped weights matching OobleckDecoder's parameter structure.
+    ///
+    /// Config: channels=128, channelMultiples=[1,2,4,8,16], latentDim=64,
+    /// audioChannels=2, upsamplingRatios=[8,8,4,2].
+    ///
+    /// cm = [1,1,2,4,8,16] (prepend 1 to channelMultiples).
+    ///   decoder.conv1: Conv1d(in=64, out=128*16=2048, k=7)
+    ///   decoder.blocks.N: OobleckDecoderBlock — see below
+    ///   decoder.snake1: Snake1d(hiddenDim=128)
+    ///   decoder.conv2: Conv1d(in=128, out=2, k=7, no bias)
     private func randomVAEWeights() -> [(String, MLXArray)] {
         var w: [(String, MLXArray)] = []
+        let channels = 128
+        let cm = [1, 1, 2, 4, 8, 16]   // [1] + channelMultiples
+        let ratios = config.upsampleRatios  // [8,8,4,2]
 
-        // Decoder projIn: Linear(64, 64)
-        w.append(("projIn.weight", MLXRandom.normal([64, 64])))
-        w.append(("projIn.bias", MLXArray.zeros([64])))
+        // decoder.conv1: Conv1d([B,T,64] → [B,T,2048])
+        // MLX Conv1d weight layout: [outC, kernelSize, inC]
+        w.append(("decoder.conv1.weight", MLXRandom.normal([channels * cm.last!, 7, config.latentDim])))
+        w.append(("decoder.conv1.bias", MLXArray.zeros([channels * cm.last!])))
 
-        // upsampleBlocks: Linear(inputDim, outputDim * ratio)
-        // Block 0: ratio=8, in=64, out=32 → Linear(64, 256)
-        w.append(("upsampleBlocks.0.linear.weight", MLXRandom.normal([256, 64])))
-        w.append(("upsampleBlocks.0.linear.bias", MLXArray.zeros([256])))
-        // Block 1: ratio=8, in=32, out=16 → Linear(32, 128)
-        w.append(("upsampleBlocks.1.linear.weight", MLXRandom.normal([128, 32])))
-        w.append(("upsampleBlocks.1.linear.bias", MLXArray.zeros([128])))
-        // Block 2: ratio=4, in=16, out=8 → Linear(16, 32)
-        w.append(("upsampleBlocks.2.linear.weight", MLXRandom.normal([32, 16])))
-        w.append(("upsampleBlocks.2.linear.bias", MLXArray.zeros([32])))
-        // Block 3: ratio=2, in=8, out=4 → Linear(8, 8)
-        w.append(("upsampleBlocks.3.linear.weight", MLXRandom.normal([8, 8])))
-        w.append(("upsampleBlocks.3.linear.bias", MLXArray.zeros([8])))
+        // decoder.blocks.N: OobleckDecoderBlock(inputDim, outputDim, stride)
+        // Decoder iterates i in 0..<ratios.count, idx = ratios.count - i
+        //   inputDim = channels * cm[idx], outputDim = channels * cm[idx-1]
+        func appendResUnit(prefix: String, dim: Int) {
+            // snake1
+            w.append(("\(prefix).snake1.alpha", MLXArray.zeros([dim])))
+            w.append(("\(prefix).snake1.beta", MLXArray.zeros([dim])))
+            // conv1: Conv1d(dim, dim, k=7) — [outC, k, inC]
+            w.append(("\(prefix).conv1.weight", MLXRandom.normal([dim, 7, dim])))
+            w.append(("\(prefix).conv1.bias", MLXArray.zeros([dim])))
+            // snake2
+            w.append(("\(prefix).snake2.alpha", MLXArray.zeros([dim])))
+            w.append(("\(prefix).snake2.beta", MLXArray.zeros([dim])))
+            // conv2: Conv1d(dim, dim, k=1) — [outC, k, inC]
+            w.append(("\(prefix).conv2.weight", MLXRandom.normal([dim, 1, dim])))
+            w.append(("\(prefix).conv2.bias", MLXArray.zeros([dim])))
+        }
 
-        // Decoder projOut: Linear(4, 2)
-        w.append(("projOut.weight", MLXRandom.normal([2, 4])))
-        w.append(("projOut.bias", MLXArray.zeros([2])))
+        for (i, stride) in ratios.enumerated() {
+            let idx = ratios.count - i
+            let inDim = channels * cm[idx]
+            let outDim = channels * cm[idx - 1]
+            let p = "decoder.blocks.\(i)"
+            // snake1
+            w.append(("\(p).snake1.alpha", MLXArray.zeros([inDim])))
+            w.append(("\(p).snake1.beta", MLXArray.zeros([inDim])))
+            // convT1: ConvTransposed1d(inDim, outDim, k=2*stride) — [inC, k, outC] in MLX
+            let kernelSize = 2 * stride
+            w.append(("\(p).convT1.weight", MLXRandom.normal([inDim, kernelSize, outDim])))
+            w.append(("\(p).convT1.bias", MLXArray.zeros([outDim])))
+            // 3 residual units operating on outDim
+            appendResUnit(prefix: "\(p).resUnit1", dim: outDim)
+            appendResUnit(prefix: "\(p).resUnit2", dim: outDim)
+            appendResUnit(prefix: "\(p).resUnit3", dim: outDim)
+        }
 
-        // Encoder encoderProjIn: Linear(2, 2)
-        w.append(("encoderProjIn.weight", MLXRandom.normal([2, 2])))
-        w.append(("encoderProjIn.bias", MLXArray.zeros([2])))
+        // decoder.snake1: Snake1d(hiddenDim=128)
+        w.append(("decoder.snake1.alpha", MLXArray.zeros([channels])))
+        w.append(("decoder.snake1.beta", MLXArray.zeros([channels])))
 
-        // downsampleBlocks: Linear(inputDim * ratio, outputDim)
-        // Reversed ratios = [2, 4, 8, 8]
-        // Block 0: ratio=2, in=2, out=4 → Linear(4, 4)
-        w.append(("downsampleBlocks.0.linear.weight", MLXRandom.normal([4, 4])))
-        w.append(("downsampleBlocks.0.linear.bias", MLXArray.zeros([4])))
-        // Block 1: ratio=4, in=4, out=8 → Linear(16, 8)
-        w.append(("downsampleBlocks.1.linear.weight", MLXRandom.normal([8, 16])))
-        w.append(("downsampleBlocks.1.linear.bias", MLXArray.zeros([8])))
-        // Block 2: ratio=8, in=8, out=16 → Linear(64, 16)
-        w.append(("downsampleBlocks.2.linear.weight", MLXRandom.normal([16, 64])))
-        w.append(("downsampleBlocks.2.linear.bias", MLXArray.zeros([16])))
-        // Block 3: ratio=8, in=16, out=32 → Linear(128, 32)
-        w.append(("downsampleBlocks.3.linear.weight", MLXRandom.normal([32, 128])))
-        w.append(("downsampleBlocks.3.linear.bias", MLXArray.zeros([32])))
-
-        // Encoder encoderProjOut: Linear(32, 128)
-        w.append(("encoderProjOut.weight", MLXRandom.normal([128, 32])))
-        w.append(("encoderProjOut.bias", MLXArray.zeros([128])))
+        // decoder.conv2: Conv1d(128, 2, k=7, no bias) — [outC, k, inC]
+        w.append(("decoder.conv2.weight", MLXRandom.normal([config.outputChannels, 7, channels])))
 
         return w
     }

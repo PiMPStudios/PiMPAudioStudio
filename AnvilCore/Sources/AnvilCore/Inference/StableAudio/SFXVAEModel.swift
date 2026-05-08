@@ -1,107 +1,42 @@
 // AnvilCore/Sources/AnvilCore/Inference/StableAudio/SFXVAEModel.swift
+//
+// Thin wrapper over OobleckDecoder for Stable Audio Open.
+//
+// The SAO 1.0 vae.safetensors uses the same weight-normed Oobleck format as the
+// ACE-Step music VAE.  Weight loading is handled by WeightConverter.loadSFXVAEWeights
+// which applies VAENameMap (weight-norm fusion + axis transpositions + snake squeeze).
+//
+// SAO 1.0 decoder config:
+//   latentDim=64  →  channels=128  ×  channelMultiples=[1,2,4,8,16]
+//   upsamplingRatios=[8,8,4,4,2]   →  total upsampling = 2048 (= hop_length)
+//   audioChannels=2  (stereo; WAVWriter handles [B,T,2] correctly)
+//
+// The module property `decoder` is the root for weight paths, so checkpoint keys
+// like `decoder.conv1.weight` and `decoder.blocks.0.convT1.weight` resolve
+// directly after VAENameMap remapping.
+
 import Foundation
 import MLX
 import MLXNN
 
 public class SFXVAEModel: Module {
     let config: SFXVAEConfig
-    let projIn: Linear
-    let upsampleBlocks: [SFXUpsampleBlock]
-    let projOut: Linear
-
-    let encoderProjIn: Linear
-    let downsampleBlocks: [SFXDownsampleBlock]
-    let encoderProjOut: Linear
+    let decoder: OobleckDecoder
 
     public init(config: SFXVAEConfig) {
         self.config = config
-
-        // Decoder setup
-        var currentDim = config.latentDim
-        self.projIn = Linear(config.latentDim, currentDim)
-
-        var upBlocks: [SFXUpsampleBlock] = []
-        for ratio in config.upsampleRatios {
-            let outDim = max(currentDim / 2, config.outputChannels)
-            upBlocks.append(SFXUpsampleBlock(inputDim: currentDim, outputDim: outDim, ratio: ratio))
-            currentDim = outDim
-        }
-        self.upsampleBlocks = upBlocks
-        self.projOut = Linear(currentDim, config.outputChannels)
-
-        // Encoder setup (symmetric — reversed upsample ratios, doubling dims up to latentDim)
-        var encDim = config.outputChannels
-        self.encoderProjIn = Linear(config.outputChannels, encDim)
-
-        var downBlocks: [SFXDownsampleBlock] = []
-        for ratio in config.upsampleRatios.reversed() {
-            let outDim = min(encDim * 2, config.latentDim)
-            downBlocks.append(SFXDownsampleBlock(inputDim: encDim, outputDim: outDim, ratio: ratio))
-            encDim = outDim
-        }
-        self.downsampleBlocks = downBlocks
-        self.encoderProjOut = Linear(encDim, config.latentDim * 2)
+        // channelMultiples is fixed for SAO 1.0; upsamplingRatios come from config.
+        self.decoder = OobleckDecoder(
+            channels: 128,
+            inputChannels: config.latentDim,
+            audioChannels: config.outputChannels,
+            upsamplingRatios: config.upsampleRatios,
+            channelMultiples: [1, 2, 4, 8, 16]
+        )
     }
 
+    /// Decode diffusion latents `[B, T_latent, latentDim]` → audio `[B, T_audio, audioChannels]`.
     public func decode(latents: MLXArray) -> MLXArray {
-        var h = projIn(latents)
-        for block in upsampleBlocks {
-            h = block(h)
-        }
-        return projOut(h)
+        decoder(latents)
     }
-
-    public func encode(audio: MLXArray) -> MLXArray {
-        var h = encoderProjIn(audio)
-        for block in downsampleBlocks {
-            h = block(h)
-        }
-        let out = encoderProjOut(h)
-        // Split last axis into 2 parts; return first (mean)
-        let halfDim = out.shape[out.shape.count - 1] / 2
-        return out[.ellipsis, 0..<halfDim]
-    }
-}
-
-class SFXUpsampleBlock: Module {
-    let linear: Linear
-    let ratio: Int
-
-    init(inputDim: Int, outputDim: Int, ratio: Int) {
-        self.linear = Linear(inputDim, outputDim * ratio)
-        self.ratio = ratio
-    }
-
-    func callAsFunction(_ x: MLXArray) -> MLXArray {
-        let B = x.shape[0]
-        let T = x.shape[1]
-        let projected = linear(x)
-        let outDim = projected.shape[2] / ratio
-        let reshaped = projected.reshaped([B, T * ratio, outDim])
-        return sfxVAESilu(reshaped)
-    }
-}
-
-class SFXDownsampleBlock: Module {
-    let linear: Linear
-    let ratio: Int
-
-    init(inputDim: Int, outputDim: Int, ratio: Int) {
-        self.linear = Linear(inputDim * ratio, outputDim)
-        self.ratio = ratio
-    }
-
-    func callAsFunction(_ x: MLXArray) -> MLXArray {
-        let B = x.shape[0]
-        let T = x.shape[1]
-        let C = x.shape[2]
-        // Reshape [B, T, C] → [B, T/ratio, C*ratio] then project and apply SiLU
-        let reshaped = x.reshaped([B, T / ratio, C * ratio])
-        let projected = linear(reshaped)
-        return sfxVAESilu(projected)
-    }
-}
-
-private func sfxVAESilu(_ x: MLXArray) -> MLXArray {
-    x * sigmoid(x)
 }

@@ -157,17 +157,59 @@ public actor WeightConverter {
         }
     }
 
-    /// Load and remap SFX VAE weights from a safetensors file,
-    /// transposing conv1d weights to MLX layout.
+    /// Load and remap SFX VAE weights from a safetensors file.
+    ///
+    /// The SAO vae.safetensors uses the same weight-normed Oobleck format as the
+    /// ACE-Step music VAE, so we apply the same VAENameMap processing:
+    ///   - weight_g + weight_v pairs → fuse via WeightNorm, transpose axes
+    ///   - snake alpha/beta [1,C,1] → squeeze to [C]
+    ///   - all other keys → remap snake_case/block→blocks via VAENameMap.mapKey
     public func loadSFXVAEWeights(from url: URL) throws -> [(String, MLXArray)] {
         let raw = try loadSafetensors(from: url)
-        return raw.compactMap { key, value -> (String, MLXArray)? in
-            guard let mapped = SFXVAENameMap.mapKey(key) else { return nil }
-            if SFXVAENameMap.isConv1dWeight(mapped) {
-                return (mapped, SFXVAENameMap.conv1dToMLX(value))
+        let dict = Dictionary(raw, uniquingKeysWith: { first, _ in first })
+        let allKeys = raw.map { $0.0 }.sorted()
+
+        var result: [(String, MLXArray)] = []
+        var processed: Set<String> = []
+
+        for key in allKeys {
+            if processed.contains(key) { continue }
+
+            if VAENameMap.isWeightNormG(key) {
+                let vKey = VAENameMap.weightNormCompanion(key)
+                guard let g = dict[key], let v = dict[vKey] else {
+                    processed.insert(key)
+                    continue
+                }
+                var fused = VAENameMap.fuseWeightNorm(weightG: g, weightV: v)
+                let fusedKey = VAENameMap.fusedKeyName(key)
+                if VAENameMap.isConvTranspose(fusedKey) {
+                    fused = VAENameMap.convTranspose1dToMLX(fused)
+                } else {
+                    fused = VAENameMap.conv1dToMLX(fused)
+                }
+                result.append((VAENameMap.mapKey(fusedKey), fused))
+                processed.insert(key)
+                processed.insert(vKey)
+                continue
             }
-            return (mapped, value)
+
+            if VAENameMap.isWeightNormV(key) {
+                processed.insert(key)  // handled above when its _g partner was processed
+                continue
+            }
+
+            guard let value = dict[key] else { continue }
+
+            if VAENameMap.isSnakeParam(key) {
+                result.append((VAENameMap.mapKey(key), VAENameMap.squeezeSnakeParam(value)))
+            } else {
+                result.append((VAENameMap.mapKey(key), value))
+            }
+            processed.insert(key)
         }
+
+        return result
     }
 
     /// Load T5-base encoder weights for Stable Audio Open. The HF safetensors

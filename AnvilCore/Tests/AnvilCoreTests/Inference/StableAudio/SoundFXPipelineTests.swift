@@ -154,54 +154,53 @@ struct SoundFXPipelineTests {
     }
 
     /// Random weights for the test VAE config (upsampleRatios: [2, 2]).
+    ///
+    /// Generates keys matching OobleckDecoder's module layout:
+    ///   channels=128, channelMultiples=[1,2,4,8,16]
+    ///   cm=[1,1,2,4,8,16] (prepend 1), so cm.last!=16
+    ///   decoder.conv1: Conv1d(latentDim → 128*16=2048, k=7)
+    ///   decoder.blocks.N: OobleckDecoderBlock with snake1, convT1, 3×resUnit
+    ///   decoder.snake1: Snake1d(128)
+    ///   decoder.conv2: Conv1d(128 → audioChannels, k=7, no bias)
     private func randomVAEWeights(config: SFXVAEConfig) -> [(String, MLXArray)] {
         var w: [(String, MLXArray)] = []
-        let L = config.latentDim          // 64
-        let C = config.outputChannels     // 2
+        let channels = 128
+        let cm = [1, 1, 2, 4, 8, 16]
+        let latentDim = config.latentDim
+        let audioChannels = config.outputChannels
+        let ratios = config.upsampleRatios
 
-        // Decoder: projIn Linear(L, L)
-        w.append(("projIn.weight", MLXRandom.normal([L, L])))
-        w.append(("projIn.bias",   MLXArray.zeros([L])))
+        w.append(("decoder.conv1.weight", MLXRandom.normal([channels * cm.last!, 7, latentDim])))
+        w.append(("decoder.conv1.bias",   MLXArray.zeros([channels * cm.last!])))
 
-        // upsampleBlocks: inputDim halves each step; SFXUpsampleBlock.linear
-        // has out = outputDim * ratio. For upsampleRatios=[2,2]:
-        //   block 0: in=64, out=max(32,2)=32, ratio=2 → Linear(64, 64)
-        //   block 1: in=32, out=max(16,2)=16, ratio=2 → Linear(32, 32)
-        var curDim = L
-        for (i, ratio) in config.upsampleRatios.enumerated() {
-            let outDim = max(curDim / 2, C)
-            w.append(("upsampleBlocks.\(i).linear.weight",
-                      MLXRandom.normal([outDim * ratio, curDim])))
-            w.append(("upsampleBlocks.\(i).linear.bias",
-                      MLXArray.zeros([outDim * ratio])))
-            curDim = outDim
+        func appendResUnit(prefix: String, dim: Int) {
+            w.append(("\(prefix).snake1.alpha", MLXArray.zeros([dim])))
+            w.append(("\(prefix).snake1.beta",  MLXArray.zeros([dim])))
+            w.append(("\(prefix).conv1.weight",  MLXRandom.normal([dim, 7, dim])))
+            w.append(("\(prefix).conv1.bias",    MLXArray.zeros([dim])))
+            w.append(("\(prefix).snake2.alpha",  MLXArray.zeros([dim])))
+            w.append(("\(prefix).snake2.beta",   MLXArray.zeros([dim])))
+            w.append(("\(prefix).conv2.weight",  MLXRandom.normal([dim, 1, dim])))
+            w.append(("\(prefix).conv2.bias",    MLXArray.zeros([dim])))
         }
 
-        // projOut: Linear(curDim, C)
-        w.append(("projOut.weight", MLXRandom.normal([C, curDim])))
-        w.append(("projOut.bias",   MLXArray.zeros([C])))
-
-        // Encoder: encoderProjIn Linear(C, C)
-        w.append(("encoderProjIn.weight", MLXRandom.normal([C, C])))
-        w.append(("encoderProjIn.bias",   MLXArray.zeros([C])))
-
-        // downsampleBlocks: reversed ratios. SFXDownsampleBlock.linear
-        // has in = inputDim * ratio, out = outputDim.
-        //   block 0: in=2, out=min(4,64)=4, ratio=2 → Linear(4, 4)
-        //   block 1: in=4, out=min(8,64)=8, ratio=2 → Linear(8, 8)
-        var encDim = C
-        for (i, ratio) in config.upsampleRatios.reversed().enumerated() {
-            let outDim = min(encDim * 2, L)
-            w.append(("downsampleBlocks.\(i).linear.weight",
-                      MLXRandom.normal([outDim, encDim * ratio])))
-            w.append(("downsampleBlocks.\(i).linear.bias",
-                      MLXArray.zeros([outDim])))
-            encDim = outDim
+        for (i, stride) in ratios.enumerated() {
+            let idx = ratios.count - i
+            let inDim = channels * cm[idx]
+            let outDim = channels * cm[idx - 1]
+            let p = "decoder.blocks.\(i)"
+            w.append(("\(p).snake1.alpha", MLXArray.zeros([inDim])))
+            w.append(("\(p).snake1.beta",  MLXArray.zeros([inDim])))
+            w.append(("\(p).convT1.weight", MLXRandom.normal([inDim, 2 * stride, outDim])))
+            w.append(("\(p).convT1.bias",   MLXArray.zeros([outDim])))
+            appendResUnit(prefix: "\(p).resUnit1", dim: outDim)
+            appendResUnit(prefix: "\(p).resUnit2", dim: outDim)
+            appendResUnit(prefix: "\(p).resUnit3", dim: outDim)
         }
 
-        // encoderProjOut: Linear(encDim, L*2)
-        w.append(("encoderProjOut.weight", MLXRandom.normal([L * 2, encDim])))
-        w.append(("encoderProjOut.bias",   MLXArray.zeros([L * 2])))
+        w.append(("decoder.snake1.alpha", MLXArray.zeros([channels])))
+        w.append(("decoder.snake1.beta",  MLXArray.zeros([channels])))
+        w.append(("decoder.conv2.weight", MLXRandom.normal([audioChannels, 7, channels])))
 
         return w
     }

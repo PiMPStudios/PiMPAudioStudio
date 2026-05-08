@@ -34,13 +34,6 @@ public actor SFXVAEActor {
         return result
     }
 
-    public func encode(audio: MLXArray) throws -> MLXArray {
-        guard loaded else { throw SFXVAEActorError.weightsNotLoaded }
-        let result = model.encode(audio: audio)
-        eval(result)
-        return result
-    }
-
     /// See SFXDiTActor.unloadWeights() for the same note about memory.
     public func unloadWeights() {
         loaded = false
