@@ -196,17 +196,18 @@ public final class SAODiTCrossAttention: Module {
 //
 // Upstream: FeedForward { GEGLU(dim, inner).proj → split → up * gelu(gate) }
 //           followed by Linear(inner, dim).
+// Both projections have bias=True (PyTorch default).
 // Weight keys after SFXDiTNameMap:
-//   ff.ff.0.proj.weight  → ff.gate_up.weight  [2·intermediate, hidden]
-//   ff.ff.2.weight       → ff.out.weight       [hidden, intermediate]
+//   ff.ff.0.proj.weight/bias  → ff.gate_up.weight/bias  [2·intermediate, hidden] / [2·intermediate]
+//   ff.ff.2.weight/bias       → ff.out.weight/bias       [hidden, intermediate]   / [hidden]
 
 public final class SAODiTFFN: Module {
     @ModuleInfo(key: "gate_up") public var gateUp: Linear
     @ModuleInfo(key: "out")     public var projOut: Linear
 
     public init(hiddenSize: Int, intermediateDim: Int) {
-        self._gateUp.wrappedValue  = Linear(hiddenSize, intermediateDim * 2, bias: false)
-        self._projOut.wrappedValue = Linear(intermediateDim, hiddenSize, bias: false)
+        self._gateUp.wrappedValue  = Linear(hiddenSize, intermediateDim * 2, bias: true)
+        self._projOut.wrappedValue = Linear(intermediateDim, hiddenSize, bias: true)
     }
 
     public func callAsFunction(_ x: MLXArray) -> MLXArray {
