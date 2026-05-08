@@ -4,6 +4,21 @@ All notable changes to AnvilApp are documented here.
 
 ---
 
+## [Unreleased] — SAO SFX: four runtime crash fixes; first successful generation
+
+### Fixed
+
+- **SAO `projection_model` Sequential indices not stripped** (`SAOProjectionNameMap`) — `time_positional_embedding` is `nn.Sequential([FourierFeatures, nn.Linear])` in the Python checkpoint; keys arrive with `.0.weights` and `.1.weight/.1.bias` numeric indices. The mapper now remaps `.0.weights → .frequencies`, `.1.weight → .embedder.weight`, `.1.bias → .embedder.bias`. Without this, `MLXNN.UpdateError.incompatibleItems` fired at `start_number_conditioner.time_positional_embedding` because the module got an array of dicts instead of named sub-module keys.
+- **SAO DiT FFN bias initialised as `false`** (`SAODiTFFN`) — PyTorch `nn.Linear` defaults to `bias=True`; both `gateUp` (GEGLU proj, shape `[12288]`) and `projOut` (down linear) had `bias: false` in Swift. Fixed to `bias: true` for both.
+- **`AnvilTokenizer` routing T5/Unigram to `BPETokenizer`** — when no `tokenizer_config.json` exists alongside `tokenizer.json`, the tokenizer class was inferred as `"PreTrainedTokenizer"`, which swift-transformers maps to `BPETokenizer`. SAO's tokenizer is Unigram (SentencePiece, T5-style, `vocab_size=32100`, no merges), so `BPETokenizer` crashed with `"BPETokenizer requires merges"`. Fix: parse `model.type` from the raw JSON; if `"Unigram"` use `"T5Tokenizer"` (which routes to `UnigramTokenizer`). Also fixed `path(percentEncoded: false)` for the file-existence check.
+- **SAO DiT architecture mismatches causing `[broadcast_shapes]` crash** (`SFXDiTModel.swift`) — four bugs discovered by inspecting the safetensors header without loading the full 4.8 GB file:
+  - `preprocessConv` and `postprocessConv` were `Conv1d(64 → 1536)` / `Conv1d(1536 → 64)`; actual checkpoint weights are `[64, 64, 1]` — both are identity-channel 64 → 64 convolutions.
+  - `SAODiTTransformer` was missing `project_in [1536, 64]` and `project_out [64, 1536]` Linears that live *inside* the transformer block in the checkpoint; also had a spurious final `LayerNorm` that does not exist in the checkpoint.
+  - `SAODiTLayer` norms had no `@ModuleInfo` keys (defaulted to `norm1/norm2/norm3`); correct checkpoint names are `pre_norm`, `cross_attend_norm`, `ff_norm`.
+  - `SFXDiTModel.forward` tried to broadcast `gEmb [B, 1, 1536]` onto `h [B, T, 64]` before `project_in`; fixed so `gEmb` is added *after* `projectIn` expands latents to 1536 dims inside `SAODiTTransformer`.
+
+---
+
 ## [Unreleased] — Stable Audio Open: complete DiT architecture rewrite, pipeline live
 
 ### Added
