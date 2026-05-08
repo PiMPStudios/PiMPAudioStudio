@@ -4,6 +4,34 @@ All notable changes to AnvilApp are documented here.
 
 ---
 
+## [Unreleased] — SAO SFX: variational ODE Euler step, σ_max init fix, hopLength 2048
+
+### Fixed
+
+- **SAO Euler step used score-function ODE instead of variational v-prediction ODE**
+  (`DiffusionSampler.edmEulerStep`) — SAO uses the cosine/variational noise schedule
+  `x(σ) = α·x₀ + σ_c·ε` (keeping x at unit variance), NOT the raw EDM `x₀ + σ·ε`.
+  Differentiating along the ODE path and substituting `v = α·ε − σ_c·x₀` gives
+  `dx/dσ = α(σ)² · v`.  The Euler step is therefore
+  `x_next = x_t + α(σ_t)² · (σ_next − σ_t) · v_t`.
+  Previous implementation used `d = (x_t − x₀_pred) / σ` which is correct for the
+  standard Karras EDM score function, but wrong for the variational ODE.
+
+- **Initial noise was incorrectly scaled by σ_max = 500** (`SFXDiffusionActor.sample`)
+  — because x(σ_max) ≈ σ_c(500) · ε ≈ ε (σ_c ≈ 1 at σ=500), the starting distribution
+  is already unit normal.  The `xt *= σ_max` line fed the DiT latents with std=500,
+  completely out of its training distribution, producing all-static output.
+
+- **SAO latent frame count used hopLength=1024 instead of 2048**
+  (`SoundFXPipeline.hopLength`, `SFXGenerationService`) — the SAO VAE strides
+  `[2, 4, 4, 8, 8]` multiply to 2048 samples per latent frame at 44.1 kHz.
+  Using 1024 doubled the latent frame count; the VAE then decoded them at 2048
+  samples/frame, producing audio twice the requested duration (~60s for a 30s request).
+  Fixed in both `SoundFXPipeline.hopLength` (constant) and `SFXGenerationService`
+  (latentShape computation).
+
+---
+
 ## [Unreleased] — SAO SFX: EDM diffusion math + per-layer conditioning; resolves static audio
 
 ### Fixed

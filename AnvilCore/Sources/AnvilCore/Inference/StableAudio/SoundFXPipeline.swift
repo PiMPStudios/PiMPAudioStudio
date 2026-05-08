@@ -24,7 +24,8 @@ public actor SoundFXPipeline {
 
     public static let maxDuration: TimeInterval = 47.0
     public static let defaultSampleRate = 44100
-    public static let hopLength = 1024
+    /// SAO VAE strides [2, 4, 4, 8, 8] → product = 2048 samples per latent frame.
+    public static let hopLength = 2048
 
     public init(
         t5: T5Encoder,

@@ -26,42 +26,46 @@ public enum DiffusionSampler {
         return xt - vt * tUnsq
     }
 
-    /// EDM v-prediction Euler step for Stable Audio Open.
+    /// Variational v-prediction Euler step for Stable Audio Open.
     ///
-    /// SAO uses the v-objective: `v = α·ε − σ_c·x₀` where
-    ///   `α(σ) = 1 / sqrt(1 + σ²)` and `σ_c(σ) = σ · α(σ)`.
+    /// SAO uses the cosine/variational noise parameterisation (not the Karras/EDM
+    /// `x_noisy = x₀ + σ·ε` form). The forward process is:
     ///
-    /// Recovering x₀: `x₀_pred = α · x_t − σ_c · v_pred`
-    /// First-order Euler ODE step using the score direction `d = (x_t − x₀_pred) / σ_t`:
-    ///   `x_next = x_t + (σ_next − σ_t) · d`
+    ///   `x(σ) = α(σ)·x₀ + σ_c(σ)·ε`   where α = 1/√(1+σ²),  σ_c = σ·α
+    ///
+    /// This keeps x always at approximately unit variance.  Differentiating along
+    /// the ODE path and substituting `v = α·ε − σ_c·x₀` gives:
+    ///
+    ///   `dx/dσ = α(σ)² · v`
+    ///
+    /// First-order Euler step:  `x_next = x_t + α(σ_t)² · (σ_next − σ_t) · v_t`
+    ///
+    /// At the final denoising step (sigmaNext = 0) the clean prediction is returned
+    /// directly from the v-objective formula: `x₀_pred = α·x_t − σ_c·v_t`.
     ///
     /// - Parameters:
-    ///   - xt:        noisy latent at current sigma
-    ///   - vt:        model-predicted velocity (v-prediction, NOT rectified-flow velocity)
-    ///   - sigma:     current noise level σ_t  (range [0.3, 500] for SAO)
-    ///   - sigmaNext: next noise level σ_{t+1} (lower); pass 0 for the final step
-    /// - Returns:     denoised latent at sigmaNext
+    ///   - xt:        noisy latent — **unit-variance** input (do NOT scale by σ_max)
+    ///   - vt:        model-predicted velocity (v-prediction)
+    ///   - sigma:     current noise level σ_t  (range [500 → 0.3] for SAO)
+    ///   - sigmaNext: next (lower) noise level; pass 0 for the final denoising step
+    /// - Returns:     latent stepped to sigmaNext
     public static func edmEulerStep(
         xt: MLXArray,
         vt: MLXArray,
         sigma: Float,
         sigmaNext: Float
     ) -> MLXArray {
-        // EDM signal/noise scaling
         let alpha      = 1.0 / sqrtf(1.0 + sigma * sigma)
-        let sigmaCoeff = sigma * alpha  // σ / sqrt(1 + σ²)
+        let sigmaCoeff = sigma * alpha  // σ_c = σ / √(1 + σ²)
 
-        // Recover predicted clean sample from v-prediction
-        let x0Pred = MLXArray(alpha) * xt - MLXArray(sigmaCoeff) * vt
-
-        // At the final step (sigmaNext ≈ 0) just return the clean prediction
+        // At the final step return the clean prediction directly
         if sigmaNext <= 0 {
-            return x0Pred
+            return MLXArray(alpha) * xt - MLXArray(sigmaCoeff) * vt
         }
 
-        // Score direction and Euler step
-        let d = (xt - x0Pred) / MLXArray(sigma)
-        return xt + MLXArray(sigmaNext - sigma) * d
+        // Variational ODE Euler step:  x_next = x_t + α(σ)² · (σ_next − σ_t) · v_t
+        let alphaSquared = alpha * alpha
+        return xt + MLXArray(alphaSquared * (sigmaNext - sigma)) * vt
     }
 
     public static func apgForward(

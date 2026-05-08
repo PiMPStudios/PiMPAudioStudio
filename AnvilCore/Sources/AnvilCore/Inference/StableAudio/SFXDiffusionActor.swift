@@ -29,12 +29,10 @@ public actor SFXDiffusionActor {
     ) async throws -> DiffusionResult {
         let totalStart = Date()
 
-        // SAO uses Karras EDM sigma schedule: σ ∈ [500, …, 0.3] (100 steps, high→low noise)
+        // SAO uses the variational/cosine noise parameterisation: x(σ) = α·x₀ + σ_c·ε.
+        // At σ_max=500, σ_c ≈ 1 and α ≈ 0, so x_T ≈ ε ~ N(0, I).
+        // Do NOT scale by σ_max — the input to the model is always approximately unit-variance.
         var xt = DiffusionSampler.generateNoise(shape: config.latentShape, seed: config.seed)
-
-        // Scale initial noise to σ_max (EDM requires x_T ~ N(0, σ_max²·I))
-        let sigmaMax: Float = 500.0
-        xt = xt * MLXArray(sigmaMax)
 
         let sigmas = generateKarrasSigmas(steps: config.steps)
         let doCFG  = config.guidanceScale > 1.0

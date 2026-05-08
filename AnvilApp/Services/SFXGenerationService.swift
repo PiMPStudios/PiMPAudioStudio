@@ -47,7 +47,7 @@ final class SFXGenerationService {
                         steps: totalSteps,
                         guidanceScale: request.guidanceScale > 1.0 ? request.guidanceScale : 7.0,
                         seed: request.seed,
-                        latentShape: [1, Int(ceil(clampedDuration * 44100.0 / 1024.0)), 64]
+                        latentShape: [1, Int(ceil(clampedDuration * 44100.0 / 2048.0)), 64]
                     )
 
                     continuation.yield(.generating(step: 0, totalSteps: totalSteps, eta: 0))
