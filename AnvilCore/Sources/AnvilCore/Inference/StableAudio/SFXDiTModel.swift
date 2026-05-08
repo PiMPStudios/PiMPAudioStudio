@@ -15,14 +15,14 @@
 //   globalCondDim       = 1536   (concat startEmbed[768] + totalEmbed[768])
 //
 // Forward pass:
-//   1. preprocess_conv  Conv1d(latentDim→hiddenSize, k=1)
+//   1. preprocess_conv  Conv1d(latentDim→latentDim, k=1)   — 64→64, identity channel count
 //   2. timestepFeatures.encode(t)      → [B, 256] Fourier features
 //   3. toTimestepEmbed MLP(256→H→H)    → [B, H] tEmb
-//   4. toGlobalEmbed MLP(1536→H→H)(g) → [B, H]  added to tEmb
-//   5. broadcast-add combined global embed across the sequence
+//   4. toGlobalEmbed MLP(1536→H→H)(g) → [B, H]  added to tEmb → gEmb [B, 1, H]
+//   5. transformer.project_in Conv1d(latentDim→H) + broadcast-add gEmb
 //   6. 24 × SAODiTLayer (pre-norm self-attn w/ RoPE, cross-attn, GEGLU FFN)
-//   7. transformer.norm LayerNorm(H)
-//   8. postprocess_conv Conv1d(H→latentDim, k=1)
+//   7. transformer.project_out Conv1d(H→latentDim)
+//   8. postprocess_conv Conv1d(latentDim→latentDim, k=1)   — 64→64, identity channel count
 //
 // Swift module paths mirror SFXDiTNameMap output (HF keys → module paths).
 
@@ -222,22 +222,22 @@ public final class SAODiTFFN: Module {
 // MARK: - Single transformer layer (pre-norm: self-attn → cross-attn → FFN)
 
 public final class SAODiTLayer: Module {
-    public var norm1: LayerNorm
-    @ModuleInfo(key: "self_attn")  public var selfAttn: SAODiTSelfAttention
-    public var norm2: LayerNorm
-    @ModuleInfo(key: "cross_attn") public var crossAttn: SAODiTCrossAttention
-    public var norm3: LayerNorm
-    @ModuleInfo(key: "ff")         public var ff: SAODiTFFN
+    @ModuleInfo(key: "pre_norm")          public var norm1: LayerNorm
+    @ModuleInfo(key: "self_attn")         public var selfAttn: SAODiTSelfAttention
+    @ModuleInfo(key: "cross_attend_norm") public var norm2: LayerNorm
+    @ModuleInfo(key: "cross_attn")        public var crossAttn: SAODiTCrossAttention
+    @ModuleInfo(key: "ff_norm")           public var norm3: LayerNorm
+    @ModuleInfo(key: "ff")                public var ff: SAODiTFFN
 
     public init(config: SFXDiTConfig) {
-        self.norm1 = LayerNorm(dimensions: config.hiddenSize)
+        self._norm1.wrappedValue = LayerNorm(dimensions: config.hiddenSize)
         self._selfAttn.wrappedValue = SAODiTSelfAttention(
             hiddenSize: config.hiddenSize,
             numHeads: config.numHeads,
             headDim: config.headDim,
             rotaryDim: config.rotaryDim
         )
-        self.norm2 = LayerNorm(dimensions: config.hiddenSize)
+        self._norm2.wrappedValue = LayerNorm(dimensions: config.hiddenSize)
         self._crossAttn.wrappedValue = SAODiTCrossAttention(
             hiddenSize: config.hiddenSize,
             numQHeads: config.numHeads,
@@ -245,7 +245,7 @@ public final class SAODiTLayer: Module {
             headDim: config.headDim,
             condDim: config.conditioningDim
         )
-        self.norm3 = LayerNorm(dimensions: config.hiddenSize)
+        self._norm3.wrappedValue = LayerNorm(dimensions: config.hiddenSize)
         self._ff.wrappedValue = SAODiTFFN(
             hiddenSize: config.hiddenSize,
             intermediateDim: config.ffIntermediateDim
@@ -266,28 +266,41 @@ public final class SAODiTLayer: Module {
     }
 }
 
-// MARK: - Transformer stack with final layer-norm
+// MARK: - Transformer stack
+//
+// Actual checkpoint keys inside transformer:
+//   project_in.weight   [1536, 64]   — expand latentDim → hiddenSize
+//   project_out.weight  [64, 1536]   — contract hiddenSize → latentDim
+//   layers.*            — 24 SAODiTLayer blocks
+// No final LayerNorm (no transformer.norm.* key in checkpoint).
 
 public final class SAODiTTransformer: Module {
+    @ModuleInfo(key: "project_in")  public var projectIn: Linear
+    @ModuleInfo(key: "project_out") public var projectOut: Linear
     public var layers: [SAODiTLayer]
-    public var norm: LayerNorm
 
     public init(config: SFXDiTConfig) {
+        self._projectIn.wrappedValue  = Linear(config.latentDim, config.hiddenSize, bias: false)
+        self._projectOut.wrappedValue = Linear(config.hiddenSize, config.latentDim, bias: false)
         self.layers = (0..<config.numLayers).map { _ in SAODiTLayer(config: config) }
-        self.norm   = LayerNorm(dimensions: config.hiddenSize)
     }
 
+    /// - Parameters:
+    ///   - x:           `[B, T, latentDim]` preprocessed latents
+    ///   - conditioning: `[B, 1, hiddenSize]` timestep + global embedding (broadcast-added after project_in)
+    ///   - crossCond:   `[B, L, condDim]` T5 hidden states
     public func callAsFunction(
         _ x: MLXArray,
+        conditioning: MLXArray,
         crossCond: MLXArray,
         cosEmb: MLXArray,
         sinEmb: MLXArray
     ) -> MLXArray {
-        var h = x
+        var h = projectIn(x) + conditioning     // [B, T, latentDim] → [B, T, hiddenSize]
         for layer in layers {
             h = layer(h, crossCond: crossCond, cosEmb: cosEmb, sinEmb: sinEmb)
         }
-        return norm(h)
+        return projectOut(h)                    // [B, T, hiddenSize] → [B, T, latentDim]
     }
 }
 
@@ -309,7 +322,7 @@ public final class SFXDiTModel: Module {
         let halfDim = config.timestepFeaturesDim / 2
         self._preprocessConv.wrappedValue = Conv1d(
             inputChannels: config.latentDim,
-            outputChannels: config.hiddenSize,
+            outputChannels: config.latentDim,
             kernelSize: 1,
             bias: false
         )
@@ -328,7 +341,7 @@ public final class SFXDiTModel: Module {
         )
         self.transformer = SAODiTTransformer(config: config)
         self._postprocessConv.wrappedValue = Conv1d(
-            inputChannels: config.hiddenSize,
+            inputChannels: config.latentDim,
             outputChannels: config.latentDim,
             kernelSize: 1,
             bias: false
@@ -352,30 +365,35 @@ public final class SFXDiTModel: Module {
     ) -> MLXArray {
         let seqLen = latents.shape[1]
 
-        // 1. Project latents into transformer hidden space.
-        var h = preprocessConv(latents)                            // [B, T, hiddenSize]
+        // 1. Preprocess: kernel=1 conv (keeps latentDim unchanged — 64→64).
+        let h = preprocessConv(latents)                            // [B, T, latentDim]
 
-        // 2. Timestep Fourier encoding → MLP → global conditioning.
+        // 2. Timestep Fourier encoding → MLP.
         let tFeats = timestepFeatures.encode(timestep)             // [B, timestepFeaturesDim]
-        var gEmb   = toTimestepEmbed(tFeats)                       // [B, hiddenSize]
+        let tEmb   = toTimestepEmbed(tFeats)                       // [B, hiddenSize]
 
         // 3. Add number-conditioner global embedding.
-        gEmb = gEmb + toGlobalEmbed(globalCond)                    // [B, hiddenSize]
+        let gEmb = (tEmb + toGlobalEmbed(globalCond))             // [B, hiddenSize]
+            .expandedDimensions(axis: 1)                           // [B, 1, hiddenSize]
 
-        // 4. Broadcast-add global embed to every sequence position.
-        h = h + gEmb.expandedDimensions(axis: 1)                  // [B, T, hiddenSize]
-
-        // 5. Precompute partial-RoPE embeddings for this sequence length.
+        // 4. Precompute partial-RoPE embeddings for this sequence length.
         let (cosEmb, sinEmb) = SFXDiTModel.computeRoPE(
             seqLen: seqLen,
             rotaryDim: config.rotaryDim
         )
 
-        // 6. Transformer layers (self-attn, cross-attn, FFN).
-        h = transformer(h, crossCond: crossCond, cosEmb: cosEmb, sinEmb: sinEmb)
+        // 5. Transformer: project_in → add gEmb → 24 layers → project_out.
+        //    project_in expands latentDim(64) → hiddenSize(1536) before gEmb add.
+        let out = transformer(
+            h,
+            conditioning: gEmb,
+            crossCond: crossCond,
+            cosEmb: cosEmb,
+            sinEmb: sinEmb
+        )                                                          // [B, T, latentDim]
 
-        // 7. Project back to latent space.
-        return postprocessConv(h)                                  // [B, T, latentDim]
+        // 6. Postprocess: kernel=1 conv (keeps latentDim unchanged — 64→64).
+        return postprocessConv(out)                                // [B, T, latentDim]
     }
 
     // MARK: - RoPE helper
