@@ -26,6 +26,44 @@ public enum DiffusionSampler {
         return xt - vt * tUnsq
     }
 
+    /// EDM v-prediction Euler step for Stable Audio Open.
+    ///
+    /// SAO uses the v-objective: `v = α·ε − σ_c·x₀` where
+    ///   `α(σ) = 1 / sqrt(1 + σ²)` and `σ_c(σ) = σ · α(σ)`.
+    ///
+    /// Recovering x₀: `x₀_pred = α · x_t − σ_c · v_pred`
+    /// First-order Euler ODE step using the score direction `d = (x_t − x₀_pred) / σ_t`:
+    ///   `x_next = x_t + (σ_next − σ_t) · d`
+    ///
+    /// - Parameters:
+    ///   - xt:        noisy latent at current sigma
+    ///   - vt:        model-predicted velocity (v-prediction, NOT rectified-flow velocity)
+    ///   - sigma:     current noise level σ_t  (range [0.3, 500] for SAO)
+    ///   - sigmaNext: next noise level σ_{t+1} (lower); pass 0 for the final step
+    /// - Returns:     denoised latent at sigmaNext
+    public static func edmEulerStep(
+        xt: MLXArray,
+        vt: MLXArray,
+        sigma: Float,
+        sigmaNext: Float
+    ) -> MLXArray {
+        // EDM signal/noise scaling
+        let alpha      = 1.0 / sqrtf(1.0 + sigma * sigma)
+        let sigmaCoeff = sigma * alpha  // σ / sqrt(1 + σ²)
+
+        // Recover predicted clean sample from v-prediction
+        let x0Pred = MLXArray(alpha) * xt - MLXArray(sigmaCoeff) * vt
+
+        // At the final step (sigmaNext ≈ 0) just return the clean prediction
+        if sigmaNext <= 0 {
+            return x0Pred
+        }
+
+        // Score direction and Euler step
+        let d = (xt - x0Pred) / MLXArray(sigma)
+        return xt + MLXArray(sigmaNext - sigma) * d
+    }
+
     public static func apgForward(
         predCond: MLXArray,
         predUncond: MLXArray,

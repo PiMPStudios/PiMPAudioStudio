@@ -4,6 +4,32 @@ All notable changes to AnvilApp are documented here.
 
 ---
 
+## [Unreleased] — SAO SFX: EDM diffusion math + per-layer conditioning; resolves static audio
+
+### Fixed
+
+- **SAO sigma schedule was rectified-flow linear [0, 1] instead of Karras EDM [500, …, 0.3]**
+  (`SFXDiffusionActor.generateKarrasSigmas`) — the old `generateLinearSchedule` produced timesteps
+  in `[0, 1]`, which are the wrong units for SAO's EDM-parameterised DiT. The model expects actual
+  noise levels σ ∈ [0.3, 500]. Replaced with a Karras-style schedule:
+  `σ_i = (σ_max^(1/ρ) + i/(N−1)·(σ_min^(1/ρ) − σ_max^(1/ρ)))^ρ`, ρ=7, N=100.
+  The initial noise is now also scaled to `σ_max=500` (i.e. `xt *= 500`).
+
+- **SAO ODE step used rectified-flow formula (`x − v·dt`) instead of EDM v-prediction Euler**
+  (`DiffusionSampler.edmEulerStep`) — ACE-Step uses rectified flow where the model predicts the
+  straight-line velocity; SAO uses the v-objective where `v = α·ε − σ_c·x₀`. The correct Euler
+  step recovers x₀ via `x₀_pred = α·x_t − σ_c·v_t` then steps along the score direction
+  `d = (x_t − x₀_pred) / σ_t`. `SFXDiffusionActor` now calls `DiffusionSampler.edmEulerStep`
+  instead of the ACE-Step `odeStep`.
+
+- **SAO global conditioning was added once before the transformer loop instead of per-layer**
+  (`SFXDiTModel.swift`) — the reference architecture adds `x = x + temb.unsqueeze(1)` at the
+  **start of each of the 24 DiT layers**, not just once after `project_in`. `SAODiTTransformer` now
+  passes `conditioning` into every layer; `SAODiTLayer.callAsFunction` applies it as the first
+  operation before `pre_norm + self_attn`.
+
+---
+
 ## [Unreleased] — SAO SFX: four runtime crash fixes; first successful generation
 
 ### Fixed

@@ -252,13 +252,19 @@ public final class SAODiTLayer: Module {
         )
     }
 
+    /// - Parameters:
+    ///   - conditioning: `[B, 1, hiddenSize]` global conditioning (temb + globalCond),
+    ///                   broadcast-added at the START of this layer before pre_norm.
+    ///                   SAO adds it fresh at every layer — NOT accumulated from the previous layer.
     public func callAsFunction(
         _ x: MLXArray,
+        conditioning: MLXArray,
         crossCond: MLXArray,
         cosEmb: MLXArray,
         sinEmb: MLXArray
     ) -> MLXArray {
-        var h = x
+        // Add global conditioning at the start of each layer (broadcast over T).
+        var h = x + conditioning
         h = h + selfAttn(norm1(h), cosEmb: cosEmb, sinEmb: sinEmb)
         h = h + crossAttn(norm2(h), conditioning: crossCond)
         h = h + ff(norm3(h))
@@ -287,7 +293,8 @@ public final class SAODiTTransformer: Module {
 
     /// - Parameters:
     ///   - x:           `[B, T, latentDim]` preprocessed latents
-    ///   - conditioning: `[B, 1, hiddenSize]` timestep + global embedding (broadcast-added after project_in)
+    ///   - conditioning: `[B, 1, hiddenSize]` timestep + global embedding.
+    ///                   Passed to EACH layer and added fresh at the start of every block.
     ///   - crossCond:   `[B, L, condDim]` T5 hidden states
     public func callAsFunction(
         _ x: MLXArray,
@@ -296,9 +303,10 @@ public final class SAODiTTransformer: Module {
         cosEmb: MLXArray,
         sinEmb: MLXArray
     ) -> MLXArray {
-        var h = projectIn(x) + conditioning     // [B, T, latentDim] → [B, T, hiddenSize]
+        var h = projectIn(x)                    // [B, T, latentDim] → [B, T, hiddenSize]
         for layer in layers {
-            h = layer(h, crossCond: crossCond, cosEmb: cosEmb, sinEmb: sinEmb)
+            // conditioning is added inside each layer (not pre-accumulated here)
+            h = layer(h, conditioning: conditioning, crossCond: crossCond, cosEmb: cosEmb, sinEmb: sinEmb)
         }
         return projectOut(h)                    // [B, T, hiddenSize] → [B, T, latentDim]
     }
