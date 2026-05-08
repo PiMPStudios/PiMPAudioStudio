@@ -194,6 +194,7 @@ final class AppServices: ObservableObject {
         return GenerationService(
             aceStepService: aceStep,
             sfxService: sfx,
+            sfxModelManager: sfxModelManager,
             loraCoordinator: lora,
             historyStore: historyStore,
             outputDirectoryManager: outputManager

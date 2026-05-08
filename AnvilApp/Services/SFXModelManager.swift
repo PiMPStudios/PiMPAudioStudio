@@ -197,6 +197,29 @@ final class SFXModelManager: ObservableObject {
         let hasModel = fm.fileExists(atPath: modelPath.appendingPathComponent("model.safetensors").path)
         return hasConfig && hasModel
     }
+
+    /// Stricter check than `isModelDownloaded()` — verifies every file
+    /// `loadPipeline()` will actually try to read is present. Used by
+    /// `GenerationService.shouldUseStableAudio` so Auto-mode routing can
+    /// safely fall back to ACE-Step when the SFX install is incomplete
+    /// (e.g., the registry-driven download gives us `vae_model.ckpt` but
+    /// loadPipeline() looks for `vae.safetensors` — pre-existing wiring
+    /// gap that crashes generation on entry to the SFX path).
+    func isPipelineLoadable() -> Bool {
+        let fm = FileManager.default
+        let required = [
+            "config.json",
+            "model.safetensors",
+            "vae.safetensors",
+            "clap_model.safetensors",
+        ]
+        return required.allSatisfy { name in
+            fm.fileExists(
+                atPath: modelPath.appendingPathComponent(name)
+                    .path(percentEncoded: false)
+            )
+        }
+    }
 }
 
 enum SFXDownloadError: Error, Sendable {

@@ -19,6 +19,7 @@ final class GenerationService: ObservableObject {
     private var generationTask: Task<Void, Never>?
     private let aceStepService: ACEStepGenerationService
     private let sfxService: SFXGenerationService
+    private let sfxModelManager: SFXModelManager
     private let loraCoordinator: LoRACoordinator
     private let historyStore: HistoryStore
     private let outputDirectoryManager: OutputDirectoryManager
@@ -26,12 +27,14 @@ final class GenerationService: ObservableObject {
     init(
         aceStepService: ACEStepGenerationService,
         sfxService: SFXGenerationService,
+        sfxModelManager: SFXModelManager,
         loraCoordinator: LoRACoordinator,
         historyStore: HistoryStore,
         outputDirectoryManager: OutputDirectoryManager
     ) {
         self.aceStepService = aceStepService
         self.sfxService = sfxService
+        self.sfxModelManager = sfxModelManager
         self.loraCoordinator = loraCoordinator
         self.historyStore = historyStore
         self.outputDirectoryManager = outputDirectoryManager
@@ -142,7 +145,20 @@ final class GenerationService: ObservableObject {
         case .aceStep: return false
         case .stableAudio: return true
         case .auto:
-            return request.resolvedMode == .soundFX || request.resolvedMode == .ambient
+            // Auto-routing only flips to Stable Audio when the prompt
+            // genuinely classifies as SFX/ambient AND the SFX pipeline is
+            // actually loadable. Without the runtime guard, an enhanced
+            // music prompt that mentions "soundscape / atmospheric / etc."
+            // can flip Auto to Ambient → SFX path → crash if the SFX VAE
+            // file isn't present in the expected format.
+            let wantsSFX = request.resolvedMode == .soundFX || request.resolvedMode == .ambient
+            guard wantsSFX else { return false }
+
+            if sfxModelManager.isPipelineLoadable() {
+                return true
+            }
+            memLogger.info("[shouldUseStableAudio] auto detected \(String(describing: request.resolvedMode)), but SFX pipeline not loadable — falling back to ACE-Step")
+            return false
         }
     }
 
