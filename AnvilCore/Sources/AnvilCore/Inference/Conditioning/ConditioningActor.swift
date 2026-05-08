@@ -81,7 +81,7 @@ public actor ConditioningActor {
 
     /// Wrap lyrics with upstream's `# Languages / # Lyric` template. Mirrors
     /// `acestep/core/generation/handler/prompt_utils.py:_format_lyrics`.
-    private static func wrapLyricsForSFT(lyrics: String, language: String = "unknown") -> String {
+    private static func wrapLyricsForSFT(lyrics: String, language: String = "en") -> String {
         return """
         # Languages
         \(language)
@@ -107,22 +107,13 @@ public actor ConditioningActor {
 
         let textHidden = qwen3(inputIds: textIds, attentionMask: textMask)
 
-        // With longest-padding tokenization, an empty lyrics input now
-        // produces a 1-token degenerate sequence (mask=0) rather than 2048
-        // PAD tokens. Bypass remains: when lyrics are truly empty, emit a
-        // 1-token zero hidden state matching the lyricIds shape. Avoids
-        // running LyricEncoder over a PAD-only input (whose output would
-        // still propagate non-trivial content via the encoder's biases).
-        let trimmedLyrics = lyrics.trimmingCharacters(in: .whitespacesAndNewlines)
-        let lyricHidden: MLXArray
-        if trimmedLyrics.isEmpty {
-            // [1, lyricSeqLen=1, hiddenSize=2048]
-            let seq = lyricIds.shape[1]
-            lyricHidden = MLXArray.zeros([1, seq, 2048]).asType(precision.mlxDtype)
-        } else {
-            let lyricEmbeddings = qwen3.embedTokens(lyricIds)
-            lyricHidden = lyricEncoder(embeddings: lyricEmbeddings, attentionMask: lyricMask)
-        }
+        // Upstream always encodes the scaffolded lyric prompt, even when the
+        // user supplied no lyric body. With longest-padding this is a short,
+        // real sequence (`# Languages\nen\n\n# Lyric\n<|endoftext|>`), not a
+        // 2048-token PAD field, so bypassing it with zeros is out-of-distribution.
+        let lyricEmbeddings = qwen3.embedTokens(lyricIds)
+        let lyricHidden = lyricEncoder(embeddings: lyricEmbeddings, attentionMask: lyricMask)
+        AudioDiagnostics.tensor("cond/lyricHidden", lyricHidden)
 
         try Task.checkCancellation()
 
@@ -130,26 +121,16 @@ public actor ConditioningActor {
         // contextLatents is [B, T, 128] = cat([src_latents, chunk_mask], axis:-1)
         let referenceLatents = try await prepareReferenceLatents(referenceAudio, precision: precision)
 
-        // The v1.5 turbo/full/sft checkpoints don't ship weights for the
-        // TimbreEncoder.AttentionPooler subtree (only the special_token,
-        // which is also shape-mismatched with our [1,5,2048] queryTokens
-        // and gets skipped in ConditionEncoderNameMap). When the user has
-        // not provided reference audio, running the timbre encoder over
-        // zero latents pushes them through the default-init random
-        // AttentionPooler, yielding ~5 RANDOM tokens that then get
-        // concatenated into encoder_states with mask=1 (always attended).
-        // For short prompts like "slow dark guitar riff" — only 5-10 real
-        // text tokens vs the 5 random timbre tokens — that random signal
-        // dilutes prompt-following by ~50%. Pass zeros directly when
-        // there's no reference audio so the cross-attention's V-projection
-        // contributes nothing from this path.
-        let timbreTokens: MLXArray
-        if referenceAudio == nil {
-            // 5 query tokens of zeros at model hidden size (2048).
-            timbreTokens = MLXArray.zeros([1, 5, 2048]).asType(precision.mlxDtype)
-        } else {
-            timbreTokens = timbreEncoder(latents: referenceLatents, attentionMask: nil)
-        }
+        // Upstream text2music still runs timbre conditioning: when there is
+        // no reference audio, infer_refer_latent() feeds the first 750 frames
+        // of silence_latent through AceStepTimbreEncoder and emits one timbre
+        // token for the batch. The previous zero-token bypass removed that
+        // learned instrument prior entirely.
+        let timbreInputLatents = referenceAudio == nil
+            ? silenceLatentSlice(length: Self.timbreFixFrame, precision: precision)
+            : referenceLatents
+        let timbreTokens = timbreEncoder(latents: timbreInputLatents, attentionMask: nil)
+        AudioDiagnostics.tensor("cond/timbreTokens", timbreTokens)
 
         try Task.checkCancellation()
 
@@ -247,6 +228,26 @@ public actor ConditioningActor {
             let padding = MLXArray.zeros([latents.shape[0], Self.timbreFixFrame - currentFrames, 64])
             return concatenated([latents, padding], axis: 1)
         }
+    }
+
+    private func silenceLatentSlice(length: Int, precision: Precision) -> MLXArray {
+        guard let silence = silenceLatent else {
+            return MLXArray.zeros([1, length, 64]).asType(precision.mlxDtype)
+        }
+
+        let available = silence.shape[1]
+        let sliced: MLXArray
+        if length <= available {
+            sliced = silence[0..., 0..<length, 0...]
+        } else {
+            let repeats = Int(ceil(Double(length) / Double(available)))
+            var tiled = silence
+            for _ in 1..<repeats {
+                tiled = concatenated([tiled, silence], axis: 1)
+            }
+            sliced = tiled[0..., 0..<length, 0...]
+        }
+        return sliced.asType(precision.mlxDtype)
     }
 
     /// Load the per-DiT-checkpoint `silence_latent.pt` tensor. Pass `nil` to

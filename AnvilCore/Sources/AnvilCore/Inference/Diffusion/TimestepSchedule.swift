@@ -38,31 +38,12 @@ public enum TimestepSchedule {
         }
 
         if let inferSteps = inferSteps, inferSteps > 0 {
-            // Match upstream FlowMatchEulerDiscreteScheduler.set_timesteps
-            // (acestep/schedulers/scheduling_flow_match_euler_discrete.py).
-            //
-            // Upstream:
-            //   timesteps = np.linspace(num_train_timesteps, 1.0, num_inference_steps)
-            //   sigmas = timesteps / num_train_timesteps
-            //   sigmas = shift * sigmas / (1 + (shift - 1) * sigmas)
-            //
-            // For num_train_timesteps=1000 and N=8 this produces sigmas going
-            // from 1.0 down to ~0.001 (sigma_min) — covering the FULL flow-
-            // matching trajectory. The previous formula `1 - i/N` stopped at
-            // 1/N (e.g., 0.125 for N=8), leaving the last 12.5% of the
-            // trajectory uncovered and producing noisy latents that decoded
-            // to static. (See finalStep below — it implicitly appends a
-            // terminal sigma=0, mirroring upstream's `torch.cat([sigmas,
-            // zeros(1)])`.)
-            let sigmaMin: Float = 1.0 / 1000.0  // num_train_timesteps = 1000
-            var raw: [Float]
-            if inferSteps == 1 {
-                raw = [1.0]
-            } else {
-                raw = (0..<inferSteps).map { i in
-                    let frac = Float(i) / Float(inferSteps - 1)
-                    return 1.0 + frac * (sigmaMin - 1.0)
-                }
+            // Match the checked-in ACE-Step v1.5 MLX/PyTorch generation code:
+            // get_timestep_schedule(... infer_steps=N) uses
+            // [1 - i/N for i in 0..<N], then applies the shift transform. The
+            // final implicit x0 step subtracts vt * current_timestep.
+            var raw = (0..<inferSteps).map { i in
+                1.0 - Float(i) / Float(inferSteps)
             }
             if shift != 1.0 {
                 raw = raw.map { t in

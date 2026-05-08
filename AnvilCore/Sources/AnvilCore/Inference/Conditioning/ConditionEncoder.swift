@@ -25,8 +25,11 @@ public class ConditionEncoder: Module {
         let tLyric = lyricHiddenStates.shape[1]
         let tTimbre = timbreTokens.shape[1]
 
+        // Match upstream v1.5 ConditionEncoder:
+        // pack_sequences(lyrics, timbre), then pack_sequences(result, text).
+        // With longest-padding inputs this is equivalent to lyric + timbre + text.
         let encoderStates = concatenated(
-            [textProjected, lyricHiddenStates, timbreTokens],
+            [lyricHiddenStates, timbreTokens, textProjected],
             axis: 1
         )
 
@@ -35,7 +38,7 @@ public class ConditionEncoder: Module {
         let timbreMask = MLXArray.ones([b, tTimbre])
 
         let combinedMask = concatenated(
-            [effectiveTextMask, effectiveLyricMask, timbreMask],
+            [effectiveLyricMask, timbreMask, effectiveTextMask],
             axis: 1
         )
 

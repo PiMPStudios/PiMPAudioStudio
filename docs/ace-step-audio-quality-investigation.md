@@ -1,11 +1,11 @@
 # ACE-Step Audio Quality Investigation — Resumption Notes
 
-**Last updated:** 2026-05-07 (evening session — five structural bugs found, two course corrections, audio "trying to be music" but not yet recognizable)
-**Status:** Pipeline runs end-to-end. Output is now **prompt-responsive with real dynamic structure** — quantified by per-second RMS envelope (varying 445–1861), ZCR in music range (270–3400), L/R Pearson 0.778, no clipping. User-reported: "starts off slow, builds up, drops down slow, builds back up. I won't say it's music, but it's like it's trying." Step count is NOT the limiter (8/32/100 steps all produce same character). **Remaining bottleneck is most likely timbre encoder bypass** — we feed `[1, 5, 2048]` zeros where the model was trained to receive non-zero tokens.
+**Last updated:** 2026-05-07 (evening breakthrough — first clearly recognizable music)
+**Status:** Pipeline runs end-to-end and now produces **recognizable music** for the first time. User-reported after latest fixes: "Holy shit! I heard music for the first!! Albeit not very good music but music none the less!!" Quality is still poor, but the structural failure mode has changed from static/noise/"trying" to actual music generation. Latest diagnostic signature: real lyric header hidden states, one silence-derived timbre token, upstream v1.5 Turbo timestep schedule ending at 0.3, final latent abs_mean ≈ 1.03 / abs_max ≈ 7.44, VAE audio abs_mean ≈ 0.155 / abs_max ≈ 1.98.
 
 > Use this doc to resume troubleshooting after a context reset. Skim "Current symptom" + "Hypotheses still open" first.
 
-> **Quick orientation for the next session:** the runtime `AudioDiagnostics` toggle (Generate → Advanced → "Verbose audio diagnostics") emits `[AUDIODIAG]` lines at every pipeline boundary. That instrumentation cracked four of the structural bugs in this session. Filter the Xcode console for `AUDIODIAG`.
+> **Quick orientation for the next session:** the runtime `AudioDiagnostics` toggle (Generate → Advanced → "Verbose audio diagnostics") emits `[AUDIODIAG]` lines at every pipeline boundary. That instrumentation cracked the structural bugs in this session. Filter the Xcode console for `AUDIODIAG`.
 
 > **External review valuable:** GPT-5.5 read this doc + source twice during this session and identified TWO real bugs I had missed (and corrected one I'd misdiagnosed). When you hit a wall, consider feeding this doc + the relevant code to a parallel model.
 
@@ -29,28 +29,29 @@ Upstream reference repos:
 - Most relevant upstream MLX code: `acestep/models/mlx/dit_generate.py`, `acestep/models/mlx/dit_model.py`, `acestep/models/mlx/vae_model.py`
 - Upstream PyTorch DiT: `acestep/models/turbo/modeling_acestep_v15_turbo.py`, `acestep/models/base/modeling_acestep_v15_base.py`, `acestep/models/sft/modeling_acestep_v15_base.py`
 
-## Current symptom (post-2026-05-07-evening fixes)
+## Current symptom (post-2026-05-07-evening breakthrough)
 
 Generation completes in ~5–60 s. Output WAV file:
 
 - **30.0 s, 48000 Hz, stereo Int16, ~5.76 MB** ✓
-- VAE output **abs_max 0.30** (no clipping; was 1.7 → 1.10 → 0.80 → 0.30 across the session)
+- VAE output latest **abs_max ≈ 1.98** before WAVWriter peak-normalize (higher than previous "trying" run, but now audibly music instead of underpowered texture)
 - **Different prompts produce meaningfully different audio** — SHA1-diff verified, plus RMS-difference verified ("loud heavy metal" 7 dB louder than "slow dark guitar")
-- **Velocity prediction healthy throughout trajectory**: step 0 abs_mean ≈ 0.77, growing to step 7 abs_mean ≈ 1.34, abs_max 8.3 — model takes increasingly confident corrections as t→0 (the canonical diffusion signature)
+- **Velocity prediction healthy throughout trajectory**: latest step 0 abs_mean ≈ 0.72, growing to step 7 abs_mean ≈ 1.20, abs_max ≈ 9.42 — model takes increasingly confident corrections through the schedule
 - **Per-second RMS envelope shows real musical dynamics** — slow ramp 0–8s (RMS 600–960), build 9–11s (1414–1861), drop 12–13s (445–611), build back 14–28s (587–1809). User-reported pattern matches numerics exactly.
 - **ZCR in music range** (sustained-tonal 270–580 in opening, 2500–3400 mid, 1000–2300 late). Not noise.
 - **L/R Pearson 0.778** — typical music range (0.5–0.9).
 - **Quality plateaus identically at 8 / 32 / 100 steps.** Confirmed by user testing. Step count is NOT the remaining bottleneck.
 
-User listening (verbatim, 2026-05-07 evening): *"It's hard to describe. I mean, it starts off slow, and then it builds up, and then it drops down slow, and then builds back up. I won't say it's music, but I I mean, it's like it's trying, but something is still off."*
+User listening after the latest lyric/timbre/schedule fixes (verbatim, 2026-05-07 evening): *"Holy shit! I heard music for the first!! Albeit not very good music but music none the less!!"*
 
-Interpretation: the model is producing prompt-responsive musical structure with valid dynamics. What's missing is **timbre / sound-bank quality** — the notes don't resolve to recognizable instruments.
+Interpretation: the model has crossed the structural threshold into recognizable music. Remaining work is a **quality/parity pass**, not a "why is everything static" investigation.
 
 ### Earlier symptoms (now resolved)
 
 - **Pure static across all DiT variants** (start of evening session): step0/vt was nearly identical to init/xt (`vt - xt ≈ tiny perturbation`), meaning the model predicted x0 ≈ 0 regardless of prompt → diffusion converged to silence-shaped noise → VAE decoded to static.
 - **"Different prompts but still all noise"** (mid-session): cross-attention was alive (RMS differs per prompt) but positionally / scale-wise wrong; output had loudness-following but no structure.
 - **"Trying to be music with static layer on top"** (after silence_latent fix): user heard prompt content underneath but the noise floor was high. silence_latent eliminated the noise floor entirely; the "trying" is now exposed.
+- **"Trying to be music but not music"** (after timbre/schedule parity): caused by the stale empty-lyrics bypass. We packed lyric tokens first, but empty lyrics were replaced with a `[1, 11, 2048]` zero hidden tensor and marked valid. Cross-attn ignores the mask, so the first attended conditioning token was all zeros plus downstream projection bias. Removing that bypass and encoding the real upstream lyric scaffold made music appear.
 
 ## What's verified working (don't re-investigate these)
 
@@ -63,15 +64,15 @@ Diagnostic logs in `DiTActor.loadWeights`, `VAEActor.loadWeights`, `Conditioning
 | DiT | 476 | 477 | 476 | Only `rotaryEmb.invFreq` unsupplied (runtime-computed) |
 | Qwen3 | 310 | 311 | 310 | Same — `rotaryEmbedding.invFreq` |
 | LyricEncoder | 91 | 92 | 91 | Same |
-| TimbreEncoder | 47 | 73 | 47 | 26 unmatched all under `attentionPooler.layers.0..1.*` and `.norm` — those have NO weights in v1.5 checkpoint at all (only `special_token` exists at top level, shape mismatched [1,1,2048] vs our [1,5,2048] — bypass below) |
+| TimbreEncoder | 47 | 48 | 47 | Only `rotaryEmbedding.invFreq` unsupplied (runtime-computed). The old Swift-only 5-query `AttentionPooler` was removed because upstream v1.5 does not use it and the checkpoint has no weights for it. |
 | ConditionEncoder | 1 | 1 | 1 | `text_projector.weight` → `textProjection.weight` |
 | VAE | 291 | 291 | 291 | All match |
 
 ### Healthy intermediate values
 
-`DiffusionActor` final-latent diagnostic shows abs_mean ≈ 0.85, abs_max ≈ 4.5 (Turbo) or 1.0 / 5.8 (Full). Both well within typical VAE-latent magnitude range.
+`DiffusionActor` final-latent diagnostic now shows abs_mean ≈ 1.03, abs_max ≈ 7.44 on the first recognizable-music Turbo run. This is higher than the previous "trying" run (≈0.50/2.98) and corresponds to audibly stronger musical content.
 
-`VAEActor.decode` diagnostic shows audio output abs_max ≈ 1.15 (Turbo) / 1.78 (Full). Slightly above [-1, 1] but normalized down by the WAVWriter peak-normalize fix.
+`VAEActor.decode` diagnostic on the breakthrough run shows audio output abs_mean ≈ 0.155, abs_max ≈ 1.98. WAVWriter peak-normalizes before Int16 output, so this no longer hard-clips.
 
 ### Architecture verified against upstream
 
@@ -116,78 +117,94 @@ Each commit message has full reasoning. Key ones for the audio path:
 | `66c3162` | **SFT_GEN_PROMPT template wrap** | Tokenizing raw user prompt — DiT was trained on `# Instruction / # Caption / # Metas / <\|endoftext\|>` scaffold (`acestep/constants.py:SFT_GEN_PROMPT`) plus `# Languages / # Lyric / <\|endoftext\|>` for lyrics (`prompt_utils.py:_format_lyrics`). Now wraps both. Default vocal_language=unknown, metas all N/A except duration. encoderStates seq grew ~10 → ~73 (longer wrapped prompt); abs_mean 1.5 → 2.4. |
 | `461b198` | chunk_mask = ones, not zeros (smoke test) | Upstream text2music: `context_latents = cat([silence_latent_slice, chunk_mask_ones], axis=-1)` (`models/turbo/modeling_acestep_v15_turbo.py:1680, 1931`). We had all zeros. Smoke test flipped mask half to ones. contextLatents abs_mean 0 → 0.5; vt step 7 abs_mean 0.57 → 1.53 (model now confidently shaping output near t=0). |
 | `9757bac` | **`silence_latent.pt` loader for text2music context body** | Final piece of `cat([silence_latent_slice, ones])`. New `SilenceLatentLoader.swift` reads the `.pt` file via `/usr/bin/unzip -p` (no third-party zip lib, no pickle parsing), extracts raw float32 at `*/data/0`, returns `[1, 15000, 64]` (transposed from stored `[1, 64, 15000]`). `ConditioningActor.silenceLatent` field; encode() slices `[:, :tFrames, :]` (tiles if duration > 600s). `ACEStepGenerationService` loads it next to model.safetensors. ModelRegistry: added to all 3 DiT specs (3.84 MB each, auto-downloads). Result: contextLatents `abs_mean=0.787, abs_max=6.73` — matches GPT-5.5's predicted `~0.78 / ~6.7`. VAE output `abs_max=0.30` (was 1.7 → 1.10 → 0.80 → 0.30 across the session). User: "starts off slow, builds up, drops down slow, builds back up. It's like it's trying." |
+| local uncommitted | **TimbreEncoder v1.5 parity** | Removed the Swift-only 5-query `AttentionPooler`. Upstream v1.5 `AceStepTimbreEncoder.forward` comments out prepending `special_token`, runs 4 Qwen layers over acoustic latents, applies norm, then takes `hidden_states[:, 0, :]` and unpacks it. Checkpoint has no weights for the old attention pooler; after removal, timbre load is clean: supplied=47, model=48, matched=47, only `rotaryEmbedding.invFreq` missing. |
+| local uncommitted | **Text2music timbre uses silence_latent** | For no reference audio, Swift now feeds the first 750 frames of learned `silence_latent` through `TimbreEncoder`, matching upstream `infer_refer_latent()` behavior. Diagnostic: `cond/timbreTokens shape=[1, 1, 2048] abs_mean=0.293 abs_max=11.59`. |
+| local uncommitted | **ConditionEncoder packing order** | Swift now packs conditioning as upstream does: `pack_sequences(lyrics, timbre)` then `pack_sequences(result, text)`, equivalent here to `[lyricHidden, timbreTokens, textProjected]` after longest-padding. Previous order was `[text, lyric, timbre]`. |
+| local uncommitted | **Turbo timestep schedule parity correction** | Reverted the FlowMatch tail-to-0.003 path for `inferSteps`. The checked-in v1.5 Turbo generation path uses fixed/valid 8-step schedules; for shift=3.0 it ends at `0.3`: `[1.0, 0.954545, 0.9, 0.833333, 0.75, 0.642857, 0.5, 0.3]`. This alone did NOT make music, but it restores local v1.5 parity. |
+| local uncommitted | **Breakthrough: remove empty-lyrics zero bypass** | After packing lyrics first, the stale bypass became fatal: empty lyrics produced a valid `[1, 11]` scaffold token sequence, but Swift replaced its hidden states with all zeros while marking the tokens valid. Cross-attn ignores masks, so `encoderStates first5` became all zeros. Upstream always embeds and runs the lyric encoder over `# Languages\nen\n\n# Lyric\n<\|endoftext\|>`. Removing the bypass and defaulting lyric language to `en` produced the first recognizable music. Breakthrough diagnostics: `cond/lyricHidden shape=[1, 11, 2048] abs_mean=0.0555`, `cond/encoderStates first5` non-zero, final latent abs_mean=1.03, VAE abs_max=1.98. |
 | `c03c4e0` → `d71364b` | VAE scale_factor (REVERTED) | Applied `latents / 0.1786 + (-1.9091)` based on upstream `music_dcae_pipeline.py:116`. Made things much worse (abs_max 1.7 → 7.3). **Misdiagnosis:** our VAE is `AutoencoderOobleck` (Stability AI's, per `vae/config.json:_class_name`), NOT MusicDCAE. Those constants belong to MusicDCAE's wrapper. Reverted. |
 
-## Hypotheses still open (post-2026-05-07-evening)
+## Hypotheses still open (post-2026-05-07 music breakthrough)
 
-Ranked by my current likelihood estimate:
+Ranked by current likelihood:
 
-### 1. **Timbre encoder bypass for text2music — most likely remaining bug**
+### 1. Quality/parity pass beyond conditioning
 
-When the user provides no reference audio, `ConditioningActor.encode` currently substitutes a `[1, 5, 2048]` zeros tensor for the timbre tokens. The conditionEmbedder Linear has a learned bias, so those zero rows produce non-zero K/V projections in cross-attn — but the rows are *constant* (every "fake" timbre token sees the same bias output). The model was trained with **non-zero** timbre tokens for text2music: upstream `models/turbo/modeling_acestep_v15_turbo.py:1880-1885` runs `silence_latent_expanded` through the timbre / acoustic processing branch when no reference audio is provided. **We bypass that path entirely.**
+The core conditioning path is now alive enough to produce recognizable music. Remaining poor quality likely lives in one of these lower-level parity surfaces:
 
-Symptom match: real musical structure (notes, dynamics, ZCR in music range) but no recognizable instruments. That's exactly what "wrong timbre tokens" should produce — the rhythmic / harmonic skeleton survives because it comes from text + lyric branches; the timbre flavoring is missing because we never feed it.
+- DiT patch embed / unembed (`projIn` / `projOut`) channel ordering and patch-size reversal
+- VAE decode parity against upstream `AutoencoderOobleck` for the same latent tensor
+- Self-attention details: grouped-query repeat direction, q/k norm placement, sliding/full attention mask parity
+- Final latent distribution / VAE expected scale. Breakthrough latent abs_mean≈1.03, abs_max≈7.44; VAE abs_max≈1.98 before WAV normalization. This is musically stronger than previous runs but may still be off-distribution.
 
-**Investigation steps:**
-- Trace upstream's exact text2music path: what gets passed as `refer_audio_acoustic_hidden_states_packed` and `hidden_states` when `is_covers=False` and no reference audio?
-- The line `silence_latent_expanded = silence_latent[:, :src_latents.shape[1], :].expand(src_latents.shape[0], -1, -1)` in turbo modeling suggests silence_latent feeds the acoustic branch too, not just the context_latents.
-- Implement: run `silence_latent` through `timbreEncoder` instead of bypassing.
+**Best next move:** create a cross-runtime parity harness for one small stage at a time, starting with VAE decode on a known upstream latent or DiT output on a tiny fixed tensor. Audio is now too subjective for blind guessing.
 
-### 2. ConditionEncoder fusion order / weighting
+### 2. Prompt/meta quality tuning
 
-The fusion of textHidden (~73 tokens) + lyricHidden (variable) + timbreTokens (5) into the final encoder_states. We do `concatenated([text, lyric, timbre], axis: 1)` (need to verify exact order). If upstream concatenates in a different order, the downstream cross-attn positional table is misaligned with what the trained K projection expects.
+The structural prompt wrapper is fixed, but quality may improve by matching upstream metadata more closely. Current prompt wrapper includes `duration: 30 seconds` and N/A bpm/key/timesig. Upstream's `_parse_metas` string formatting should be checked byte-for-byte against Swift's `wrapPromptForSFT`.
 
-### 3. Weight name mismatches — some params silently default-initialized
+### 3. Guidance / schedule variant A-Bs
 
-The DiTActor/VAEActor diagnostic prints supplied/model/matched counts. **Confirmed missing in current run:**
-- DiT: `rotaryEmb.invFreq` (runtime-computed, expected)
-- Qwen3: `rotaryEmbedding.invFreq` (same)
-- LyricEncoder: `rotaryEmbedding.invFreq` (same)
-- **TimbreEncoder: 26 params unmatched** under `attentionPooler.layers.0..1.*` — these are default-initialized RANDOM weights. We bypass the timbre encoder entirely for text2music so it shouldn't matter, but if Hypothesis #1 above is correct and we start running silence_latent through it, we'll need real weights. They aren't in the v1.5 checkpoint at all (only the special_token, which is also shape-mismatched). **Need to investigate where ACE-Step expects to load these from** — possibly a separate timbre encoder checkpoint we haven't downloaded.
+The local v1.5 Turbo path uses the valid 8-step schedule ending at 0.3. The earlier FlowMatch tail-to-0.003 schedule produced weaker/less musical output once other conditioning bugs were fixed. Still, quality may depend on CFG interval or guidance scale. Now that music exists, small A/Bs are meaningful:
 
-### 4. Self-attention or other layer-internal bug
+- guidance 5.0 / 7.5 / 9.5
+- shift 1 / 2 / 3 using valid Turbo timesteps
+- SFT/full model 50-step path after applying the same conditioning fixes
 
-Audio is structured but lacks coherent phrasing. Could be a subtle bug in self-attention mixing — `nRep` for grouped-query, `transposed(0, 2, 1, 3)` ordering, qNorm/kNorm placement. Lower priority because cross-attn is verified working (different prompts produce different outputs) and self-attn share the same `Attention` class — if cross-attn produces meaningful outputs, self-attn likely is too.
+### 4. Remaining conditioning details
 
-### 5. Patch embed / un-embed (`projIn` / `projOut`)
+The biggest conditioning bugs are fixed, but still worth verifying:
 
-Audio output dynamics look healthy and prompt-following works, suggesting the input/output projections are right. But would still verify the conv axis order (`transposed(0, 2, 1)` for Conv1d, `transposed(1, 2, 0)` for ConvTranspose1d) matches upstream byte-for-byte.
+- `wrapPromptForSFT` exact whitespace vs upstream `SFT_GEN_PROMPT.format(...)`
+- lyric language default is now `en`; verify UI/user settings do not override it to `unknown` unexpectedly
+- empty text + empty lyrics baseline should generate a much weaker/less directed output than a real prompt
 
-### 6. Silence-prompt baseline test
+### Resolved during this pass
 
-Generate with **empty text + empty lyrics**. With the SFT_GEN_PROMPT template applied, this still produces the wrapper structure with empty Caption/Lyric bodies — useful sanity check that empty-content path doesn't regress.
+- Timbre encoder bypass: fixed. Text2music now feeds `silence_latent[:, :750, :]` through `TimbreEncoder`.
+- Swift-only 5-query timbre pooler: removed. It had no checkpoint weights and is not used by v1.5.
+- ConditionEncoder order: fixed to `lyrics + timbre + text`.
+- Empty-lyrics bypass: fixed. This was the breakthrough; real lyric scaffold encoding replaced all-zero hidden states.
+- Turbo schedule for `inferSteps=8`: restored to local v1.5 valid schedule ending at 0.3.
 
 ## Things ruled out THIS session (2026-05-07 afternoon + evening)
 
 - **Float16 numerical drift** — user tested f16 + 200 steps + shift=5.1; still static. Not the dominant bug.
-- **Step count** — quality plateaus IDENTICALLY at 8 / 32 / 100 steps (user-tested 2026-05-07 evening). Not step-count-sensitive.
-- **Shift parameter** — schedule fix made shift values produce sensible trajectories. Default 3.0 matches upstream.
+- **Step count alone** — quality plateaued at 8 / 32 / 100 steps before the lyric/timbre fixes. Not the original static root cause.
+- **Shift parameter alone** — default 3.0 matches upstream Turbo presets. May still be useful for quality A/Bs now that music exists.
 - **Sample rate mismatch** — WAV files are correctly tagged 48 kHz (afinfo).
 - **Cross-attention dead** — disproved by SHA1-diff and RMS-diff between prompts.
-- **Schedule trajectory tail** — fixed in `5faf163`, verified against upstream FlowMatchEulerDiscreteScheduler.
+- **FlowMatch tail-to-0.003 as Turbo fix** — corrected back to local v1.5 Turbo schedule ending at 0.3. The FlowMatch tail was not the breakthrough.
 - **Tokenizer fixed-length padding** — fixed in `ae66c24`. Now matches upstream `padding="longest"`.
 - **Raw user prompt vs SFT template** — fixed in `66c3162`. Now wraps with `# Instruction / # Caption / # Metas / <\|endoftext\|>`.
 - **chunk_mask zeros** — fixed in `461b198` (smoke test) then `9757bac` (real).
 - **silence_latent body** — fixed in `9757bac`. contextLatents `abs_mean=0.787, abs_max=6.73` matches upstream prediction.
+- **TimbreEncoder bypass / default-init pooler** — fixed locally. v1.5 emits one timbre token from encoded silence/reference latents; Swift now matches that and no longer has unmatched pooler weights.
+- **Empty-lyrics zero hidden states** — fixed locally. This was the breakthrough that produced first recognizable music.
 - **Cross-attn pre-norm absent** — INVESTIGATED via `89c79da`, REVERTED in `3629cec`. v1.5 architecture DOES use pre-norm; weights load correctly via generic snake→camel name map; we were correct before my "fix".
 - **Cross-attn RoPE missing** — INVESTIGATED via `a1a22a2`, REVERTED in `4920923`. v1.5 architecture does NOT use RoPE in cross-attn (only self-attn).
 - **VAE scale_factor / shift_factor** — Reverted; constants belong to MusicDCAE, our VAE is AutoencoderOobleck.
 
 ## Diagnostic numerics across the session (turbo / 8 steps / Float32 / seed=42 / "slow dark guitar riff")
 
-| Metric | Pre-session | Post-schedule | Post-template | Post-mask-ones | Post-silence_latent |
+| Metric | Pre-session | Post-template | Post-silence_latent | Post-timbre/schedule | Breakthrough (real lyric scaffold) |
 |---|---|---|---|---|---|
-| `cond/encoderStates seq` | 2309 | 2309 | 73 | 73 | 73 |
-| `cond/encoderStates abs_mean` | 0.37 | 0.37 | 2.36 | 2.36 | 2.36 |
-| `cond/encoderMask abs_mean` | 0.005 | 0.005 | 1.0 | 1.0 | 1.0 |
-| `cond/contextLatents abs_mean` | 0 | 0 | 0 | 0.5 | 0.787 |
-| `cond/contextLatents abs_max` | 0 | 0 | 0 | 1.0 | 6.73 |
-| `vt step 0 abs_mean` | 0.84 | 0.84 | 0.81 | 0.73 | 0.77 |
-| `vt step N (last) abs_mean` | 0.93 | 0.94 | 1.03 | 1.53 | 1.34 |
-| `vt step N (last) abs_max` | 5.6 | 12.1 | 11.9 | 11.86 | 8.28 |
-| `vae/in_latents abs_mean` | 0.32 | 0.32 | 0.68 | 0.55 | 0.55 |
-| `vae/out_audio abs_max` | 1.7 | 1.7 | 1.6 | 1.10 | 0.30 |
-| user audio | "all static" | "static" | "noisy musical" | "static layer on top" | "trying to be music" |
+| `cond/lyricHidden` | not logged | bypass/zeros when empty | bypass/zeros when empty | zeros first token | `[1,11,2048]`, abs_mean 0.0555, first5 non-zero |
+| `cond/timbreTokens` | default/random or bypass | bypass zeros | bypass zeros | `[1,1,2048]`, abs_mean 0.293 | `[1,1,2048]`, abs_mean 0.293 |
+| `cond/encoderStates seq` | 2309 | 73 | 73 | 69 | 69 |
+| `cond/encoderStates first5` | noisy/padded | prompt-dependent | prompt-dependent | all zeros | non-zero lyric scaffold |
+| `cond/encoderStates abs_mean` | 0.37 | 2.36 | 2.36 | 2.50 | 2.509 |
+| `cond/contextLatents abs_mean` | 0 | 0 | 0.787 | 0.787 | 0.787 |
+| `cond/contextLatents abs_max` | 0 | 0 | 6.73 | 6.73 | 6.73 |
+| `schedule last` | 0.125-ish / wrong | 0.003 after FlowMatch fix | 0.003 | 0.3 | 0.3 |
+| `vt step 0 abs_mean` | 0.84 | 0.81 | 0.77 | 0.769 | 0.717 |
+| `vt step N (last) abs_mean` | 0.93 | 1.03 | 1.34 | 1.00 | 1.203 |
+| `vt step N (last) abs_max` | 5.6 | 11.9 | 8.28 | 6.65 | 9.42 |
+| `vae/in_latents abs_mean` | 0.32 | 0.68 | 0.55 | 0.496 | 1.03 |
+| `vae/in_latents abs_max` | unknown | unknown | 2.95 | 2.98 | 7.44 |
+| `vae/out_audio abs_mean` | unknown | unknown | 0.0295 | 0.0238 | 0.155 |
+| `vae/out_audio abs_max` | 1.7 | 1.6 | 0.30 | 0.361 | 1.98 |
+| user audio | "all static" | "noisy musical" | "trying to be music" | "still no music" | "heard music for the first" |
 
 ## Things explicitly ruled out (cumulative)
 
@@ -200,16 +217,16 @@ Generate with **empty text + empty lyrics**. With the SFT_GEN_PROMPT template ap
 - TimestepEmbedding math — verified identical
 - scale_shift_table modulation — verified identical
 - Cross-attention mask handling — now matches upstream (no mask)
-- TimbreEncoder padding contamination — bypassed
-- LyricEncoder PAD-only contamination — bypassed
+- TimbreEncoder default-init pooler contamination — fixed by removing the non-v1.5 pooler and using the trained silence-latent timbre path
+- LyricEncoder PAD-only contamination — original fixed-length 2048 PAD issue fixed by longest-padding; later zero-hidden bypass removed because it was wrong after longest-padding
 - CFG unconditional branch — now uses learned `null_condition_emb` (was zeros)
-- Step count — auto-picks correctly per variant; quality plateaus at 32 → not step-count-sensitive
+- Step count alone — auto-picks correctly per variant; not the original static root cause
 - Guidance scale — defaults to 7.5, matches upstream defaults
 - Float16 numerical drift — empirically tested f16 + 200 steps + shift=5.1, still static
 - Sample rate / playback speed — WAV correctly tagged 48 kHz
-- Timestep schedule trajectory — now matches upstream FlowMatchEulerDiscreteScheduler down to ~0.003
-- Cross-attention pre-norm — removed (matched upstream)
-- Cross-attention RoPE — Q rotated by latent rotary, K rotated by encoder rotary (matches upstream)
+- Timestep schedule trajectory — corrected to local v1.5 Turbo schedule ending at 0.3 for the 8-step path
+- Cross-attention pre-norm — restored; v1.5 uses `cross_attn_norm` and weights load correctly
+- Cross-attention RoPE — removed; local v1.5 does not apply RoPE in cross-attention
 - VAE scale_factor / shift_factor — empirically NOT applicable to our AutoencoderOobleck
 
 ## How to resume
@@ -219,10 +236,11 @@ Generate with **empty text + empty lyrics**. With the SFT_GEN_PROMPT template ap
 3. **Reproducible test inputs:** prompt `slow dark guitar riff`, seed `42`, default 8 steps Turbo, shift 3.0, Float32. Pre-existing reference output for diff comparison: SHA1 changes per code revision but the diagnostic numbers on this exact prompt+seed are stable for a given build.
 4. **A/B prompts test:** generate same seed with two very different prompts. Should produce different SHA1s + different RMS levels. If they're identical, conditioning is ignored entirely (regression).
 5. **Next-action candidates** (from "Hypotheses still open"):
-   - Add unloaded-weight-name diff dump (Hypothesis 1)
-   - Self-attention/projection layer diff vs upstream (Hypothesis 2)
-   - patchEmbed / patchUnembed audit (Hypothesis 3)
-6. **If audio quality is back at "all static":** something regressed. Check that the four shipped fixes (`5faf163` schedule, `89c79da` cross-attn norm, `a1a22a2` RoPE, plus `5c82b54` diagnostics) are present in your build.
+   - Compare VAE decode against upstream on the same latent tensor
+   - Audit DiT patch embed / unembed channel ordering against upstream
+   - A/B guidance and valid Turbo shift schedules now that the output is musical
+   - Verify prompt/meta whitespace byte-for-byte against upstream `SFT_GEN_PROMPT.format(...)`
+6. **If audio quality is back at "all static":** something regressed. First check the breakthrough diagnostics: `cond/lyricHidden` must be non-zero, `cond/timbreTokens` must be `[1,1,2048]`, `cond/contextLatents` must be ~0.787/6.73, and Turbo schedule must end at 0.3.
 
 ## Sandbox cleanup helpers
 

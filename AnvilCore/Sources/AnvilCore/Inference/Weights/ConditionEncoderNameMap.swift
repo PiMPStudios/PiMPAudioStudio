@@ -65,13 +65,9 @@ public enum ConditionEncoderNameMap {
     }
 
     private static func mapEncoderKey(_ key: String) -> String? {
-        // The v1.5 turbo timbre_encoder has a top-level `special_token` of
-        // shape [1, 1, 2048] but our Swift `AttentionPooler.queryTokens`
-        // expects [1, 5, 2048] (numQueries=5). Plus the rest of the
-        // attentionPooler subtree (layers, norm) has NO corresponding
-        // weights in the v1.5 checkpoint. So skip special_token entirely;
-        // the AttentionPooler stays at default init. Mostly relevant only
-        // when reference audio is provided.
+        // v1.5 defines `special_token`, but the forward path comments out
+        // prepending it and extracts hidden_states[:, 0] from the encoded
+        // acoustic sequence. Keep this unused parameter out of Swift.
         if key.hasSuffix(".special_token") { return nil }
 
         var mapped = key
