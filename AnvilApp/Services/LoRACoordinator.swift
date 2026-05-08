@@ -54,6 +54,10 @@ final class LoRACoordinator {
                 logger.warning("Adapter '\(adapterID)' not found in registry — skipping injection")
                 return
             }
+            if let activeBaseID, adapter.baseModelID != activeBaseID {
+                logger.warning("Adapter '\(adapterID)' was trained for '\(adapter.baseModelID)', active DiT is '\(activeBaseID)' — skipping injection")
+                return
+            }
             let _ = try await pipeline.injectLoRA(config: adapter.config)
             let weights = try await AdapterRegistry.loadWeights(adapterID: adapterID)
             try await pipeline.loadLoRAWeights(weights, adapterID: adapterID)

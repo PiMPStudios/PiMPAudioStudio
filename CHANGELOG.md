@@ -4,21 +4,23 @@ All notable changes to AnvilApp are documented here.
 
 ---
 
-## [Unreleased] — UI Wiring + Cover-Song Planning
+## [Unreleased] — ACE-Step Quality Baseline + UI Wiring
 
 ### Added
 
-- **Advanced section in GenerateView** — collapsible disclosure surfacing three diffusion knobs that were already plumbed but never rendered: precision (Float16 / Float32 segmented), inference steps (numeric override; blank = auto: 8 turbo / 50 full), and shift (slider 0.5–10.0 with reset to 3.0). Intended for chasing the audio-quality bug (rules out / confirms numerical drift, schedule-shape, and step-count hypotheses).
-- **`GenerationRequest.stepsOverride` / `shiftOverride`** — Optional Int / Float request fields. When nil, `ACEStepGenerationService` keeps the existing auto-pick (8 turbo / 50 full) and shift=3.0 default.
+- **ACE-Step quality troubleshooting notes** — `docs/ace-step-audio-quality-investigation.md` now captures the 2026-05-07 breakthrough from static/noise to recognizable music, plus the current low-hanging follow-ups: Float32 baseline testing, SFT/Base 50-step A/Bs, prompt/meta whitespace parity, VAE decode parity, and DiT patch/unpatch parity.
+- **Advanced section in GenerateView** — collapsible disclosure surfacing three diffusion knobs that were already plumbed but never rendered: precision (Float16 / Float32 segmented), inference steps (numeric override; blank = auto: 8 Turbo / 50 Base or SFT), and shift (slider 0.5–10.0 with reset to 3.0). Intended for chasing the audio-quality bug and now for controlled quality A/Bs.
+- **`GenerationRequest.stepsOverride` / `shiftOverride`** — Optional Int / Float request fields. When nil, `ACEStepGenerationService` keeps the existing auto-pick (8 Turbo / 50 Base or SFT) and shift=3.0 default.
 - **`GenerationParameters` `@MainActor ObservableObject`** — shared bag for the four user knobs that live in both the inspector sidebar and `GenerateView`: `duration`, `seedText`, `guidanceScale`, `pipelineOverride`. Injected via `@EnvironmentObject` so both surfaces read/write the same instance.
 - **ACE-Step LM model specs** (`ace-step-lm-0.6b`, `ace-step-lm-4b`) and a dedicated **ACE-Step LM** section in `ModelsSettingsView` — model-registry plumbing for upcoming cover-song generation. The 0.6B variant is single-file (1.28 GB); the 4B is sharded (7.85 GB).
 - **`ModelCategory.aceStepLM`** — new enum case wired into `AddModelView`'s expected-files switch.
 - **Cover-song generation Phase 2 design spec** at `docs/superpowers/specs/2026-05-07-cover-song-generation-design.md` (480 lines) — three new modules (AudioTokenizer, AudioTokenDetokenizer, AceStepLM), CoverSongCoordinator, `srcLatentsOverride` parameter on the DiT path, UI changes, phased plan (2A → 2D), open questions, test plan.
 - **Cover-song Phase 2A implementation plan** at `docs/superpowers/plans/2026-05-07-cover-song-phase-2a.md` (13 tasks) — foundation modules only (AudioTokenizer + Detokenizer + AceStepLM + sharded safetensors loader + three name maps + smoke test). Phase 2B/2C/2D deferred. Execution gated on text-to-music audio-quality bug being resolved first.
-- **Audio-quality investigation resumption doc** at `docs/ace-step-audio-quality-investigation.md` — state capture for the long-running text-to-music static-output bug. Covers verified-working pieces, fixes already shipped, hypotheses still open (Float16 drift now ruled out by user testing at f16/200steps/shift=5.1; remaining target is structural conditioning), and how to resume debugging.
 
 ### Fixed
 
+- **ACE-Step Generate view restarted into Float16** — the first recognizable-music baseline was produced under Float32, but `GenerateView` reset to Float16 on every app launch and `GenerationRequest` also defaulted to Float16. Default generation precision is now Float32 so fresh launches keep the known-good quality baseline; Float16 remains selectable as an explicit speed/RAM tradeoff.
+- **LoRA adapters could silently cross DiT variants** — the picker only filters by broad `aceStepDiT` category, so an adapter trained for Turbo/Base/SFT could be selected while another DiT variant was active. `LoRACoordinator` now checks `adapter.baseModelID` against the active DiT model before injection and skips mismatches with a log warning.
 - **Lyric Writer download UX cascade** — four overlapping bugs that produced confused state in `IntelligenceSettingsView`:
   1. `LLMModelManager.isModelDownloaded` returned true on a directory containing only `config.json` + `tokenizer.json` with no safetensors body, because download failures still wrote the JSON files. Now requires at least one `.safetensors` entry.
   2. The `init()` left a stale `activeModel` selection pointing at a model whose files no longer existed; now sweeps and clears.

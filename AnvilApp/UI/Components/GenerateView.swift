@@ -14,7 +14,7 @@ struct GenerateView: View {
     @State private var promptText: String = ""
     @State private var lyricsText: String = ""
     @State private var method: InferMethod = .ode
-    @State private var precision: Precision = .float16
+    @State private var precision: Precision = .float32
     @State private var stepsOverrideText: String = ""
     @State private var shiftOverride: Double = 3.0
     @State private var advancedExpanded: Bool = false
@@ -258,7 +258,7 @@ struct GenerateView: View {
                     TextField("auto", text: $stepsOverrideText)
                         .textFieldStyle(.roundedBorder)
                         .frame(maxWidth: 80)
-                    Text("(blank = auto: 8 turbo / 50 full)")
+                    Text("(blank = auto: 8 Turbo / 50 Base or SFT)")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                     Spacer()

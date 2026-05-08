@@ -23,7 +23,7 @@ struct GenerationRequest: Sendable {
         seed: Int? = nil,
         method: InferMethod = .ode,
         guidanceScale: Float = 1.0,
-        precision: Precision = .float16,
+        precision: Precision = .float32,
         stepsOverride: Int? = nil,
         shiftOverride: Float? = nil,
         resolvedMode: GenerationMode = .music,
