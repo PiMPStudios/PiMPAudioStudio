@@ -13,6 +13,9 @@ DerivedData/
 # Superpowers (agent workspace state)
 .superpowers/
 
+# Claude Code
+.claude/
+
 # Models (never commit weights)
 *.safetensors
 *.bin
