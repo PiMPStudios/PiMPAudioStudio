@@ -57,13 +57,21 @@ Upstream reference:
 
 ---
 
-## Current symptom (end of 2026-05-09 session)
+## Current symptom (end of 2026-05-10 session)
 
-**Has not yet been tested with the VAE weight fix applied.** Expected next output: first real sound.
+**VAE fix tested — confirmed working (DC near zero). Output is now very faint white noise at −30.4 dBFS. Root cause found and fixed (commit pending): DiT transformer weights were silently dropped.**
 
-Prior to the VAE fix, all generations produced **buzz and static** regardless of prompt, with large opposite-sign DC offsets (ch0_mean ≈ −0.6, ch1_mean ≈ +0.33). This was traced definitively to the VAE running on default random weights — see "Root causes found and fixed."
+**Timeline:**
 
-After the VAE fix, if output is still wrong the next place to look is the diffusion schedule and the latent scale (see "Hypotheses still open").
+| Run | Output | Root cause |
+|---|---|---|
+| Pre-session | All static | Karras EDM schedule on RF checkpoint |
+| Mid-session | Buzz, prompt-independent | Per-layer cond broadcast |
+| Later | Buzz + −0.22 DC | Time tokens in cross-attention |
+| 2026-05-09 | Loud buzz + large ±DC (ch0=−0.60, ch1=+0.33) | VAE on random weights |
+| 2026-05-10 (post-VAE fix) | Very faint (~−30 dBFS) white noise, DC near 0 | **DiT transformer on random weights** |
+
+Next test (after DiT fix commit) is expected to produce actual sound effects.
 
 ### Earlier symptoms (chronological)
 
@@ -150,6 +158,27 @@ After the VAE fix, if output is still wrong the next place to look is the diffus
 **Note:** The mlx-audiogen port's inclusion of time tokens in cross-attention may work for *their* specific fine-tuned checkpoint; it was wrong for the original SAO 1.0 weights we load.
 
 **Files:** `SoundFXPipeline.swift`.
+
+---
+
+### 8. DiT transformer weights completely missing — all 360 block weights silently dropped
+
+**Symptom:** Very faint audio (−30.4 dBFS) with ZCR ≈ 0.5 (statistical white noise). DC near zero (confirming VAE is working). Output identical across prompts.
+
+**Root cause:** `SFXDiTNameMap.mapKey` did not handle the `blocks.N.*` key prefix used in the mlx-audiogen `dit.safetensors` export. The checkpoint stores all 24 transformer layers as top-level `blocks.0…23.*` keys (360 tensors) with **no** `model.model.` or `transformer.` prefix. The Swift `SFXDiTTransformer` stores those layers at `transformer.layers.N.*`. Because `mapKey` passed `blocks.0.*` through unchanged, MLX tried to set `blocks.0.*` on the top-level `SFXDiTModel`, found no property named `blocks`, and silently dropped all 360 tensors. The model ran with default-initialized random transformer weights → garbage velocity predictions → random walk in latent space → 4× out-of-distribution latents (abs_mean ≈ 3.1 vs expected ~0.8) → Snake activations in high-frequency oscillation regime → near-zero white-noise audio.
+
+**Additional secondary bug:** The Python DiT applies preprocess_conv and postprocess_conv as **residual corrections** (`x_t = x_t + self.preprocess_conv(x_t)`). Our Swift `forward()` was doing `let h = preprocessConv(latents)` (no add-back), discarding the input signal and passing only the correction to the transformer.
+
+**Diagnosis method:** Inspected `dit.safetensors` header directly; found 374 keys, all 360 block-layer keys use `blocks.N.*` prefix (no `model.model.`). Python simulation of `mapKey` showed 360/373 loadable keys being silently dropped.
+
+**Fix:**
+1. `SFXDiTNameMap.mapKey` — added step 6: `blocks.N.* → transformer.layers.N.*`
+2. `SFXDiTModel.forward` — `latents + preprocessConv(latents)` and `out + postprocessConv(out)`
+3. `SFXDiTActor.loadWeights` — added `supplied/model/matched` coverage diagnostic
+
+**Expected coverage after fix:** supplied=373, model=373, matched=373 (with 1 rotary inv_freq dropped before reaching `loadWeights`).
+
+**Files:** `SFXDiTNameMap.swift`, `SFXDiTModel.swift`, `SFXDiTActor.swift`.
 
 ---
 
@@ -245,6 +274,8 @@ SFX_VAE_DC        ch0_mean=-0.6011  ch1_mean=0.3333                   ← RANDOM
 - **Prepend token conditioning:** Single `gEmb = tEmb + toGlobalEmbed(globalCond)` prepended, removed after 24 blocks.
 - **`toCondEmbed` 768→768:** Correct dims, called on cross-attention tokens before transformer.
 - **`SFXVAENameMap`:** 145/145 decoder keys verified correct via Python simulation.
+- **`SFXDiTNameMap`:** 373/374 keys map to Swift paths (1 rotary inv_freq correctly dropped). Verified via Python simulation of `mapKey` against actual `dit.safetensors` header.
+- **Preprocess/postprocess conv as residuals:** Python reference does `x_t = x_t + conv(x_t)`. Fixed in `SFXDiTModel.forward`.
 - **No conv weight transposition needed:** SAO weights already in MLX NLC format `[out, k, in]` (exported from Python MLX).
 - **VAE config:** `upsampleRatios=[8,8,4,4,2]`, product=2048. `latentDim=64`, `outputChannels=2`, `sampleRate=44100`.
 - **Latent frame count for 30s:** `floor(30 × 44100 / 2048) = 646` frames. ✓ Matches `latentShape=[1, 646, 64]`.
@@ -253,35 +284,27 @@ SFX_VAE_DC        ch0_mean=-0.6011  ch1_mean=0.3333                   ← RANDOM
 
 ## Hypotheses still open
 
-### 1. First real audio — verify after VAE fix (highest priority)
+### 1. First real audio — verify after DiT fix (highest priority)
 
-The VAE fix has not been tested yet. Run both test prompts ("footsteps on a wooden floor", "waves crashing on a shore") and collect a new AUDIODIAG dump. Key things to look for:
+Both the VAE fix (2026-05-09) and the DiT transformer fix (2026-05-10) are committed. Run both test prompts ("footsteps on a wooden floor", "waves crashing on a shore") and collect a new AUDIODIAG dump. Key things to look for:
 
-- `SFX_VAE_DC` ch0/ch1 should now be near 0 (was −0.60 / +0.33 with random weights)
+- `[SFXDiT] loadWeights: supplied=373 model=373 matched=373` in Xcode console → confirms all weights loaded
+- `SFX_VAE_DC` ch0/ch1 near 0 → VAE still working
 - Output WAV should sound different for the two prompts (SHA1 diff + audible diff)
-- `SFX_FINAL_LATENTS abs_mean ≈ 3.1` — unclear if this is in-distribution for SAO. If audio still sounds wrong, the latent scale is the next suspect.
+- Audio should have discernible content at reasonable amplitude (−12 to −6 dBFS range)
+- `SFX_FINAL_LATENTS abs_mean` should now be much smaller than the old 3.134 (with trained DiT, latents converge to the real data distribution)
 
 ### 2. Latent scale / final latent distribution
 
-With 100 steps, `SFX_FINAL_LATENTS abs_mean = 3.134`. For a well-trained RF model the final latents should represent the clean data distribution from the VAE encoder's output. We don't have a reference number for SAO latent scale yet. If the audio sounds clipped or saturated after the VAE fix, this is the next thing to check — compare against the Python mlx-audiogen output on the same prompt.
+With trained DiT, the final latents should represent encoded real audio. The old `abs_mean = 3.134` was from a random-weights DiT (random walk). After the fix, the final latents should be in the SAO VAE encoder's real output distribution (estimated ~0.5–1.0 abs_mean). If audio sounds clipped or distorted, compare `SFX_FINAL_LATENTS` against the Python mlx-audiogen reference run.
 
 ### 3. Unconditioned prediction larger than conditioned
 
-`SFX_DIT_TRANSFORMER_OUT` uncond abs_mean (1.078) > cond abs_mean (0.462). This is suspicious. CFG formula:
-```
-vt = v_uncond + guidance × (v_cond − v_uncond)
-   = (1 − guidance) × v_uncond + guidance × v_cond
-   = −6.5 × v_uncond + 7.5 × v_cond
-```
-When uncond is larger, high guidance can amplify in unexpected directions. This may be a consequence of the 1-token empty-string uncond context vs 9-token prompt context. May resolve itself with proper VAE output; or may indicate CFG guidance scale needs tuning.
+`SFX_DIT_TRANSFORMER_OUT` uncond abs_mean (1.078) > cond abs_mean (0.462) in the old (random-weights) run. This data is now stale — the old run had a random transformer. Collect fresh AUDIODIAG from the first real run; if uncond is still larger than cond, investigate whether the empty-string T5 tokenization produces a useful null conditioning.
 
 ### 4. Guidance scale tuning
 
 Default is 7.5. mlx-audiogen defaults to 7.0. Try 3.5 / 5.0 / 7.0 / 7.5 once real audio is confirmed.
-
-### 5. DiT weight loading completeness
-
-We have not audited how many of the SAO DiT weights actually load. The DiT name map lives in `SFXDiTNameMap.swift`. Add a `supplied / model / matched` diagnostic to `SFXDiTActor.loadWeights` similar to the ACE-Step `DiTActor`. If the match rate is low, it's the next VAE-equivalent bug.
 
 ---
 
@@ -380,7 +403,7 @@ AnvilCore/Sources/AnvilCore/Inference/StableAudio/
   T5Encoder.swift               — SAO text conditioning (T5-base, 768-dim)
 
 AnvilCore/Sources/AnvilCore/Inference/Weights/
-  SFXDiTNameMap.swift           — DiT key mapping (audit coverage next)
+  SFXDiTNameMap.swift           — DiT key mapping (373/374 verified 2026-05-10)
   SFXVAENameMap.swift           — VAE key mapping (rewritten 2026-05-09, 145/145)
   SAOProjectionNameMap.swift    — conditioners key mapping
   T5NameMap.swift               — T5 encoder key mapping

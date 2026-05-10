@@ -383,8 +383,9 @@ public final class SFXDiTModel: Module {
     ) -> MLXArray {
         let seqLen = latents.shape[1]
 
-        // 1. Preprocess: kernel=1 conv (keeps latentDim unchanged — 64→64).
-        let h = preprocessConv(latents)                            // [B, T, latentDim]
+        // 1. Preprocess: kernel=1 conv applied as a residual correction.
+        //    Python reference: x_t = x_t + self.preprocess_conv(x_t)
+        let h = latents + preprocessConv(latents)                  // [B, T, latentDim]
         if diagEnabled {
             AudioDiagnostics.tensor("SFX_DIT_PREPROC", h)
         }
@@ -431,8 +432,9 @@ public final class SFXDiTModel: Module {
             AudioDiagnostics.tensor("SFX_DIT_TRANSFORMER_OUT", out)
         }
 
-        // 7. Postprocess: kernel=1 conv.
-        let finalOut = postprocessConv(out)                        // [B, T, latentDim]
+        // 7. Postprocess: kernel=1 conv applied as a residual correction.
+        //    Python reference: x_t = x_t + self.postprocess_conv(x_t)
+        let finalOut = out + postprocessConv(out)                  // [B, T, latentDim]
         if diagEnabled {
             AudioDiagnostics.tensor("SFX_DIT_OUT", finalOut)
         }

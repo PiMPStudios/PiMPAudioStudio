@@ -26,8 +26,21 @@ public actor SFXDiTActor {
     public var isLoaded: Bool { loaded }
 
     public func loadWeights(_ weights: [(String, MLXArray)]) throws {
+        let suppliedKeys = Set(weights.map { $0.0 })
         model.update(parameters: ModuleParameters.unflattened(weights))
         eval(model.parameters())
+
+        // Coverage diagnostic: count how many supplied keys were actually absorbed
+        // by the model (i.e. their paths exist in the flattened parameter tree).
+        let modelKeys = Set(model.parameters().flattened().map { $0.key })
+        let matched   = suppliedKeys.intersection(modelKeys).count
+        let supplied  = suppliedKeys.count
+        let inModel   = modelKeys.count
+        print("[SFXDiT] loadWeights: supplied=\(supplied) model=\(inModel) matched=\(matched)")
+        if matched < supplied {
+            print("[SFXDiT] WARNING: \(supplied - matched) supplied key(s) not matched in model")
+        }
+
         loaded = true
     }
 

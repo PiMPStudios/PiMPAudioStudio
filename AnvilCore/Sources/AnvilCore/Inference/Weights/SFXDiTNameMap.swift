@@ -4,7 +4,8 @@
 // to Swift `SFXDiTModel` module-parameter paths.
 //
 // Key transformations applied in order:
-//   1. Strip "model.model." double-prefix common to all SAO keys.
+//   1. Strip "model.model." double-prefix (absent in the mlx-audiogen export —
+//      checkpoint keys are unprefixed at the top level).
 //   2. Drop the non-learned rotary inv_freq buffer.
 //   3. Remap three nn.Sequential index suffixes → fc1/fc2 aliases:
 //        to_timestep_embed.0.* → to_timestep_embed.fc1.*
@@ -15,7 +16,12 @@
 //        .ff.ff.2.*      → .ff.out.*
 //   5. LayerNorm parameter rename:
 //        .gamma → .weight,  .beta → .bias
-//   All remaining keys pass through after step 1.
+//   6. Transformer block remap:
+//        blocks.N.* → transformer.layers.N.*
+//      The mlx-audiogen export stores the 24 SAODiTLayer blocks at
+//      "blocks.0…23.*" (top-level, no transformer. prefix) while our
+//      Swift SAODiTTransformer holds them in `var layers: [SAODiTLayer]`
+//      at the path "transformer.layers.N.*".
 //
 // Conv1d weights (preprocess_conv.weight, postprocess_conv.weight) need
 // PyTorch→MLX axis transposition ([out,in,k]→[out,k,in]), handled by
@@ -62,6 +68,20 @@ public enum SFXDiTNameMap {
             k = String(k.dropLast(".gamma".count)) + ".weight"
         } else if k.hasSuffix(".beta") {
             k = String(k.dropLast(".beta".count)) + ".bias"
+        }
+
+        // 6. Transformer block remap: "blocks.N.*" → "transformer.layers.N.*"
+        //    The mlx-audiogen checkpoint stores the 24 DiT layers at top-level
+        //    "blocks.0…23.*" rather than under a "transformer." parent module.
+        //    Our Swift SAODiTTransformer stores them in `layers: [SAODiTLayer]`,
+        //    so MLX resolves them at "transformer.layers.N.*".
+        if k.hasPrefix("blocks.") {
+            let rest = k.dropFirst("blocks.".count)
+            if let dotIdx = rest.firstIndex(of: ".") {
+                let n      = rest[..<dotIdx]
+                let after  = rest[dotIdx...]
+                k = "transformer.layers.\(n)\(after)"
+            }
         }
 
         return k
