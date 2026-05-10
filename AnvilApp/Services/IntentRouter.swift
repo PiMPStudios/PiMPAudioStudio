@@ -11,23 +11,33 @@ final class IntentRouter: ObservableObject {
     private var debounceTask: Task<Void, Never>?
 
     private static let systemPrompt = """
-        You classify audio generation prompts. Reply with exactly one word: "music", "soundfx", or "ambient". No explanation.
+        Classify this audio prompt. Reply with exactly one word: "music", "soundfx", or "ambient". No explanation.
 
-        Rules (apply in order):
-        1. If the prompt mentions a musical instrument (guitar, bass, drums, piano, synth, vocals, etc.), a genre (rock, jazz, pop, metal, hiphop, classical, EDM, doom, ambient music, etc.), a tempo/BPM, key, or song-structure terms (riff, verse, chorus, hook, melody, harmony, beat, groove) → "music".
-        2. If the prompt describes a SHORT, single, real-world sound effect like "door slam", "siren", "thunderclap", "knock", "explosion", "gunshot", "footsteps", "glass breaking" → "soundfx".
-        3. If the prompt describes a NON-MUSICAL environmental loop or background like "rainforest at night", "wind blowing", "ocean waves", "office room tone", "cafe chatter", "city traffic" with no musical instruments → "ambient".
-        4. Mood/atmosphere words alone ("dark", "atmospheric", "soundscape", "foreboding", "ominous", "ethereal", "haunting", "dreamy", "moody") do NOT mean ambient. Only choose ambient if the prompt clearly describes environmental sound rather than music.
-        5. If genuinely ambiguous, default to "music".
+        Choose "music" if the prompt contains instrument names (guitar, piano, bass, drums, synth, pad, vocals), genre names (rock, jazz, pop, metal, hiphop, EDM, classical, doom), musical terms (BPM, tempo, riff, melody, chorus, beat, groove, hook, key), or clearly describes a song or track.
+
+        Choose "soundfx" if the prompt describes a physical action, creature, or real-world sound event — with or without a surface, material, or location qualifier. Key signals: footsteps, steps, walking, running, stomping, door, slam, creak, click, tap, knock, drip, pour, shatter, break, crack, snap, bark, growl, meow, roar, engine, motor, alarm, siren, explosion, gunshot, thunder, rain hitting something, typing, crunching, rolling, bouncing.
+
+        Choose "ambient" if the prompt describes a continuous non-musical environmental background with no specific foreground event: "rainforest at night", "ocean waves", "city traffic", "wind blowing", "cafe chatter", "room tone", "crowd murmur", "nature ambience".
+
+        When ambiguous between soundfx and ambient, prefer "soundfx".
+        When ambiguous between all three, prefer "music" only if musical content is clearly implied.
 
         Examples:
-        - "slow dark guitar riff with foreboding atmosphere" → music (rule 1: guitar, riff)
-        - "atmospheric soundscape with heavy distorted guitar at 90 BPM" → music (rule 1: guitar, BPM)
-        - "doom metal song with crushing oppressive mix" → music (rule 1: doom metal)
-        - "rain on a tin roof at night" → ambient (rule 3, no instruments)
-        - "single explosion sound" → soundfx (rule 2)
-        - "ethereal ambient pad with shimmering reverb" → music (rule 1: pad is an instrument; ambient music ≠ ambient SFX)
-        - "ominous dark soundscape" → music (rule 5: ambiguous, default music)
+        - "footsteps on a wooden floor" → soundfx
+        - "footsteps on gravel" → soundfx
+        - "dog barking" → soundfx
+        - "rain hitting a window" → soundfx
+        - "door creaking open" → soundfx
+        - "glass shattering" → soundfx
+        - "thunder crack" → soundfx
+        - "engine revving" → soundfx
+        - "ocean waves on a beach" → ambient
+        - "rainforest at night" → ambient
+        - "city traffic ambience" → ambient
+        - "slow dark guitar riff" → music
+        - "doom metal with heavy bass" → music
+        - "ethereal ambient pad with reverb" → music
+        - "ominous dark soundscape" → music
         """
 
     private static let debounceInterval: Duration = .milliseconds(300)
