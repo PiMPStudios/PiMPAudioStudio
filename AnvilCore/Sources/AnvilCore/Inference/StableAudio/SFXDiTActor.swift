@@ -32,7 +32,7 @@ public actor SFXDiTActor {
 
         // Coverage diagnostic: count how many supplied keys were actually absorbed
         // by the model (i.e. their paths exist in the flattened parameter tree).
-        let modelKeys = Set(model.parameters().flattened().map { $0.key })
+        let modelKeys = Set(model.parameters().flattened().map { $0.0 })
         let matched   = suppliedKeys.intersection(modelKeys).count
         let supplied  = suppliedKeys.count
         let inModel   = modelKeys.count
