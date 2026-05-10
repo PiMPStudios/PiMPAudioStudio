@@ -436,9 +436,8 @@ VAE loadWeights: supplied=291  model=145  matched=145
 - `textHidden` differs between prompts (0.0055 vs 0.0133, 2.4× ratio). T5 IS differentiating
   the prompts.
 - **Cross-prompt latent variation is only ~3%** (0.6684 vs 0.6472) despite a 2.4× T5 difference.
-  This is the key signal: conditioning scale is correct but semantic content is barely influencing
-  the velocity field. The DiT's cross-attention is not effectively propagating T5 semantics into
-  the denoising direction.
+  This is the key signal: conditioning scale is correct but the text semantics aren't effectively
+  steering the velocity field.
 
 **Conditioning scale check:**
 
@@ -487,45 +486,77 @@ VAE loadWeights: supplied=291  model=145  matched=145
   dropped (expected — `SFXVAEModel` is decoder-only). All 145 decoder weights load. ✓
 - **Audio amplitude:** `decode_out abs_max ≈ 0.45` (−7 dBFS peak), `abs_mean ≈ 0.038`. Audio
   is present at reasonable amplitude — no longer the −30 dBFS white noise floor.
+- **DiT weight coverage confirmed:** `supplied=744 model=377 matched=373`.
+  - 744 keys = HF `model.safetensors` format which bundles DiT (~374) + conditioner (~370) keys.
+  - 373 DiT weights load correctly. 1 rotary `inv_freq` dropped by `SFXDiTNameMap` before
+    reaching `loadWeights`. 371 conditioner keys silently ignored by MLX (not in `SFXDiTModel`).
+  - 4 unmatched model params = `to_cond_embed.fc1.bias`, `to_cond_embed.fc2.bias`,
+    `to_global_embed.fc1.bias`, `to_global_embed.fc2.bias`. The HF checkpoint uses `bias=False`
+    for those two MLPs; our `SAOBiasMLP` uses `bias=True` (always). Default init is zero →
+    equivalent to `bias=False` at inference. **Benign.**
+- **CFG formula verified correct:** `vt = uncondPred + guidanceScale * (condPred − uncondPred)`.
+  DiT call=0 is the conditioned pass, call=1 is unconditioned.
+- **DiT velocity magnitude at t=1.0:** `vt_abs_mean ≈ 0.16–0.18` (vs old random-weights 4.6).
+  DiT is trained and producing plausible velocity predictions. ✓
+- **Cond vs uncond velocity at step 0:**
+  - Run A: condPred=0.1751, uncondPred=0.1717, diff ≈ 2% of total magnitude
+  - Run B: condPred=0.1569, uncondPred=0.1685, diff ≈ 7% of total magnitude
+  - The abs_mean difference is small but `abs_mean` is a scalar summary; the actual
+    CFG direction vector may still be coherent (or may not be). Needs Python reference.
 
 ---
 
 ## Hypotheses still open
 
-### 1. Cross-attention not propagating T5 semantics (highest priority)
+### 1. Cond/uncond velocity difference is real but small — is it expected? (highest priority)
 
-**Evidence:** T5 hidden states differ 2.4× between prompts (0.0055 vs 0.0133) but final latents
-differ only ~3% (0.6684 vs 0.6472). The velocity field is nearly identical for different prompts
-despite correct conditioning scale. Conditioning scale is confirmed correct — the problem is that
-text semantics are not reaching the denoising direction.
+**Confirmed:** Weight loading is correct (373/373 DiT weights, CFG formula is correct).
+**Confirmed:** T5 produces different hidden states per prompt.
+**Confirmed:** DiT produces slightly different velocity for cond vs uncond (2–7% abs_mean diff).
+**Unknown:** Whether this 2–7% difference is normal for SAO or indicates weak cross-attention.
 
-**Most likely causes (investigate in this order):**
+The cross-attention tokens for cond and uncond differ only in the T5 positions (first 0–7 of 64
+slots). Both branches share identical time tokens (positions 64–65). At short prompt lengths:
 
-1. **`SFXDiTActor` DiT weight coverage** — The console should show
-   `[SFXDiT] loadWeights: supplied=373 model=373 matched=373`. Check that
-   `cross_attn.to_kv.weight [1536, 768]` and `cross_attn.to_q.weight [1536, 1536]` are
-   among the matched keys. If `to_kv` is random-init, cross-attention has no learned
-   relationship between T5 tokens and the DiT latent space.
-2. **`toCondEmbed` weight coverage** — Verify `to_cond_embed.fc1.weight [768, 768]` and
-   `to_cond_embed.fc2.weight [768, 768]` are loaded. If random-init, the T5 signal is
-   scrambled before cross-attention.
-3. **CFG cond/uncond difference at step 0** — Add a diagnostic that prints
-   `(cond_out − uncond_out) abs_mean` before the CFG blend. If this value is near zero,
-   the guidance is not amplifying any cross-attention signal and the output will be the
-   unconditioned distribution regardless of guidance scale.
+```text
+cond   token magnitudes: ~4-8 non-zero T5 positions + 2 time tokens
+uncond token magnitudes: ~1 non-zero T5 (EOS) + 2 time tokens
+```
 
-**How to check:** Enable AUDIODIAG, run two very different prompts (e.g. "silence" vs "explosion"),
-and compare `SFX_DIT_TRANSFORMER_OUT` abs_mean for conditioned vs unconditioned at step 0 of
-each. If the values are nearly identical across prompts, cross-attention is inert.
+The 2 time tokens have abs_mean ≈ 0.68 each; the real T5 positions have abs_mean ≈ 0.08 each
+(4-8 tokens × 0.08 vs 2 tokens × 0.68). Cross-attention may weight the strong time tokens far
+more than the weak T5 tokens, producing small cond/uncond velocity difference even when
+T5 hidden states differ substantially.
 
-### 2. DiT weight key coverage — verify matched=373
+**The definitive diagnostic is a Python reference comparison.** Run mlx-audiogen on the same
+prompt and check `condPred.abs().mean() - uncondPred.abs().mean()` at step 0. If Python also
+shows 2-7% difference, this is expected SAO behavior. If Python shows 20%+, something in
+our cross-attention path is still suppressing the T5 signal.
 
-The `[SFXDiT] loadWeights` diagnostic line should appear in the Xcode console showing
-`supplied=373 model=373 matched=373` (or similar). If matched is significantly less than
-supplied, some DiT weights (likely the cross-attention projections) are not loading. The
-`SFXDiTNameMap` step-6 remap (`blocks.N.*` → `transformer.layers.N.*`) is confirmed correct
-for the mlx-audiogen export; verify the HF checkpoint (if loaded instead) uses
-`model.model.transformer.layers.N.*` keys which require step 1 (strip `model.model.`) first.
+**Things to try while waiting for Python comparison:**
+
+- Longer prompts: "dog barking loudly and repeatedly in an outdoor environment" gives more
+  non-zero T5 positions → stronger cross-attention signal
+- Higher guidance: try `guidanceScale=12.0` or `15.0` — amplifies the existing small direction
+  even if it's weak
+- Contrast extremes: "complete silence" vs "loud explosion" — maximally different T5 signals
+
+### 2. Run Python mlx-audiogen reference comparison
+
+Run the Python pipeline on the same prompt to check whether the 2–7% cond/uncond velocity
+difference is expected or a bug:
+
+```python
+# Patch mlx_audiogen to print cond/uncond abs_mean at step 0, then:
+# Compare condPred.abs().mean() vs uncondPred.abs().mean()
+# Compare final latent abs_mean (expect ~0.65 to match Swift)
+# Compare decode_out abs_max (expect ~0.45)
+```
+
+Run the Python reference: the simplest check is to run mlx-audiogen with "footsteps on a wooden
+floor" and listen to the output. If Python also produces generic-sounding audio for different
+short prompts, the behavior is expected. If Python produces clearly different output, there is
+still a bug in our cross-attention path.
 
 ### 3. Guidance scale and schedule tail
 
@@ -535,12 +566,13 @@ from sigma ≈ 0.128 to 0.0 (12.8% noise wiped in one step). mlx-audiogen genera
 schedule values and uses the final one as `sigmaNext` rather than hard-coding 0. May be worth
 aligning.
 
-### 4. Unconditioned velocity still larger than conditioned?
+### 4. Unconditioned velocity sometimes larger than conditioned — not inverted guidance
 
-The pre-fix run (random-weights DiT) showed uncond `SFX_DIT_TRANSFORMER_OUT` abs_mean (1.078)
-larger than cond (0.462). That data is stale. If this pattern persists in a fresh run,
-CFG is amplifying the unconditioned signal and subtracting the conditioned one — inverted
-guidance. Verify `v_cfg = uncond + scale * (cond − uncond)` in `SFXDiffusionActor.odeStep`.
+`SFXDiffusionActor` line 77: `vt = uncondPred + guidanceScale * (condPred − uncondPred)`.
+Formula is correct. Run B showed uncond abs_mean (0.1685) > cond abs_mean (0.1569). This is
+not inverted guidance — `abs_mean` of the difference vector isn't the same as the sign of CFG
+contribution. The guidance direction is determined by `(condPred − uncondPred)` element-wise,
+which can point "toward text" even when `uncond.abs().mean() > cond.abs().mean()`. Not a bug.
 
 ---
 
