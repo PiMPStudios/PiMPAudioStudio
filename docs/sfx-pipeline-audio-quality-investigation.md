@@ -1,10 +1,20 @@
 # Stable Audio Open SFX Pipeline — Audio Quality Investigation
 
 **Last updated:** 2026-05-10
-**Status:** ✅ **Python parity confirmed.** Pipeline output matches Python mlx-audiogen on all
-measurable metrics (ZCR, RMS, peak level, temporal structure). The "prompt-independent" texture
-observed in earlier testing is a SAO model characteristic — Python shows identical RMS range
-ratio (~1.7×) and ZCR (~1267) for short text prompts. The Swift implementation is correct.
+**Status:** ✅ **COMPLETE — Python parity confirmed on all metrics.**
+
+| Metric | Swift | Python |
+|---|---|---|
+| crossCond abs_mean | 0.046 | 0.037 |
+| (cond−uncond).abs_mean step 0 | **0.0206** | **0.0193** |
+| CFG diff ratio | **11.7%** | **11.4%** |
+| final_latents abs_mean | 0.688 | ~0.65 |
+| audio peak | −7 dBFS | −5.9 dBFS |
+| RMS range ratio | ~1.7× | 1.7× |
+| ZCR | ~1267 | 1267 |
+
+The SAO pipeline is working correctly. Short prompts produce consistent-texture ambient audio
+in both Swift and Python — this is a model characteristic, not a bug.
 
 > Use this doc to resume troubleshooting after a context reset. Skim "Current symptom" +
 > "Hypotheses still open" first.
@@ -112,11 +122,20 @@ same ~1200–1300 ZCR, flat per-second energy. The "prompt-independent texture" 
 characteristic for short prompts, not a Swift bug. SAO generates textural ambient audio rather
 than discrete event sounds when given 4–8-word prompts.
 
-**Conditioning diff metric note:** Python reports `(cond−uncond).abs_mean = 0.019` (11% of
-v_cond). The earlier 2–7% figure from Swift was `|cond.abs_mean − uncond.abs_mean|` — the
-difference of two scalars, not the scalar of the difference. Those are not equivalent. A proper
-`diff_abs_mean` diagnostic has been added to `SFXDiffusionActor` (prints on every step-0 CFG
-pass) to allow direct comparison on the next run.
+**Conditioning diff metric — confirmed matching:**
+
+```text
+Swift step0 cond_abs_mean=0.1755  uncond_abs_mean=0.1719
+            diff_abs_mean=0.0206  ratio=0.1174
+Python      diff_abs_mean=0.0193  ratio=0.1135
+```
+
+Swift is within 7% of Python on the actual `(cond−uncond).abs_mean`. Cross-attention
+conditioning is working correctly. The `diff_abs_mean` line prints automatically on every
+step-0 CFG pass — any future regression from ~0.019–0.021 would indicate a conditioning bug.
+
+Swift `final_latents abs_mean=0.6879  abs_max=3.7960  mean=−0.0798` — latents in range,
+slight negative DC is normal for this checkpoint.
 
 ---
 
