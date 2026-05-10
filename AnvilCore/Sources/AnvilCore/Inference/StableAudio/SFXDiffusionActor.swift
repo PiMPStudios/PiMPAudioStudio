@@ -74,7 +74,19 @@ public actor SFXDiffusionActor {
                     crossCond: uncrossCondTokens!,
                     globalCond: globalCond
                 )
-                vt = uncondPred + config.guidanceScale * (condPred - uncondPred)
+                let diff = condPred - uncondPred
+                vt = uncondPred + config.guidanceScale * diff
+
+                // Log cond/uncond diff at step 0 — compare to Python reference:
+                //   Python diff.abs_mean ≈ 0.019 (ratio ≈ 11% of v_cond)
+                //   Swift should match within ~2× if cross-attention is working.
+                if stepIdx == 0 {
+                    let diffMean = abs(diff).mean().item(Float.self)
+                    let condMean = abs(condPred).mean().item(Float.self)
+                    let ratio    = condMean > 0 ? diffMean / condMean : 0
+                    print(String(format: "[SFXDIFF] step0 cond_abs_mean=%.4f uncond_abs_mean=%.4f diff_abs_mean=%.4f ratio=%.4f (Python ref: diff≈0.019 ratio≈0.11)",
+                                 condMean, abs(uncondPred).mean().item(Float.self), diffMean, ratio))
+                }
             } else {
                 vt = try await dit.predict(
                     latents: xt, timestep: timestep,
@@ -167,7 +179,15 @@ public actor SFXDiffusionActor {
                     crossCond: uncrossCondTokens!,
                     globalCond: globalCond
                 )
-                vt = uncondPred + config.guidanceScale * (condPred - uncondPred)
+                let diff = condPred - uncondPred
+                vt = uncondPred + config.guidanceScale * diff
+                if stepIdx == 0 {
+                    let diffMean = abs(diff).mean().item(Float.self)
+                    let condMean = abs(condPred).mean().item(Float.self)
+                    let ratio    = condMean > 0 ? diffMean / condMean : 0
+                    print(String(format: "[SFXDIFF] step0 cond_abs_mean=%.4f uncond_abs_mean=%.4f diff_abs_mean=%.4f ratio=%.4f (Python ref: diff≈0.019 ratio≈0.11)",
+                                 condMean, abs(uncondPred).mean().item(Float.self), diffMean, ratio))
+                }
             } else {
                 vt = try await dit.predict(
                     latents: xt, timestep: timestep,
