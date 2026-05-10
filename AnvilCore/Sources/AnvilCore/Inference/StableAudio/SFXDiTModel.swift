@@ -14,14 +14,14 @@
 //   timestepFeaturesDim = 256    (FourierFeatures output = 2 × 128)
 //   globalCondDim       = 1536   (concat startEmbed[768] + totalEmbed[768])
 //
-// Forward pass:
+// Forward pass (prepend-style conditioning, matches mlx-audiogen DiT):
 //   1. preprocess_conv  Conv1d(latentDim→latentDim, k=1)   — 64→64, identity channel count
 //   2. timestepFeatures.encode(t)      → [B, 256] Fourier features
 //   3. toTimestepEmbed MLP(256→H→H)    → [B, H] tEmb
-//   4. toGlobalEmbed MLP(1536→H→H)(g) → [B, H]  added to tEmb → gEmb [B, 1, H]
-//   5. transformer.project_in Conv1d(latentDim→H) + broadcast-add gEmb
-//   6. 24 × SAODiTLayer (pre-norm self-attn w/ RoPE, cross-attn, GEGLU FFN)
-//   7. transformer.project_out Conv1d(H→latentDim)
+//   4. toGlobalEmbed MLP(1536→H→H)(g) → [B, H]  added to tEmb → gEmb [B, 1, H] (prepend token)
+//   5. toCondEmbed MLP(768→768→768)(crossCond) → projected cross-attn tokens
+//   6. RoPE for seqLen+1 positions (prepend at pos 0, latents at 1..T)
+//   7. transformer: project_in → prepend gEmb → 24 × SAODiTLayer → remove prepend → project_out
 //   8. postprocess_conv Conv1d(latentDim→latentDim, k=1)   — 64→64, identity channel count
 //
 // Swift module paths mirror SFXDiTNameMap output (HF keys → module paths).
@@ -252,19 +252,13 @@ public final class SAODiTLayer: Module {
         )
     }
 
-    /// - Parameters:
-    ///   - conditioning: `[B, 1, hiddenSize]` global conditioning (temb + globalCond),
-    ///                   broadcast-added at the START of this layer before pre_norm.
-    ///                   SAO adds it fresh at every layer — NOT accumulated from the previous layer.
     public func callAsFunction(
         _ x: MLXArray,
-        conditioning: MLXArray,
         crossCond: MLXArray,
         cosEmb: MLXArray,
         sinEmb: MLXArray
     ) -> MLXArray {
-        // Add global conditioning at the start of each layer (broadcast over T).
-        var h = x + conditioning
+        var h = x
         h = h + selfAttn(norm1(h), cosEmb: cosEmb, sinEmb: sinEmb)
         h = h + crossAttn(norm2(h), conditioning: crossCond)
         h = h + ff(norm3(h))
@@ -292,23 +286,26 @@ public final class SAODiTTransformer: Module {
     }
 
     /// - Parameters:
-    ///   - x:           `[B, T, latentDim]` preprocessed latents
-    ///   - conditioning: `[B, 1, hiddenSize]` timestep + global embedding.
-    ///                   Passed to EACH layer and added fresh at the start of every block.
-    ///   - crossCond:   `[B, L, condDim]` T5 hidden states
+    ///   - x:            `[B, T, latentDim]` preprocessed latents
+    ///   - prependToken: `[B, 1, hiddenSize]` conditioning token prepended to sequence.
+    ///                   Attended by all sequence positions via self-attention, then removed.
+    ///   - crossCond:    `[B, S, condDim]` projected conditioning tokens (T5 hidden states only)
     public func callAsFunction(
         _ x: MLXArray,
-        conditioning: MLXArray,
+        prependToken: MLXArray,
         crossCond: MLXArray,
         cosEmb: MLXArray,
         sinEmb: MLXArray
     ) -> MLXArray {
-        var h = projectIn(x)                    // [B, T, latentDim] → [B, T, hiddenSize]
+        var h = projectIn(x)                                      // [B, T, H]
+        h = concatenated([prependToken, h], axis: 1)             // [B, T+1, H]
         for layer in layers {
-            // conditioning is added inside each layer (not pre-accumulated here)
-            h = layer(h, conditioning: conditioning, crossCond: crossCond, cosEmb: cosEmb, sinEmb: sinEmb)
+            h = layer(h, crossCond: crossCond, cosEmb: cosEmb, sinEmb: sinEmb)
         }
-        return projectOut(h)                    // [B, T, hiddenSize] → [B, T, latentDim]
+        // Remove the prepended conditioning token.
+        let seqWithPrepend = h.shape[1]
+        h = h[0..., 1..<seqWithPrepend, 0...]                   // [B, T, H]
+        return projectOut(h)                                      // [B, T, latentDim]
     }
 }
 
@@ -341,7 +338,7 @@ public final class SFXDiTModel: Module {
         )
         self._toCondEmbed.wrappedValue = SAOBiasMLP(
             inputDim: config.condTokenDim,
-            hiddenDim: config.hiddenSize
+            hiddenDim: config.condTokenDim
         )
         self._toGlobalEmbed.wrappedValue = SAOBiasMLP(
             inputDim: config.globalCondDim,
@@ -358,50 +355,88 @@ public final class SFXDiTModel: Module {
 
     /// Predict the velocity field for the given noisy latents.
     ///
+    /// Forward pass (mirrors mlx-audiogen DiT):
+    ///   1. preprocess_conv (k=1, identity channel count)
+    ///   2. Timestep Fourier features → MLP → tEmb
+    ///   3. Global embed: tEmb + toGlobalEmbed(globalCond) → prepend token [B,1,H]
+    ///   4. Project cross-attention conditioning: toCondEmbed(crossCond) [B,S,768→768]
+    ///   5. RoPE for seqLen+1 positions (prepend token at pos 0, latent frames at 1..T)
+    ///   6. Transformer: prepend gEmb → 24 blocks → remove prepend → project_out
+    ///   7. postprocess_conv (k=1, identity channel count)
+    ///
     /// - Parameters:
     ///   - latents:    `[B, T, latentDim]` noisy latent frames
     ///   - timestep:   `[B]` or `[1]` continuous diffusion time ∈ (0, 1]
-    ///   - crossCond:  `[B, L, conditioningDim]` T5-base hidden states
-    ///   - globalCond: `[B, globalCondDim]` concat(startEmbed, totalEmbed)
+    ///   - crossCond:  `[B, S, condTokenDim]` T5 hidden states [B, 128, 768] (no time tokens)
+    ///   - globalCond: `[B, globalCondDim]` concat(totalEmbed, startEmbed)
     ///                 from `SAONumberConditioner`
     /// - Returns: `[B, T, latentDim]` predicted velocity
+    /// - Parameter diagEnabled: when `true` emit `[AUDIODIAG]` probes for every
+    ///   internal stage (pass only on the first 1-2 calls per generation to avoid
+    ///   flooding the console with 100+ duplicate log lines).
     public func forward(
         latents: MLXArray,
         timestep: MLXArray,
         crossCond: MLXArray,
-        globalCond: MLXArray
+        globalCond: MLXArray,
+        diagEnabled: Bool = false
     ) -> MLXArray {
         let seqLen = latents.shape[1]
 
         // 1. Preprocess: kernel=1 conv (keeps latentDim unchanged — 64→64).
         let h = preprocessConv(latents)                            // [B, T, latentDim]
+        if diagEnabled {
+            AudioDiagnostics.tensor("SFX_DIT_PREPROC", h)
+        }
 
         // 2. Timestep Fourier encoding → MLP.
         let tFeats = timestepFeatures.encode(timestep)             // [B, timestepFeaturesDim]
         let tEmb   = toTimestepEmbed(tFeats)                       // [B, hiddenSize]
+        if diagEnabled {
+            AudioDiagnostics.tensor("SFX_DIT_TIMESTEP", timestep)
+            AudioDiagnostics.tensor("SFX_DIT_TEMB", tEmb)
+        }
 
-        // 3. Add number-conditioner global embedding.
+        // 3. Global conditioning → add to timestep embed → prepend token.
+        //    SAO uses prepend-style conditioning: global_cond+t_embed is prepended
+        //    as a single extra token and removed after the transformer blocks.
         let gEmb = (tEmb + toGlobalEmbed(globalCond))             // [B, hiddenSize]
             .expandedDimensions(axis: 1)                           // [B, 1, hiddenSize]
+        if diagEnabled {
+            AudioDiagnostics.tensor("SFX_DIT_GLOBAL_EMB", gEmb)
+        }
 
-        // 4. Precompute partial-RoPE embeddings for this sequence length.
+        // 4. Project cross-attention conditioning (T5 tokens → same 768 dim).
+        //    to_cond_embed: 768→768 non-linear projection (project_cond_tokens=False).
+        let projCross = toCondEmbed(crossCond)                     // [B, S, condTokenDim]
+        if diagEnabled {
+            AudioDiagnostics.tensor("SFX_DIT_PROJ_CROSS", projCross)
+        }
+
+        // 5. RoPE for seqLen+1 positions (prepend token at pos 0, latent frames at 1..T).
         let (cosEmb, sinEmb) = SFXDiTModel.computeRoPE(
-            seqLen: seqLen,
+            seqLen: seqLen + 1,
             rotaryDim: config.rotaryDim
         )
 
-        // 5. Transformer: project_in → add gEmb → 24 layers → project_out.
-        //    project_in expands latentDim(64) → hiddenSize(1536) before gEmb add.
+        // 6. Transformer: prepend gEmb → 24 blocks → remove prepend → project_out.
         let out = transformer(
             h,
-            conditioning: gEmb,
-            crossCond: crossCond,
+            prependToken: gEmb,
+            crossCond: projCross,
             cosEmb: cosEmb,
             sinEmb: sinEmb
         )                                                          // [B, T, latentDim]
+        if diagEnabled {
+            AudioDiagnostics.tensor("SFX_DIT_TRANSFORMER_OUT", out)
+        }
 
-        // 6. Postprocess: kernel=1 conv (keeps latentDim unchanged — 64→64).
-        return postprocessConv(out)                                // [B, T, latentDim]
+        // 7. Postprocess: kernel=1 conv.
+        let finalOut = postprocessConv(out)                        // [B, T, latentDim]
+        if diagEnabled {
+            AudioDiagnostics.tensor("SFX_DIT_OUT", finalOut)
+        }
+        return finalOut
     }
 
     // MARK: - RoPE helper

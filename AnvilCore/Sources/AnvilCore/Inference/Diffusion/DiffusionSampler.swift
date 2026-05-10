@@ -26,29 +26,23 @@ public enum DiffusionSampler {
         return xt - vt * tUnsq
     }
 
-    /// Variational v-prediction Euler step for Stable Audio Open.
+    /// Variational v-prediction Euler step for models using the cosine/EDM parameterisation.
     ///
-    /// SAO uses the cosine/variational noise parameterisation (not the Karras/EDM
-    /// `x_noisy = x₀ + σ·ε` form). The forward process is:
+    /// NOTE: Stable Audio Open (SAO) does NOT use this step.  SAO (mlx-audiogen) uses
+    /// **rectified flow** with t ∈ [1, 0] and the simple `odeStep` above.
+    /// This function is retained in case a future model requires the variational ODE.
+    ///
+    /// The variational forward process is:
     ///
     ///   `x(σ) = α(σ)·x₀ + σ_c(σ)·ε`   where α = 1/√(1+σ²),  σ_c = σ·α
     ///
-    /// This keeps x always at approximately unit variance.  Differentiating along
-    /// the ODE path and substituting `v = α·ε − σ_c·x₀` gives:
-    ///
-    ///   `dx/dσ = α(σ)² · v`
-    ///
-    /// First-order Euler step:  `x_next = x_t + α(σ_t)² · (σ_next − σ_t) · v_t`
-    ///
-    /// At the final denoising step (sigmaNext = 0) the clean prediction is returned
-    /// directly from the v-objective formula: `x₀_pred = α·x_t − σ_c·v_t`.
+    /// Euler step:  `x_next = x_t + α(σ_t)² · (σ_next − σ_t) · v_t`
     ///
     /// - Parameters:
-    ///   - xt:        noisy latent — **unit-variance** input (do NOT scale by σ_max)
-    ///   - vt:        model-predicted velocity (v-prediction)
-    ///   - sigma:     current noise level σ_t  (range [500 → 0.3] for SAO)
-    ///   - sigmaNext: next (lower) noise level; pass 0 for the final denoising step
-    /// - Returns:     latent stepped to sigmaNext
+    ///   - xt:        noisy latent — unit-variance input
+    ///   - vt:        model-predicted velocity
+    ///   - sigma:     current noise level σ_t
+    ///   - sigmaNext: next noise level; pass 0 for the final step
     public static func edmEulerStep(
         xt: MLXArray,
         vt: MLXArray,
@@ -58,12 +52,10 @@ public enum DiffusionSampler {
         let alpha      = 1.0 / sqrtf(1.0 + sigma * sigma)
         let sigmaCoeff = sigma * alpha  // σ_c = σ / √(1 + σ²)
 
-        // At the final step return the clean prediction directly
         if sigmaNext <= 0 {
             return MLXArray(alpha) * xt - MLXArray(sigmaCoeff) * vt
         }
 
-        // Variational ODE Euler step:  x_next = x_t + α(σ)² · (σ_next − σ_t) · v_t
         let alphaSquared = alpha * alpha
         return xt + MLXArray(alphaSquared * (sigmaNext - sigma)) * vt
     }

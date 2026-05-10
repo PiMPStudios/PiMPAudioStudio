@@ -166,50 +166,18 @@ public actor WeightConverter {
     ///   - all other keys → remap snake_case/block→blocks via VAENameMap.mapKey
     public func loadSFXVAEWeights(from url: URL) throws -> [(String, MLXArray)] {
         let raw = try loadSafetensors(from: url)
-        let dict = Dictionary(raw, uniquingKeysWith: { first, _ in first })
-        let allKeys = raw.map { $0.0 }.sorted()
 
-        var result: [(String, MLXArray)] = []
-        var processed: Set<String> = []
-
-        for key in allKeys {
-            if processed.contains(key) { continue }
-
-            if VAENameMap.isWeightNormG(key) {
-                let vKey = VAENameMap.weightNormCompanion(key)
-                guard let g = dict[key], let v = dict[vKey] else {
-                    processed.insert(key)
-                    continue
-                }
-                var fused = VAENameMap.fuseWeightNorm(weightG: g, weightV: v)
-                let fusedKey = VAENameMap.fusedKeyName(key)
-                if VAENameMap.isConvTranspose(fusedKey) {
-                    fused = VAENameMap.convTranspose1dToMLX(fused)
-                } else {
-                    fused = VAENameMap.conv1dToMLX(fused)
-                }
-                result.append((VAENameMap.mapKey(fusedKey), fused))
-                processed.insert(key)
-                processed.insert(vKey)
-                continue
-            }
-
-            if VAENameMap.isWeightNormV(key) {
-                processed.insert(key)  // handled above when its _g partner was processed
-                continue
-            }
-
-            guard let value = dict[key] else { continue }
-
-            if VAENameMap.isSnakeParam(key) {
-                result.append((VAENameMap.mapKey(key), VAENameMap.squeezeSnakeParam(value)))
-            } else {
-                result.append((VAENameMap.mapKey(key), value))
-            }
-            processed.insert(key)
+        // SAO vae.safetensors weights are exported from the mlx-audiogen Python code
+        // and are already in MLX NLC format [out, k, in] — no weight-norm fusion or
+        // axis transposition is required.  All we need is path translation from the
+        // MLX Sequential naming (decoder.layers.layers.X.*) to our Swift property
+        // names (decoder.conv1.*, decoder.blocks.0.convT1.*, etc.).
+        //
+        // Encoder keys are skipped (SFXVAENameMap.mapKey returns nil for them).
+        return raw.compactMap { (key, value) -> (String, MLXArray)? in
+            guard let mapped = SFXVAENameMap.mapKey(key) else { return nil }
+            return (mapped, value)
         }
-
-        return result
     }
 
     /// Load T5-base encoder weights for Stable Audio Open. The HF safetensors

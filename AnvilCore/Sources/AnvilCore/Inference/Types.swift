@@ -171,12 +171,22 @@ public struct SFXDiffusionConfig: Sendable {
     public let guidanceScale: Float
     public let seed: Int?
     public let latentShape: [Int]
+    /// Maximum timestep for the rectified-flow schedule.
+    /// SAO (mlx-audiogen) uses sigma_max = 1.0 (rectified flow, NOT the EDM 500 value).
+    public let sigmaMax: Float
 
-    public init(steps: Int = 100, guidanceScale: Float = 7.0, seed: Int? = nil, latentShape: [Int]) {
+    public init(
+        steps: Int = 100,
+        guidanceScale: Float = 7.0,
+        seed: Int? = nil,
+        latentShape: [Int],
+        sigmaMax: Float = 1.0
+    ) {
         self.steps = steps
         self.guidanceScale = guidanceScale
         self.seed = seed
         self.latentShape = latentShape
+        self.sigmaMax = sigmaMax
     }
 }
 

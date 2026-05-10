@@ -19,23 +19,40 @@ public actor SFXDiffusionActor {
 
     /// Run the ODE diffusion sampler.
     ///
+    /// SAO (mlx-audiogen / mlx-stable-audio) uses **rectified flow** with t ∈ [1, 0].
+    /// Schedule: logSNR sigmoid schedule (see `generateRFSchedule`).
+    /// ODE step:  x_next = x_t + (t_next − t_curr) · v_pred   (simple Euler, same as ACE-Step).
+    ///
     /// - Parameters:
-    ///   - crossCond:  `[B, L, conditioningDim]` T5-base hidden states
-    ///   - globalCond: `[B, globalCondDim]` concat(startEmbed, totalEmbed)
+    ///   - crossCond:          `[B, S, condTokenDim]` T5[:64] + time tokens (66 tokens)
+    ///   - globalCond:         `[B, globalCondDim]` concat(totalEmbed, startEmbed)
+    ///   - uncrossCondTokens:  `[B, S, condTokenDim]` T5("")+time tokens for CFG null;
+    ///                         pass `nil` to disable CFG entirely
     public func sample(
         crossCond: MLXArray,
         globalCond: MLXArray,
-        config: SFXDiffusionConfig
+        config: SFXDiffusionConfig,
+        uncrossCondTokens: MLXArray? = nil  // T5("")+time tokens for CFG; nil → no CFG
     ) async throws -> DiffusionResult {
         let totalStart = Date()
 
-        // SAO uses the variational/cosine noise parameterisation: x(σ) = α·x₀ + σ_c·ε.
-        // At σ_max=500, σ_c ≈ 1 and α ≈ 0, so x_T ≈ ε ~ N(0, I).
-        // Do NOT scale by σ_max — the input to the model is always approximately unit-variance.
+        // Rectified flow: initial noise is unit-variance N(0,I) — do NOT scale by any σ_max.
         var xt = DiffusionSampler.generateNoise(shape: config.latentShape, seed: config.seed)
 
-        let sigmas = generateKarrasSigmas(steps: config.steps)
-        let doCFG  = config.guidanceScale > 1.0
+        // LogSNR sigmoid schedule: t descends from sigmaMax to near 0 in `steps` values.
+        // The final sigmaNext is 0 (handled by the existing fallback in the loop below).
+        let sigmas = generateRFSchedule(steps: config.steps, sigmaMax: config.sigmaMax)
+        let doCFG  = config.guidanceScale > 1.0 && uncrossCondTokens != nil
+
+        AudioDiagnostics.note("SFX_DIFF", "latentShape=\(config.latentShape) steps=\(config.steps) sigmaMax=\(config.sigmaMax) doCFG=\(doCFG)")
+        // Log first 10 schedule values so we can verify the logSNR sigmoid shape.
+        AudioDiagnostics.floats("SFX_SCHEDULE_FIRST10", Array(sigmas.prefix(10)))
+        AudioDiagnostics.floats("SFX_SCHEDULE_LAST5",   Array(sigmas.suffix(5)))
+        AudioDiagnostics.tensor("SFX_NOISE_XT", xt)
+
+        // Reset the DiT internal-diag counter so the first two forward calls
+        // (step 0 cond + uncond) emit their full stage probes.
+        await dit.resetDiagCounter()
 
         let diffStart = Date()
 
@@ -54,7 +71,7 @@ public actor SFXDiffusionActor {
                 )
                 let uncondPred = try await dit.predict(
                     latents: xt, timestep: timestep,
-                    crossCond: MLXArray.zeros(like: crossCond),
+                    crossCond: uncrossCondTokens!,
                     globalCond: globalCond
                 )
                 vt = uncondPred + config.guidanceScale * (condPred - uncondPred)
@@ -65,8 +82,16 @@ public actor SFXDiffusionActor {
                 )
             }
 
-            xt = DiffusionSampler.edmEulerStep(xt: xt, vt: vt, sigma: sigma, sigmaNext: sigmaNext)
+            // Rectified flow Euler step: x_next = x_t + (t_next - t_curr) * v_t
+            xt = DiffusionSampler.odeStep(xt: xt, vt: vt, currentT: sigma, nextT: sigmaNext)
             eval(xt)
+
+            // [AUDIODIAG] verbose: log steps 0, 1, and final to trace denoising progress.
+            if stepIdx <= 1 || stepIdx == config.steps - 1 {
+                AudioDiagnostics.note("SFX_STEP[\(stepIdx)]", "sigma=\(String(format:"%.4f",sigma)) sigmaNext=\(String(format:"%.4f",sigmaNext))")
+                AudioDiagnostics.tensor("SFX_VT[\(stepIdx)]", vt)
+                AudioDiagnostics.tensor("SFX_XT[\(stepIdx)]", xt)
+            }
 
             let elapsed = Date().timeIntervalSince(diffStart)
             progressContinuation?.yield(.diffusion(DiffusionProgress(
@@ -82,6 +107,9 @@ public actor SFXDiffusionActor {
             totalTime: totalTime
         )
 
+        AudioDiagnostics.tensor("SFX_FINAL_LATENTS", xt)
+        AudioDiagnostics.note("SFX_DIFF_DONE", "diffTime=\(String(format:"%.2f",diffTime))s perStep=\(String(format:"%.3f",diffTime/Double(max(config.steps,1))))s")
+
         progressContinuation?.finish()
         progressContinuation = nil
         return DiffusionResult(latents: xt, timeCosts: costs)
@@ -90,12 +118,16 @@ public actor SFXDiffusionActor {
     /// Inpaint using a partial-noise schedule.  Stable Audio inpainting is
     /// currently gated in `InpaintCoordinator`; this method signature is
     /// preserved for future use.
+    ///
+    /// `schedule` must be a rectified-flow t-value sequence descending from some
+    /// t_start ∈ (0, 1] down to a value near 0 (e.g. a slice of `generateRFSchedule`).
     public func inpaint(
         startLatents: MLXArray,
         schedule: [Float],
         crossCond: MLXArray,
         globalCond: MLXArray,
-        config: SFXDiffusionConfig
+        config: SFXDiffusionConfig,
+        uncrossCondTokens: MLXArray? = nil  // T5("")+time tokens for CFG; nil → no CFG
     ) async throws -> DiffusionResult {
         let totalStart = Date()
 
@@ -104,10 +136,9 @@ public actor SFXDiffusionActor {
             return DiffusionResult(latents: startLatents, timeCosts: costs)
         }
 
-        // `schedule` is expected to be a Karras sigma sequence [σ_high … σ_low].
         var xt = startLatents
         let stepCount = schedule.count
-        let doCFG = config.guidanceScale > 1.0
+        let doCFG = config.guidanceScale > 1.0 && uncrossCondTokens != nil
 
         let diffStart = Date()
 
@@ -126,7 +157,7 @@ public actor SFXDiffusionActor {
                 )
                 let uncondPred = try await dit.predict(
                     latents: xt, timestep: timestep,
-                    crossCond: MLXArray.zeros(like: crossCond),
+                    crossCond: uncrossCondTokens!,
                     globalCond: globalCond
                 )
                 vt = uncondPred + config.guidanceScale * (condPred - uncondPred)
@@ -137,7 +168,7 @@ public actor SFXDiffusionActor {
                 )
             }
 
-            xt = DiffusionSampler.edmEulerStep(xt: xt, vt: vt, sigma: sigma, sigmaNext: sigmaNext)
+            xt = DiffusionSampler.odeStep(xt: xt, vt: vt, currentT: sigma, nextT: sigmaNext)
             eval(xt)
 
             let elapsed = Date().timeIntervalSince(diffStart)
@@ -159,22 +190,27 @@ public actor SFXDiffusionActor {
         return DiffusionResult(latents: xt, timeCosts: costs)
     }
 
-    /// Karras et al. sigma schedule for EDM diffusion.
+    /// Rectified-flow logSNR timestep schedule.
     ///
-    /// Produces `steps` values descending from σ_max=500 to σ_min=0.3 using the
-    /// power-law interpolation: `σ_i = (σ_max^(1/ρ) + i/(N−1)·(σ_min^(1/ρ) − σ_max^(1/ρ)))^ρ`
-    /// where ρ=7 (standard EDM default).
+    /// Matches mlx-audiogen `get_rf_schedule(steps, sigma_max)`:
+    ///   `logsnr = linspace(logsnr_max, 2.0, steps+1)`
+    ///   `t = sigmoid(-logsnr) = 1/(1+exp(logsnr))`
+    ///   with `t[0]` pinned to `sigmaMax` and `t[-1]` to 0.
     ///
-    /// - Returns: array of length `steps` in descending order [σ_max … σ_min]
-    private func generateKarrasSigmas(steps: Int) -> [Float] {
-        let sigmaMin: Float = 0.3
-        let sigmaMax: Float = 500.0
-        let rho:      Float = 7.0
-        let minInvRho = powf(sigmaMin, 1.0 / rho)
-        let maxInvRho = powf(sigmaMax, 1.0 / rho)
+    /// For SAO `sigmaMax = 1.0`, `logsnr_max = -6.0`.
+    ///
+    /// Returns `steps` values (the `t[-1]=0.0` sentinel is the loop's `sigmaNext`
+    /// fallback when `stepIdx + 1 >= sigmas.count`).
+    func generateRFSchedule(steps: Int, sigmaMax: Float = 1.0) -> [Float] {
+        let logsnrMax: Float = sigmaMax < 1.0
+            ? logf((1.0 - sigmaMax) / sigmaMax + 1e-6)
+            : -6.0
+        let logsnrMin: Float = 2.0
+
         return (0..<steps).map { i in
-            let t = Float(i) / Float(steps - 1)
-            return powf(maxInvRho + t * (minInvRho - maxInvRho), rho)
+            if i == 0 { return sigmaMax }  // pin to exact sigmaMax
+            let logsnr = logsnrMax + Float(i) / Float(steps) * (logsnrMin - logsnrMax)
+            return 1.0 / (1.0 + expf(logsnr))
         }
     }
 }

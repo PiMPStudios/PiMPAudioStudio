@@ -1,16 +1,24 @@
 // AnvilCore/Sources/AnvilCore/Inference/StableAudio/SoundFXPipeline.swift
 //
 // Stable Audio Open end-to-end pipeline:
-//   1. T5-base tokenise + encode text → [B, L, 768] crossCond
+//   1. T5-base tokenise + encode text → [B, 128, 768] hidden states
 //   2. SAONumberConditioner encode (seconds_start=0, seconds_total=duration)
-//      → concat [B, 1536] globalCond
-//   3. Diffusion ODE (crossCond + globalCond → predicted velocity → latents)
-//   4. Oobleck VAE decode → audio samples
+//      → startEmb [1, 768], totalEmb [1, 768]
+//   3. Build conditioning tensors:
+//      crossCond  = T5 hidden states  [1, 128, 768]  (text only — no time tokens)
+//      globalCond = cat([totalEmb, startEmb], axis=-1)  [1, 1536]  ← total FIRST
+//      uncrossCond = T5("") hidden states  [1, 128, 768]  (for CFG null pass)
+//   4. Diffusion ODE (crossCond + globalCond → predicted velocity → latents)
+//   5. Oobleck VAE decode → audio samples
 //
 // The public `generate(text:duration:config:tokenizer:)` entry point handles
-// steps 1–4.  The overload `generate(precomputedText:duration:config:)` accepts
-// already-encoded T5 hidden states and is used in unit tests to avoid needing
-// a real tokenizer file.
+// steps 1–5.  The overload `generate(precomputedText:uncondText:duration:config:)`
+// accepts already-encoded T5 hidden states and is used in unit tests.
+//
+// Note on conditioning layout (matches stable-audio-tools training):
+//   crossCond  = T5 hidden states [1, 128, 768]  (text only — no time tokens)
+//   globalCond = cat([totalEmb, startEmb], axis=-1)  [1, 1536]  → prepend token
+// Time tokens must NOT be appended to crossCond; they belong only in globalCond.
 
 import Foundation
 import MLX
@@ -53,40 +61,71 @@ public actor SoundFXPipeline {
         config: SFXDiffusionConfig,
         tokenizer: AnvilTokenizer
     ) async throws -> AudioResult {
-        // 1. T5 text encoding.
+        // T5 encoding of prompt and empty string (for CFG null conditioning).
         let (textIds, textMask) = tokenizer.encodeText(text, maxLength: 128)
-        let textHidden = t5(inputIds: textIds, attentionMask: textMask) // [1, L, 768]
+        let textHidden = t5(inputIds: textIds, attentionMask: textMask)   // [1, 128, 768]
 
-        return try await generate(precomputedText: textHidden, duration: duration, config: config)
+        let (emptyIds, emptyMask) = tokenizer.encodeText("", maxLength: 128)
+        let emptyHidden = t5(inputIds: emptyIds, attentionMask: emptyMask) // [1, 128, 768]
+
+        return try await generate(
+            precomputedText: textHidden,
+            uncondText: emptyHidden,
+            duration: duration,
+            config: config
+        )
     }
 
     // MARK: - Overload for pre-encoded text (tests + external callers)
 
     /// Generate audio from pre-encoded T5 hidden states.
     /// - Parameters:
-    ///   - precomputedText: `[B, L, conditioningDim]` T5-base last hidden state
+    ///   - precomputedText: `[B, 128, 768]` T5-base last hidden state for the prompt.
+    ///                      Used directly as cross-attention conditioning (no time tokens appended).
+    ///   - uncondText:      `[B, 128, 768]` T5-base hidden state for CFG null (empty string).
+    ///                      Pass `nil` to disable CFG (treats `guidanceScale` as 1.0).
     ///   - duration: output duration; clamped to `maxDuration`
     ///   - config: diffusion sampler configuration
     public func generate(
         precomputedText textHidden: MLXArray,
+        uncondText: MLXArray? = nil,
         duration: TimeInterval,
         config: SFXDiffusionConfig
     ) async throws -> AudioResult {
         let totalStart = Date()
         let clampedDuration = min(duration, Self.maxDuration)
 
-        // 2. Number conditioner: encode seconds_start=0 and seconds_total.
+        // Number conditioner: encode seconds_start=0 and seconds_total.
         let (startEmb, totalEmb) = conditioner(
             startSeconds: 0.0,
             totalSeconds: Float(clampedDuration)
         )
-        // Concatenate along the last axis: [1, 768] + [1, 768] → [1, 1536].
-        let globalCond = concatenated([startEmb, totalEmb], axis: -1)  // [1, globalCondDim]
+        AudioDiagnostics.note("SFX_COND", "duration=\(clampedDuration)s steps=\(config.steps) guidance=\(config.guidanceScale) sigmaMax=\(config.sigmaMax)")
+        AudioDiagnostics.tensor("SFX_START_EMB", startEmb)
+        AudioDiagnostics.tensor("SFX_TOTAL_EMB", totalEmb)
 
-        // crossCond: [B, L, conditioningDim] = T5 hidden states.
-        let crossCond = textHidden
+        // globalCond: [total, start] order matches mlx-audiogen Conditioners output.
+        let globalCond = concatenated([totalEmb, startEmb], axis: -1)  // [1, 1536]
+        AudioDiagnostics.tensor("SFX_GLOBAL_COND", globalCond)
 
-        // 3. Diffusion.
+        // Cross-attention tokens: full T5 hidden states only — [1, 128, 768].
+        // stable-audio-tools was trained with T5-only cross-attention.  The time
+        // tokens (seconds_start / seconds_total) flow exclusively through
+        // globalCond → to_global_embed → prepend token.  Appending them here
+        // introduces a fixed cross-attention bias the model was never trained
+        // to handle, which manifests as a large DC offset in the decoded audio.
+        let crossCond = textHidden  // [1, 128, 768]
+        AudioDiagnostics.tensor("SFX_CROSS_COND", crossCond)
+
+        // Unconditioned tokens for CFG: T5("") hidden states (same shape).
+        let uncrossCondTokens: MLXArray? = uncondText  // [1, 128, 768] or nil
+        if let uc = uncrossCondTokens {
+            AudioDiagnostics.tensor("SFX_UNCROSS_COND", uc)
+        } else {
+            AudioDiagnostics.note("SFX_UNCROSS_COND", "nil (CFG disabled)")
+        }
+
+        // Diffusion.
         progressContinuation?.yield(.diffusion(DiffusionProgress(
             currentStep: 0, totalSteps: config.steps, elapsedTime: 0
         )))
@@ -94,10 +133,11 @@ public actor SoundFXPipeline {
         let diffResult = try await diffusion.sample(
             crossCond: crossCond,
             globalCond: globalCond,
-            config: config
+            config: config,
+            uncrossCondTokens: uncrossCondTokens
         )
 
-        // 4. VAE decode.
+        // VAE decode.
         progressContinuation?.yield(.decoding)
         let audio = try await vae.decode(latents: diffResult.latents)
 

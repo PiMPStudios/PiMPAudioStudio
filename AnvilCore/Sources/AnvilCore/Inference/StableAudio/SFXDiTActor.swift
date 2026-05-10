@@ -14,6 +14,10 @@ public enum SFXDiTActorError: Error, LocalizedError, Sendable {
 public actor SFXDiTActor {
     private let model: SFXDiTModel
     private var loaded = false
+    /// Counts `predict` calls within a generation; reset on each new generation
+    /// via `resetDiagCounter()`.  DiT internal probes fire only for the first
+    /// two calls (step 0 cond + step 0 uncond) to avoid flooding the console.
+    private var diagCallCount = 0
 
     public init(config: SFXDiTConfig) {
         self.model = SFXDiTModel(config: config)
@@ -27,6 +31,11 @@ public actor SFXDiTActor {
         loaded = true
     }
 
+    /// Call once before each generation to reset the internal-diag call counter.
+    public func resetDiagCounter() {
+        diagCallCount = 0
+    }
+
     public func predict(
         latents: MLXArray,
         timestep: MLXArray,
@@ -34,11 +43,16 @@ public actor SFXDiTActor {
         globalCond: MLXArray
     ) throws -> MLXArray {
         guard loaded else { throw SFXDiTActorError.weightsNotLoaded }
+        // Emit DiT-internal probes only on the first two calls per generation
+        // (cond + uncond for step 0).  After that diagEnabled=false keeps it quiet.
+        let shouldDiag = diagCallCount < 2
+        diagCallCount += 1
         let result = model.forward(
             latents: latents,
             timestep: timestep,
             crossCond: crossCond,
-            globalCond: globalCond
+            globalCond: globalCond,
+            diagEnabled: shouldDiag
         )
         eval(result)
         return result
