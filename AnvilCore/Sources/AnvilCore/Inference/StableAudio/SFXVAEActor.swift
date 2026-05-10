@@ -22,17 +22,38 @@ public actor SFXVAEActor {
     public var isLoaded: Bool { loaded }
 
     public func loadWeights(_ weights: [(String, MLXArray)]) {
+        let suppliedKeys = Set(weights.map { $0.0 })
         model.update(parameters: ModuleParameters.unflattened(weights))
         eval(model.parameters())
+
+        let modelKeys = Set(model.parameters().flattened().map { $0.0 })
+        let matched   = suppliedKeys.intersection(modelKeys).count
+        let supplied  = suppliedKeys.count
+        let inModel   = modelKeys.count
+        print("[SFXVAE] loadWeights: supplied=\(supplied) model=\(inModel) matched=\(matched)")
+        if matched < inModel {
+            print("[SFXVAE] WARNING: \(inModel - matched) model parameter(s) not matched — VAE may be partially unloaded")
+        }
+
         loaded = true
     }
 
     public func decode(latents: MLXArray) throws -> MLXArray {
         guard loaded else { throw SFXVAEActorError.weightsNotLoaded }
         AudioDiagnostics.tensor("SFX_VAE_IN", latents)
+
+        // Unconditional diagnostics — always printed.
+        let inAbsMean = abs(latents).mean().item(Float.self)
+        let inAbsMax  = abs(latents).max().item(Float.self)
+        print("[SFXVAE] decode_in  abs_mean=\(String(format:"%.4f",inAbsMean)) abs_max=\(String(format:"%.4f",inAbsMax)) shape=\(latents.shape)")
+
         let result = model.decode(latents: latents)
         eval(result)
         AudioDiagnostics.tensor("SFX_VAE_OUT", result)
+
+        let outAbsMean = abs(result).mean().item(Float.self)
+        let outAbsMax  = abs(result).max().item(Float.self)
+        print("[SFXVAE] decode_out abs_mean=\(String(format:"%.4f",outAbsMean)) abs_max=\(String(format:"%.4f",outAbsMax)) shape=\(result.shape)")
         // Log per-channel mean (left / right) to catch stereo imbalance or DC offset.
         if result.ndim >= 3 {
             let ch0 = result[0..., 0..., 0]

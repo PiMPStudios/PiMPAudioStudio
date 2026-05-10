@@ -40,6 +40,11 @@ public actor SFXDiTActor {
         if matched < supplied {
             print("[SFXDiT] WARNING: \(supplied - matched) supplied key(s) not matched in model")
         }
+        let unloadedModelKeys = modelKeys.subtracting(suppliedKeys).sorted()
+        if !unloadedModelKeys.isEmpty {
+            print("[SFXDiT] WARNING: \(unloadedModelKeys.count) model param(s) got no weight — staying at init:")
+            for k in unloadedModelKeys { print("  MISSING: \(k)") }
+        }
 
         loaded = true
     }
@@ -68,6 +73,16 @@ public actor SFXDiTActor {
             diagEnabled: shouldDiag
         )
         eval(result)
+        // Non-gated probe: fires for the first 2 predict calls regardless of
+        // AudioDiagnostics flag so we can confirm the DiT is producing real velocity.
+        if shouldDiag {
+            let absM = abs(result).mean().item(Float.self)
+            let absX = abs(result).max().item(Float.self)
+            let latAbsM = abs(latents).mean().item(Float.self)
+            let callN = diagCallCount - 1
+            let tsVal = timestep.item(Float.self)
+            print("[SFXDiT] call=\(callN) t=\(String(format:"%.4f",tsVal)) latents_abs_mean=\(String(format:"%.4f",latAbsM)) vt_abs_mean=\(String(format:"%.4f",absM)) vt_abs_max=\(String(format:"%.4f",absX))")
+        }
         return result
     }
 

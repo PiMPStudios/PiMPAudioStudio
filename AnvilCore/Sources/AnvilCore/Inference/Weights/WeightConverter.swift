@@ -144,14 +144,29 @@ public actor WeightConverter {
     }
 
     /// Load and remap SFX DiT weights from a safetensors file.
-    /// Conv1d weights (preprocess_conv, postprocess_conv) are transposed from
-    /// PyTorch layout [out, in, kernel] to MLX layout [out, kernel, in].
+    ///
+    /// Conv1d transposition is shape-conditional:
+    ///   • mlx-audiogen exports (`dit.safetensors`) already store Conv1d weights in
+    ///     MLX layout `[out, kernel, in]` — e.g. `[64, 1, 64]` for kernel=1.
+    ///     Applying transposition again would produce the wrong `[64, 64, 1]` layout.
+    ///   • Original PyTorch checkpoints use `[out, in, kernel]` — e.g. `[64, 64, 1]`.
+    ///     These DO require transposition.
+    ///
+    /// We detect the layout by checking whether the last axis == 1 (PyTorch for
+    /// kernel=1) or the middle axis == 1 (already MLX).  Only transpose if the
+    /// weight is still in PyTorch format.
     public func loadSFXDiTWeights(from url: URL) throws -> [(String, MLXArray)] {
         let raw = try loadSafetensors(from: url)
         return raw.compactMap { key, value -> (String, MLXArray)? in
             guard let mapped = SFXDiTNameMap.mapKey(key) else { return nil }
             if SFXDiTNameMap.isConv1dWeight(mapped) {
-                return (mapped, SFXDiTNameMap.conv1dToMLX(value))
+                // Transpose only if in PyTorch [out, in, kernel=1] format.
+                // Shape [64, 64, 1]: last dim == 1, middle dim != 1 → needs transpose.
+                // Shape [64, 1, 64]: middle dim == 1 → already MLX format, skip.
+                if value.ndim == 3 && value.shape[2] == 1 && value.shape[1] != 1 {
+                    return (mapped, SFXDiTNameMap.conv1dToMLX(value))
+                }
+                return (mapped, value)  // already [out, kernel, in]
             }
             return (mapped, value)
         }
@@ -159,25 +174,18 @@ public actor WeightConverter {
 
     /// Load and remap SFX VAE weights from a safetensors file.
     ///
-    /// The SAO vae.safetensors uses the same weight-normed Oobleck format as the
-    /// ACE-Step music VAE, so we apply the same VAENameMap processing:
-    ///   - weight_g + weight_v pairs → fuse via WeightNorm, transpose axes
-    ///   - snake alpha/beta [1,C,1] → squeeze to [C]
-    ///   - all other keys → remap snake_case/block→blocks via VAENameMap.mapKey
+    /// The SAO vae.safetensors is in the same PyTorch weight-normed Oobleck format
+    /// as the ACE-Step music VAE (decoder.block.N.*, weight_g/weight_v pairs,
+    /// [out,in,k] axis order).  We reuse `convertVAEWeights` which handles:
+    ///   - weight_g + weight_v fusion via WeightNorm
+    ///   - Conv1d / ConvTranspose1d axis transposition ([out,in,k] → [out,k,in])
+    ///   - snake alpha/beta [1,C,1] → squeezed to [C]
+    ///   - snake_case → camelCase + block → blocks renaming via VAENameMap.mapKey
+    /// Encoder keys pass through the converter but are silently ignored by
+    /// SFXVAEModel.update(parameters:) since that model only has a decoder.
     public func loadSFXVAEWeights(from url: URL) throws -> [(String, MLXArray)] {
         let raw = try loadSafetensors(from: url)
-
-        // SAO vae.safetensors weights are exported from the mlx-audiogen Python code
-        // and are already in MLX NLC format [out, k, in] — no weight-norm fusion or
-        // axis transposition is required.  All we need is path translation from the
-        // MLX Sequential naming (decoder.layers.layers.X.*) to our Swift property
-        // names (decoder.conv1.*, decoder.blocks.0.convT1.*, etc.).
-        //
-        // Encoder keys are skipped (SFXVAENameMap.mapKey returns nil for them).
-        return raw.compactMap { (key, value) -> (String, MLXArray)? in
-            guard let mapped = SFXVAENameMap.mapKey(key) else { return nil }
-            return (mapped, value)
-        }
+        return try convertVAEWeights(stateDict: raw)
     }
 
     /// Load T5-base encoder weights for Stable Audio Open. The HF safetensors

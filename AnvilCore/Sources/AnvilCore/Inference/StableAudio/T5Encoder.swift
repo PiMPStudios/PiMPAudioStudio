@@ -206,6 +206,11 @@ public final class T5SelfAttention: Module {
     /// (`0` for valid, large-negative for pad) shaped broadcastable to
     /// `[B, 1, qLen, kLen]`. `positionBias` may be precomputed by block 0
     /// and reused by later blocks; pass `nil` on block 0 to compute fresh.
+    ///
+    /// IMPORTANT: returns the pure position bias WITHOUT the attention mask fused
+    /// in.  Matches Python T5Attention which returns `position_bias` before the
+    /// mask is added to scores, so subsequent blocks don't accumulate extra mask
+    /// copies on each layer.
     public func callAsFunction(
         _ x: MLXArray,
         attentionMask: MLXArray? = nil,
@@ -219,19 +224,25 @@ public final class T5SelfAttention: Module {
         let kOut = k(x).reshaped([bsz, seqL, numHeads, dKV]).transposed(0, 2, 1, 3)
         let vOut = v(x).reshaped([bsz, seqL, numHeads, dKV]).transposed(0, 2, 1, 3)
 
-        // Resolve / compute the per-head additive bias.
-        var bias = positionBias ?? computePositionBias(queryLength: seqL, keyLength: seqL)
+        // Resolve / compute the pure per-head position bias (no mask fused in).
+        let posBias = positionBias ?? computePositionBias(queryLength: seqL, keyLength: seqL)
+
+        // Add the additive attention mask only for the scores computation;
+        // do NOT store the mask in the returned posBias — later blocks must
+        // not accumulate extra copies of the mask.
+        var scoreBias = posBias
         if let mask = attentionMask {
-            bias = bias + mask
+            scoreBias = scoreBias + mask
         }
 
         // Scores: Q · Kᵀ (NO scale — T5 quirk).
-        let scores = matmul(qOut, kOut.transposed(0, 1, 3, 2)) + bias
+        let scores = matmul(qOut, kOut.transposed(0, 1, 3, 2)) + scoreBias
         let attn = softmax(scores, axis: -1)
         let context = matmul(attn, vOut)
             .transposed(0, 2, 1, 3)
             .reshaped([bsz, seqL, numHeads * dKV])
-        return (o(context), bias)
+        // Return posBias (mask-free) so it can be reused cleanly by later blocks.
+        return (o(context), posBias)
     }
 }
 
@@ -307,9 +318,9 @@ public final class T5Encoder: Module {
             return neg.expandedDimensions(axes: [1, 2])
         }
 
-        // Block 0 owns the relative-bias embedding; its returned position
-        // bias (already augmented with the additive mask) is reused by
-        // blocks 1..N to avoid recomputing.
+        // Block 0 owns the relative-bias embedding; its returned pure position
+        // bias (WITHOUT the attention mask — mask is added separately inside
+        // each block's attention) is reused by blocks 1..N to avoid recomputing.
         var positionBias: MLXArray? = nil
         for block in blocks {
             let (newH, newBias) = block(
@@ -321,6 +332,22 @@ public final class T5Encoder: Module {
             positionBias = newBias
         }
         h = finalLayerNorm(h)
+
+        // Zero out PAD token positions after the final norm.
+        //
+        // Matches Python T5Stack.__call__:
+        //   mask_expanded = attention_mask[:, :, None].astype(float32)
+        //   hidden_states = hidden_states * mask_expanded
+        //
+        // PAD positions (mask=0) become zero vectors so they contribute zero
+        // K and V to cross-attention in the DiT — preventing spurious signal
+        // from ~60 meaningless positions dominating the 4–5 real tokens.
+        // Without this, crossCond abs_mean is ~24× larger than Python's value.
+        if let mask = attentionMask {
+            let maskF = mask.asType(.float32).expandedDimensions(axis: -1)  // [B, L, 1]
+            h = h * maskF
+        }
+
         return h
     }
 }

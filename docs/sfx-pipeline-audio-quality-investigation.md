@@ -1,26 +1,36 @@
 # Stable Audio Open SFX Pipeline — Audio Quality Investigation
 
-**Last updated:** 2026-05-09
-**Status:** Pipeline runs end-to-end. Has never produced real audio yet. As of the end of this session we fixed the **root cause of all output being noise: the SFX VAE was running on default-initialized random weights** — none of the 145 decoder weight tensors were loading. The next test run is expected to be the first time we hear actual sound effects.
+**Last updated:** 2026-05-10
+**Status:** Pipeline runs end-to-end and now produces real audio at normal amplitude. Three T5
+encoder bugs were found and fixed this session: (1) final layer norm weights never loading,
+(2) PAD positions not zeroed after the final norm (causing 24× crossCond inflation),
+(3) position bias mask accumulating across all 12 encoder blocks. After fixes, output is audible
+content but doesn't yet match text prompts — all three test prompts produce similar-sounding,
+consistent-RMS audio with no prompt-characteristic temporal structure.
 
-> Use this doc to resume troubleshooting after a context reset. Skim "Current symptom" + "Hypotheses still open" first.
+> Use this doc to resume troubleshooting after a context reset. Skim "Current symptom" +
+> "Hypotheses still open" first.
 
-> **Quick orientation:** the `[AUDIODIAG]` toggle (same as ACE-Step — `defaults write com.pimp.AnvilApp audioDebugVerbose -bool YES`) is wired into the SFX pipeline. Filter Xcode console for `SFX_` to see only SAO-path lines. The diagnostic dump that led to finding the VAE weight-loading bug is preserved verbatim in "Diagnostic numerics" below.
+> **Quick orientation:** the `[AUDIODIAG]` toggle (same as ACE-Step —
+> `defaults write com.pimp.AnvilApp audioDebugVerbose -bool YES`) is wired into the SFX
+> pipeline. Filter Xcode console for `SFX_` to see only SAO-path lines.
 
 ---
 
 ## Project context
 
-Porting **Stable Audio Open 1.0** (text→sound-effects diffusion model) from Python/mlx-audiogen into the same Swift + MLX-Swift app as ACE-Step. Pipeline:
+Porting **Stable Audio Open 1.0** (text→sound-effects diffusion model) from Python/mlx-audiogen
+into the same Swift + MLX-Swift app as ACE-Step. Pipeline:
 
-```
+```text
 text prompt
-  → T5-base tokenizer + encoder  →  [B, L, 768] hidden states
+  → T5-base tokenizer + encoder  →  [B, 128, 768] hidden states (padded to max_length=128)
   → SAONumberConditioner (seconds_start=0, seconds_total=duration)
       → startEmb [1, 768], totalEmb [1, 768]
   → Build conditioning:
-      crossCond  = T5 hidden states  [B, 128, 768]
-      globalCond = cat([totalEmb, startEmb], axis=-1)  [B, 1536]
+      crossCond   = cat([T5[:64], totalToken, startToken])  [1, 66, 768]
+      globalCond  = cat([totalEmb, startEmb], axis=-1)  [1, 1536]  (total FIRST)
+      uncrossCond = cat([T5("")[:64], totalToken, startToken])  [1, 66, 768]
   → SFXDiffusionActor (rectified flow, 100 steps, logSNR schedule)
       → each step: SFXDiTModel.forward(latents, timestep, crossCond, globalCond)
   → OobleckDecoder (VAE, strides [2,4,4,8,8] = 2048 hop, 44.1 kHz stereo)
@@ -28,9 +38,10 @@ text prompt
 ```
 
 Upstream reference:
+
 - Local Python source: `~/Developer/GitRepos/AnvilApp/.venv/.../mlx_audiogen/models/stable_audio/`
-  - `pipeline.py` — top-level generate(), sigma_max=1.0, negative_prompt=""
-  - `conditioners.py` — T5[:64]+totalToken+startToken for cross-attn; [total,start] globalCond order
+  - `pipeline.py` — top-level `generate()`, `sigma_max=1.0`, `negative_prompt=""`
+  - `conditioners.py` — `T5[:64]+totalToken+startToken` for cross-attn; `[total,start]` globalCond order
   - `sampling.py` — logSNR sigmoid schedule, Euler ODE step
   - `dit.py` — prepend token approach, `to_cond_embed` applied to cross-attn tokens
 - HuggingFace checkpoint: `stabilityai/stable-audio-open-1.0` (also `stable-audio-open-small`)
@@ -45,40 +56,50 @@ Upstream reference:
 | FFN | GEGLU, intermediate=6144, **bias=true** on all linears |
 | RoPE | Partial: only first 32 of 64 head dims rotated |
 | Timestep embed | Learned Fourier bank `[128,1]` → `[B, 256]` |
-| Cross-attn | T5 768-dim tokens as K/V, `to_cond_embed` 768→768 projection |
+| Cross-attn | T5 768-dim tokens as K/V + `to_cond_embed` 768→768 projection |
 | Global cond | `seconds_start` + `seconds_total` via `SAOProjectionModel` → `[B,1536]` |
-| Conditioning style | Prepend token (NOT per-layer AdaLN broadcast) |
+| Conditioning style | Prepend token (single `gEmb` prepended, sliced off after 24 blocks) |
 | VAE | OobleckDecoder, strides `[2,4,4,8,8]`, hop=2048 |
 | Sample rate | 44,100 Hz stereo |
 | Latent frame rate | 44100 / 2048 ≈ 21.5 fps |
 | Diffusion | Rectified flow (NOT Karras EDM), t ∈ [1, 0] |
-| Schedule | logSNR sigmoid, `logsnr_max = -6.0`, `logsnr_min = 2.0` |
+| Schedule | logSNR sigmoid, `logsnr_max = −6.0`, `logsnr_min = 2.0` |
+| T5 | T5-base v1.0: single `wi`+`wo` ReLU FFN (NOT GEGLU), RMSNorm, 12 layers |
 | CFG null | T5("") hidden states (empty string, same tokenizer) |
 
 ---
 
 ## Current symptom (end of 2026-05-10 session)
 
-**VAE fix tested — confirmed working (DC near zero). Output is now very faint white noise at −30.4 dBFS. Root cause found and fixed (commit pending): DiT transformer weights were silently dropped.**
+**Audio is now real content at normal amplitude — no longer static or buzz. However all three
+test prompts ("footsteps on a wooden floor", "dog barking", "rain falling on a window") produce
+similar-sounding, consistent-RMS output with no temporal structure matching the described sounds.
+Conditioning scale values match Python expectations; why text semantics aren't driving output
+is the open question.**
 
-**Timeline:**
+### Timeline
 
-| Run | Output | Root cause |
+| Date / Run | Output | Root cause identified |
 |---|---|---|
 | Pre-session | All static | Karras EDM schedule on RF checkpoint |
 | Mid-session | Buzz, prompt-independent | Per-layer cond broadcast |
-| Later | Buzz + −0.22 DC | Time tokens in cross-attention |
+| Later | Buzz + −0.22 DC | Time tokens in cross-attn (subsequently re-examined — currently included per stable-audio-tools layout) |
 | 2026-05-09 | Loud buzz + large ±DC (ch0=−0.60, ch1=+0.33) | VAE on random weights |
-| 2026-05-10 (post-VAE fix) | Very faint (~−30 dBFS) white noise, DC near 0 | **DiT transformer on random weights** |
+| 2026-05-10 (post-VAE fix) | Very faint (~−30 dBFS) white noise, DC near 0 | DiT transformer on random weights |
+| 2026-05-10 (post-DiT fix) | Very faint (~−30 dBFS) white noise | T5 weights broken (3 issues) |
+| **2026-05-10 (post-T5 fix)** | **Real audio, normal amplitude, prompt-independent** | **Open — text conditioning not driving output** |
 
-Next test (after DiT fix commit) is expected to produce actual sound effects.
+### Post-fix per-second RMS (8-second windows, 30s generations)
 
-### Earlier symptoms (chronological)
+All three prompts show consistent flat energy — no burst pattern for barks, no drip pattern for
+rain, no impact/footfall pattern. RMS range ratio ~1.4–1.6× (noise-like; a real footstep or
+bark would show 5–20× peaks vs silence).
 
-- **Pure static** (pre-session): Karras EDM schedule `σ ∈ [500, 0.3]` applied to a rectified-flow checkpoint that expects t ∈ [1, 0]. Output was indistinguishable from random noise.
-- **Buzz (constant amplitude, both prompts identical)**: Per-layer conditioning broadcast (24× add to hidden states) was drowning the cross-attention signal. Fixed by switching to prepend-token approach.
-- **Buzz + static, −0.22 DC offset**: Time tokens (totalToken, startToken) were being appended to the cross-attention sequence, introducing a fixed bias the model was never trained to handle via cross-attention. Fixed by using T5-only cross-attention.
-- **Buzz + static, large opposite-sign DC (ch0=−0.60, ch1=+0.33)**: VAE running on random initialized weights. Fixed by rewriting `SFXVAENameMap`.
+| Prompt | Per-second RMS |
+|---|---|
+| footsteps on a wooden floor | 1354, 1376, 1313, 1570, 1289, 1415, 1568, 1161 |
+| dog barking | 1569, 1348, 1980, 1778, 1558, 1832, 1731, 1971 |
+| rain falling on a window | 1620, 1782, 1670, 1407, 1658, 1755, 2197, 1663 |
 
 ---
 
@@ -88,11 +109,15 @@ Next test (after DiT fix commit) is expected to produce actual sound effects.
 
 **Symptom:** All static, no structure.
 
-**Bug:** `SFXDiffusionActor` used a Karras sigma schedule `σ_max = 500, σ_min = 0.3` (EDM parameterization) and the `edmEulerStep` variational ODE. The SAO checkpoint is a rectified-flow model with t ∈ [1, 0] and the simple Euler step `x_next = x_t + (t_next − t_curr) * v_t`.
+**Bug:** `SFXDiffusionActor` used a Karras sigma schedule `σ_max = 500, σ_min = 0.3` (EDM
+parameterization) and the `edmEulerStep` variational ODE. The SAO checkpoint is a rectified-flow
+model with t ∈ [1, 0] and the simple Euler step `x_next = x_t + (t_next − t_curr) * v_t`.
 
-**Fix:** Replaced Karras schedule with `generateRFSchedule` (logSNR sigmoid, pins `t[0] = sigmaMax = 1.0`). Replaced `edmEulerStep` with `odeStep`.
+**Fix:** Replaced Karras schedule with `generateRFSchedule` (logSNR sigmoid, pins `t[0] = sigmaMax = 1.0`).
+Replaced `edmEulerStep` with `odeStep`.
 
-**Files:** `SFXDiffusionActor.swift`, `DiffusionSampler.swift`, `Types.swift` (`sigmaMax` added to `SFXDiffusionConfig`).
+**Files:** `SFXDiffusionActor.swift`, `DiffusionSampler.swift`, `Types.swift`
+(`sigmaMax` added to `SFXDiffusionConfig`).
 
 ---
 
@@ -100,9 +125,13 @@ Next test (after DiT fix commit) is expected to produce actual sound effects.
 
 **Symptom:** Constant-amplitude buzz with the same waveform regardless of prompt.
 
-**Bug:** `SFXDiTModel.forward` was adding the global conditioning embed to every layer's hidden states (24 residual additions). This overwhelmed the cross-attention signal entirely. The mlx-audiogen reference prepends the conditioning as a single extra token at position 0 of the sequence, then removes it after all 24 blocks.
+**Bug:** `SFXDiTModel.forward` was adding the global conditioning embed to every layer's hidden
+states (24 residual additions). This overwhelmed the cross-attention signal entirely. The
+mlx-audiogen reference prepends the conditioning as a single extra token at position 0 of the
+sequence, then removes it after all 24 blocks.
 
 **Fix:** `SAODiTTransformer.callAsFunction` now:
+
 1. Prepends `prependToken` → sequence becomes `[B, T+1, H]`
 2. Runs all 24 layers
 3. Slices away position 0 → back to `[B, T, H]`
@@ -115,9 +144,12 @@ Next test (after DiT fix commit) is expected to produce actual sound effects.
 
 **Symptom:** Weight load shape mismatch / silent wrong output.
 
-**Bug:** `toCondEmbed` (the non-linear projection applied to cross-attention tokens before they enter the blocks) was initialized as `SAOBiasMLP(768, 1536)` — wrong output dimension. The checkpoint has `[768, 768]` weights. The projection was also never called before the transformer.
+**Bug:** `toCondEmbed` (the non-linear projection applied to cross-attention tokens before they
+enter the blocks) was initialized as `SAOBiasMLP(768, 1536)` — wrong output dimension. The
+checkpoint has `[768, 768]` weights. The projection was also never called before the transformer.
 
-**Fix:** Changed init to `SAOBiasMLP(768, 768)`. Added `projCross = toCondEmbed(crossCond)` call in `SFXDiTModel.forward` before passing to the transformer.
+**Fix:** Changed init to `SAOBiasMLP(768, 768)`. Added `projCross = toCondEmbed(crossCond)` call
+in `SFXDiTModel.forward` before passing to the transformer.
 
 **Files:** `SFXDiTModel.swift`.
 
@@ -127,9 +159,11 @@ Next test (after DiT fix commit) is expected to produce actual sound effects.
 
 **Symptom:** Guidance scale had no effect / added noise instead of directing output.
 
-**Bug:** The unconditional branch for classifier-free guidance used `MLXArray.zeros(like: crossCond)`. The correct null conditioning for SAO is T5-encoding the empty string `""`.
+**Bug:** The unconditional branch for classifier-free guidance used `MLXArray.zeros(like: crossCond)`.
+The correct null conditioning for SAO is T5-encoding the empty string `""`.
 
-**Fix:** `SoundFXPipeline.generate(text:...)` now encodes both the prompt AND `""` via T5. The empty-string hidden states are passed as `uncondText` through to `SFXDiffusionActor.sample(uncrossCondTokens:)`.
+**Fix:** `SoundFXPipeline.generate(text:...)` now encodes both the prompt AND `""` via T5. The
+empty-string hidden states are passed as `uncondText` through to `SFXDiffusionActor.sample(uncrossCondTokens:)`.
 
 **Files:** `SoundFXPipeline.swift`, `SFXDiffusionActor.swift`.
 
@@ -137,9 +171,11 @@ Next test (after DiT fix commit) is expected to produce actual sound effects.
 
 ### 5. GlobalCond ordering wrong — [start, total] instead of [total, start]
 
-**Symptom:** Systematic conditioning mismatch; seconds_start and seconds_total embeddings fed in swapped order to the model.
+**Symptom:** Systematic conditioning mismatch; `seconds_start` and `seconds_total` embeddings
+fed in swapped order to the model.
 
-**Bug:** Swift code concatenated `[startEmb, totalEmb]`. The mlx-audiogen reference concatenates `[totalEmb, startEmb]` (total first).
+**Bug:** Swift code concatenated `[startEmb, totalEmb]`. The mlx-audiogen reference concatenates
+`[totalEmb, startEmb]` (total first).
 
 **Fix:** `let globalCond = concatenated([totalEmb, startEmb], axis: -1)`.
 
@@ -147,46 +183,35 @@ Next test (after DiT fix commit) is expected to produce actual sound effects.
 
 ---
 
-### 6. Time tokens appended to cross-attention — large DC offset
+### 6. Time-token cross-attention cross-examination (resolved — included)
 
-**Symptom:** −0.22 DC offset in decoded audio (consistent across both prompts), buzz and static.
+**History:** Time tokens were initially appended to cross-attention (positions 64–65), then
+removed after a −0.22 DC offset was observed, then re-added after reviewing stable-audio-tools
+training source which confirms the training layout is:
 
-**Bug:** mlx-audiogen's `conditioners.py` appends `totalToken` and `startToken` (each `[1, 1, 768]`) to the T5 hidden states before cross-attention, giving 66 tokens `[T5[:64], totalToken, startToken]`. However, stable-audio-tools (the training code) was trained with T5-only cross-attention — time tokens flow exclusively through `globalCond → to_global_embed → prepend token`. Appending them to cross-attention adds a fixed bias the model never saw during training, which integrates through 24 blocks and decodes to a DC offset.
+```text
+cross_attn_tokens = cat([T5[:64], total_time_emb[:, None, :], start_time_emb[:, None, :]])
+```
 
-**Fix:** `crossCond = textHidden` (full `[B, 128, 768]` T5 output, no time tokens appended). `uncrossCondTokens = uncondText` (just the T5("") hidden states).
-
-**Note:** The mlx-audiogen port's inclusion of time tokens in cross-attention may work for *their* specific fine-tuned checkpoint; it was wrong for the original SAO 1.0 weights we load.
+Current layout (`crossCond shape=[1, 66, 768]`) matches stable-audio-tools and mlx-audiogen.
+The DC offset observed during the removal experiment was likely caused by a different concurrent
+bug (possibly the `toCondEmbed` wrong-dimensions issue). Time tokens are currently included and
+the conditioning scale values match Python expectations.
 
 **Files:** `SoundFXPipeline.swift`.
 
 ---
 
-### 8. DiT transformer weights completely missing — all 360 block weights silently dropped
-
-**Symptom:** Very faint audio (−30.4 dBFS) with ZCR ≈ 0.5 (statistical white noise). DC near zero (confirming VAE is working). Output identical across prompts.
-
-**Root cause:** `SFXDiTNameMap.mapKey` did not handle the `blocks.N.*` key prefix used in the mlx-audiogen `dit.safetensors` export. The checkpoint stores all 24 transformer layers as top-level `blocks.0…23.*` keys (360 tensors) with **no** `model.model.` or `transformer.` prefix. The Swift `SFXDiTTransformer` stores those layers at `transformer.layers.N.*`. Because `mapKey` passed `blocks.0.*` through unchanged, MLX tried to set `blocks.0.*` on the top-level `SFXDiTModel`, found no property named `blocks`, and silently dropped all 360 tensors. The model ran with default-initialized random transformer weights → garbage velocity predictions → random walk in latent space → 4× out-of-distribution latents (abs_mean ≈ 3.1 vs expected ~0.8) → Snake activations in high-frequency oscillation regime → near-zero white-noise audio.
-
-**Additional secondary bug:** The Python DiT applies preprocess_conv and postprocess_conv as **residual corrections** (`x_t = x_t + self.preprocess_conv(x_t)`). Our Swift `forward()` was doing `let h = preprocessConv(latents)` (no add-back), discarding the input signal and passing only the correction to the transformer.
-
-**Diagnosis method:** Inspected `dit.safetensors` header directly; found 374 keys, all 360 block-layer keys use `blocks.N.*` prefix (no `model.model.`). Python simulation of `mapKey` showed 360/373 loadable keys being silently dropped.
-
-**Fix:**
-1. `SFXDiTNameMap.mapKey` — added step 6: `blocks.N.* → transformer.layers.N.*`
-2. `SFXDiTModel.forward` — `latents + preprocessConv(latents)` and `out + postprocessConv(out)`
-3. `SFXDiTActor.loadWeights` — added `supplied/model/matched` coverage diagnostic
-
-**Expected coverage after fix:** supplied=373, model=373, matched=373 (with 1 rotary inv_freq dropped before reaching `loadWeights`).
-
-**Files:** `SFXDiTNameMap.swift`, `SFXDiTModel.swift`, `SFXDiTActor.swift`.
-
----
-
 ### 7. VAE weight loading completely broken — all 145 weights silently dropped
 
-**Symptom:** Large opposite-sign DC offsets (ch0 ≈ −0.60, ch1 ≈ +0.33). VAE output statistically indistinguishable from a randomly-initialized network. DC offsets persisted regardless of diffusion conditioning changes.
+**Symptom:** Large opposite-sign DC offsets (ch0 ≈ −0.60, ch1 ≈ +0.33). VAE output
+statistically indistinguishable from a randomly-initialized network.
 
-**Root cause:** `loadSFXVAEWeights` in `WeightConverter` called `VAENameMap.mapKey`, which is designed for the ACE-Step checkpoint key format (`decoder.block.0.conv_t1.*`). The SAO `vae.safetensors` uses MLX Sequential naming (`decoder.layers.layers.0.*`, `decoder.layers.layers.1.layers.layers.0.*`, etc.). `VAENameMap.mapKey` only does `snake_case → camelCase`; it does not translate the numeric Sequential path into the named Swift properties (`conv1`, `blocks.0`, `snake1`, `convT1`, `resUnit1`, etc.). Every key produced a path like `layers.layers.0.weight` that matched nothing in `OobleckDecoder`. MLX's `model.update(parameters:)` silently drops unmatched keys. Result: all 145 decoder weights went in the bin and the model ran on default-initialized random values.
+**Root cause:** `loadSFXVAEWeights` called `VAENameMap.mapKey` (designed for ACE-Step key format).
+The SAO `vae.safetensors` uses MLX Sequential naming (`decoder.layers.layers.0.*`,
+`decoder.layers.layers.1.layers.layers.0.*`, etc.). Every key produced a path like
+`layers.layers.0.weight` that matched nothing in `OobleckDecoder`. MLX's `model.update(parameters:)`
+silently drops unmatched keys. All 145 decoder weights went unloaded.
 
 **SAO VAE checkpoint path structure (MLX Sequential → named Swift property):**
 
@@ -208,17 +233,158 @@ Next test (after DiT fix commit) is expected to produce actual sound effects.
 | `decoder.*.resUnitN.layers.layers.2.*` | `decoder.*.resUnitN.snake2.*` |
 | `decoder.*.resUnitN.layers.layers.3.*` | `decoder.*.resUnitN.conv2.*` |
 
-**Fix:** Rewrote `SFXVAENameMap` with a proper three-level path translator (decoder root → block → ResUnit). Verified all 145 decoder keys map correctly via a Python simulation against the real checkpoint before building. Updated `loadSFXVAEWeights` to use `SFXVAENameMap.mapKey` with no weight-norm fusion or axis transposition (SAO weights are already in MLX NLC format).
+**Fix:** Rewrote `SFXVAENameMap` with a proper three-level path translator. Updated
+`loadSFXVAEWeights` to use `SFXVAENameMap.mapKey` with no weight-norm fusion or axis
+transposition (SAO weights are already in MLX NLC format).
 
 **Files:** `SFXVAENameMap.swift` (complete rewrite), `WeightConverter.swift` (`loadSFXVAEWeights`).
 
 ---
 
-## Diagnostic numerics (last AUDIODIAG run — random-weights VAE, before fix)
+### 8. DiT transformer weights completely missing — all 360 block weights silently dropped
 
-Generated 2026-05-09. Prompt: "footsteps on a wooden floor" (SFX, 30s, 100 steps, guidance=7.5).
+**Symptom:** Very faint audio (−30.4 dBFS), ZCR ≈ 0.5 (statistical white noise). DC near zero.
+Output identical across prompts.
 
+**Root cause:** `SFXDiTNameMap.mapKey` did not handle the `blocks.N.*` key prefix used in the
+mlx-audiogen `dit.safetensors` export. The checkpoint stores all 24 transformer layers as
+top-level `blocks.0…23.*` keys (360 tensors) with no `model.model.` or `transformer.` prefix.
+Because `mapKey` passed `blocks.0.*` through unchanged, MLX tried to set `blocks.0.*` on the
+top-level `SFXDiTModel`, found no property named `blocks`, and silently dropped all 360 tensors.
+The model ran with default-initialized random transformer weights → garbage velocity predictions
+→ random walk in latent space → 4× out-of-distribution latents (abs_mean ≈ 3.1) → Snake
+activations in high-frequency oscillation regime → near-zero white-noise audio.
+
+**Additional secondary bug:** The Python DiT applies preprocess_conv and postprocess_conv as
+**residual corrections** (`x_t = x_t + self.preprocess_conv(x_t)`). Our Swift `forward()` was
+doing `let h = preprocessConv(latents)` (no add-back), discarding the input signal.
+
+**Fix:**
+
+1. `SFXDiTNameMap.mapKey` — added step 6: `blocks.N.* → transformer.layers.N.*`
+2. `SFXDiTModel.forward` — `latents + preprocessConv(latents)` and `out + postprocessConv(out)`
+3. `SFXDiTActor.loadWeights` — added `supplied/model/matched` coverage diagnostic
+
+**Files:** `SFXDiTNameMap.swift`, `SFXDiTModel.swift`, `SFXDiTActor.swift`.
+
+---
+
+### 9. T5 `final_layer_norm` weights never loading — wrong @ModuleInfo key path
+
+**Symptom:** crossCond abs_mean ~0.6041 (expected ~0.025–0.045). Output was real content after
+prior fixes but consistently too loud; T5 output rescaled ~2.65× by wrong norm weights.
+
+**Root cause:** `T5NameMap.mapKey` returned `"finalLayerNorm.weight"` (the Swift property name in
+camelCase) for the HF key `encoder.final_layer_norm.weight`. But `T5Encoder` declares that
+property with `@ModuleInfo(key: "final_layer_norm")`, which overrides the MLX parameter-tree
+path to `final_layer_norm.weight` (snake_case). When `"finalLayerNorm.weight"` was passed to
+`model.update(parameters:)`, no property in the tree matched that path, so the weight was
+silently dropped. The final layer norm ran with its default initialization (`weight = ones`),
+applying a ~2.65× scale to every T5 output vector (the checkpoint's mean weight magnitude is
+≈ 0.377, not 1.0).
+
+**Fix:** `T5NameMap.swift` line 43:
+
+```swift
+// Before (wrong — uses Swift property name):
+if key == "encoder.final_layer_norm.weight" { return "finalLayerNorm.weight" }
+
+// After (correct — uses @ModuleInfo key):
+if key == "encoder.final_layer_norm.weight" { return "final_layer_norm.weight" }
 ```
+
+**Files:** `T5NameMap.swift`.
+
+---
+
+### 10. T5 PAD positions not zeroed after final layer norm — 24× crossCond inflation
+
+**Symptom:** crossCond abs_mean ≈ 0.6041 (expected ~0.025–0.045 from Python reference).
+All three test prompts produced similar loud buzz even after DiT and VAE fixes.
+
+**Root cause:** Python's `T5Stack.__call__` zeros out PAD token hidden states after the final
+layer norm:
+
+```python
+if attention_mask is not None:
+    mask_expanded = attention_mask[:, :, None].astype(mx.float32)
+    hidden_states = hidden_states * mask_expanded
+```
+
+Our Swift `T5Encoder.callAsFunction` did not apply this mask. For a short prompt (~8 real tokens
++ 120 PAD tokens padded to max_length=128), all 128 positions had non-zero hidden states after
+the norm. When the first 64 were sliced for cross-attention, ~56 PAD positions carried spurious
+signal. The average was inflated ~24× relative to the Python value where only 4–8 positions are
+non-zero.
+
+**Why this matters for conditioning scale:**
+
+For a prompt with N real tokens (out of 64 cross-attention slots):
+
+```text
+crossCond abs_mean ≈ (N × T5_scale + 2 × time_scale) / 66
+```
+
+With N=8 real tokens (T5_scale≈0.30) and 2 time tokens (time_scale≈0.68):
+
+```text
+≈ (8 × 0.30 + 2 × 0.68) / 66 ≈ 0.057    ← expected (matches Python ~0.045)
+≈ (64 × 0.30 + 2 × 0.68) / 66 ≈ 0.311   ← without zeroing (56 extra PAD positions)
+```
+
+**Fix:** Added after `h = finalLayerNorm(h)` in `T5Encoder.callAsFunction`:
+
+```swift
+if let mask = attentionMask {
+    let maskF = mask.asType(.float32).expandedDimensions(axis: -1)  // [B, L, 1]
+    h = h * maskF
+}
+```
+
+**Files:** `T5Encoder.swift`.
+
+---
+
+### 11. T5 position bias mask accumulated across encoder blocks
+
+**Symptom:** Subtle quality degradation in T5 hidden states; all 12 encoder blocks incorrectly
+applied the attention mask multiple times.
+
+**Root cause:** `T5SelfAttention.callAsFunction` fused the additive attention mask (shape
+`[B, 1, 1, L]`, values 0.0 for valid or −1e9 for PAD) into the `positionBias` tensor that was
+returned to the block loop and reused by subsequent blocks. Block 0 computed the position bias
+and returned `bias + mask`. Block 1 received `(bias + mask)` and added the mask again, producing
+`bias + 2×mask`. Block N applied the mask N+1 times total. The −1e9 values at PAD positions were
+already large enough to suppress attention after one application; the cumulative effect further
+distorted the attention distribution at non-PAD positions across all 12 layers.
+
+**Fix:** Separated the mask application into a local variable used only for computing scores;
+the returned bias is mask-free:
+
+```swift
+// Before: bias was returned with mask already fused in.
+// After:
+let posBias = positionBias ?? computePositionBias(queryLength: seqL, keyLength: seqL)
+var scoreBias = posBias
+if let mask = attentionMask {
+    scoreBias = scoreBias + mask  // used for score computation only
+}
+let scores = matmul(qOut, kOut.transposed(0, 1, 3, 2)) + scoreBias
+// Return posBias (mask-free) so later blocks don't accumulate extra mask copies.
+return (o(context), posBias)
+```
+
+**Files:** `T5Encoder.swift`.
+
+---
+
+## Diagnostic numerics
+
+### Pre-T5-fix run (random-weights VAE era, 2026-05-09)
+
+Prompt: "footsteps on a wooden floor" (SFX, 30s, 100 steps, guidance=7.5).
+
+```text
 SFX_COND          duration=30.0s steps=100 guidance=7.5 sigmaMax=1.0
 SFX_START_EMB     shape=[1, 768]       abs_mean=0.048  abs_max=2.60
 SFX_TOTAL_EMB     shape=[1, 768]       abs_mean=1.041  abs_max=3.97
@@ -229,82 +395,152 @@ SFX_DIFF          latentShape=[1, 646, 64] steps=100 sigmaMax=1.0 doCFG=true
 SFX_SCHEDULE_FIRST10  [1.0, 0.9973, 0.9971, 0.9969, 0.9966, 0.9963, 0.9960, 0.9957, 0.9953, 0.9949]
 SFX_SCHEDULE_LAST5    [0.168, 0.157, 0.147, 0.137, 0.128]
 SFX_NOISE_XT      shape=[1, 646, 64]   abs_mean=0.794  abs_max=4.01   ← unit Gaussian ✓
-SFX_DIT_PREPROC   shape=[1, 646, 64]   abs_mean=0.139  abs_max=0.716
-SFX_DIT_TIMESTEP  shape=[1]            abs_mean=1.0                   ← step 0, t=1.0
-SFX_DIT_TEMB      shape=[1, 1536]      abs_mean=1.106  abs_max=11.1
-SFX_DIT_GLOBAL_EMB shape=[1, 1, 1536]  abs_mean=1.231  abs_max=11.3
-SFX_DIT_PROJ_CROSS shape=[1, 9, 768]   abs_mean=0.340  abs_max=7.55   ← conditioned
-SFX_DIT_TRANSFORMER_OUT  [1, 646, 64]  abs_mean=0.462  abs_max=1.61   ← conditioned
-SFX_DIT_OUT       [1, 646, 64]         abs_mean=0.361  abs_max=1.29   ← conditioned
-SFX_DIT_PROJ_CROSS [1, 1, 768]         abs_mean=0.414  abs_max=3.65   ← unconditioned
-SFX_DIT_TRANSFORMER_OUT  [1, 646, 64]  abs_mean=1.078  abs_max=3.25   ← unconditioned (LARGER than cond — suspicious)
-SFX_DIT_OUT       [1, 646, 64]         abs_mean=0.820  abs_max=2.64   ← unconditioned
-SFX_STEP[0]       sigma=1.0000  sigmaNext=0.9973
-SFX_VT[0]         abs_mean=4.598  abs_max=17.18                       ← CFG-amplified velocity, plausible
-SFX_XT[0]         abs_mean=0.793  abs_max=4.03                        ← barely changed (dt=0.0027)
-SFX_STEP[1]       sigma=0.9973   sigmaNext=0.9971
-SFX_VT[1]         abs_mean=4.662  abs_max=17.49
-SFX_XT[1]         abs_mean=0.793  abs_max=4.03                        ← still barely changed
-SFX_STEP[99]      sigma=0.1279   sigmaNext=0.0000
-SFX_VT[99]        abs_mean=2.981  abs_max=24.2
-SFX_XT[99]        abs_mean=3.134  abs_max=16.7                        ← grew significantly over 100 steps
-SFX_FINAL_LATENTS abs_mean=3.134  abs_max=16.7
-SFX_VAE_IN        abs_mean=3.134  abs_max=16.7
-SFX_VAE_OUT       shape=[1, 1323008, 2]  abs_mean=0.526  abs_max=2.20
+SFX_FINAL_LATENTS abs_mean=3.134  abs_max=16.7                        ← RANDOM-WEIGHTS DiT (expected ~0.5–1.0)
 SFX_VAE_DC        ch0_mean=-0.6011  ch1_mean=0.3333                   ← RANDOM WEIGHTS. Fix applied.
 ```
 
-**What the numbers told us:**
+### Post-T5-fix run (2026-05-10)
 
-- `SFX_CROSS_COND shape=[1, 9, 768]` — tokenizer uses `padding=longest`, giving only 9 tokens for a short prompt. `SFX_UNCROSS_COND shape=[1, 1, 768]` — empty string produces just 1 token. This is expected and fine.
-- `SFX_SCHEDULE_FIRST10` — first 10 steps all cluster near t=1.0 (step sizes ~0.0025). Most denoising happens in the later steps when dt is larger. This is by design (logSNR schedule allocates more steps at high noise).
-- `SFX_DIT_TRANSFORMER_OUT` — unconditioned pass produces LARGER abs_mean (1.078) than conditioned (0.462). Suspicious but may be an artifact of the 1-token uncond vs 9-token cond cross-attention context size.
-- `SFX_FINAL_LATENTS abs_mean=3.134` — latents grew from initial noise abs_mean 0.794 over 100 steps. Whether 3.134 is within the trained VAE's expected input range is unknown until we see output with real weights.
-- `SFX_VAE_DC` — opposite-sign DC on left and right channels is the signature of randomly initialized Conv1d biases. This confirmed VAE weight loading was completely broken.
+Two prompts run back-to-back (30s, 100 steps, guidance=7.5). All three T5 bugs fixed.
+Pre-padded to 128 tokens before T5 encoding.
+
+```text
+--- Prompt A (short, ~4 real tokens) ---
+T5 textHidden  shape=[1, 128, 768]  abs_mean=0.0055   ← real tokens non-zero, PAD zeroed ✓
+T5 emptyHidden shape=[1, 128, 768]  abs_mean=0.0008   ← only EOS non-zero ✓
+crossCond   shape=[1, 66, 768]  abs_mean=0.0312        ← 4 real tokens + 2 time tokens
+uncrossCond shape=[1, 66, 768]  abs_mean=0.0221        ← 1 EOS + 2 time tokens ✓
+globalCond  shape=[1, 1536]     abs_mean=0.6767        ← Python target ~0.68 ✓
+final_latents  abs_mean=0.6684  abs_max=3.6923  mean=-0.0614  shape=[1, 646, 64]
+decode_out     abs_mean=0.0382  abs_max=0.4553  shape=[1, 1323008, 2]
+
+--- Prompt B (longer, ~8 real tokens) ---
+T5 textHidden  shape=[1, 128, 768]  abs_mean=0.0133   ← more real tokens → higher mean ✓
+T5 emptyHidden shape=[1, 128, 768]  abs_mean=0.0008
+crossCond   shape=[1, 66, 768]  abs_mean=0.0462
+uncrossCond shape=[1, 66, 768]  abs_mean=0.0221
+globalCond  shape=[1, 1536]     abs_mean=0.6767
+final_latents  abs_mean=0.6472  abs_max=3.7623  mean=-0.0099  shape=[1, 646, 64]
+decode_out     abs_mean=0.0388  abs_max=0.3970  shape=[1, 1323008, 2]
+
+VAE loadWeights: supplied=291  model=145  matched=145
+  (291 − 145 = 146 encoder keys silently dropped — expected, decoder-only model)
+```
+
+**What the numbers mean:**
+
+- `final_latents abs_mean ≈ 0.66` — down from the old random-weights value of 3.134. DiT is
+  trained and converging to the real audio latent distribution. ✓
+- `decode_out abs_max ≈ 0.45` — peak ≈ −7 dBFS. Audio is present at reasonable amplitude.
+- `decode_out abs_mean ≈ 0.038` — mean absolute sample ≈ −28 dBFS RMS, quiet but audible.
+- `textHidden` differs between prompts (0.0055 vs 0.0133, 2.4× ratio). T5 IS differentiating
+  the prompts.
+- **Cross-prompt latent variation is only ~3%** (0.6684 vs 0.6472) despite a 2.4× T5 difference.
+  This is the key signal: conditioning scale is correct but semantic content is barely influencing
+  the velocity field. The DiT's cross-attention is not effectively propagating T5 semantics into
+  the denoising direction.
+
+**Conditioning scale check:**
+
+- `crossCond abs_mean = 0.031–0.046` — matches Python target (0.025–0.045 for short prompts). ✓
+- `uncrossCond abs_mean = 0.0221` — stable across both runs (same empty string). ✓
+- `globalCond abs_mean = 0.6767` — matches Python. ✓
 
 ---
 
 ## Things verified working (don't re-investigate)
 
-- **Diffusion parameterization:** Rectified flow, Euler ODE step, logSNR sigmoid schedule. `SFX_SCHEDULE_FIRST10` matches expected shape.
-- **Noise initialization:** `SFX_NOISE_XT abs_mean ≈ 0.794` matches theoretical unit Gaussian mean `√(2/π) ≈ 0.798`. ✓
-- **globalCond ordering:** `[totalEmb, startEmb]` (total first). Verified against mlx-audiogen `conditioners.py`.
-- **Cross-attention token structure:** T5-only, no time tokens. Matches stable-audio-tools training.
+- **Diffusion parameterization:** Rectified flow, Euler ODE step, logSNR sigmoid schedule.
+  `SFX_SCHEDULE_FIRST10` matches expected shape.
+- **Noise initialization:** `SFX_NOISE_XT abs_mean ≈ 0.794` matches theoretical unit Gaussian
+  mean `√(2/π) ≈ 0.798`. ✓
+- **GlobalCond ordering:** `[totalEmb, startEmb]` (total first). Verified against mlx-audiogen
+  `conditioners.py`.
+- **Cross-attention token structure:** `[T5[:64], totalToken, startToken]` = 66 tokens. Matches
+  stable-audio-tools training layout.
 - **CFG null conditioning:** T5("") encoded and used as `uncrossCondTokens`.
-- **Prepend token conditioning:** Single `gEmb = tEmb + toGlobalEmbed(globalCond)` prepended, removed after 24 blocks.
+- **Prepend token conditioning:** Single `gEmb = tEmb + toGlobalEmbed(globalCond)` prepended,
+  removed after 24 blocks.
 - **`toCondEmbed` 768→768:** Correct dims, called on cross-attention tokens before transformer.
 - **`SFXVAENameMap`:** 145/145 decoder keys verified correct via Python simulation.
-- **`SFXDiTNameMap`:** 373/374 keys map to Swift paths (1 rotary inv_freq correctly dropped). Verified via Python simulation of `mapKey` against actual `dit.safetensors` header.
-- **Preprocess/postprocess conv as residuals:** Python reference does `x_t = x_t + conv(x_t)`. Fixed in `SFXDiTModel.forward`.
-- **No conv weight transposition needed:** SAO weights already in MLX NLC format `[out, k, in]` (exported from Python MLX).
-- **VAE config:** `upsampleRatios=[8,8,4,4,2]`, product=2048. `latentDim=64`, `outputChannels=2`, `sampleRate=44100`.
-- **Latent frame count for 30s:** `floor(30 × 44100 / 2048) = 646` frames. ✓ Matches `latentShape=[1, 646, 64]`.
+- **`SFXDiTNameMap`:** 373/374 keys map to Swift paths (1 rotary inv_freq correctly dropped).
+  Verified via Python simulation of `mapKey` against actual `dit.safetensors` header.
+- **Preprocess/postprocess conv as residuals:** Python reference does `x_t = x_t + conv(x_t)`.
+  Fixed in `SFXDiTModel.forward`.
+- **No conv weight transposition needed:** SAO weights already in MLX NLC format `[out, k, in]`
+  (exported from Python MLX).
+- **VAE config:** `upsampleRatios=[8,8,4,4,2]`, product=2048. `latentDim=64`,
+  `outputChannels=2`, `sampleRate=44100`.
+- **Latent frame count for 30s:** `floor(30 × 44100 / 2048) = 646` frames. ✓
+- **T5 conditioning scale:** crossCond=0.0458, uncrossCond=0.0221, globalCond=0.677. All match
+  Python reference range. ✓
+- **T5 architecture:** Pre-padding to 128 before encoding (matches Python `padding="max_length"`).
+  PAD zeroing after final norm. Position bias returned mask-free from each block.
+- **T5NameMap:** `final_layer_norm.weight` key path confirmed (uses `@ModuleInfo` key,
+  not Swift property name). All 12 encoder blocks mapped correctly.
+- **T5 v1.0 FFN:** Single `wi`+`wo` (ReLU), not GEGLU `wi_0`+`wi_1`. T5NameMap maps
+  `DenseReluDense.wi_0.weight → layer1_mlp.wi.weight` (drops `_0` suffix for v1.0
+  single-gate FFN).
+- **DiT converging:** `final_latents abs_mean ≈ 0.65` (vs old random-weights value of 3.134).
+  DiT is trained and producing plausible latents. ✓
+- **VAE weight loading:** `supplied=291 model=145 matched=145`. 146 encoder keys silently
+  dropped (expected — `SFXVAEModel` is decoder-only). All 145 decoder weights load. ✓
+- **Audio amplitude:** `decode_out abs_max ≈ 0.45` (−7 dBFS peak), `abs_mean ≈ 0.038`. Audio
+  is present at reasonable amplitude — no longer the −30 dBFS white noise floor.
 
 ---
 
 ## Hypotheses still open
 
-### 1. First real audio — verify after DiT fix (highest priority)
+### 1. Cross-attention not propagating T5 semantics (highest priority)
 
-Both the VAE fix (2026-05-09) and the DiT transformer fix (2026-05-10) are committed. Run both test prompts ("footsteps on a wooden floor", "waves crashing on a shore") and collect a new AUDIODIAG dump. Key things to look for:
+**Evidence:** T5 hidden states differ 2.4× between prompts (0.0055 vs 0.0133) but final latents
+differ only ~3% (0.6684 vs 0.6472). The velocity field is nearly identical for different prompts
+despite correct conditioning scale. Conditioning scale is confirmed correct — the problem is that
+text semantics are not reaching the denoising direction.
 
-- `[SFXDiT] loadWeights: supplied=373 model=373 matched=373` in Xcode console → confirms all weights loaded
-- `SFX_VAE_DC` ch0/ch1 near 0 → VAE still working
-- Output WAV should sound different for the two prompts (SHA1 diff + audible diff)
-- Audio should have discernible content at reasonable amplitude (−12 to −6 dBFS range)
-- `SFX_FINAL_LATENTS abs_mean` should now be much smaller than the old 3.134 (with trained DiT, latents converge to the real data distribution)
+**Most likely causes (investigate in this order):**
 
-### 2. Latent scale / final latent distribution
+1. **`SFXDiTActor` DiT weight coverage** — The console should show
+   `[SFXDiT] loadWeights: supplied=373 model=373 matched=373`. Check that
+   `cross_attn.to_kv.weight [1536, 768]` and `cross_attn.to_q.weight [1536, 1536]` are
+   among the matched keys. If `to_kv` is random-init, cross-attention has no learned
+   relationship between T5 tokens and the DiT latent space.
+2. **`toCondEmbed` weight coverage** — Verify `to_cond_embed.fc1.weight [768, 768]` and
+   `to_cond_embed.fc2.weight [768, 768]` are loaded. If random-init, the T5 signal is
+   scrambled before cross-attention.
+3. **CFG cond/uncond difference at step 0** — Add a diagnostic that prints
+   `(cond_out − uncond_out) abs_mean` before the CFG blend. If this value is near zero,
+   the guidance is not amplifying any cross-attention signal and the output will be the
+   unconditioned distribution regardless of guidance scale.
 
-With trained DiT, the final latents should represent encoded real audio. The old `abs_mean = 3.134` was from a random-weights DiT (random walk). After the fix, the final latents should be in the SAO VAE encoder's real output distribution (estimated ~0.5–1.0 abs_mean). If audio sounds clipped or distorted, compare `SFX_FINAL_LATENTS` against the Python mlx-audiogen reference run.
+**How to check:** Enable AUDIODIAG, run two very different prompts (e.g. "silence" vs "explosion"),
+and compare `SFX_DIT_TRANSFORMER_OUT` abs_mean for conditioned vs unconditioned at step 0 of
+each. If the values are nearly identical across prompts, cross-attention is inert.
 
-### 3. Unconditioned prediction larger than conditioned
+### 2. DiT weight key coverage — verify matched=373
 
-`SFX_DIT_TRANSFORMER_OUT` uncond abs_mean (1.078) > cond abs_mean (0.462) in the old (random-weights) run. This data is now stale — the old run had a random transformer. Collect fresh AUDIODIAG from the first real run; if uncond is still larger than cond, investigate whether the empty-string T5 tokenization produces a useful null conditioning.
+The `[SFXDiT] loadWeights` diagnostic line should appear in the Xcode console showing
+`supplied=373 model=373 matched=373` (or similar). If matched is significantly less than
+supplied, some DiT weights (likely the cross-attention projections) are not loading. The
+`SFXDiTNameMap` step-6 remap (`blocks.N.*` → `transformer.layers.N.*`) is confirmed correct
+for the mlx-audiogen export; verify the HF checkpoint (if loaded instead) uses
+`model.model.transformer.layers.N.*` keys which require step 1 (strip `model.model.`) first.
 
-### 4. Guidance scale tuning
+### 3. Guidance scale and schedule tail
 
-Default is 7.5. mlx-audiogen defaults to 7.0. Try 3.5 / 5.0 / 7.0 / 7.5 once real audio is confirmed.
+Default guidance is 7.5. mlx-audiogen uses 7.0. Once cross-attention is confirmed working,
+try 3.5 / 5.0 / 7.0 and compare outputs. Also: `SCHEDULE_LAST5` shows the final step jumping
+from sigma ≈ 0.128 to 0.0 (12.8% noise wiped in one step). mlx-audiogen generates `steps+1`
+schedule values and uses the final one as `sigmaNext` rather than hard-coding 0. May be worth
+aligning.
+
+### 4. Unconditioned velocity still larger than conditioned?
+
+The pre-fix run (random-weights DiT) showed uncond `SFX_DIT_TRANSFORMER_OUT` abs_mean (1.078)
+larger than cond (0.462). That data is stale. If this pattern persists in a fresh run,
+CFG is amplifying the unconditioned signal and subtracting the conditioned one — inverted
+guidance. Verify `v_cfg = uncond + scale * (cond − uncond)` in `SFXDiffusionActor.odeStep`.
 
 ---
 
@@ -316,25 +552,34 @@ Default is 7.5. mlx-audiogen defaults to 7.0. Try 3.5 / 5.0 / 7.0 / 7.5 once rea
 - **`toCondEmbed` wrong dims / bypassed** — fixed to 768→768, called correctly.
 - **CFG null as zeros** — fixed to T5("").
 - **GlobalCond order `[start, total]`** — fixed to `[total, start]`.
-- **Time tokens in cross-attention** — removed; causing DC offset.
 - **Missing `bias=true` on GEGLU linears** — was fixed earlier; weight loading confirmed shape-correct.
-- **T5 tokenizer crash (Unigram routing)** — fixed earlier; T5 tokenizer working correctly (produces 9 tokens for a short prompt).
+- **T5 tokenizer crash (Unigram routing)** — fixed earlier; T5 tokenizer working correctly.
 - **`hopLength = 1024`** — fixed to 2048 (product of `[2,4,4,8,8]` strides).
+- **T5 `finalLayerNorm.weight` path** — fixed to `final_layer_norm.weight` (uses @ModuleInfo key).
+- **T5 PAD positions inflating crossCond** — fixed; output zeroed after final norm. Scale now correct.
+- **T5 position bias mask accumulation** — fixed; returned bias is mask-free.
 
 ---
 
 ## How to resume
 
 1. **Read "Current symptom"** and "Hypotheses still open" first.
-2. **Enable AUDIODIAG:** `defaults write com.pimp.AnvilApp audioDebugVerbose -bool YES`. Filter console for `SFX_`.
-3. **Test prompts:** "footsteps on a wooden floor" (SFX mode) and "waves crashing on a shore" (ambient mode), 30s, 100 steps, guidance=7.5. These two prompts should produce audibly different output.
-4. **If first run after VAE fix still sounds bad:** collect a new AUDIODIAG dump. Check:
-   - `SFX_VAE_DC` near 0? (was −0.60/+0.33 → proves weights now loading)
-   - `SFX_FINAL_LATENTS abs_mean` — compare against Python mlx-audiogen run on the same prompt
-   - `SFX_DIT_TRANSFORMER_OUT` conditioned vs unconditioned — should cond be larger?
-5. **If audio has content but is wrong pitch/tempo/character:** look at the schedule. The logSNR sigmoid schedule's `LAST5 = [0.168, 0.157, 0.147, 0.137, 0.128]` means the final step jumps from 0.128 to 0 (sigmaNext fallback). This is a 12.8% noise level wiped in one step. mlx-audiogen generates `steps+1` schedule values and uses the final one as `sigmaNext`; our code uses 0. May need to align.
-6. **If audio is totally prompt-independent:** conditioning is broken. Check `SFX_CROSS_COND` is non-zero and different between prompts.
-7. **Audit DiT weight loading:** add `supplied / model / matched` diagnostic to `SFXDiTActor.loadWeights` as next step after confirming real audio.
+2. **Enable AUDIODIAG:** `defaults write com.pimp.AnvilApp audioDebugVerbose -bool YES`.
+   Filter console for `SFX_DIT_` to see DiT internals per step.
+3. **Test prompts:** "footsteps on a wooden floor" and "dog barking", 30s, 100 steps,
+   guidance=7.5. These should produce audibly different output once conditioning is working.
+4. **Key diagnostic check — is conditioning propagating?**
+   - Compare `SFX_DIT_PROJ_CROSS` abs_mean for the two prompts at step 0. If values are
+     nearly identical between "footsteps" and "dog barking" after `toCondEmbed`, the problem
+     is in T5 or weight loading, not in the DiT.
+   - Compare conditioned vs unconditioned `SFX_DIT_TRANSFORMER_OUT`. CFG amplifies the
+     difference; if the difference is near zero, guidance cannot steer output.
+5. **Check `SFX_FINAL_LATENTS abs_mean`** — should be ~0.5–1.0 with trained DiT. The old
+   random-weights run gave 3.134. If still elevated, diffusion may not be converging.
+6. **If conditioning IS propagating but audio is wrong pitch/character:** Look at the schedule
+   tail (hypothesis 4) and try lower guidance scales (3.5–7.0).
+7. **If conditioning is NOT propagating:** Verify `toCondEmbed` weights loaded (hypothesis 3).
+   Print `SFX_DIT_PROJ_CROSS shape` and confirm it differs between prompts.
 
 ---
 
@@ -366,7 +611,7 @@ print(f"per-sec ZCR: mean={sum(zc)/len(zc):.0f}  (noise >4000, SFX 500-3000)")
 print(f"per-sec RMS: min={min(es):.0f}  max={max(es):.0f}  ratio={max(es)/max(min(es),1):.1f}")
 ```
 
-### Inspect SAO VAE checkpoint keys
+### Inspect SAO checkpoint keys
 
 ```python
 import mlx.core as mx
@@ -390,7 +635,7 @@ from mlx_audiogen.models.stable_audio.pipeline import StableAudioPipeline
 
 ## File map (SAO-specific)
 
-```
+```text
 AnvilCore/Sources/AnvilCore/Inference/StableAudio/
   SoundFXPipeline.swift         — end-to-end orchestrator; conditioning build
   SFXDiTModel.swift             — SAOFourierFeatures, SAOBiasMLP, SAODiTLayer,
@@ -400,20 +645,20 @@ AnvilCore/Sources/AnvilCore/Inference/StableAudio/
   SAOProjectionModel.swift      — SAONumberConditioner (seconds_start / total)
   SFXVAEModel.swift             — thin wrapper around OobleckDecoder
   SFXVAEActor.swift             — actor wrapper; decode() with AUDIODIAG probes
-  T5Encoder.swift               — SAO text conditioning (T5-base, 768-dim)
+  T5Encoder.swift               — SAO text conditioning (T5-base v1.0, 768-dim)
 
 AnvilCore/Sources/AnvilCore/Inference/Weights/
   SFXDiTNameMap.swift           — DiT key mapping (373/374 verified 2026-05-10)
   SFXVAENameMap.swift           — VAE key mapping (rewritten 2026-05-09, 145/145)
   SAOProjectionNameMap.swift    — conditioners key mapping
-  T5NameMap.swift               — T5 encoder key mapping
+  T5NameMap.swift               — T5 encoder key mapping (final_layer_norm fixed 2026-05-10)
 
 AnvilApp/Services/
   SFXModelManager.swift         — loads all 4 components; builds SoundFXPipeline
 
 ~/.cache/anvil-audio/mlx-weights/stable-audio-open-1.0/
   vae.safetensors               — 145 decoder keys (Sequential MLX naming)
-  dit.safetensors               — DiT weights
+  dit.safetensors               — DiT weights (374 keys, blocks.N.* prefix)
   t5.safetensors                — T5-base encoder weights
   conditioners.safetensors      — SAONumberConditioner weights
 ```

@@ -7,7 +7,8 @@
 // Each SAOSingleConditioner:
 //   1. time_positional_embedding: learned Fourier frequency bank [128]
 //   2. embedder: Linear(257 → 768, bias=True)
-//      257 = 1 raw scalar value + 128 sin features + 128 cos features
+//      257 = 128 cos features + 128 sin features + 1 raw scalar value
+//      (layout matches Python NumberEmbedder: cat([cos, sin, x]))
 // Output of each conditioner: [1, 768].
 //
 // T5-base hidden states [B, L, 768] pass directly to DiT cross-attention;
@@ -31,8 +32,11 @@ import MLXNN
 // MARK: - Learned Fourier embedding
 
 /// Wraps the `time_positional_embedding.frequencies` [numFrequencies] buffer.
-/// Encodes a scalar float value into a [1 + 2·numFrequencies] feature vector:
-///   [value, sin(2π·freq₀·value), …, cos(2π·freq₀·value), …]
+/// Encodes a scalar float value into a [2·numFrequencies + 1] feature vector:
+///   [cos(2π·freq₀·value), …, sin(2π·freq₀·value), …, value]
+/// Order matches Python NumberEmbedder: `cat([cos(proj), sin(proj), x], dim=-1)`.
+/// The embedder.weight [768, 257] was trained with cos in columns 0..127,
+/// sin in columns 128..255, and the raw scalar at column 256.
 public final class SAOFourierEmbedding: Module {
     /// Learned frequency bank, shape [numFrequencies].
     public var frequencies: MLXArray
@@ -44,9 +48,12 @@ public final class SAOFourierEmbedding: Module {
     public func encode(_ value: Float) -> MLXArray {
         let t    = MLXArray(value)                              // scalar
         let args = 2 * Float.pi * frequencies * t              // [numFrequencies]
+        // Python NumberEmbedder: cat([cos, sin, raw_value], dim=-1) → [2·numFrequencies + 1]
+        // The Linear weight [768, 257] was trained with cos in columns 0..127,
+        // sin in columns 128..255, and the raw scalar at column 256.
         return concatenated(
-            [t.reshaped([1]), sin(args), cos(args)], axis: 0
-        )                                                       // [1 + 2·numFrequencies]
+            [cos(args), sin(args), t.reshaped([1])], axis: 0
+        )                                                       // [2·numFrequencies + 1]
     }
 }
 

@@ -5,9 +5,10 @@
 //   2. SAONumberConditioner encode (seconds_start=0, seconds_total=duration)
 //      → startEmb [1, 768], totalEmb [1, 768]
 //   3. Build conditioning tensors:
-//      crossCond  = T5 hidden states  [1, 128, 768]  (text only — no time tokens)
-//      globalCond = cat([totalEmb, startEmb], axis=-1)  [1, 1536]  ← total FIRST
-//      uncrossCond = T5("") hidden states  [1, 128, 768]  (for CFG null pass)
+//      crossCond   = cat([T5[:64], totalToken, startToken])  [1, 66, 768]
+//                    Matches mlx-audiogen: first 64 T5 tokens + 2 time tokens.
+//      globalCond  = cat([totalEmb, startEmb], axis=-1)  [1, 1536]  ← total FIRST
+//      uncrossCond = cat([T5("")[:64], totalToken, startToken])  [1, 66, 768]
 //   4. Diffusion ODE (crossCond + globalCond → predicted velocity → latents)
 //   5. Oobleck VAE decode → audio samples
 //
@@ -15,10 +16,12 @@
 // steps 1–5.  The overload `generate(precomputedText:uncondText:duration:config:)`
 // accepts already-encoded T5 hidden states and is used in unit tests.
 //
-// Note on conditioning layout (matches stable-audio-tools training):
-//   crossCond  = T5 hidden states [1, 128, 768]  (text only — no time tokens)
+// Note on conditioning layout (matches stable-audio-tools / mlx-audiogen):
+//   crossCond  = cat([T5[:64], total_time_token, start_time_token])  [1, 66, 768]
 //   globalCond = cat([totalEmb, startEmb], axis=-1)  [1, 1536]  → prepend token
-// Time tokens must NOT be appended to crossCond; they belong only in globalCond.
+// Time tokens are APPENDED to cross-attention (positions 64 and 65), matching
+// the stable-audio-tools training layout.  The same time tokens are used for
+// both the conditional and unconditional CFG branches.
 
 import Foundation
 import MLX
@@ -61,12 +64,29 @@ public actor SoundFXPipeline {
         config: SFXDiffusionConfig,
         tokenizer: AnvilTokenizer
     ) async throws -> AudioResult {
-        // T5 encoding of prompt and empty string (for CFG null conditioning).
-        let (textIds, textMask) = tokenizer.encodeText(text, maxLength: 128)
-        let textHidden = t5(inputIds: textIds, attentionMask: textMask)   // [1, 128, 768]
+        // T5 encoding — pad to max_length=128 BEFORE encoding so T5 processes
+        // PAD tokens in context (matches Python `padding="max_length"`).
+        //
+        // Why this matters: without pre-padding, T5("") receives only 1 token
+        // (the EOS token) in complete isolation.  T5's FFN layers transform
+        // that single EOS embedding into a hidden state with much larger
+        // magnitude than PAD-token hidden states.  Python always passes 128
+        // tokens (EOS + 127 PADs) so the PAD token representations at
+        // positions 1–63 are small and near-uniform, making v_uncond ≈ v_cond
+        // and keeping CFG-amplification in-bounds.  With our Swift zero-pad
+        // approach the EOS hidden state dominates cross-attention for the
+        // uncond branch and v_uncond blows up ~72 % above v_cond.
+        let (rawTextIds,  rawTextMask)  = tokenizer.encodeText(text, maxLength: 128)
+        let (rawEmptyIds, rawEmptyMask) = tokenizer.encodeText("",   maxLength: 128)
 
-        let (emptyIds, emptyMask) = tokenizer.encodeText("", maxLength: 128)
-        let emptyHidden = t5(inputIds: emptyIds, attentionMask: emptyMask) // [1, 128, 768]
+        let (paddedTextIds,  paddedTextMask)  = Self.padTokensTo128(rawTextIds,  mask: rawTextMask)
+        let (paddedEmptyIds, paddedEmptyMask) = Self.padTokensTo128(rawEmptyIds, mask: rawEmptyMask)
+
+        let textHidden  = t5(inputIds: paddedTextIds,  attentionMask: paddedTextMask)  // [1, 128, 768]
+        let emptyHidden = t5(inputIds: paddedEmptyIds, attentionMask: paddedEmptyMask) // [1, 128, 768]
+
+        print("[SFXPIPE] T5 textHidden  shape=\(textHidden.shape)  abs_mean=\(String(format:"%.4f",abs(textHidden).mean().item(Float.self)))")
+        print("[SFXPIPE] T5 emptyHidden shape=\(emptyHidden.shape) abs_mean=\(String(format:"%.4f",abs(emptyHidden).mean().item(Float.self)))")
 
         return try await generate(
             precomputedText: textHidden,
@@ -108,22 +128,45 @@ public actor SoundFXPipeline {
         let globalCond = concatenated([totalEmb, startEmb], axis: -1)  // [1, 1536]
         AudioDiagnostics.tensor("SFX_GLOBAL_COND", globalCond)
 
-        // Cross-attention tokens: full T5 hidden states only — [1, 128, 768].
-        // stable-audio-tools was trained with T5-only cross-attention.  The time
-        // tokens (seconds_start / seconds_total) flow exclusively through
-        // globalCond → to_global_embed → prepend token.  Appending them here
-        // introduces a fixed cross-attention bias the model was never trained
-        // to handle, which manifests as a large DC offset in the decoded audio.
-        let crossCond = textHidden  // [1, 128, 768]
+        // Cross-attention tokens: T5[:64] + total_time_token + start_time_token.
+        //
+        // Matches stable-audio-tools training layout and mlx-audiogen Conditioners:
+        //   cross_attn = cat([t5_tokens[:64], total_emb[:, None, :], start_emb[:, None, :]])
+        //              → [1, 66, 768]
+        //
+        // IMPORTANT: The T5 encoder returns variable-length output (only non-padding
+        // tokens).  Python always pads to max_length=128 before slicing [:64], so the
+        // cross-attention is always exactly 66 tokens.  We must zero-pad here if the
+        // T5 output is shorter than 64 tokens.  Passing fewer tokens shifts the time
+        // tokens to wrong positions and corrupts every cross-attention block, causing
+        // the velocity field to diverge (latents explode).
+        let totalToken = totalEmb.expandedDimensions(axis: 1)   // [1, 1, 768]
+        let startToken = startEmb.expandedDimensions(axis: 1)   // [1, 1, 768]
+        let t5Text  = Self.t5Pad64(textHidden)                   // [1, 64, 768]
+        let crossCond = concatenated([t5Text, totalToken, startToken], axis: 1) // [1, 66, 768]
+        // Unconditional scale check — Python target: crossCond abs_mean ≈ 0.025, globalCond ≈ 0.68.
+        // The small crossCond value is expected: Python's T5 zeroes out PAD positions after the
+        // final norm, so for a short prompt (~4 real tokens) only 4/64 T5 slots are non-zero.
+        // The 2 time tokens (~0.68 each) dominate the average: (4*~0.3 + 60*0 + 2*0.68)/66 ≈ 0.039.
+        let crossAbsMean = abs(crossCond).mean().item(Float.self)
+        print("[SFXPIPE] crossCond shape=\(crossCond.shape) abs_mean=\(String(format:"%.4f",crossAbsMean))")
         AudioDiagnostics.tensor("SFX_CROSS_COND", crossCond)
 
-        // Unconditioned tokens for CFG: T5("") hidden states (same shape).
-        let uncrossCondTokens: MLXArray? = uncondText  // [1, 128, 768] or nil
+        // Unconditioned tokens: same time tokens, empty-string T5 prefix.
+        // Python: uncond_tokens uses the same seconds_total/start values.
+        let uncrossCondTokens: MLXArray? = uncondText.map { uc -> MLXArray in
+            let t5Uncond = Self.t5Pad64(uc)                      // [1, 64, 768]
+            return concatenated([t5Uncond, totalToken, startToken], axis: 1) // [1, 66, 768]
+        }
         if let uc = uncrossCondTokens {
+            let uncrossAbsMean = abs(uc).mean().item(Float.self)
+            print("[SFXPIPE] uncrossCond shape=\(uc.shape) abs_mean=\(String(format:"%.4f",uncrossAbsMean))")
             AudioDiagnostics.tensor("SFX_UNCROSS_COND", uc)
         } else {
             AudioDiagnostics.note("SFX_UNCROSS_COND", "nil (CFG disabled)")
         }
+        let globalAbsMean = abs(globalCond).mean().item(Float.self)
+        print("[SFXPIPE] globalCond shape=\(globalCond.shape) abs_mean=\(String(format:"%.4f",globalAbsMean))")
 
         // Diffusion.
         progressContinuation?.yield(.diffusion(DiffusionProgress(
@@ -157,6 +200,49 @@ public actor SoundFXPipeline {
             sampleRate: Self.defaultSampleRate,
             duration: clampedDuration,
             timeCosts: costs
+        )
+    }
+
+    // MARK: - Helpers
+
+    /// Pad or truncate T5 hidden states to exactly 64 tokens along axis 1.
+    ///
+    /// After pre-padding tokenizer output to 128 tokens before T5 encoding,
+    /// `hidden` will always have seqLen=128 and this just slices to the first 64.
+    /// The zero-pad branch is kept as a safe fallback for callers that pass
+    /// pre-encoded hidden states shorter than 64 (e.g. unit tests).
+    ///
+    /// - Parameter hidden: `[B, seqLen, 768]` T5 last hidden state (any seqLen).
+    /// - Returns: `[B, 64, 768]` tensor, zero-padded if seqLen < 64.
+    private static func t5Pad64(_ hidden: MLXArray) -> MLXArray {
+        let seqLen = hidden.shape[1]
+        let target = 64
+        if seqLen >= target {
+            return hidden[0..., 0..<target, 0...]   // truncate
+        }
+        let B = hidden.shape[0]
+        let D = hidden.shape[2]
+        let pad = MLXArray.zeros([B, target - seqLen, D])
+        return concatenated([hidden, pad], axis: 1) // zero-pad (fallback only)
+    }
+
+    /// Pad tokenizer output to exactly 128 tokens using PAD token (ID=0, mask=0).
+    ///
+    /// Matches Python `tokenizer(text, padding="max_length", max_length=128)`.
+    /// If the input is already ≥ 128 tokens it is returned unchanged (encodeText
+    /// truncates at 128, so this branch is effectively dead in normal use).
+    private static func padTokensTo128(_ ids: MLXArray, mask: MLXArray) -> (MLXArray, MLXArray) {
+        let currentLen = ids.shape[1]
+        let target = 128
+        if currentLen >= target { return (ids, mask) }
+        let B    = ids.shape[0]
+        let nPad = target - currentLen
+        // PAD token ID = 0, PAD mask = 0 (matches T5 tokenizer convention).
+        let padIds  = MLXArray.zeros([B, nPad]).asType(.int32)
+        let padMask = MLXArray.zeros([B, nPad]).asType(.int32)
+        return (
+            concatenated([ids,  padIds],  axis: 1),
+            concatenated([mask, padMask], axis: 1)
         )
     }
 }

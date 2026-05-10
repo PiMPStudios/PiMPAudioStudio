@@ -9,7 +9,7 @@
 //   numHeads            = 24     headDim   = 64
 //   numKVHeads          = 12     (cross-attn GQA 2:1)
 //   latentDim           = 64     conditioningDim = 768 (T5-base)
-//   ffIntermediateDim   = 6144   (GEGLU up-branch; combined proj = 12288)
+//   ffIntermediateDim   = 6144   (SwiGLU up-branch; combined proj = 12288)
 //   rotaryDim           = 32     (partial RoPE, first 32 of 64 head dims)
 //   timestepFeaturesDim = 256    (FourierFeatures output = 2 × 128)
 //   globalCondDim       = 1536   (concat startEmbed[768] + totalEmbed[768])
@@ -45,11 +45,11 @@ public final class SAOFourierFeatures: Module {
     }
 
     /// Encode scalar timestep(s) → [B, 2·halfDim].
-    /// Mirrors: `f = 2π · t @ weight.T;  cat([sin(f), cos(f)], dim=-1)`.
+    /// Mirrors: `f = 2π · t @ weight.T;  cat([cos(f), sin(f)], dim=-1)`.
     public func encode(_ t: MLXArray) -> MLXArray {
         let bT = t.reshaped([-1, 1]).asType(.float32)               // [B, 1]
         let angles = 2 * Float.pi * matmul(bT, weight.transposed()) // [B, halfDim]
-        return concatenated([sin(angles), cos(angles)], axis: -1)   // [B, 2·halfDim]
+        return concatenated([cos(angles), sin(angles)], axis: -1)   // [B, 2·halfDim]
     }
 }
 
@@ -192,14 +192,17 @@ public final class SAODiTCrossAttention: Module {
     }
 }
 
-// MARK: - GEGLU feed-forward network
+// MARK: - SwiGLU feed-forward network
 //
-// Upstream: FeedForward { GEGLU(dim, inner).proj → split → up * gelu(gate) }
-//           followed by Linear(inner, dim).
+// Upstream (mlx-audiogen dit.py + diffusers activation_fn="swiglu"):
+//   FeedForward { proj → split → up * silu(gate) } → Linear(inner, dim)
 // Both projections have bias=True (PyTorch default).
 // Weight keys after SFXDiTNameMap:
 //   ff.ff.0.proj.weight/bias  → ff.gate_up.weight/bias  [2·intermediate, hidden] / [2·intermediate]
 //   ff.ff.2.weight/bias       → ff.out.weight/bias       [hidden, intermediate]   / [hidden]
+//
+// NOTE: gate activation is SiLU (x·σ(x)), NOT GELU.  Using GELU here
+// produces wrong velocity predictions and causes the ODE to diverge.
 
 public final class SAODiTFFN: Module {
     @ModuleInfo(key: "gate_up") public var gateUp: Linear
@@ -215,7 +218,7 @@ public final class SAODiTFFN: Module {
         let half = proj.shape.last! / 2
         let up   = proj[0..., 0..., 0..<half]
         let gate = proj[0..., 0..., half...]
-        return projOut(up * saoGELU(gate))
+        return projOut(up * saoSiLU(gate))   // SwiGLU: gate = SiLU(z), NOT GELU
     }
 }
 
@@ -466,10 +469,5 @@ public final class SFXDiTModel: Module {
 
 // MARK: - Private activation helpers
 
+/// SiLU / Swish: x · σ(x).  Used as the gate in SAODiTFFN (SwiGLU).
 private func saoSiLU(_ x: MLXArray) -> MLXArray { x * sigmoid(x) }
-
-private func saoGELU(_ x: MLXArray) -> MLXArray {
-    // Tanh-approximate GELU — matches torch.nn.functional.gelu default behaviour.
-    let c = Float(sqrt(2.0 / Double.pi))
-    return 0.5 * x * (1 + tanh(c * (x + 0.044715 * x * x * x)))
-}

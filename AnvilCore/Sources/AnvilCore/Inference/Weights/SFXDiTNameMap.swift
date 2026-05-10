@@ -23,9 +23,11 @@
 //      Swift SAODiTTransformer holds them in `var layers: [SAODiTLayer]`
 //      at the path "transformer.layers.N.*".
 //
-// Conv1d weights (preprocess_conv.weight, postprocess_conv.weight) need
-// PyTorch→MLX axis transposition ([out,in,k]→[out,k,in]), handled by
-// WeightConverter.loadSFXDiTWeights via isConv1dWeight / conv1dToMLX.
+// Conv1d weights (preprocess_conv.weight, postprocess_conv.weight):
+// mlx-audiogen exports store these already in MLX [out, k, in] layout —
+// e.g. [64, 1, 64] for kernel=1.  WeightConverter.loadSFXDiTWeights uses
+// isConv1dWeight with a shape check: only transposes when loading the
+// original PyTorch [out, in, k] format (shape ends with kernel=1).
 
 import MLX
 

@@ -110,6 +110,13 @@ public actor SFXDiffusionActor {
         AudioDiagnostics.tensor("SFX_FINAL_LATENTS", xt)
         AudioDiagnostics.note("SFX_DIFF_DONE", "diffTime=\(String(format:"%.2f",diffTime))s perStep=\(String(format:"%.3f",diffTime/Double(max(config.steps,1))))s")
 
+        // Unconditional diagnostic — always printed regardless of AudioDiagnostics flag.
+        // Tells us whether the ODE converged to structured latents or stayed noisy.
+        let finalAbsMean = abs(xt).mean().item(Float.self)
+        let finalAbsMax  = abs(xt).max().item(Float.self)
+        let finalMean    = xt.mean().item(Float.self)
+        print("[SFXDIFF] final_latents abs_mean=\(String(format:"%.4f",finalAbsMean)) abs_max=\(String(format:"%.4f",finalAbsMax)) mean=\(String(format:"%.4f",finalMean)) shape=\(xt.shape)")
+
         progressContinuation?.finish()
         progressContinuation = nil
         return DiffusionResult(latents: xt, timeCosts: costs)

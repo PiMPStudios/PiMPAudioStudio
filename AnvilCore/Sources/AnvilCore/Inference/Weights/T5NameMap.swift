@@ -16,7 +16,7 @@
 //   encoder.block.0.layer.1.layer_norm.weight
 //   encoder.final_layer_norm.weight
 //
-// Our `T5Encoder` paths:
+// Our `T5Encoder` paths (T5 v1.0 — single wi, ReLU FFN):
 //   shared.weight
 //   blocks.0.layer0_attn.q.weight
 //   blocks.0.layer0_attn.k.weight
@@ -24,11 +24,10 @@
 //   blocks.0.layer0_attn.o.weight
 //   blocks.0.layer0_attn.relative_attention_bias.weight
 //   blocks.0.layer0_norm.weight
-//   blocks.0.layer1_mlp.wi_0.weight
-//   blocks.0.layer1_mlp.wi_1.weight
+//   blocks.0.layer1_mlp.wi.weight    ← single wi (T5 v1.0 ReLU, not v1.1 GEGLU wi_0/wi_1)
 //   blocks.0.layer1_mlp.wo.weight
 //   blocks.0.layer1_norm.weight
-//   final_layer_norm.weight
+//   final_layer_norm.weight          ← @ModuleInfo(key: "final_layer_norm"), NOT "finalLayerNorm"
 //
 // HF also ships `lm_head` and `decoder.*` keys when the safetensors covers
 // the full encoder-decoder T5; for SAO's text-only encoder usage we drop
@@ -40,7 +39,8 @@ public enum T5NameMap {
     public static func mapKey(_ key: String) -> String? {
         // Always-keep top-level shared embedding.
         if key == "shared.weight" { return "shared.weight" }
-        if key == "encoder.final_layer_norm.weight" { return "finalLayerNorm.weight" }
+        // @ModuleInfo key is "final_layer_norm", NOT the Swift property name "finalLayerNorm".
+        if key == "encoder.final_layer_norm.weight" { return "final_layer_norm.weight" }
 
         // Drop decoder + lm_head (T5 encoder-only usage).
         if key.hasPrefix("decoder.") { return nil }
