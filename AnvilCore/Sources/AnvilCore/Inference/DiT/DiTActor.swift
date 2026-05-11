@@ -144,12 +144,48 @@ public actor DiTActor {
         injectedAdapterID = adapterID
     }
 
-    /// Run LoRA training on the decoder. Must be called ON the actor's executor.
+    /// Add a single adapter's weights as a `LoRAContribution` on every injected
+    /// LoRALinear layer.  Call after `injectLoRA` — each call appends one entry
+    /// to `loraLinear.contributions`; the forward pass sums all entries with
+    /// their individual `strength` multipliers.
+    public func addLoRAContribution(
+        adapterID: String,
+        displayName: String?,
+        source: AdapterSource,
+        weights: [(String, MLXArray)],
+        strength: Float
+    ) {
+        guard let decoder else { return }
+        LoRAInjector.addContribution(
+            model: decoder,
+            adapterID: adapterID,
+            displayName: displayName,
+            source: source,
+            weights: weights,
+            strength: strength,
+            paths: injectedPaths
+        )
+        eval(decoder.parameters())
+    }
+
+    /// Remove all `LoRAContribution` entries from every injected LoRALinear layer,
+    /// reverting the model to pure base-weight behaviour without removing the
+    /// LoRALinear wrappers themselves.
+    public func clearLoRAContributions() {
+        guard let decoder else { return }
+        LoRAInjector.clearContributions(model: decoder, paths: injectedPaths)
+    }
+
+    /// Run LoRA training on the decoder.
+    ///
+    /// Making this `async` allows `await Task.yield()` calls inside `LoRATrainer.train`
+    /// to release the actor between epochs, letting `cancelTraining()` messages be
+    /// processed cooperatively rather than queued until training completes.
     public func trainLoRA(
         samples: [TrainingSample],
         config: LoRAConfig,
-        onProgress: @escaping (TrainingProgress) -> Void
-    ) throws -> (weights: [(String, MLXArray)], finalLoss: Float?) {
+        onProgress: @escaping @Sendable (TrainingProgress) -> Void
+    ) async throws -> (weights: [(String, MLXArray)], finalLoss: Float?) {
         guard let decoder else {
             throw DiTActorError.weightsNotLoaded
         }
@@ -157,7 +193,7 @@ public actor DiTActor {
         let paths = LoRAInjector.inject(model: decoder, config: config)
         let trainer = LoRATrainer(model: decoder, config: config, injectedPaths: paths, datasetSize: samples.count)
         activeTrainer = trainer
-        let weights = trainer.train(dataset: samples, onProgress: onProgress)
+        let weights = try await trainer.train(dataset: samples, onProgress: onProgress)
         let finalLoss = trainer.lowestLoss
         activeTrainer = nil
         LoRAInjector.remove(model: decoder, paths: paths)

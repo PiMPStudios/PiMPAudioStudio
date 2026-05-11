@@ -222,20 +222,21 @@ final class TrainingService: ObservableObject {
         lyrics: String,
         duration: TimeInterval
     ) async throws -> TrainingSample {
-        let audioData = try loadWAVFile(url: audioURL)
-        let audioArray = MLXArray(audioData.samples)
-            .reshaped([1, 1, audioData.samples.count])
+        // Load + resample to 48 kHz stereo → [1, pcmFrames, 2] NLC layout.
+        // AudioFileLoader replaces the previous hand-rolled WAV parser which:
+        //   (a) produced wrong shape [1, 1, N] instead of [1, frames, 2], and
+        //   (b) didn't resample imported files to the VAE's 48 kHz target rate.
+        let audioNLC = try AudioFileLoader.load(from: audioURL)
 
-        // Encode to latent via VAE
-        let latent = try await vae.encodeMean(audio: audioArray, precision: .float16)
+        // VAE-encode to latent space [1, latentFrames, 64]
+        let latent = try await vae.encodeMean(audio: audioNLC, precision: .float16)
 
-        // Encode text conditioning
-        let actualDuration: TimeInterval
-        if duration > 0 {
-            actualDuration = duration
-        } else {
-            actualDuration = Double(audioData.samples.count) / Double(audioData.sampleRate)
-        }
+        // Derive duration from the actual PCM frame count when not provided
+        // (imported files pass duration = 0).  audioNLC.shape[1] is PCM frames
+        // at 48 kHz after resampling, so duration = frames / 48000.
+        let actualDuration: TimeInterval = duration > 0
+            ? duration
+            : Double(audioNLC.shape[1]) / Double(MusicPipeline.defaultSampleRate)
 
         let cond = try await conditioning.encode(
             text: prompt,
@@ -252,65 +253,13 @@ final class TrainingService: ObservableObject {
             encoderMask: cond.encoderMask
         )
     }
-
-    /// Load a WAV file and return normalized float samples and sample rate.
-    private func loadWAVFile(url: URL) throws -> (samples: [Float], sampleRate: Int) {
-        let data = try Data(contentsOf: url)
-
-        guard data.count > 44 else {
-            throw TrainingError.invalidAudioFile(url.lastPathComponent)
-        }
-
-        let sampleRate = data.withUnsafeBytes { ptr -> Int in
-            Int(ptr.load(fromByteOffset: 24, as: UInt32.self))
-        }
-
-        let bitsPerSample = data.withUnsafeBytes { ptr -> Int in
-            Int(ptr.load(fromByteOffset: 34, as: UInt16.self))
-        }
-
-        let dataOffset = 44
-        let dataSize = data.count - dataOffset
-
-        var samples: [Float] = []
-
-        if bitsPerSample == 16 {
-            let numSamples = dataSize / 2
-            samples.reserveCapacity(numSamples)
-            data.withUnsafeBytes { ptr in
-                for i in 0..<numSamples {
-                    let sample = ptr.load(fromByteOffset: dataOffset + i * 2, as: Int16.self)
-                    samples.append(Float(sample) / 32768.0)
-                }
-            }
-        } else if bitsPerSample == 32 {
-            let numSamples = dataSize / 4
-            samples.reserveCapacity(numSamples)
-            data.withUnsafeBytes { ptr in
-                for i in 0..<numSamples {
-                    let sample = ptr.load(fromByteOffset: dataOffset + i * 4, as: Float.self)
-                    samples.append(sample)
-                }
-            }
-        } else {
-            throw TrainingError.unsupportedAudioFormat(bitsPerSample)
-        }
-
-        return (samples, sampleRate)
-    }
 }
 
 enum TrainingError: Error, LocalizedError {
-    case invalidAudioFile(String)
-    case unsupportedAudioFormat(Int)
     case noSamples
 
     var errorDescription: String? {
         switch self {
-        case .invalidAudioFile(let name):
-            return "Invalid audio file: \(name)"
-        case .unsupportedAudioFormat(let bits):
-            return "Unsupported audio format: \(bits)-bit"
         case .noSamples:
             return "No valid training samples"
         }

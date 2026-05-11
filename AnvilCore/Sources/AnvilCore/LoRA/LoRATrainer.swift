@@ -105,10 +105,13 @@ public final class LoRATrainer {
     }
 
     /// Run the training loop. Returns the best LoRA weights (lowest loss across epochs).
+    ///
+    /// - Throws: `CancellationError` when the enclosing Swift `Task` is cancelled.
+    ///   The loop also exits early when `cancel()` is called on this instance.
     public func train(
         dataset: [TrainingSample],
-        onProgress: @escaping (TrainingProgress) -> Void
-    ) -> [(String, MLXArray)] {
+        onProgress: @escaping @Sendable (TrainingProgress) -> Void
+    ) async throws -> [(String, MLXArray)] {
         guard !dataset.isEmpty else { return [] }
 
         let accumSteps = max(1, min(config.gradientAccumulationSteps, dataset.count))
@@ -159,6 +162,7 @@ public final class LoRATrainer {
 
             for idx in shuffledIndices {
                 guard !isCancelled else { break }
+                try Task.checkCancellation()
                 let sample = dataset[idx]
 
                 // Sample random timestep t in [0, 1]
@@ -233,6 +237,10 @@ public final class LoRATrainer {
                 bestLoss = avgLoss
                 bestWeights = LoRAInjector.extractWeights(model: model, paths: injectedPaths)
             }
+
+            // Yield at epoch boundary so the enclosing actor can process
+            // pending messages (e.g. cancelTraining()) between epochs.
+            await Task.yield()
         }
 
         setTrainingMode(false)

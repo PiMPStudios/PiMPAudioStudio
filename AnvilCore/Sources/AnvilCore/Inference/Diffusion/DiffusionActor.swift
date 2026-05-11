@@ -151,6 +151,25 @@ public actor DiffusionActor {
         let absMax = absXt.max().item(Float.self)
         diagLogger.info("[DiffusionActor] final latent shape=\(xt.shape) abs_mean=\(absMean) abs_max=\(absMax)")
 
+        // Per-second latent diagnostics: dump abs_mean for each 25-frame
+        // window (1 second at 25fps). This tells us exactly where content
+        // fades out vs. where the model produces near-zero predictions.
+        // 25 latent frames × 1920 hop = 48000 samples = 1 second at 48kHz.
+        let nFrames = xt.shape[1]
+        let framesPerSec = 25
+        let nSecs = (nFrames + framesPerSec - 1) / framesPerSec
+        var perSecStats: [(Int, Float)] = []
+        for s in 0..<nSecs {
+            let startF = s * framesPerSec
+            let endF = min(startF + framesPerSec, nFrames)
+            // slice [0..., startF..<endF, 0...]
+            let chunk = xt[0..., startF..<endF, 0...]
+            let chunkAbsMean = MLX.abs(chunk).mean().item(Float.self)
+            perSecStats.append((s, chunkAbsMean))
+        }
+        let statStrs = perSecStats.map { (s, v) in "s\(s)=\(String(format: "%.4f", v))" }.joined(separator: " ")
+        diagLogger.info("[DiffusionActor] per-sec latent abs_mean: \(statStrs)")
+
         progressContinuation?.finish()
         progressContinuation = nil
         return DiffusionResult(latents: xt, timeCosts: costs)
@@ -182,6 +201,26 @@ public actor DiffusionActor {
         try await dit.loadLoRAWeights(weights, adapterID: adapterID)
     }
 
+    public func addLoRAContribution(
+        adapterID: String,
+        displayName: String?,
+        source: AdapterSource,
+        weights: [(String, MLXArray)],
+        strength: Float
+    ) async {
+        await dit.addLoRAContribution(
+            adapterID: adapterID,
+            displayName: displayName,
+            source: source,
+            weights: weights,
+            strength: strength
+        )
+    }
+
+    public func clearLoRAContributions() async {
+        await dit.clearLoRAContributions()
+    }
+
     public var injectedAdapterID: String? {
         get async { await dit.injectedAdapterID }
     }
@@ -189,7 +228,7 @@ public actor DiffusionActor {
     public func trainLoRA(
         samples: [TrainingSample],
         config: LoRAConfig,
-        onProgress: @escaping (TrainingProgress) -> Void
+        onProgress: @escaping @Sendable (TrainingProgress) -> Void
     ) async throws -> (weights: [(String, MLXArray)], finalLoss: Float?) {
         try await dit.trainLoRA(samples: samples, config: config, onProgress: onProgress)
     }

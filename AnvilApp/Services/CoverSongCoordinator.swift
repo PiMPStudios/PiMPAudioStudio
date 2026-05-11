@@ -3,7 +3,6 @@ import Foundation
 import AnvilCore
 import MLX
 import MLXNN
-import AVFoundation
 import OSLog
 
 private let logger = Logger(subsystem: "com.pimp.AnvilApp", category: "CoverSongCoordinator")
@@ -79,7 +78,7 @@ actor CoverSongCoordinator {
                     continuation.yield(.conditioning)
 
                     // Load source audio from disk → 48 kHz stereo MLXArray [1, frames, 2]
-                    let audioNLC = try self.loadSourceAudio(from: referenceAudioURL)
+                    let audioNLC = try AudioFileLoader.load(from: referenceAudioURL)
                     logger.info("[CoverSongCoordinator] source audio loaded shape=\(audioNLC.shape)")
 
                     // VAE-encode (deterministic mean) → srcLatents [1, T, 64]
@@ -222,104 +221,6 @@ actor CoverSongCoordinator {
         let blended = (1 - strength) * srcLatents + strength * lmHints
         eval(blended)
         return blended.asType(.float32)
-    }
-
-    // MARK: - Audio Loading
-
-    /// Load an audio file from `url`, resample to 48 kHz stereo, and return
-    /// `[1, frames, 2]` in NLC layout (batch=1, length=frames, channels=2).
-    private func loadSourceAudio(from url: URL) throws -> MLXArray {
-        let file = try AVAudioFile(forReading: url)
-        let sourceFormat = file.processingFormat
-        let sourceFrameCount = AVAudioFrameCount(file.length)
-
-        guard let sourceBuffer = AVAudioPCMBuffer(
-            pcmFormat: sourceFormat,
-            frameCapacity: sourceFrameCount
-        ) else {
-            throw CoverSongError.audioLoadFailed("Failed to allocate source PCM buffer")
-        }
-        try file.read(into: sourceBuffer, frameCount: sourceFrameCount)
-
-        let targetSampleRate = Double(MusicPipeline.defaultSampleRate)
-        let targetChannels: AVAudioChannelCount = 2
-
-        guard let targetFormat = AVAudioFormat(
-            standardFormatWithSampleRate: targetSampleRate,
-            channels: targetChannels
-        ) else {
-            throw CoverSongError.audioLoadFailed("Failed to create 48 kHz stereo AVAudioFormat")
-        }
-
-        // Skip conversion if already in target format
-        if sourceFormat.sampleRate == targetSampleRate
-            && sourceFormat.channelCount == targetChannels {
-            return try audioBufferToMLX(sourceBuffer)
-        }
-
-        guard let converter = AVAudioConverter(from: sourceFormat, to: targetFormat) else {
-            throw CoverSongError.audioLoadFailed("Failed to create AVAudioConverter")
-        }
-
-        let ratio = targetSampleRate / sourceFormat.sampleRate
-        let targetFrameCapacity = AVAudioFrameCount(
-            Double(sourceFrameCount) * ratio + 1.0
-        )
-        guard let targetBuffer = AVAudioPCMBuffer(
-            pcmFormat: targetFormat,
-            frameCapacity: targetFrameCapacity
-        ) else {
-            throw CoverSongError.audioLoadFailed("Failed to allocate resampled PCM buffer")
-        }
-
-        // Single-shot conversion: provide all source frames once, then end-of-stream.
-        var inputConsumed = false
-        var conversionError: NSError?
-        let status = converter.convert(
-            to: targetBuffer,
-            error: &conversionError
-        ) { _, outStatus in
-            if inputConsumed {
-                outStatus.pointee = .endOfStream
-                return nil
-            }
-            inputConsumed = true
-            outStatus.pointee = .haveData
-            return sourceBuffer
-        }
-
-        if let err = conversionError { throw err }
-        guard status != .error else {
-            throw CoverSongError.audioLoadFailed(
-                "AVAudioConverter finished with error status \(status.rawValue)"
-            )
-        }
-
-        return try audioBufferToMLX(targetBuffer)
-    }
-
-    /// Convert an `AVAudioPCMBuffer` to `[1, frames, 2]` MLXArray.
-    /// Mono inputs are duplicated to produce stereo output.
-    private func audioBufferToMLX(_ buffer: AVAudioPCMBuffer) throws -> MLXArray {
-        guard let floatData = buffer.floatChannelData else {
-            throw CoverSongError.audioLoadFailed("PCM buffer has no float channel data")
-        }
-        let frames = Int(buffer.frameLength)
-        let numChannels = Int(buffer.format.channelCount)
-
-        let ch0 = Array(UnsafeBufferPointer(start: floatData[0], count: frames))
-        // Duplicate mono → stereo if needed
-        let ch1 = numChannels >= 2
-            ? Array(UnsafeBufferPointer(start: floatData[1], count: frames))
-            : ch0
-
-        // Interleave into [frames * 2] then reshape to [1, frames, 2]
-        var interleaved = [Float](repeating: 0, count: frames * 2)
-        for i in 0..<frames {
-            interleaved[i * 2]     = ch0[i]
-            interleaved[i * 2 + 1] = ch1[i]
-        }
-        return MLXArray(interleaved, [frames, 2]).expandedDimensions(axis: 0)
     }
 
     // MARK: - Weight Loading
