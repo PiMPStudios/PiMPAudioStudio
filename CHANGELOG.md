@@ -4,6 +4,29 @@ All notable changes to AnvilApp are documented here.
 
 ---
 
+## [Unreleased] — Cover-Song Generation Phase 2A (foundation)
+
+### Added
+
+- **`ResidualFSQ`** (`AnvilCore/Inference/AudioTokenizer/`) — Finite Scalar Quantization with `project_in` / `project_out` linear bottleneck. Mirrors upstream's `vector_quantize_pytorch.ResidualFSQ` configured with `num_quantizers=1`. Provides `quantize` (continuous → indices) and `getOutputFromIndices` (indices → continuous) for both encode and skip-encode paths.
+- **`AudioTokenizerPooler`** — cls-token AttentionPooler used inside `AudioTokenizer`. Reuses `Qwen3Layer` for its 2 self-attention transformer blocks. Pools `pool_window_size` audio patches into a single token via prepended cls + self-attention.
+- **`AudioTokenizer`** — top-level acoustic→codes module. Composes `audio_acoustic_proj` Linear + `AudioTokenizerPooler` + `ResidualFSQ`. Converts 25 Hz `[B, T, 64]` VAE latents into 5 Hz `[B, T/pool, 2048]` quantized representations + packed indices.
+- **`AudioTokenDetokenizer`** — codes→acoustic upsampler. Linear projection + 5 learnable special_tokens for window expansion + 2 self-attention layers per window + `proj_out` back to acoustic dim.
+- **`AceStepLMConfig`** — JSON decoder for each LM variant's `config.json` (hidden_size / num_hidden_layers / etc). Drives variant-aware module construction; no hardcoded constants per variant.
+- **`AceStepLM`** — Qwen-architecture decoder-only transformer reusing `Qwen3Layer`. Returns final hidden states (no `lm_head`). Used in cover-song path to convert audio codes → 5 Hz hidden states for the detokenizer.
+- **`WeightConverter.loadShardedSafetensors(indexURL:)`** — reads `model.safetensors.index.json`'s `weight_map`, groups keys by shard, loads each shard once, and merges into a single sorted `(name, array)` list. Required for the 4B LM variant which ships across 2 safetensors files.
+- **Three new weight name maps**: `AudioTokenizerNameMap`, `AudioTokenDetokenizerNameMap`, `AceStepLMNameMap`. Each strips its own subtree prefix and applies the standard snake_case → camelCase conversion plus the Qwen-style sub-renames (`self_attn` → `attention`, `input_layernorm` → `inputNorm`, etc.).
+- **Three new `WeightConverter` methods** — `convertAudioTokenizerWeights`, `convertAudioTokenDetokenizerWeights`, `convertAceStepLMWeights`. All actor-isolated, called via `await`.
+- **DEBUG-only smoke test** `ACEStepGenerationService.testCoverSongFoundation()` — verifies all three module weight sets load against the user's local files and logs match counts. Will be removed when Phase 2B's `CoverSongCoordinator` lands.
+
+### Documentation
+
+- `mapDiTKey` doc comment now explicitly notes that `tokenizer.*` and `detokenizer.*` keys are intentionally returned as nil; their loading happens through dedicated converters that work on the raw safetensors list independently.
+
+Phase 2B (CoverSongCoordinator + ConditioningActor hook), 2C (UI), and 2D (polish) are deferred to separate plans.
+
+---
+
 ## [Unreleased] — SAO SFX: variational ODE Euler step, σ_max init fix, hopLength 2048
 
 ### Fixed
