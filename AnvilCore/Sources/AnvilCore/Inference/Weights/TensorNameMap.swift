@@ -29,6 +29,17 @@ public enum TensorNameMap {
     /// detokenizer / null_condition_emb subtrees that belong to other parts
     /// of the upstream model graph, plus rotary embedding buffers which are
     /// recomputed on the MLX side).
+    ///
+    /// Note: returns nil for the bundle's `tokenizer.*` and `detokenizer.*`
+    /// subtrees. Those weights are loaded separately by
+    /// `WeightConverter.convertAudioTokenizerWeights` /
+    /// `convertAudioTokenDetokenizerWeights` (cover-song generation,
+    /// Phase 2A+) which work on the raw safetensors `(key, array)` list and
+    /// have their own prefix-aware maps. This means callers can safely
+    /// load the same `rawWeights` through both `convertDiTWeights` (DiT
+    /// decoder) and `convertAudioTokenizerWeights` (audio tokenizer)
+    /// without keys colliding — each converter ignores keys outside its
+    /// subtree.
     public static func mapDiTKey(_ key: String) -> String? {
         // Top-level learned "no conditioning" embedding, used for CFG
         // unconditional branch. Lives at the safetensors root, not inside
