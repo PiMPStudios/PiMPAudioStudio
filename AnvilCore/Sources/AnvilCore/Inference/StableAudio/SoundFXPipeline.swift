@@ -173,6 +173,18 @@ public actor SoundFXPipeline {
             currentStep: 0, totalSteps: config.steps, elapsedTime: 0
         )))
 
+        // Wire up per-step progress relay from SFXDiffusionActor — same pattern
+        // as MusicPipeline/DiffusionActor. Without this the upstream progressTask
+        // only ever sees step-0 then .decoding, so the UI bar never advances.
+        let diffProgressStream = await diffusion.makeProgressStream()
+        let outerContinuation = self.progressContinuation   // Sendable capture
+        let diffRelayTask = Task {
+            for await progress in diffProgressStream {
+                outerContinuation?.yield(progress)
+            }
+        }
+        defer { diffRelayTask.cancel() }
+
         let diffResult = try await diffusion.sample(
             crossCond: crossCond,
             globalCond: globalCond,
@@ -200,6 +212,44 @@ public actor SoundFXPipeline {
             sampleRate: Self.defaultSampleRate,
             duration: clampedDuration,
             timeCosts: costs
+        )
+    }
+
+    // MARK: - Inpainting conditioning
+
+    /// Encode text + timing into the three conditioning tensors needed for
+    /// `SFXDiffusionActor.inpaint`.  Mirrors the conditioning build in
+    /// `generate(precomputedText:…)` without running diffusion.
+    public func buildConditioning(
+        text: String,
+        duration: TimeInterval,
+        tokenizer: AnvilTokenizer
+    ) async -> SFXInpaintConditioning {
+        let clampedDuration = min(duration, Self.maxDuration)
+
+        let (rawTextIds,  rawTextMask)  = tokenizer.encodeText(text, maxLength: 128)
+        let (rawEmptyIds, rawEmptyMask) = tokenizer.encodeText("",   maxLength: 128)
+        let (paddedTextIds,  paddedTextMask)  = Self.padTokensTo128(rawTextIds,  mask: rawTextMask)
+        let (paddedEmptyIds, paddedEmptyMask) = Self.padTokensTo128(rawEmptyIds, mask: rawEmptyMask)
+
+        let textHidden  = t5(inputIds: paddedTextIds,  attentionMask: paddedTextMask)
+        let emptyHidden = t5(inputIds: paddedEmptyIds, attentionMask: paddedEmptyMask)
+
+        let (startEmb, totalEmb) = conditioner(
+            startSeconds: 0.0,
+            totalSeconds: Float(clampedDuration)
+        )
+
+        let globalCond  = concatenated([totalEmb, startEmb], axis: -1)  // [1, 1536]
+        let totalToken  = totalEmb.expandedDimensions(axis: 1)           // [1, 1, 768]
+        let startToken  = startEmb.expandedDimensions(axis: 1)           // [1, 1, 768]
+        let crossCond   = concatenated([Self.t5Pad64(textHidden),  totalToken, startToken], axis: 1) // [1, 66, 768]
+        let uncrossCond = concatenated([Self.t5Pad64(emptyHidden), totalToken, startToken], axis: 1) // [1, 66, 768]
+
+        return SFXInpaintConditioning(
+            crossCond: crossCond,
+            globalCond: globalCond,
+            uncrossCondTokens: uncrossCond
         )
     }
 

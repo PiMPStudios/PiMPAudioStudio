@@ -179,12 +179,15 @@ final class AppServices: ObservableObject {
         self.conditioningActor = conditioning
 
         // Wire the editor service with the full pipeline (VAE + DiT diffusion +
-        // conditioning). This enables AI inpainting without any extra memory cost.
+        // conditioning + SAO pipeline). The SAO pipeline is nil until weights
+        // are downloaded; EditorService's Combine subscription wires it in
+        // automatically when SFXModelManager.pipeline becomes non-nil.
         let editorSvc = EditorService()
         editorSvc.setup(
             vaeActor: vae,
             diffusionActor: diffusion,
-            conditioningActor: conditioning
+            conditioningActor: conditioning,
+            sfxModelManager: sfxModelManager
         )
         self.editorService = editorSvc
 

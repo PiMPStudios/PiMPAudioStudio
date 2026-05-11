@@ -38,6 +38,17 @@ public actor SFXVAEActor {
         loaded = true
     }
 
+    /// Encode audio `[B, T_audio, audioChannels]` → latent mean `[B, T_latent, latentDim]`.
+    ///
+    /// Used by `InpaintCoordinator` to produce SAO latents for inpainting.
+    /// Requires VAE weights to be loaded (`isLoaded == true`).
+    public func encodeMean(audio: MLXArray) throws -> MLXArray {
+        guard loaded else { throw SFXVAEActorError.weightsNotLoaded }
+        let result = model.encodeMean(audio: audio)
+        eval(result)
+        return result
+    }
+
     public func decode(latents: MLXArray) throws -> MLXArray {
         guard loaded else { throw SFXVAEActorError.weightsNotLoaded }
         AudioDiagnostics.tensor("SFX_VAE_IN", latents)

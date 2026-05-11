@@ -15,11 +15,21 @@ public actor InpaintCoordinator {
     private let conditioningActor: ConditioningActor?
     private let historyManager: EditHistoryManager
 
+    // ACE-Step latents (48 kHz, stride 1920)
     private var currentLatents: MLXArray?
+    // SAO latents (44.1 kHz, stride 2048) — populated lazily on first SAO inpaint
+    private var sfxCurrentLatents: MLXArray?
+    private var sfxLatentFrames: Int = 0
+
     private var currentAudio: MLXArray?
     private var totalDuration: TimeInterval = 0
     private var sampleRate: Int = 44100
     private var latentFrames: Int = 0
+
+    /// Stable Audio Open conditioning pipeline — set at init or via `setSFXPipeline`.
+    private var sfxPipeline: SoundFXPipeline?
+    /// T5 tokenizer for SAO conditioning.
+    private var sfxTokenizer: AnvilTokenizer?
 
     public var hasLoadedAudio: Bool { currentLatents != nil }
     public var canUndo: Bool { historyManager.canUndo }
@@ -34,14 +44,27 @@ public actor InpaintCoordinator {
         sfxVAEActor: SFXVAEActor? = nil,
         diffusionActor: DiffusionActor? = nil,
         sfxDiffusionActor: SFXDiffusionActor? = nil,
-        conditioningActor: ConditioningActor? = nil
+        conditioningActor: ConditioningActor? = nil,
+        sfxPipeline: SoundFXPipeline? = nil,
+        sfxTokenizer: AnvilTokenizer? = nil
     ) {
         self.vaeActor = vaeActor
         self.sfxVAEActor = sfxVAEActor
         self.diffusionActor = diffusionActor
         self.sfxDiffusionActor = sfxDiffusionActor
         self.conditioningActor = conditioningActor
+        self.sfxPipeline = sfxPipeline
+        self.sfxTokenizer = sfxTokenizer
         self.historyManager = EditHistoryManager()
+    }
+
+    /// Update the SAO conditioning pipeline at runtime (called when SAO weights load).
+    public func setSFXPipeline(_ pipeline: SoundFXPipeline?, tokenizer: AnvilTokenizer?) {
+        sfxPipeline = pipeline
+        sfxTokenizer = tokenizer
+        // Invalidate cached SAO latents so they're re-encoded on next SAO inpaint
+        sfxCurrentLatents = nil
+        sfxLatentFrames = 0
     }
 
     public static func hopSize(for pipeline: PipelineChoice) -> Int {
@@ -66,6 +89,17 @@ public actor InpaintCoordinator {
         self.currentLatents = latents
         self.currentAudio = samples
         self.latentFrames = latents.shape[1]
+
+        // Also eagerly encode SAO latents if the SFX VAE is already loaded.
+        // If it isn't, SAO inpainting will encode lazily on first request.
+        self.sfxCurrentLatents = nil
+        self.sfxLatentFrames   = 0
+        if let sfxVAE = sfxVAEActor, await sfxVAE.isLoaded {
+            if let sfxLat = try? await sfxVAE.encodeMean(audio: samples) {
+                self.sfxCurrentLatents = sfxLat
+                self.sfxLatentFrames   = sfxLat.shape[1]
+            }
+        }
 
         let initialSnapshot = EditSnapshot(
             description: "Original",
@@ -118,7 +152,7 @@ public actor InpaintCoordinator {
         request: InpaintRequest,
         continuation: AsyncStream<InpaintProgress>.Continuation
     ) async throws {
-        guard let latents = currentLatents else {
+        guard currentLatents != nil || currentAudio != nil else {
             continuation.yield(.failed("No audio loaded"))
             continuation.finish()
             return
@@ -126,18 +160,64 @@ public actor InpaintCoordinator {
 
         continuation.yield(.buildingMask)
 
-        let hop = Self.hopSize(for: request.pipeline)
+        // ── Resolve pipeline-specific latents ────────────────────────────────
+        // ACE-Step uses 48 kHz latents (stride 1920); SAO uses 44.1 kHz latents
+        // (stride 2048).  We resolve the correct latent space here and do all
+        // mask / noise / composite work in that space.
+
+        let workingLatents: MLXArray
+        let workingFrames: Int
+        let workingHop: Int
+
+        switch request.pipeline {
+        case .stableAudio:
+            guard let sfxVAE = sfxVAEActor else {
+                continuation.yield(.failed("Stable Audio VAE not available"))
+                continuation.finish()
+                return
+            }
+            // Lazily encode SAO latents on first SAO inpaint (or after an
+            // ACE-Step edit invalidated them).
+            if let existing = sfxCurrentLatents {
+                workingLatents = existing
+                workingFrames  = sfxLatentFrames
+            } else {
+                guard let audio = currentAudio else {
+                    continuation.yield(.failed("No source audio to encode"))
+                    continuation.finish()
+                    return
+                }
+                let sfxLat = try await sfxVAE.encodeMean(audio: audio)
+                sfxCurrentLatents = sfxLat
+                sfxLatentFrames   = sfxLat.shape[1]
+                workingLatents    = sfxLat
+                workingFrames     = sfxLat.shape[1]
+            }
+            workingHop = SoundFXPipeline.hopLength
+
+        case .aceStep, .auto:
+            guard let aceLatents = currentLatents else {
+                continuation.yield(.failed("ACE-Step latents not available"))
+                continuation.finish()
+                return
+            }
+            workingLatents = aceLatents
+            workingFrames  = latentFrames
+            workingHop     = Self.aceStepHopSize
+        }
+
+        // ── Mask + noise injection ────────────────────────────────────────────
         let mask = MaskBuilder.buildMask(
             selection: request.selection,
             totalDuration: totalDuration,
             sampleRate: sampleRate,
-            latentFrames: latentFrames,
-            latentDim: latents.shape[2],
-            hopSize: hop
+            latentFrames: workingFrames,
+            latentDim: workingLatents.shape[2],
+            hopSize: workingHop
         )
 
         let noisedLatents = LatentBlender.injectNoise(
-            latents: latents,
+            latents: workingLatents,
             mask: mask,
             strength: request.strength,
             seed: request.seed
@@ -145,6 +225,7 @@ public actor InpaintCoordinator {
 
         continuation.yield(.encoding)
 
+        // ── Diffusion ─────────────────────────────────────────────────────────
         let denoised: MLXArray
 
         switch request.pipeline {
@@ -170,35 +251,69 @@ public actor InpaintCoordinator {
                 precision: .float32
             )
 
-            let config = DiffusionConfig(
-                method: .ode,
-                guidanceScale: request.guidanceScale
-            )
-
             let result = try await diffActor.inpaint(
                 startLatents: noisedLatents,
                 schedule: schedule,
                 encoderStates: conditioning.encoderStates,
                 contextLatents: conditioning.contextLatents,
                 encoderMask: conditioning.encoderMask,
-                config: config
+                config: DiffusionConfig(method: .ode, guidanceScale: request.guidanceScale)
             )
             denoised = result.latents
 
         case .stableAudio:
-            // Stable Audio Open inpaint pathway needs the T5 + projection
-            // conditioning chain (paralleling the music generation
-            // SoundFXPipeline rewire). The legacy CLAP-based inpaint was
-            // removed when CLAPEncoder/Tokenizer were retired; T5 inpaint
-            // wiring is a follow-up once SAO end-to-end Generate is
-            // confirmed working.
-            continuation.yield(.failed("Stable Audio inpainting is temporarily unavailable while the T5 + projection re-architecture lands. ACE-Step inpainting is unaffected."))
-            continuation.finish()
-            return
+            guard let sfxDiff = sfxDiffusionActor else {
+                continuation.yield(.failed("Stable Audio diffusion actor not available"))
+                continuation.finish()
+                return
+            }
+            guard let sfxPipe = sfxPipeline, let sfxTok = sfxTokenizer else {
+                continuation.yield(.failed(
+                    "Stable Audio conditioning not available — load the Stable Audio model first."
+                ))
+                continuation.finish()
+                return
+            }
+
+            // Truncated SAO rectified-flow schedule
+            let schedule = TimestepMapper.sfxTruncatedSchedule(
+                strength: request.strength,
+                totalSteps: 100
+            )
+            guard !schedule.isEmpty else {
+                // strength == 0 → nothing to do, return working latents unchanged
+                denoised = noisedLatents
+                break
+            }
+
+            let cond = await sfxPipe.buildConditioning(
+                text: request.regionPrompt,
+                duration: totalDuration,
+                tokenizer: sfxTok
+            )
+
+            let sfxConfig = SFXDiffusionConfig(
+                steps: schedule.count,
+                guidanceScale: request.guidanceScale,
+                seed: request.seed,
+                latentShape: workingLatents.shape,
+                sigmaMax: schedule.first ?? 1.0
+            )
+
+            let sfxResult = try await sfxDiff.inpaint(
+                startLatents: noisedLatents,
+                schedule: schedule,
+                crossCond: cond.crossCond,
+                globalCond: cond.globalCond,
+                config: sfxConfig,
+                uncrossCondTokens: cond.uncrossCondTokens
+            )
+            denoised = sfxResult.latents
         }
 
+        // ── Composite + decode ────────────────────────────────────────────────
         let composited = LatentBlender.composite(
-            original: latents,
+            original: workingLatents,
             denoised: denoised,
             mask: mask
         )
@@ -211,21 +326,26 @@ public actor InpaintCoordinator {
             audio = try await vaeActor.decode(latents: composited, precision: .float32)
         case .stableAudio:
             guard let sfxVAE = sfxVAEActor else {
-                continuation.yield(.failed("SFX VAE not available"))
+                continuation.yield(.failed("SFX VAE not available for decode"))
                 continuation.finish()
                 return
             }
             audio = try await sfxVAE.decode(latents: composited)
         }
 
-        updateState(latents: composited, audio: audio, request: request)
-
-        continuation.yield(.complete)
-        continuation.finish()
-    }
-
-    private func updateState(latents: MLXArray, audio: MLXArray, request: InpaintRequest) {
-        currentLatents = latents
+        // ── State update ─────────────────────────────────────────────────────
+        // After a SAO inpaint: update SAO latents, invalidate ACE-Step latents.
+        // After an ACE-Step inpaint: update ACE-Step latents, invalidate SAO latents.
+        switch request.pipeline {
+        case .stableAudio:
+            sfxCurrentLatents = composited
+            sfxLatentFrames   = composited.shape[1]
+            currentLatents    = nil   // stale; re-encode on next ACE-Step inpaint
+        case .aceStep, .auto:
+            currentLatents  = composited
+            latentFrames    = composited.shape[1]
+            sfxCurrentLatents = nil   // stale; re-encode on next SAO inpaint
+        }
         currentAudio = audio
         let snapshot = EditSnapshot(
             description: descriptionFor(request),
@@ -234,6 +354,9 @@ public actor InpaintCoordinator {
             request: request
         )
         historyManager.push(snapshot)
+
+        continuation.yield(.complete)
+        continuation.finish()
     }
 
     private func descriptionFor(_ request: InpaintRequest) -> String {

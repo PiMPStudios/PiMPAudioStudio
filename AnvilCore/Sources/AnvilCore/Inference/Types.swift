@@ -166,6 +166,23 @@ public struct SFXVAEConfig: Codable, Sendable {
     }
 }
 
+/// Conditioning tensors built by `SoundFXPipeline.buildConditioning(text:duration:tokenizer:)`.
+/// Passed directly to `SFXDiffusionActor.inpaint`.
+public struct SFXInpaintConditioning: Sendable {
+    /// `[1, 66, 768]` — T5[:64] + total_time_token + start_time_token.
+    public let crossCond: MLXArray
+    /// `[1, 1536]` — concat(totalEmb, startEmb).
+    public let globalCond: MLXArray
+    /// `[1, 66, 768]` — same layout with empty-string T5 prefix (CFG null branch).
+    public let uncrossCondTokens: MLXArray?
+
+    public init(crossCond: MLXArray, globalCond: MLXArray, uncrossCondTokens: MLXArray?) {
+        self.crossCond = crossCond
+        self.globalCond = globalCond
+        self.uncrossCondTokens = uncrossCondTokens
+    }
+}
+
 public struct SFXDiffusionConfig: Sendable {
     public let steps: Int
     public let guidanceScale: Float
