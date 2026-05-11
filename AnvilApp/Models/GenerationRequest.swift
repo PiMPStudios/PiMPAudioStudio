@@ -14,6 +14,10 @@ struct GenerationRequest: Sendable {
     let shiftOverride: Float?
     let resolvedMode: GenerationMode
     let pipelineOverride: PipelineChoice
+    /// Blend weight for cover song generation (0 = source only, 1 = fully
+    /// acoustic-hint driven). Only used when `referenceAudioURL` is non-nil
+    /// and the request routes to `CoverSongCoordinator`.
+    let coverStrength: Float
 
     init(
         text: String,
@@ -27,7 +31,8 @@ struct GenerationRequest: Sendable {
         stepsOverride: Int? = nil,
         shiftOverride: Float? = nil,
         resolvedMode: GenerationMode = .music,
-        pipelineOverride: PipelineChoice = .auto
+        pipelineOverride: PipelineChoice = .auto,
+        coverStrength: Float = 0.7
     ) {
         self.text = text
         self.lyrics = lyrics
@@ -41,5 +46,6 @@ struct GenerationRequest: Sendable {
         self.shiftOverride = shiftOverride
         self.resolvedMode = resolvedMode
         self.pipelineOverride = pipelineOverride
+        self.coverStrength = coverStrength
     }
 }

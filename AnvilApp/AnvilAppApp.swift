@@ -29,7 +29,8 @@ struct AnvilAppApp: App {
         let services = AppServices(
             sfxModelManager: sfxManager,
             registry: appState.registry,
-            outputManager: outputManager
+            outputManager: outputManager,
+            llmManager: manager
         )
 
         _appState = StateObject(wrappedValue: appState)
@@ -60,6 +61,7 @@ struct AnvilAppApp: App {
                 .environmentObject(sfxModelManager)
                 .environmentObject(adapterStackManager)
                 .environmentObject(generationParameters)
+                .environmentObject(services.editorService)
                 .task(id: outputManager.directory) {
                     services.configure(outputManager: outputManager)
                 }
@@ -67,6 +69,25 @@ struct AnvilAppApp: App {
                     intentRouter.updateLLM(llm)
                     promptEnhancer.updateLLM(llm)
                     lyricWriterManager.updateLLM(llm)
+                }
+                // Evict the LLM after prompt enhancement completes.
+                // The enhanced text is already in the prompt field by the time
+                // this fires (onReceive dispatches on the next run loop tick),
+                // so the result is preserved. The LLM is no longer needed until
+                // the user types a new prompt and clicks Enhance again.
+                .onReceive(promptEnhancer.$isEnhancing) { isEnhancing in
+                    guard !isEnhancing, modelManager.llmActor != nil else { return }
+                    modelManager.evict()
+                    modelManager.reload()
+                }
+                // Evict the LLM after lyric writing completes.
+                // The lyrics are already streamed into the text field by the time
+                // this fires. Memory returns to baseline before the user clicks
+                // Generate, so DiT + VAE load into full headroom.
+                .onReceive(lyricWriterManager.$isWriting) { isWriting in
+                    guard !isWriting, modelManager.llmActor != nil else { return }
+                    modelManager.evict()
+                    modelManager.reload()
                 }
                 .onAppear {
                     intentRouter.updateLLM(modelManager.llmActor)
@@ -116,29 +137,69 @@ final class AppServices: ObservableObject {
     @Published var historyStore: HistoryStore
     @Published var generationService: GenerationService
 
+    /// Shared ML actors — created once, reused by both generation and the editor
+    /// so weights are never duplicated in GPU memory.
+    let editorService: EditorService
+
     private var currentOutputManager: OutputDirectoryManager?
     private var currentDirectory: URL?
     private let sfxModelManager: SFXModelManager
     private let registry: ModelRegistry
+    private let llmManager: LLMModelManager
+    private let vaeActor: VAEActor
+    private let diffusionActor: DiffusionActor
+    private let conditioningActor: ConditioningActor
 
     init(
         sfxModelManager: SFXModelManager,
         registry: ModelRegistry,
-        outputManager: OutputDirectoryManager
+        outputManager: OutputDirectoryManager,
+        llmManager: LLMModelManager
     ) {
         self.sfxModelManager = sfxModelManager
         self.registry = registry
+        self.llmManager = llmManager
         self.currentOutputManager = outputManager
         self.currentDirectory = outputManager.directory
+
+        // Create shared ML actors once. Weights are loaded lazily on first use,
+        // so this is cheap at launch. The editor and generation service both hold
+        // references to the same actor instances — no duplicated GPU memory.
+        let vae = VAEActor()
+        let dit = DiTActor(config: .v15Base)
+        let diffusion = DiffusionActor(dit: dit)
+        let conditioning: ConditioningActor
+        do {
+            conditioning = try ConditioningActor.stub()
+        } catch {
+            fatalError("Failed to create stub ConditioningActor at launch: \(error)")
+        }
+        self.vaeActor = vae
+        self.diffusionActor = diffusion
+        self.conditioningActor = conditioning
+
+        // Wire the editor service with the full pipeline (VAE + DiT diffusion +
+        // conditioning). This enables AI inpainting without any extra memory cost.
+        let editorSvc = EditorService()
+        editorSvc.setup(
+            vaeActor: vae,
+            diffusionActor: diffusion,
+            conditioningActor: conditioning
+        )
+        self.editorService = editorSvc
 
         let dir = outputManager.directory ?? FileManager.default.temporaryDirectory
         let store = HistoryStore(directory: dir)
         self.historyStore = store
         self.generationService = Self.makeGenerationService(
+            vaeActor: vae,
+            diffusionActor: diffusion,
+            conditioningActor: conditioning,
             historyStore: store,
             outputManager: outputManager,
             sfxModelManager: sfxModelManager,
-            registry: registry
+            registry: registry,
+            llmManager: llmManager
         )
     }
 
@@ -157,47 +218,54 @@ final class AppServices: ObservableObject {
         let store = HistoryStore(directory: dir)
         self.historyStore = store
         self.generationService = Self.makeGenerationService(
+            vaeActor: vaeActor,
+            diffusionActor: diffusionActor,
+            conditioningActor: conditioningActor,
             historyStore: store,
             outputManager: outputManager,
             sfxModelManager: sfxModelManager,
-            registry: registry
+            registry: registry,
+            llmManager: llmManager
         )
     }
 
     private static func makeGenerationService(
+        vaeActor: VAEActor,
+        diffusionActor: DiffusionActor,
+        conditioningActor: ConditioningActor,
         historyStore: HistoryStore,
         outputManager: OutputDirectoryManager,
         sfxModelManager: SFXModelManager,
-        registry: ModelRegistry
+        registry: ModelRegistry,
+        llmManager: LLMModelManager
     ) -> GenerationService {
-        let vae = VAEActor()
-        let dit = DiTActor(config: .v15Base)
-        let diffusion = DiffusionActor(dit: dit)
-        let pipeline = MusicPipeline(vae: vae, diffusion: diffusion)
-        let conditioning: ConditioningActor
-        do {
-            conditioning = try ConditioningActor.stub()
-        } catch {
-            fatalError("Failed to create stub ConditioningActor at launch: \(error)")
-        }
+        let pipeline = MusicPipeline(vae: vaeActor, diffusion: diffusionActor)
         let converter = WeightConverter()
 
         let aceStep = ACEStepGenerationService(
             pipeline: pipeline,
-            conditioning: conditioning,
+            conditioning: conditioningActor,
             weightConverter: converter,
             registry: registry
         )
         let sfx = SFXGenerationService(sfxModelManager: sfxModelManager)
         let lora = LoRACoordinator(pipeline: pipeline, registry: registry)
+        let coverSong = CoverSongCoordinator(
+            pipeline: pipeline,
+            conditioning: conditioningActor,
+            weightConverter: converter,
+            registry: registry
+        )
 
         return GenerationService(
             aceStepService: aceStep,
             sfxService: sfx,
             sfxModelManager: sfxModelManager,
             loraCoordinator: lora,
+            coverSongCoordinator: coverSong,
             historyStore: historyStore,
-            outputDirectoryManager: outputManager
+            outputDirectoryManager: outputManager,
+            llmManager: llmManager
         )
     }
 }

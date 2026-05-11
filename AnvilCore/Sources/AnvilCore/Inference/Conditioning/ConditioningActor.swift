@@ -88,7 +88,8 @@ public actor ConditioningActor {
         lyrics: String,
         referenceAudio: MLXArray?,
         duration: TimeInterval,
-        precision: Precision
+        precision: Precision,
+        srcLatentsOverride: MLXArray? = nil
     ) async throws -> ConditioningResult {
         let wrappedText = Self.wrapPromptForSFT(caption: text, duration: duration)
         let wrappedLyrics = Self.wrapLyricsForSFT(lyrics: lyrics)
@@ -141,7 +142,23 @@ public actor ConditioningActor {
         // has matching seq dims.
         let tFrames = Self.latentFrames(forDuration: duration)
         let contextLatents: MLXArray
-        if referenceAudio != nil {
+        if let srcOverride = srcLatentsOverride {
+            // Cover song path: caller has pre-computed blended latents via
+            // tokenize → detokenize → blend. Use them directly as src_latents.
+            // Pad or truncate to tFrames to match the diffusion shape.
+            let overrideFrames = srcOverride.shape[1]
+            let src: MLXArray
+            if overrideFrames == tFrames {
+                src = srcOverride
+            } else if overrideFrames > tFrames {
+                src = srcOverride[0..., 0..<tFrames, 0...]
+            } else {
+                let padding = MLXArray.zeros([1, tFrames - overrideFrames, 64])
+                src = concatenated([srcOverride, padding], axis: 1)
+            }
+            let onesMask = MLXArray.ones([1, tFrames, 64]).asType(precision.mlxDtype)
+            contextLatents = concatenated([src.asType(precision.mlxDtype), onesMask], axis: -1)
+        } else if referenceAudio != nil {
             // Use the already-prepared (padded/truncated) referenceLatents
             let chunkMask = MLXArray.ones(referenceLatents.shape).asType(precision.mlxDtype)
             contextLatents = concatenated([referenceLatents, chunkMask], axis: -1)

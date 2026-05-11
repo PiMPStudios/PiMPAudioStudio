@@ -8,6 +8,10 @@ private let memLogger = Logger(subsystem: "com.pimp.AnvilApp", category: "Genera
 struct GenerationResult: Sendable {
     let fileURL: URL
     let entry: HistoryEntry
+    /// Pre-computed normalised peak amplitudes (400 buckets, values 0–1).
+    /// Computed from the decoded MLXArray at generation time so the player
+    /// can display the waveform immediately without re-reading the WAV file.
+    let waveformPeaks: [Float]?
 }
 
 @MainActor
@@ -15,29 +19,39 @@ final class GenerationService: ObservableObject {
     @Published var state: GenerationState = .idle
     @Published var currentResult: GenerationResult?
     var selectedAdapterID: String?
+    /// Full adapter stack for multi-adapter generation. When non-empty, this
+    /// takes priority over `selectedAdapterID` — the stack is applied via
+    /// `LoRACoordinator.ensureStack()` which handles per-adapter strengths.
+    var adapterStack: [(id: String, weight: Float)] = []
 
     private var generationTask: Task<Void, Never>?
     private let aceStepService: ACEStepGenerationService
     private let sfxService: SFXGenerationService
     private let sfxModelManager: SFXModelManager
     private let loraCoordinator: LoRACoordinator
+    private let coverSongCoordinator: CoverSongCoordinator
     private let historyStore: HistoryStore
     private let outputDirectoryManager: OutputDirectoryManager
+    private let llmManager: LLMModelManager
 
     init(
         aceStepService: ACEStepGenerationService,
         sfxService: SFXGenerationService,
         sfxModelManager: SFXModelManager,
         loraCoordinator: LoRACoordinator,
+        coverSongCoordinator: CoverSongCoordinator,
         historyStore: HistoryStore,
-        outputDirectoryManager: OutputDirectoryManager
+        outputDirectoryManager: OutputDirectoryManager,
+        llmManager: LLMModelManager
     ) {
         self.aceStepService = aceStepService
         self.sfxService = sfxService
         self.sfxModelManager = sfxModelManager
         self.loraCoordinator = loraCoordinator
+        self.coverSongCoordinator = coverSongCoordinator
         self.historyStore = historyStore
         self.outputDirectoryManager = outputDirectoryManager
+        self.llmManager = llmManager
     }
 
     func generate(request: GenerationRequest) {
@@ -59,13 +73,26 @@ final class GenerationService: ObservableObject {
                 return
             }
 
+            // Free the LLM (~2 GB GPU) before loading DiT + VAE (~5+ GB).
+            // The $llmActor publisher propagates nil to PromptEnhancer /
+            // IntentRouter / LyricWriterManager automatically, disabling
+            // inference for the duration.
+            self.llmManager.evict()
+
             do {
                 let usesStableAudio = self.shouldUseStableAudio(request: request)
+                let usesCoverSong = !usesStableAudio && self.shouldUseCoverSong(request: request)
                 let audioResult: AudioResult
                 if usesStableAudio {
                     audioResult = try await self.runSFX(request: request)
+                } else if usesCoverSong {
+                    audioResult = try await self.runCoverSong(request: request)
                 } else {
-                    await self.loraCoordinator.ensureAdapter(selectedID: self.selectedAdapterID)
+                    if !self.adapterStack.isEmpty {
+                        await self.loraCoordinator.ensureStack(stack: self.adapterStack)
+                    } else {
+                        await self.loraCoordinator.ensureAdapter(selectedID: self.selectedAdapterID)
+                    }
                     audioResult = try await self.runACEStep(request: request)
                 }
 
@@ -80,6 +107,14 @@ final class GenerationService: ObservableObject {
                     to: fileURL
                 )
 
+                let pipelineLabel: String
+                if usesStableAudio {
+                    pipelineLabel = "stableAudio"
+                } else if usesCoverSong {
+                    pipelineLabel = "coverSong"
+                } else {
+                    pipelineLabel = "aceStep"
+                }
                 let entry = HistoryEntry(
                     id: UUID(),
                     createdAt: Date(),
@@ -91,18 +126,23 @@ final class GenerationService: ObservableObject {
                     guidanceScale: request.guidanceScale,
                     precision: request.precision.rawValue,
                     fileName: fileName,
-                    pipeline: usesStableAudio ? "stableAudio" : "aceStep",
+                    pipeline: pipelineLabel,
                     originalPrompt: nil
                 )
 
                 self.historyStore.add(entry)
-                self.currentResult = GenerationResult(fileURL: fileURL, entry: entry)
+                let peaks = Self.computeWaveformPeaks(from: audioResult.samples)
+                self.currentResult = GenerationResult(fileURL: fileURL, entry: entry, waveformPeaks: peaks)
                 self.state = .complete
             } catch is CancellationError {
                 self.state = .cancelled
             } catch {
                 self.state = .error(error.localizedDescription)
             }
+
+            // Recreate the LLMActor (lazy — no weights loaded yet) so prompt
+            // enhancement is available again after generation finishes.
+            self.llmManager.reload()
         }
     }
 
@@ -162,6 +202,31 @@ final class GenerationService: ObservableObject {
         }
     }
 
+    private func shouldUseCoverSong(request: GenerationRequest) -> Bool {
+        // Cover song mode: ACE-Step pipeline + user-supplied source audio.
+        // SFX/ambient requests are handled by shouldUseStableAudio and must
+        // NOT reach the cover song path.
+        request.referenceAudioURL != nil
+    }
+
+    private func runCoverSong(request: GenerationRequest) async throws -> AudioResult {
+        for try await event in await coverSongCoordinator.generate(request: request) {
+            switch event {
+            case .loadingWeights(let progress):
+                self.state = .loadingWeights(progress: progress)
+            case .conditioning:
+                self.state = .conditioning
+            case .generating(let step, let totalSteps, let eta):
+                self.state = .generating(step: step, totalSteps: totalSteps, eta: eta)
+            case .decoding:
+                self.state = .decoding
+            case .result(let audioResult):
+                return audioResult
+            }
+        }
+        throw GenerationError.pipelineNotReady
+    }
+
     private func runSFX(request: GenerationRequest) async throws -> AudioResult {
         for try await event in sfxService.generate(request: request) {
             switch event {
@@ -194,6 +259,55 @@ final class GenerationService: ObservableObject {
             }
         }
         throw GenerationError.pipelineNotReady
+    }
+
+    /// Compute 400-bucket normalised peak amplitudes from a decoded audio MLXArray.
+    ///
+    /// Handles any rank the VAE decoder can produce:
+    ///   1D  [frames]                — mono flat buffer
+    ///   2D  [channels, frames]      — interleaved channel-first
+    ///   3D  [batch, frames, channels] — standard VAE output (batch=1)
+    ///
+    /// Returns an empty array on unexpected input so callers get a graceful no-op.
+    private static func computeWaveformPeaks(
+        from samples: MLXArray,
+        bucketCount: Int = 400
+    ) -> [Float] {
+        // Collapse channels → 1-D per-frame peak amplitude.
+        let perFrame: MLXArray
+        switch samples.ndim {
+        case 1:
+            perFrame = MLX.abs(samples)
+        case 2:
+            // [channels, frames] → max across channel axis
+            perFrame = MLX.abs(samples).max(axis: 0)
+        case 3:
+            // [batch=1, frames, channels] → drop batch, max across channels
+            perFrame = MLX.abs(samples[0]).max(axis: -1)
+        default:
+            return []
+        }
+
+        let numFrames = perFrame.shape[0]
+        guard numFrames >= bucketCount else { return [] }
+
+        // Bucket into `bucketCount` equal-width windows; take the max per window.
+        let trimLen = (numFrames / bucketCount) * bucketCount
+        let bucketed = perFrame[0..<trimLen]
+            .reshaped([bucketCount, numFrames / bucketCount])
+            .max(axis: -1)                         // [bucketCount]
+        eval(bucketed)
+
+        // Normalise so the tallest bar reaches 1.0.
+        let maxVal = bucketed.max().item(Float.self)
+        let normalized = maxVal > 0 ? (bucketed / maxVal) : bucketed
+        eval(normalized)
+
+        // Convert MLXArray → Swift [Float].
+        let rawData = normalized.asType(.float32).asData(access: .copy).data
+        return rawData.withUnsafeBytes { buffer in
+            Array(buffer.bindMemory(to: Float.self))
+        }
     }
 }
 

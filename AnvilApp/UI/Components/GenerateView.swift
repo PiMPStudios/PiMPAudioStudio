@@ -1,5 +1,6 @@
 import SwiftUI
 import AnvilCore
+import UniformTypeIdentifiers
 
 struct GenerateView: View {
     @EnvironmentObject private var generationService: GenerationService
@@ -23,12 +24,19 @@ struct GenerateView: View {
     @State private var selectedAdapterID: String?
     @AppStorage("selectedAdapterID") private var persistedAdapterID: String = ""
 
+    // Cover song
+    @State private var sourceAudioURL: URL? = nil
+    @State private var coverStrength: Double = 0.7
+    @State private var showingAudioImporter: Bool = false
+    @State private var isDropTargeted: Bool = false
+
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
                 modePickerSection
                 promptSection
                 lyricsSection
+                sourceAudioSection
                 controlsBar
                 advancedSection
                 adapterPickerSection
@@ -161,12 +169,138 @@ struct GenerateView: View {
         }
     }
 
+    private var sourceAudioSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Source Audio")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("optional — generates a cover")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                Spacer()
+                if sourceAudioURL != nil {
+                    Button("Clear") { sourceAudioURL = nil }
+                        .buttonStyle(.borderless)
+                        .controlSize(.mini)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if let url = sourceAudioURL {
+                // Show selected file name
+                HStack(spacing: 8) {
+                    Image(systemName: "waveform")
+                        .foregroundStyle(Color.accentColor)
+                    Text(url.lastPathComponent)
+                        .font(.callout)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Spacer()
+                    Button {
+                        showingAudioImporter = true
+                    } label: {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Replace source audio")
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(.secondary.opacity(0.2), lineWidth: 1)
+                )
+
+                // Cover strength slider (only shown when audio is set)
+                HStack(spacing: 8) {
+                    Text("Strength")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 56, alignment: .leading)
+                    Slider(value: $coverStrength, in: 0.0...1.0, step: 0.05)
+                        .frame(maxWidth: 200)
+                    Text(String(format: "%.0f%%", coverStrength * 100))
+                        .font(.caption.monospacedDigit())
+                        .frame(width: 36, alignment: .trailing)
+                    Text(coverStrengthHint)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                    Spacer()
+                }
+            } else {
+                // Drop zone / file picker button
+                Button {
+                    showingAudioImporter = true
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "music.note")
+                            .font(.body)
+                            .foregroundStyle(isDropTargeted ? Color.accentColor : Color.secondary)
+                        Text(isDropTargeted ? "Drop to use as source" : "Drop audio or click to browse")
+                            .font(.callout)
+                            .foregroundStyle(isDropTargeted ? Color.accentColor : Color.secondary)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .frame(maxWidth: .infinity)
+                    .background(
+                        isDropTargeted
+                            ? Color.accentColor.opacity(0.08)
+                            : Color.secondary.opacity(0.04),
+                        in: RoundedRectangle(cornerRadius: 8)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(
+                                isDropTargeted ? Color.accentColor.opacity(0.6) : Color.secondary.opacity(0.25),
+                                style: StrokeStyle(lineWidth: 1, dash: [5, 3])
+                            )
+                    )
+                }
+                .buttonStyle(.plain)
+                .onDrop(of: [UTType.audio, UTType.fileURL], isTargeted: $isDropTargeted) { providers in
+                    guard let provider = providers.first else { return false }
+                    _ = provider.loadInPlaceFileRepresentation(
+                        forTypeIdentifier: UTType.audio.identifier
+                    ) { url, _, _ in
+                        guard let url else { return }
+                        DispatchQueue.main.async { sourceAudioURL = url }
+                    }
+                    return true
+                }
+            }
+        }
+        .fileImporter(
+            isPresented: $showingAudioImporter,
+            allowedContentTypes: [.audio],
+            allowsMultipleSelection: false
+        ) { result in
+            if case .success(let urls) = result, let url = urls.first {
+                sourceAudioURL = url
+            }
+        }
+    }
+
+    private var coverStrengthHint: String {
+        switch coverStrength {
+        case ..<0.25: return "(preserve original)"
+        case ..<0.5:  return "(subtle revoice)"
+        case ..<0.75: return "(balanced blend)"
+        default:      return "(acoustic hints lead)"
+        }
+    }
+
     private var controlsBar: some View {
         HStack {
-            Button("Generate") {
+            Button(sourceAudioURL != nil ? "Generate Cover" : "Generate") {
                 let request = GenerationRequest(
                     text: promptText,
                     lyrics: lyricsText,
+                    referenceAudioURL: sourceAudioURL,
                     duration: effectiveDuration,
                     seed: generationParameters.seed,
                     method: method,
@@ -175,8 +309,14 @@ struct GenerateView: View {
                     stepsOverride: Int(stepsOverrideText.trimmingCharacters(in: .whitespacesAndNewlines)),
                     shiftOverride: Float(shiftOverride),
                     resolvedMode: resolvedMode,
-                    pipelineOverride: generationParameters.pipelineOverride
+                    pipelineOverride: generationParameters.pipelineOverride,
+                    coverStrength: Float(coverStrength)
                 )
+                // Resolve the full adapter stack (primary at strength 1.0 + any
+                // additional stacked adapters) and hand it to the service so
+                // LoRACoordinator.ensureStack() can apply per-adapter strengths.
+                generationService.adapterStack = stackManager.allStackedAdapters
+                    .map { (id: $0.adapter.id, weight: $0.strength) }
                 generationService.generate(request: request)
             }
             .buttonStyle(.borderedProminent)
@@ -333,7 +473,7 @@ struct GenerateView: View {
     @ViewBuilder
     private var playerSection: some View {
         if let result = generationService.currentResult {
-            PlayerView(fileURL: result.fileURL)
+            PlayerView(fileURL: result.fileURL, precomputedPeaks: result.waveformPeaks)
         }
     }
 
