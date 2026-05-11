@@ -57,26 +57,18 @@ public actor ConditioningActor {
     /// the v1.5 DiT was trained on this scaffolded prompt; raw user captions
     /// land out-of-distribution for the text encoder.
     private static func wrapPromptForSFT(caption: String, duration: TimeInterval) -> String {
+        // Mirrors `acestep/constants.py:SFT_GEN_PROMPT` exactly (byte-for-byte).
+        //
+        // Python _create_default_meta() ends each meta line with \n, so the metas
+        // block ends with "...seconds\n" and <|endoftext|> falls on its own line:
+        //   "...duration: 30 seconds\n<|endoftext|>\n"
+        //
+        // The previous multi-line-string version produced "...seconds<|endoftext|>\n\n"
+        // (metas had no trailing \n, and the blank line before the closing """ added
+        // an extra \n). Use explicit concatenation to lock in the exact byte sequence.
         let instruction = "Fill the audio semantic mask based on the given conditions:"
-        let metas = """
-        - bpm: N/A
-        - timesignature: N/A
-        - keyscale: N/A
-        - duration: \(Int(duration)) seconds
-        """
-        // Note: `<|endoftext|>` immediately follows metas, no preceding newline.
-        // Trailing newline is part of upstream's template.
-        return """
-        # Instruction
-        \(instruction)
-
-        # Caption
-        \(caption)
-
-        # Metas
-        \(metas)<|endoftext|>
-
-        """
+        let metas = "- bpm: N/A\n- timesignature: N/A\n- keyscale: N/A\n- duration: \(Int(duration)) seconds\n"
+        return "# Instruction\n\(instruction)\n\n# Caption\n\(caption)\n\n# Metas\n\(metas)<|endoftext|>\n"
     }
 
     /// Wrap lyrics with upstream's `# Languages / # Lyric` template. Mirrors
