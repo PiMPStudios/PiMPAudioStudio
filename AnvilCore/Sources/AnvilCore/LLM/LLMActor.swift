@@ -251,8 +251,8 @@ public actor LLMActor {
         systemPrompt: String,
         userPrompt: String
     ) async -> String {
-        guard isLoaded else { return "" }
-
+        // generate() calls ensureLoaded() internally — no early guard needed.
+        // The model is loaded on first use rather than requiring a separate load step.
         var result = ""
         let stream = generate(
             systemPrompt: systemPrompt,

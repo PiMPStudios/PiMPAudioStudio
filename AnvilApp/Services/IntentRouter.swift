@@ -59,6 +59,10 @@ final class IntentRouter: ObservableObject {
             return
         }
 
+        // Apply keyword classifier immediately — works with no download required.
+        detectedMode = Self.keywordClassify(trimmed)
+
+        // When an LLM is available, enqueue a debounced refinement pass.
         guard let llm else { return }
 
         debounceTask = Task { [weak self] in
@@ -86,5 +90,81 @@ final class IntentRouter: ObservableObject {
     func cancel() {
         debounceTask?.cancel()
         isClassifying = false
+    }
+
+    // MARK: - Keyword classifier
+
+    /// Classifies a prompt without requiring any LLM download.
+    ///
+    /// Scores the prompt against word-level signal sets for music, soundfx, and ambient,
+    /// with phrase-level boosts for common multi-word patterns. Music is the default
+    /// when no signal is found — it covers the widest range of ambiguous prompts.
+    private static func keywordClassify(_ prompt: String) -> GenerationMode {
+        let lower = prompt.lowercased()
+        let words = Set(
+            lower.components(separatedBy: CharacterSet.alphanumerics.inverted)
+                .filter { !$0.isEmpty }
+        )
+
+        let musicWords: Set<String> = [
+            "guitar", "piano", "bass", "drums", "drum", "synth", "synthesizer", "pad",
+            "violin", "cello", "trumpet", "saxophone", "sax", "flute", "keyboard", "organ",
+            "harp", "banjo", "ukulele", "vocals", "voice", "strings", "percussion", "brass",
+            "rock", "jazz", "pop", "metal", "edm", "classical", "doom", "folk", "country",
+            "blues", "soul", "funk", "reggae", "lofi", "synthwave", "trap", "indie",
+            "punk", "grunge", "disco", "house", "techno",
+            "bpm", "tempo", "riff", "melody", "chorus", "verse", "hook", "groove", "rhythm",
+            "chord", "orchestral", "instrumental", "song", "music", "beat", "solo", "ballad"
+        ]
+
+        let sfxWords: Set<String> = [
+            "footsteps", "footstep", "steps", "walking", "running", "stomping", "stomp",
+            "knock", "knocking", "click", "clicking", "tap", "tapping",
+            "creak", "creaking", "slam", "slamming", "crash", "crashing", "bang", "clang",
+            "drip", "dripping", "pour", "pouring", "splash", "splashing",
+            "explosion", "gunshot", "gunfire", "shattering", "shatter", "breaking",
+            "cracking", "snapping", "bouncing", "rolling", "impact", "typing",
+            "bark", "barking", "growl", "growling", "meow", "roar", "howl", "howling",
+            "chirp", "chirping", "squeak", "squeaking", "hiss", "grunt",
+            "engine", "motor", "revving", "rev", "alarm", "siren", "horn", "buzzing", "drill",
+            "thunder", "lightning", "thunderclap"
+        ]
+
+        let ambientWords: Set<String> = [
+            "rainforest", "jungle", "forest", "ocean", "waves", "beach",
+            "wind", "breeze", "rain", "rainfall", "rainstorm", "thunderstorm", "snowfall",
+            "city", "traffic", "cafe", "crowd", "murmur", "chatter",
+            "nature", "birdsong", "crickets", "insects", "underwater",
+            "stream", "river", "waterfall", "fireplace", "campfire",
+            "ambience", "ambiance"
+        ]
+
+        var musicScore   = words.intersection(musicWords).count * 3
+        var sfxScore     = words.intersection(sfxWords).count * 3
+        var ambientScore = words.intersection(ambientWords).count * 2
+
+        // Phrase boosts for multi-word signals
+        if lower.contains("hip hop") || lower.contains("hip-hop") { musicScore += 3 }
+        if lower.contains("lo-fi") || lower.contains("lo fi")     { musicScore += 3 }
+        if lower.contains("ambient music")                         { musicScore += 4 }
+        if lower.contains("rain hit") || lower.contains("rain on ") || lower.contains("raining on") {
+            sfxScore += 4
+        }
+        if lower.contains("thunder crack") || lower.contains("thunderclap") { sfxScore += 3 }
+        if lower.contains("room tone")    { ambientScore += 4 }
+        if lower.contains("ocean waves")  { ambientScore += 3 }
+        if lower.contains("city traffic") { ambientScore += 3 }
+        if lower.contains("city ambien")  { ambientScore += 3 }
+
+        // "pad" is a synth instrument — suppress any ambient score when present
+        if words.contains("pad") { ambientScore = max(0, ambientScore - 3) }
+
+        // Default to music when no signal is found
+        guard musicScore > 0 || sfxScore > 0 || ambientScore > 0 else { return .music }
+
+        // SFX beats ambient when tied (specific foreground events take priority)
+        if sfxScore >= ambientScore && sfxScore > musicScore { return .soundFX }
+        if ambientScore > sfxScore && ambientScore > musicScore { return .ambient }
+        return .music
     }
 }
