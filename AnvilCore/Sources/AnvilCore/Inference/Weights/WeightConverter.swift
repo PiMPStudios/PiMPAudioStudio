@@ -25,6 +25,50 @@ public actor WeightConverter {
         return result.sorted { $0.0 < $1.0 }
     }
 
+    /// Load a sharded safetensors checkpoint described by `model.safetensors.index.json`.
+    ///
+    /// The index file lives alongside the shards (e.g.
+    /// `<dir>/model.safetensors.index.json`,
+    /// `<dir>/model-00001-of-00002.safetensors`, ...). We read the
+    /// `weight_map` field which is `{tensor_name: shard_filename}`, group keys
+    /// by shard, load each shard once via `MLX.loadArrays`, then concatenate
+    /// the per-shard `(name, array)` pairs into a single sorted list.
+    ///
+    /// Falls back to single-file loading if the supplied URL is not an index
+    /// (returns the same shape as `loadSafetensors(from:)`).
+    public func loadShardedSafetensors(indexURL: URL) throws -> [(String, MLXArray)] {
+        struct SafetensorsIndex: Decodable {
+            let weight_map: [String: String]
+        }
+
+        let data = try Data(contentsOf: indexURL)
+        let index = try JSONDecoder().decode(SafetensorsIndex.self, from: data)
+        let dir = indexURL.deletingLastPathComponent()
+
+        // Group keys by shard so we only load each shard file once.
+        var byShard: [String: [String]] = [:]
+        for (key, shard) in index.weight_map {
+            byShard[shard, default: []].append(key)
+        }
+
+        var merged: [String: MLXArray] = [:]
+        for (shard, keys) in byShard {
+            let shardURL = dir.appendingPathComponent(shard)
+            let dict = try MLX.loadArrays(url: shardURL)
+            for key in keys {
+                guard let arr = dict[key] else {
+                    throw NSError(
+                        domain: "WeightConverter",
+                        code: 1,
+                        userInfo: [NSLocalizedDescriptionKey: "Sharded checkpoint claims \(key) is in \(shard) but the file does not contain it"]
+                    )
+                }
+                merged[key] = arr
+            }
+        }
+        return merged.sorted { $0.key < $1.key }.map { ($0.key, $0.value) }
+    }
+
     public func convertVAEWeights(stateDict: [(String, MLXArray)]) throws -> [(String, MLXArray)] {
         var result: [(String, MLXArray)] = []
         var processed: Set<String> = []
@@ -137,6 +181,54 @@ public actor WeightConverter {
         for (index, (key, value)) in rawWeights.enumerated() {
             progress?(ConversionProgress(current: index + 1, total: total, currentTensorName: key))
             guard let mappedKey = ConditionEncoderNameMap.mapKey(key) else { continue }
+            result.append((mappedKey, value))
+        }
+
+        return result
+    }
+
+    public func convertAudioTokenizerWeights(
+        from rawWeights: [(String, MLXArray)],
+        progress: ((ConversionProgress) -> Void)? = nil
+    ) -> [(String, MLXArray)] {
+        var result: [(String, MLXArray)] = []
+        let total = rawWeights.count
+
+        for (index, (key, value)) in rawWeights.enumerated() {
+            progress?(ConversionProgress(current: index + 1, total: total, currentTensorName: key))
+            guard let mappedKey = AudioTokenizerNameMap.mapKey(key) else { continue }
+            result.append((mappedKey, value))
+        }
+
+        return result
+    }
+
+    public func convertAudioTokenDetokenizerWeights(
+        from rawWeights: [(String, MLXArray)],
+        progress: ((ConversionProgress) -> Void)? = nil
+    ) -> [(String, MLXArray)] {
+        var result: [(String, MLXArray)] = []
+        let total = rawWeights.count
+
+        for (index, (key, value)) in rawWeights.enumerated() {
+            progress?(ConversionProgress(current: index + 1, total: total, currentTensorName: key))
+            guard let mappedKey = AudioTokenDetokenizerNameMap.mapKey(key) else { continue }
+            result.append((mappedKey, value))
+        }
+
+        return result
+    }
+
+    public func convertAceStepLMWeights(
+        from rawWeights: [(String, MLXArray)],
+        progress: ((ConversionProgress) -> Void)? = nil
+    ) -> [(String, MLXArray)] {
+        var result: [(String, MLXArray)] = []
+        let total = rawWeights.count
+
+        for (index, (key, value)) in rawWeights.enumerated() {
+            progress?(ConversionProgress(current: index + 1, total: total, currentTensorName: key))
+            guard let mappedKey = AceStepLMNameMap.mapKey(key) else { continue }
             result.append((mappedKey, value))
         }
 
