@@ -1,6 +1,8 @@
 // AnvilApp/Services/ACEStepGenerationService.swift
 import Foundation
 import AnvilCore
+import MLX
+import MLXNN
 import OSLog
 
 private let logger = Logger(subsystem: "com.pimp.AnvilApp", category: "ACEStepGenerationService")
@@ -275,4 +277,83 @@ actor ACEStepGenerationService {
             throw error
         }
     }
+
+#if DEBUG
+    /// Phase 2A smoke test: load AudioTokenizer, AudioTokenDetokenizer, and
+    /// AceStepLM weights, log per-module match counts. Intended to be called
+    /// once from a debug menu or via lldb after a generation run.
+    /// Will be removed when Phase 2B introduces CoverSongCoordinator.
+    func testCoverSongFoundation() async {
+        guard let ditSpec = await registry.activeSpec(for: .aceStepDiT) else {
+            logger.warning("[cover-smoke] no active DiT spec")
+            return
+        }
+        let baseDir = await registry.baseDirectory
+        let modelSafetensors = ditSpec.files
+            .filter { $0.localName.hasSuffix(".safetensors") && $0.localName != "vae.safetensors" }
+            .map { ditSpec.localPath(for: $0.localName, base: baseDir) }
+        let ditWeightsURLs = modelSafetensors.isEmpty
+            ? [ditSpec.localPath(for: "model.safetensors", base: baseDir)]
+            : modelSafetensors
+
+        do {
+            let raw = try await weightConverter.loadSafetensors(from: ditWeightsURLs)
+
+            // Audio tokenizer
+            let tokWeights = await weightConverter.convertAudioTokenizerWeights(from: raw)
+            let tokenizer = AudioTokenizer()
+            let tokModelKeys = Set(tokenizer.parameters().flattened().map { $0.0 })
+            let tokSuppliedKeys = Set(tokWeights.map { $0.0 })
+            logger.info("[cover-smoke] tokenizer supplied=\(tokSuppliedKeys.count) model=\(tokModelKeys.count) matched=\(tokSuppliedKeys.intersection(tokModelKeys).count)")
+            tokenizer.update(parameters: ModuleParameters.unflattened(tokWeights))
+            eval(tokenizer.parameters())
+
+            // Audio detokenizer
+            let detokWeights = await weightConverter.convertAudioTokenDetokenizerWeights(from: raw)
+            let detok = AudioTokenDetokenizer()
+            let detokModelKeys = Set(detok.parameters().flattened().map { $0.0 })
+            let detokSuppliedKeys = Set(detokWeights.map { $0.0 })
+            logger.info("[cover-smoke] detokenizer supplied=\(detokSuppliedKeys.count) model=\(detokModelKeys.count) matched=\(detokSuppliedKeys.intersection(detokModelKeys).count)")
+            detok.update(parameters: ModuleParameters.unflattened(detokWeights))
+            eval(detok.parameters())
+
+            // LM (try 0.6B first, fall back to 4B if only that one is downloaded)
+            let lmIDs = ["ace-step-lm-0.6b", "ace-step-lm-4b"]
+            var lmLoaded = false
+            for lmID in lmIDs {
+                let allSpecs = await registry.allSpecs
+                guard let lmSpec = allSpecs.first(where: { $0.id == lmID }) else { continue }
+                let lmDir = lmSpec.localDirectory(base: baseDir)
+                let configURL = lmDir.appending(path: "config.json")
+                guard FileManager.default.fileExists(atPath: configURL.path(percentEncoded: false)) else { continue }
+                let config = try AceStepLMConfig.load(from: configURL)
+
+                let weightsURL = lmDir.appending(path: "model.safetensors")
+                let indexURL = lmDir.appending(path: "model.safetensors.index.json")
+                let lmRaw: [(String, MLXArray)]
+                if FileManager.default.fileExists(atPath: indexURL.path(percentEncoded: false)) {
+                    lmRaw = try await weightConverter.loadShardedSafetensors(indexURL: indexURL)
+                } else if FileManager.default.fileExists(atPath: weightsURL.path(percentEncoded: false)) {
+                    lmRaw = try await weightConverter.loadSafetensors(from: weightsURL)
+                } else {
+                    continue
+                }
+                let lmWeights = await weightConverter.convertAceStepLMWeights(from: lmRaw)
+                let lm = AceStepLM(config: config)
+                let lmModelKeys = Set(lm.parameters().flattened().map { $0.0 })
+                let lmSuppliedKeys = Set(lmWeights.map { $0.0 })
+                logger.info("[cover-smoke] LM \(lmID) supplied=\(lmSuppliedKeys.count) model=\(lmModelKeys.count) matched=\(lmSuppliedKeys.intersection(lmModelKeys).count)")
+                lm.update(parameters: ModuleParameters.unflattened(lmWeights))
+                eval(lm.parameters())
+                lmLoaded = true
+                break
+            }
+            if !lmLoaded {
+                logger.warning("[cover-smoke] no LM variant available; download one from Settings → Models → ACE-Step LM")
+            }
+        } catch {
+            logger.error("[cover-smoke] failed: \(error.localizedDescription)")
+        }
+    }
+#endif
 }
