@@ -12,8 +12,10 @@ struct GenerateView: View {
     @EnvironmentObject private var stackManager: AdapterStackManager
     @EnvironmentObject private var generationParameters: GenerationParameters
     @EnvironmentObject private var presetStore: PresetStore
+    @EnvironmentObject private var appState: AppState
 
     @State private var showingSavePreset: Bool = false
+    @State private var lmDownloaded: Bool = false
     @State private var presetName: String = ""
     @State private var promptText: String = ""
     @State private var lyricsText: String = ""
@@ -245,6 +247,17 @@ struct GenerateView: View {
                         .foregroundStyle(.tertiary)
                     Spacer()
                 }
+
+                if !lmDownloaded {
+                    HStack(spacing: 6) {
+                        Image(systemName: "info.circle")
+                            .foregroundStyle(.blue)
+                        Text("Download an ACE-Step LM in Settings \u{2192} Models for higher quality covers.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 2)
+                }
             } else {
                 // Drop zone / file picker button
                 Button {
@@ -297,6 +310,12 @@ struct GenerateView: View {
             if case .success(let urls) = result, let url = urls.first {
                 sourceAudioURL = url
             }
+        }
+        .task {
+            await refreshLMAvailability()
+        }
+        .onChange(of: sourceAudioURL) { _, _ in
+            Task { await refreshLMAvailability() }
         }
     }
 
@@ -479,6 +498,15 @@ struct GenerateView: View {
         case .conditioning:
             ProgressView("Encoding text and lyrics...")
                 .progressViewStyle(.linear)
+        case .tokenizingSource:
+            ProgressView("Tokenizing source audio...")
+                .progressViewStyle(.linear)
+        case .runningLM:
+            ProgressView("Processing with language model...")
+                .progressViewStyle(.linear)
+        case .detokenizing:
+            ProgressView("Reconstructing acoustic features...")
+                .progressViewStyle(.linear)
         case .generating(let step, let total, _):
             VStack(spacing: 4) {
                 ProgressView(value: Double(step), total: Double(total))
@@ -533,6 +561,21 @@ struct GenerateView: View {
             return eta
         }
         return nil
+    }
+
+    // MARK: - LM Availability
+
+    private func refreshLMAvailability() async {
+        let registry = appState.registry
+        let lmSpecs = await registry.specs(for: .aceStepLM)
+        var found = false
+        for spec in lmSpecs {
+            if await registry.status(for: spec.id) == .ready {
+                found = true
+                break
+            }
+        }
+        lmDownloaded = found
     }
 
     // MARK: - Presets

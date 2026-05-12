@@ -7,20 +7,24 @@ import OSLog
 
 private let logger = Logger(subsystem: "com.pimp.AnvilApp", category: "CoverSongCoordinator")
 
-/// Orchestrates cover song generation via a no-LM tokenize→detokenize→blend pipeline:
+/// Orchestrates cover song generation with two preprocessing paths:
 ///
+/// **With LM (Phase 2B):**
 ///  1. Load + resample source audio to 48 kHz stereo
 ///  2. VAE-encode to latent domain (deterministic `encodeMean`)
-///  3. `AudioTokenizer`: 25 Hz latents → 5 Hz quantized tokens
-///  4. `AudioTokenDetokenizer`: 5 Hz tokens → 25 Hz acoustic hints
-///  5. Blend: `(1−strength)·srcLatents + strength·hints`
-///  6. Pass blended array as `srcLatentsOverride` to `ConditioningActor.encode`
-///     (timbre tokens still derived from `referenceAudio` → `encodeSample`)
-///  7. Run standard ACE-Step diffusion via `MusicPipeline`
+///  3. `AudioTokenizer`: 25 Hz latents → 5 Hz FSQ indices
+///  4. `AceStepLM`: FSQ indices → contextual hidden states
+///  5. `AudioTokenDetokenizer`: LM hidden states → 25 Hz acoustic hints
+///  6. Blend: `(1−strength)·srcLatents + strength·hints`
+///  7. Standard ACE-Step diffusion via `MusicPipeline`
+///
+/// **Without LM (fallback):**
+///  Steps 3–5 are: tokenizer quantized output → detokenizer directly (no LM).
+///  This path activates when no LM variant is downloaded.
 ///
 /// Weight management mirrors `ACEStepGenerationService`: DiT + VAE + tokenizer +
-/// detokenizer are loaded lazily on first call and reloaded when the active model
-/// ID changes.
+/// detokenizer + LM are loaded lazily on first call and reloaded when the active
+/// model ID changes.
 actor CoverSongCoordinator {
     private let pipeline: MusicPipeline
     private var conditioning: ConditioningActor
@@ -29,8 +33,10 @@ actor CoverSongCoordinator {
 
     private var audioTokenizer: AudioTokenizer?
     private var audioDetokenizer: AudioTokenDetokenizer?
+    private var aceStepLM: AceStepLM?
     private var currentlyLoadedDiTModelID: String?
     private var currentlyLoadedVAEModelID: String?
+    private var currentlyLoadedLMModelID: String?
     private var currentlyLoadedDiTConfig: DiTConfig?
 
     init(
@@ -88,7 +94,8 @@ actor CoverSongCoordinator {
                     )
                     logger.info("[CoverSongCoordinator] srcLatents shape=\(srcLatents.shape)")
 
-                    // Tokenize → detokenize → blend
+                    // Cover-song preprocessing: tokenize → (LM) → detokenize → blend
+                    continuation.yield(.tokenizingSource)
                     let blendedLatents = self.preprocessForCoverSong(
                         srcLatents: srcLatents,
                         coverStrength: request.coverStrength
@@ -173,13 +180,19 @@ actor CoverSongCoordinator {
         currentlyLoadedDiTModelID = nil
         currentlyLoadedDiTConfig = nil
         currentlyLoadedVAEModelID = nil
+        currentlyLoadedLMModelID = nil
         audioTokenizer = nil
         audioDetokenizer = nil
+        aceStepLM = nil
     }
 
     // MARK: - Audio Preprocessing
 
-    /// Tokenize → detokenize → blend with source latents.
+    /// Tokenize → (optionally LM-refine) → detokenize → blend with source latents.
+    ///
+    /// When `aceStepLM` is loaded, the pipeline runs through the LM for contextual
+    /// hidden states before detokenizing — this produces higher-quality covers
+    /// because the LM re-contextualizes each 5 Hz token against its neighbors.
     ///
     /// Falls back to `srcLatents` unchanged when the tokenizer is not yet loaded
     /// (graceful degradation — the diffusion still runs, just without the acoustic
@@ -207,11 +220,26 @@ actor CoverSongCoordinator {
             padded = MLX.concatenated([srcLatents, padding], axis: 1)
         }
 
-        // Tokenize: [1, paddedT, 64] → quantized [1, paddedT/pool, 2048]
-        let (quantized, _) = tokenizer(padded)
+        // Tokenize: [1, paddedT, 64] → quantized [1, paddedT/pool, 2048] + indices [1, paddedT/pool, 1]
+        let (quantized, indices) = tokenizer(padded)
 
-        // Detokenize: [1, paddedT/pool, 2048] → [1, paddedT, 64]
-        let upsampled = detokenizer(quantized)
+        // Choose the detokenizer input based on whether the LM is available.
+        let detokInput: MLXArray
+        if let lm = aceStepLM {
+            // LM path: indices [1, T/pool, 1] → squeeze → [1, T/pool] → LM → [1, T/pool, hidden]
+            let squeezedIndices = indices.squeezed(axis: -1)  // [1, T/pool]
+            logger.info("[CoverSongCoordinator] LM forward: indices shape=\(squeezedIndices.shape)")
+            let lmHidden = lm(audioCodes: squeezedIndices, attentionMask: nil)  // [1, T/pool, lm_hidden]
+            logger.info("[CoverSongCoordinator] LM output shape=\(lmHidden.shape)")
+            detokInput = lmHidden
+        } else {
+            // No-LM fallback: pass raw quantized vectors directly.
+            logger.info("[CoverSongCoordinator] no LM loaded — using quantized tokens directly")
+            detokInput = quantized
+        }
+
+        // Detokenize: [1, paddedT/pool, hidden] → [1, paddedT, 64]
+        let upsampled = detokenizer(detokInput)
 
         // Trim padding back to original T
         let lmHints = paddedT == T ? upsampled : upsampled[0..., 0..<T, 0...]
@@ -304,6 +332,10 @@ actor CoverSongCoordinator {
             eval(detok.parameters())
             self.audioDetokenizer = detok
             logger.info("[CoverSongCoordinator] loaded AudioTokenDetokenizer weights=\(detokWeights.count)")
+
+            // Best-effort: load AceStepLM if a variant is downloaded.
+            // Non-fatal — cover generation falls back to the no-LM path.
+            await self.loadLMWeightsIfAvailable()
         } catch {
             if let previousModelID {
                 try? await registry.setActiveModel(id: previousModelID, for: .aceStepDiT)
@@ -334,6 +366,95 @@ actor CoverSongCoordinator {
             }
             throw error
         }
+    }
+
+    /// Attempt to load AceStepLM weights from the active (or first downloaded)
+    /// LM variant. This is best-effort: if no LM variant is downloaded, or
+    /// loading fails, the coordinator silently falls back to the no-LM path.
+    private func loadLMWeightsIfAvailable() async {
+        let baseDir = await registry.baseDirectory
+
+        // Find the active LM spec, or the first downloaded variant.
+        let activeLMID = await registry.activeModelID(for: .aceStepLM)
+        let lmSpec: ModelSpec?
+        if let activeLMID,
+           let spec = await registry.activeSpec(for: .aceStepLM),
+           await registry.status(for: activeLMID) == .ready {
+            lmSpec = spec
+        } else {
+            // No active LM or it's not downloaded — scan for any ready variant.
+            let allLMSpecs = await registry.specs(for: .aceStepLM)
+            var found: ModelSpec?
+            for spec in allLMSpecs {
+                if await registry.status(for: spec.id) == .ready {
+                    found = spec
+                    break
+                }
+            }
+            lmSpec = found
+        }
+
+        guard let spec = lmSpec else {
+            logger.info("[CoverSongCoordinator] no downloaded LM variant found — cover songs will use no-LM path")
+            aceStepLM = nil
+            currentlyLoadedLMModelID = nil
+            return
+        }
+
+        // Skip reload if we already have this variant loaded.
+        if spec.id == currentlyLoadedLMModelID, aceStepLM != nil {
+            return
+        }
+
+        do {
+            // Load config
+            let configPath = spec.localPath(for: "config.json", base: baseDir)
+            let lmConfig = try AceStepLMConfig.load(from: configPath)
+
+            // Load weights (handles both single-file and sharded)
+            let weightPaths = lmWeightPaths(for: spec, baseDir: baseDir)
+            let rawWeights = try await weightConverter.loadSafetensors(from: weightPaths)
+            let mappedWeights = await weightConverter.convertAceStepLMWeights(from: rawWeights)
+
+            let lm = AceStepLM(config: lmConfig)
+            lm.update(parameters: ModuleParameters.unflattened(mappedWeights))
+            eval(lm.parameters())
+
+            // Dimension safety: the detokenizer's embedTokens expects input
+            // matching its own hiddenSize (2048 from the DiT bundle). If the
+            // LM's hidden_size differs, we can't feed its output directly.
+            let detokHidden = audioDetokenizer?.hiddenSize ?? 2048
+            if lmConfig.hiddenSize != detokHidden {
+                logger.warning(
+                    "[CoverSongCoordinator] LM hidden_size (\(lmConfig.hiddenSize)) != detokenizer hidden (\(detokHidden)) — skipping LM, needs projection layer (Phase 2D)"
+                )
+                aceStepLM = nil
+                currentlyLoadedLMModelID = nil
+                return
+            }
+
+            self.aceStepLM = lm
+            self.currentlyLoadedLMModelID = spec.id
+            logger.info("[CoverSongCoordinator] loaded AceStepLM (\(spec.id)) — \(lmConfig.numHiddenLayers) layers, hidden=\(lmConfig.hiddenSize)")
+        } catch {
+            logger.error("[CoverSongCoordinator] failed to load AceStepLM (\(spec.id)): \(error) — falling back to no-LM path")
+            aceStepLM = nil
+            currentlyLoadedLMModelID = nil
+        }
+    }
+
+    /// Resolve safetensors paths for an LM model spec. Handles both single-file
+    /// (`model.safetensors`) and sharded (`model-00001-of-00002.safetensors`) layouts.
+    private func lmWeightPaths(for spec: ModelSpec, baseDir: URL) -> [URL] {
+        let paths = spec.files
+            .filter { file in
+                file.localName == "model.safetensors"
+                    || (file.localName.hasPrefix("model-") && file.localName.hasSuffix(".safetensors"))
+            }
+            .map { spec.localPath(for: $0.localName, base: baseDir) }
+        return paths.isEmpty
+            ? [spec.localPath(for: "model.safetensors", base: baseDir)]
+            : paths
     }
 
     private func ditWeightPaths(for spec: ModelSpec, baseDir: URL) -> [URL] {
