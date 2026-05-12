@@ -14,7 +14,7 @@ struct EditorView: View {
             EditorToolbar(
                 state: state,
                 onOpen: openFile,
-                onExport: exportFile,
+                onExport: { exportFile(format: $0) },
                 onUndo: performUndo,
                 onRedo: performRedo
             )
@@ -104,17 +104,38 @@ struct EditorView: View {
             )
             .padding(.horizontal, 16)
 
-            HStack {
-                Text(formatTime(0))
-                Spacer()
-                if state.hasSelection {
-                    Text("Selection: \(formatTime(state.selectionStart)) – \(formatTime(state.selectionEnd))")
+            // Transport bar
+            HStack(spacing: 10) {
+                Button {
+                    if state.isPlayingPreview { state.pausePreview() }
+                    else { state.playPreview() }
+                } label: {
+                    Image(systemName: state.isPlayingPreview
+                          ? "pause.circle.fill" : "play.circle.fill")
+                        .font(.system(size: 26))
                 }
+                .buttonStyle(.plain)
+
+                Text(formatTime(state.previewCurrentTime))
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .frame(minWidth: 36, alignment: .leading)
+
                 Spacer()
+
+                if state.hasSelection {
+                    Text("⌗ \(formatTime(state.selectionStart))–\(formatTime(state.selectionEnd))")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
                 Text(formatTime(state.duration))
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .frame(minWidth: 36, alignment: .trailing)
             }
-            .font(.caption2)
-            .foregroundStyle(.secondary)
             .padding(.horizontal, 16)
         }
     }
@@ -243,23 +264,56 @@ struct EditorView: View {
     private func performUndo() { state.undoDSP() }
     private func performRedo() { state.redoDSP() }
 
-    private func exportFile() {
+    private func exportFile(format: ExportFormat) {
         guard let buffer = state.audioBuffer else { return }
 
         let panel = NSSavePanel()
-        panel.allowedContentTypes = [.wav]
+        panel.allowedContentTypes = [format.contentType]
         let baseName = (state.fileName as NSString).deletingPathExtension
-        panel.nameFieldStringValue = baseName.isEmpty ? "edited" : "\(baseName)-edited"
+        panel.nameFieldStringValue = "\(baseName.isEmpty ? "edited" : baseName)-edited.\(format.fileExtension)"
 
-        panel.begin { response in
+        panel.begin { [self] response in
             guard response == .OK, let url = panel.url else { return }
-            do {
-                let pcmBuffer = try AudioBufferConverter.toPCMBuffer(buffer)
-                let outputFile = try AVAudioFile(forWriting: url, settings: pcmBuffer.format.settings)
-                try outputFile.write(from: pcmBuffer)
-            } catch {
-                // Export failed silently — could surface an alert in a future pass
+            Task {
+                do {
+                    switch format {
+                    case .wav, .aiff:
+                        // AVAudioFile uses the URL extension to choose the container.
+                        // .wav → RIFF PCM, .aiff → AIFF PCM — both use the same settings dict.
+                        let pcmBuffer = try AudioBufferConverter.toPCMBuffer(buffer)
+                        let outputFile = try AVAudioFile(forWriting: url, settings: pcmBuffer.format.settings)
+                        try outputFile.write(from: pcmBuffer)
+                    case .m4a:
+                        try await exportM4A(buffer: buffer, to: url)
+                    }
+                } catch {
+                    // Export failed silently — surface an alert in a future polish pass
+                }
             }
+        }
+    }
+
+    /// Export to M4A (AAC) via a temp WAV + AVAssetExportSession.
+    private func exportM4A(buffer: AudioBuffer, to dest: URL) async throws {
+        // Step 1: Write a temp WAV (AVAssetExportSession needs a URL input)
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("wav")
+        let pcmBuffer = try AudioBufferConverter.toPCMBuffer(buffer)
+        let tmpFile = try AVAudioFile(forWriting: tmp, settings: pcmBuffer.format.settings)
+        try tmpFile.write(from: pcmBuffer)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        // Step 2: Export WAV → M4A via AVAssetExportSession
+        let asset = AVURLAsset(url: tmp)
+        guard let session = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A) else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        session.outputURL = dest
+        session.outputFileType = .m4a
+        await session.export()
+        guard session.status == .completed else {
+            throw session.error ?? CocoaError(.fileWriteUnknown)
         }
     }
 

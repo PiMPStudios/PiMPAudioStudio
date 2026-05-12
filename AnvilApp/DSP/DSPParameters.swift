@@ -1,4 +1,5 @@
 import Foundation
+import UniformTypeIdentifiers
 
 // MARK: - AudioBuffer
 
@@ -153,6 +154,41 @@ struct PitchShiftParameters: Equatable {
 enum NormalizeMode: Equatable {
     case peak
     case rms(targetDB: Float)
+}
+
+// MARK: - ExportFormat
+
+/// Audio formats the editor can export to using native macOS AVFoundation.
+/// MP3, FLAC, and OGG are intentionally excluded — they require third-party
+/// libraries (LAME, libFLAC, libvorbis) not available natively on macOS.
+enum ExportFormat: String, CaseIterable {
+    case wav  = "WAV"
+    case aiff = "AIFF"
+    case m4a  = "M4A"
+
+    var fileExtension: String {
+        switch self {
+        case .wav:  return "wav"
+        case .aiff: return "aiff"
+        case .m4a:  return "m4a"
+        }
+    }
+
+    var contentType: UTType {
+        switch self {
+        case .wav:  return .wav
+        case .aiff: return .aiff
+        case .m4a:  return UTType("public.mpeg-4-audio") ?? .audio
+        }
+    }
+
+    var menuLabel: String {
+        switch self {
+        case .wav:  return "Export as WAV (lossless)…"
+        case .aiff: return "Export as AIFF (lossless)…"
+        case .m4a:  return "Export as M4A (AAC compressed)…"
+        }
+    }
 }
 
 // MARK: - DSPOperation

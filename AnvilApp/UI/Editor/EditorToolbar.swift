@@ -4,7 +4,7 @@ import AnvilCore
 struct EditorToolbar: View {
     @ObservedObject var state: EditorState
     let onOpen: () -> Void
-    let onExport: () -> Void
+    let onExport: (ExportFormat) -> Void
     let onUndo: () -> Void
     let onRedo: () -> Void
 
@@ -17,11 +17,17 @@ struct EditorToolbar: View {
             .controlSize(.small)
 
             if state.isLoaded {
-                Button(action: onExport) {
+                Menu {
+                    ForEach(ExportFormat.allCases, id: \.self) { fmt in
+                        Button(fmt.menuLabel) { onExport(fmt) }
+                    }
+                } label: {
                     Label("Export", systemImage: "square.and.arrow.down")
                 }
+                .menuStyle(.borderlessButton)
                 .buttonStyle(.bordered)
                 .controlSize(.small)
+                .fixedSize()
             }
 
             if state.isLoaded {

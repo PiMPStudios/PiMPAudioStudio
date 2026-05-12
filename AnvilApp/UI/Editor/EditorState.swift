@@ -1,4 +1,5 @@
 import SwiftUI
+import AVFoundation
 import AnvilCore
 import Accelerate
 
@@ -46,6 +47,12 @@ class EditorState: ObservableObject {
     @Published var pitchShiftParameters: PitchShiftParameters = .default
 
     private let dspProcessor = DSPProcessor()
+
+    // MARK: - Preview playback
+    @Published var isPlayingPreview = false
+    @Published var previewCurrentTime: TimeInterval = 0
+    private var previewPlayer: AVAudioPlayer?
+    private var previewTimer: Timer?
 
     // DSP undo/redo — stores raw AudioBuffer snapshots.
     // AI inpainting also pushes here (via saveUndoSnapshot) so both paths
@@ -126,6 +133,7 @@ class EditorState: ObservableObject {
             canUndo = true
             canRedo = false
 
+            invalidatePreviewPlayer()
             audioBuffer = result
             duration = result.duration
             waveformPeaks = computePeaks(from: result)
@@ -156,6 +164,7 @@ class EditorState: ObservableObject {
         if let current = audioBuffer {
             redoStack.append(current)
         }
+        invalidatePreviewPlayer()
         audioBuffer = previous
         duration = previous.duration
         waveformPeaks = computePeaks(from: previous)
@@ -168,6 +177,7 @@ class EditorState: ObservableObject {
         if let current = audioBuffer {
             undoStack.append(current)
         }
+        invalidatePreviewPlayer()
         audioBuffer = next
         duration = next.duration
         waveformPeaks = computePeaks(from: next)
@@ -181,6 +191,90 @@ class EditorState: ObservableObject {
         redoStack.removeAll()
         canUndo = false
         canRedo = false
+    }
+
+    // MARK: - Preview playback
+
+    func playPreview() {
+        if previewPlayer == nil, let buffer = audioBuffer {
+            let data = makeWAVData(from: buffer)
+            previewPlayer = try? AVAudioPlayer(data: data, fileTypeHint: AVFileType.wav.rawValue)
+            previewPlayer?.prepareToPlay()
+        }
+        previewPlayer?.play()
+        isPlayingPreview = true
+        startPreviewTimer()
+    }
+
+    func pausePreview() {
+        previewPlayer?.pause()
+        isPlayingPreview = false
+        stopPreviewTimer()
+    }
+
+    func seekPreview(to fraction: Double) {
+        guard let player = previewPlayer else { return }
+        let t = fraction * player.duration
+        player.currentTime = t
+        previewCurrentTime = t
+        playbackProgress = fraction
+    }
+
+    /// Nil out the player whenever the buffer changes — playPreview reloads lazily.
+    private func invalidatePreviewPlayer() {
+        previewPlayer?.stop()
+        previewPlayer = nil
+        isPlayingPreview = false
+        previewCurrentTime = 0
+        playbackProgress = 0
+        stopPreviewTimer()
+    }
+
+    private func startPreviewTimer() {
+        previewTimer?.invalidate()
+        previewTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, let player = self.previewPlayer else { return }
+                self.previewCurrentTime = player.currentTime
+                self.playbackProgress = player.duration > 0
+                    ? player.currentTime / player.duration : 0
+                if !player.isPlaying && self.isPlayingPreview {
+                    self.isPlayingPreview = false
+                    self.previewCurrentTime = 0
+                    self.playbackProgress = 0
+                    self.stopPreviewTimer()
+                }
+            }
+        }
+    }
+
+    private func stopPreviewTimer() {
+        previewTimer?.invalidate()
+        previewTimer = nil
+    }
+
+    /// Build a minimal 44-byte WAV header + Int16 PCM body from an AudioBuffer.
+    /// Used for in-memory playback via AVAudioPlayer(data:).
+    private func makeWAVData(from buffer: AudioBuffer) -> Data {
+        let pcm = buffer.data
+        let sr    = UInt32(buffer.sampleRate)
+        let ch    = UInt16(buffer.channels)
+        let bps   = UInt16(16)
+        let rate  = sr * UInt32(ch) * UInt32(bps) / 8
+        let align = ch * bps / 8
+        let dataSize = UInt32(pcm.count)
+
+        var h = Data()
+        func le<T: FixedWidthInteger>(_ v: T) {
+            var x = v.littleEndian; withUnsafeBytes(of: &x) { h.append(contentsOf: $0) }
+        }
+        h.append(contentsOf: "RIFF".utf8); le(36 + dataSize)
+        h.append(contentsOf: "WAVE".utf8)
+        h.append(contentsOf: "fmt ".utf8); le(UInt32(16))
+        le(UInt16(1)); le(ch); le(sr); le(rate); le(align); le(bps)
+        h.append(contentsOf: "data".utf8); le(dataSize)
+        h.append(pcm)
+        return h
     }
 
     func computePeaks(from buffer: AudioBuffer) -> [Float] {
