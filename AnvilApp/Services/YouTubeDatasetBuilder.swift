@@ -84,8 +84,12 @@ final class YouTubeDatasetBuilder: ObservableObject {
             "/opt/local/bin/yt-dlp",
             "/usr/bin/yt-dlp",
         ]
+        // isExecutableFile(atPath:) always returns false in a sandboxed app for
+        // paths outside the container even with Full Disk Access, because the
+        // execute-permission check is a separate sandbox gate. fileExists is
+        // sufficient — Homebrew always installs with correct execute bits.
         return paths
-            .first { FileManager.default.isExecutableFile(atPath: $0) }
+            .first { FileManager.default.fileExists(atPath: $0) }
             .map { URL(fileURLWithPath: $0) }
     }
 
