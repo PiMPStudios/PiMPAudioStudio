@@ -59,7 +59,20 @@ final class CommunityService: ObservableObject {
         error = nil
 
         do {
-            let (data, _) = try await URLSession.shared.data(from: manifestURL)
+            let (data, response) = try await URLSession.shared.data(from: manifestURL)
+
+            // A 404 means the manifest hasn't been published yet — not an error worth
+            // surfacing.  Treat it as an empty catalogue so the UI stays clean.
+            if let http = response as? HTTPURLResponse, http.statusCode == 404 {
+                let empty = AdapterManifest(version: 1, adapters: [])
+                cachedManifest = empty
+                cacheTimestamp = Date()
+                manifest = empty
+                lastRefresh = Date()
+                isRefreshing = false
+                return
+            }
+
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
             let fetched = try decoder.decode(AdapterManifest.self, from: data)
@@ -69,7 +82,7 @@ final class CommunityService: ObservableObject {
             manifest = fetched
             lastRefresh = Date()
         } catch {
-            // Show cached version if available
+            // Genuine network failure — show cached version if available, otherwise error.
             if cachedManifest != nil {
                 self.error = "Offline — showing cached results"
             } else {
