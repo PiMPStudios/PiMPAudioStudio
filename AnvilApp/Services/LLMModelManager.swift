@@ -1,5 +1,6 @@
 import Foundation
 import AnvilCore
+import MLX
 
 // MARK: - LLMModelSpec
 
@@ -177,6 +178,30 @@ final class LLMModelManager: ObservableObject {
         guard let active = activeModel else { return nil }
         let path = modelsDirectory.appendingPathComponent(active.id)
         return FileManager.default.fileExists(atPath: path.path) ? path : nil
+    }
+
+    /// Releases the LLMActor and flushes the MLX GPU allocator pool.
+    ///
+    /// Call this immediately before starting a heavy generation pass
+    /// (DiT + VAE weigh ~5+ GB) so their ~2 GB footprint doesn't pile on
+    /// top of the resident LLM weights.  The `$llmActor` publisher fires
+    /// automatically, propagating `nil` to PromptEnhancer, IntentRouter,
+    /// and LyricWriterManager — disabling inference during generation.
+    func evict() {
+        llmActor = nil
+        MLX.GPU.clearCache()
+    }
+
+    /// Recreates the LLMActor from the active model path (lazy — weights are
+    /// NOT loaded until the first inference call).
+    ///
+    /// Call this after generation completes (success, failure, or cancel) to
+    /// restore prompt-enhancement capability.  The `$llmActor` publisher fires
+    /// and re-enables PromptEnhancer / IntentRouter / LyricWriterManager.
+    func reload() {
+        guard let active = activeModel, isModelDownloaded(active) else { return }
+        let path = modelsDirectory.appendingPathComponent(active.id)
+        llmActor = LLMActor(modelPath: path)
     }
 
     /// Checks whether a model is fully downloaded — config.json, tokenizer.json,

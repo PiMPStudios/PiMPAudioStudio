@@ -70,6 +70,26 @@ public actor MusicPipeline {
         try await diffusion.loadLoRAWeights(weights, adapterID: adapterID)
     }
 
+    public func addLoRAContribution(
+        adapterID: String,
+        displayName: String?,
+        source: AdapterSource,
+        weights: [(String, MLXArray)],
+        strength: Float
+    ) async {
+        await diffusion.addLoRAContribution(
+            adapterID: adapterID,
+            displayName: displayName,
+            source: source,
+            weights: weights,
+            strength: strength
+        )
+    }
+
+    public func clearLoRAContributions() async {
+        await diffusion.clearLoRAContributions()
+    }
+
     public var injectedAdapterID: String? {
         get async { await diffusion.injectedAdapterID }
     }
@@ -109,6 +129,21 @@ public actor MusicPipeline {
         progressContinuation?.yield(.diffusion(DiffusionProgress(
             currentStep: 0, totalSteps: config.steps ?? 8, elapsedTime: 0
         )))
+
+        // Wire up per-step progress from DiffusionActor before calling generate().
+        // DiffusionActor.generate() yields to its own internal progressContinuation
+        // after each step, but ONLY if makeProgressStream() has been called first to
+        // initialise that continuation. Without this relay the upstream progress task
+        // in ACEStepGenerationService only ever sees step-0 and then .decoding,
+        // so the UI progress bar never advances past "0/N".
+        let diffProgressStream = await diffusion.makeProgressStream()
+        let outerContinuation = self.progressContinuation   // Sendable capture
+        let diffRelayTask = Task {
+            for await dp in diffProgressStream {
+                outerContinuation?.yield(.diffusion(dp))
+            }
+        }
+        defer { diffRelayTask.cancel() }
 
         let diffResult = try await diffusion.generate(
             encoderStates: encoderStates,

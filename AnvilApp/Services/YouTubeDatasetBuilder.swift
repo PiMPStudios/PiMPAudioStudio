@@ -46,7 +46,7 @@ final class YouTubeDatasetBuilder: ObservableObject {
 
     private var task: Task<Void, Never>?
 
-    func start(channelURL: URL, config: YouTubeDatasetConfig, outputBase: URL) {
+    func start(channelURL: URL, config: YouTubeDatasetConfig, outputBase: URL, styleTemplate: String = "") {
         cancel()
         resultClips = []
         phase = .fetchingPlaylist
@@ -58,6 +58,7 @@ final class YouTubeDatasetBuilder: ObservableObject {
                     channelURL: channelURL,
                     config: config,
                     outputBase: outputBase,
+                    styleTemplate: styleTemplate,
                     onPhase: { [weak self] p in await MainActor.run { self?.phase = p } }
                 )
                 self.resultClips = result.clips
@@ -107,6 +108,7 @@ final class YouTubeDatasetBuilder: ObservableObject {
         channelURL: URL,
         config: YouTubeDatasetConfig,
         outputBase: URL,
+        styleTemplate: String = "",
         onPhase: @escaping (YouTubeImportPhase) async -> Void
     ) async throws -> YouTubeDatasetResult {
         guard ytDlpVersion() != nil else { throw YouTubeDatasetError.ytDlpNotFound }
@@ -153,6 +155,7 @@ final class YouTubeDatasetBuilder: ObservableObject {
                     videoIndex: idx + 1,
                     clipLength: config.clipLength,
                     maxClips: min(config.clipsPerTrack, remaining),
+                    styleTemplate: styleTemplate,
                     outputDirectory: clipsDir
                 )
                 allClips.append(contentsOf: chunks)
@@ -231,6 +234,7 @@ final class YouTubeDatasetBuilder: ObservableObject {
         videoIndex: Int,
         clipLength: TimeInterval,
         maxClips: Int,
+        styleTemplate: String = "",
         outputDirectory: URL
     ) async throws -> [(url: URL, caption: String)] {
         let asset = AVURLAsset(url: sourceURL)
@@ -246,7 +250,8 @@ final class YouTubeDatasetBuilder: ObservableObject {
             try await exportRange(asset: asset,
                                   range: CMTimeRange(start: .zero, duration: cmDuration),
                                   to: dest)
-            return [(url: dest, caption: title)]
+            let caption = styleTemplate.isEmpty ? title : styleTemplate
+            return [(url: dest, caption: caption)]
         }
 
         let clipCount = min(maxClips, Int(totalSeconds / clipLength))
@@ -266,7 +271,12 @@ final class YouTubeDatasetBuilder: ObservableObject {
             try await exportRange(asset: asset,
                                   range: CMTimeRange(start: start, duration: dur),
                                   to: dest)
-            let caption = clipCount > 1 ? "\(title) (clip \(i + 1))" : title
+            let caption: String
+            if styleTemplate.isEmpty {
+                caption = clipCount > 1 ? "\(title) (clip \(i + 1))" : title
+            } else {
+                caption = styleTemplate
+            }
             clips.append((url: dest, caption: caption))
         }
         return clips

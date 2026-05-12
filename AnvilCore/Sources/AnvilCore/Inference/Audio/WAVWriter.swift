@@ -72,7 +72,21 @@ public struct WAVWriter {
         }
         eval(interleaved)
 
-        let pcmData = interleaved.asData(access: .copy).data
+        let rawPCM = interleaved.asData(access: .copy).data
+
+        // Adaptive tail fade: ACE-Step (and other diffusion models) commonly
+        // produce near-zero latents for the last 1–4 seconds of the requested
+        // window, resulting in an abrupt silence cutoff mid-beat. Scan the
+        // PCM backwards in 0.25 s windows to find where content actually ends,
+        // then apply a 0.75 s linear fade-out that ramps from full amplitude
+        // to silence right at that transition. Keeps the file at the original
+        // requested duration (no trimming) but eliminates the jarring dropoff.
+        let pcmData = applyTailFade(
+            to: rawPCM,
+            numFrames: numFrames,
+            channels: channels,
+            sampleRate: sampleRate
+        )
 
         let bitsPerSample: UInt16 = 16
         let blockAlign = UInt16(channels) * (bitsPerSample / 8)
@@ -98,6 +112,98 @@ public struct WAVWriter {
         var fileData = header
         fileData.append(pcmData)
         try fileData.write(to: url)
+    }
+
+    // MARK: - Tail fade
+
+    /// Scan interleaved 16-bit PCM backwards to find where audio content drops to
+    /// near-silence, then apply a linear fade-out ending at that point.
+    ///
+    /// - Parameters:
+    ///   - pcmData: Interleaved little-endian Int16 samples (L0 R0 L1 R1 …).
+    ///   - numFrames: Total number of audio frames (samples per channel).
+    ///   - channels: Number of channels (1 = mono, 2 = stereo).
+    ///   - sampleRate: Sample rate in Hz (e.g. 48000).
+    ///   - scanWindow: Duration of each backward-scan window (default 0.25 s).
+    ///   - fadeDuration: Length of the linear fade applied before content end (default 0.75 s).
+    ///   - rmsThreshold: Int16-scale RMS below which a window is considered silent (default 150 ≈ −47 dBFS).
+    /// - Returns: A new `Data` with the fade applied; same byte count as `pcmData`.
+    static func applyTailFade(
+        to pcmData: Data,
+        numFrames: Int,
+        channels: Int,
+        sampleRate: Int,
+        scanWindow: Double = 0.25,
+        fadeDuration: Double = 0.75,
+        rmsThreshold: Double = 150.0
+    ) -> Data {
+        guard numFrames > 0, channels > 0, pcmData.count == numFrames * channels * 2 else {
+            return pcmData
+        }
+
+        let bytesPerFrame = channels * 2
+        let scanFrames = max(1, Int(Double(sampleRate) * scanWindow))
+        let fadeFrames  = max(1, Int(Double(sampleRate) * fadeDuration))
+
+        var bytes = [UInt8](pcmData)
+
+        // ── 1. Find where audio content ends ──────────────────────────────────
+        // Walk backwards in scanWindow-sized chunks until a chunk whose RMS
+        // exceeds rmsThreshold is found. That chunk's end is "content end".
+        var contentEndFrame = numFrames
+        let numChunks = (numFrames + scanFrames - 1) / scanFrames
+        scan: for chunk in stride(from: numChunks - 1, through: 0, by: -1) {
+            let startF = chunk * scanFrames
+            let endF   = min(startF + scanFrames, numFrames)
+            var sumSq: Int64 = 0
+            for f in startF..<endF {
+                let base = f * bytesPerFrame
+                for c in 0..<channels {
+                    let off = base + c * 2
+                    let lo  = Int64(bytes[off])
+                    let hi  = Int64(bytes[off + 1])
+                    let s   = Int64(Int16(bitPattern: UInt16(lo | (hi << 8))))
+                    sumSq += s * s
+                }
+            }
+            let rms = (Double(sumSq) / Double((endF - startF) * channels)).squareRoot()
+            if rms > rmsThreshold {
+                contentEndFrame = endF
+                break scan
+            }
+        }
+
+        // ── 2. Apply linear fade from (contentEnd − fadeDuration) → contentEnd ─
+        let fadeStart = max(0, contentEndFrame - fadeFrames)
+        let fadeLen   = contentEndFrame - fadeStart   // actual number of frames in ramp
+        for f in fadeStart..<contentEndFrame {
+            let alpha = Float(contentEndFrame - 1 - f) / Float(max(fadeLen - 1, 1))
+            let base  = f * bytesPerFrame
+            for c in 0..<channels {
+                let off = base + c * 2
+                let lo  = Int(bytes[off])
+                let hi  = Int(bytes[off + 1])
+                let raw = Int16(bitPattern: UInt16(lo | (hi << 8)))
+                let faded = Int16(clamping: Int32(Float(raw) * alpha))
+                let u = UInt16(bitPattern: faded)
+                bytes[off]     = UInt8(u & 0xFF)
+                bytes[off + 1] = UInt8((u >> 8) & 0xFF)
+            }
+        }
+
+        // ── 3. Hard-zero any remaining frames past content end ─────────────────
+        // These are already near-silent (that's how contentEndFrame was chosen),
+        // but zeroing them removes any low-level hiss that could confuse downstream
+        // tools and avoids any quantisation noise artefacts from the scan threshold.
+        if contentEndFrame < numFrames {
+            let zeroOffset = contentEndFrame * bytesPerFrame
+            bytes.replaceSubrange(
+                zeroOffset...,
+                with: [UInt8](repeating: 0, count: bytes.count - zeroOffset)
+            )
+        }
+
+        return Data(bytes)
     }
 }
 

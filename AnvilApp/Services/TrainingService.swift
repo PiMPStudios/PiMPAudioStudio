@@ -38,7 +38,11 @@ final class TrainingService: ObservableObject {
 
     private let pipeline: MusicPipeline
     private let vae: VAEActor
-    private let conditioning: ConditioningActor
+    private var conditioning: ConditioningActor
+    /// `false` until ACEStepGenerationService swaps in the real ConditioningActor
+    /// (real Qwen3 tokenizer + loaded weights). Training crashes on the stub because
+    /// the SFT prompt template uses newlines outside the stub's ASCII-only vocab.
+    private var isConditioningReady = false
     private let registry: ModelRegistry
     private var trainingTask: Task<Void, Never>?
     private var isStopping = false
@@ -74,6 +78,13 @@ final class TrainingService: ObservableObject {
         adapterName: String,
         config: LoRAConfig
     ) {
+        guard isConditioningReady else {
+            state = .failed(
+                "The AI model hasn't been loaded yet. Generate a track first, then return here to train."
+            )
+            return
+        }
+
         trainingTask?.cancel()
         isStopping = false
 
@@ -196,6 +207,13 @@ final class TrainingService: ObservableObject {
 
             self.trainingTask = nil
         }
+    }
+
+    /// Swap in a fully-loaded ConditioningActor (real tokenizer + model weights).
+    /// Called by AppServices when ACEStepGenerationService upgrades from the stub.
+    func updateConditioning(_ actor: ConditioningActor) {
+        conditioning = actor
+        isConditioningReady = true
     }
 
     /// Stop training. Pipeline will save best checkpoint if available.

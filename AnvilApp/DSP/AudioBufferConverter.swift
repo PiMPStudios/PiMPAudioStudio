@@ -1,5 +1,6 @@
 import AVFoundation
 import Accelerate
+import MLX
 
 struct AudioBufferConverter {
     enum ConversionError: Error {
@@ -75,6 +76,32 @@ struct AudioBufferConverter {
         }
 
         return pcmBuffer
+    }
+
+    // MARK: - MLX bridge (for VAE encode/decode in the editor)
+
+    /// Convert an `AudioBuffer` to an `MLXArray` with shape `[1, frames, channels]`
+    /// (NLC layout expected by OobleckVAE encoder).
+    static func toMLXArray(_ buffer: AudioBuffer) -> MLXArray {
+        let floats = toFloats(buffer)
+        // toFloats returns interleaved [frame0_ch0, frame0_ch1, frame1_ch0, ...]
+        // MLXArray with shape [1, L, C] in row-major order maps identically.
+        return MLXArray(floats, [1, buffer.frameCount, buffer.channels])
+    }
+
+    /// Convert an `MLXArray` with shape `[1, frames, channels]` or `[frames, channels]`
+    /// back to an `AudioBuffer`.  The batch dimension (if present) is dropped first.
+    static func fromMLXArray(_ array: MLXArray, sampleRate: Int) -> AudioBuffer {
+        // Normalise: accept [1, L, C] or [L, C]
+        let framesChannels: MLXArray = array.ndim == 3 ? array[0] : array  // [L, C]
+        eval(framesChannels)
+        let channelCount = framesChannels.ndim >= 2 ? framesChannels.shape[1] : 1
+        // Row-major [L, C] bytes are already interleaved — same layout as toFloats output.
+        let rawData = framesChannels.asType(.float32).asData(access: .copy).data
+        let floats = rawData.withUnsafeBytes { buf in
+            Array(buf.bindMemory(to: Float.self))
+        }
+        return fromFloats(floats, sampleRate: sampleRate, channels: channelCount)
     }
 
     static func fromPCMBuffer(_ pcmBuffer: AVAudioPCMBuffer) -> AudioBuffer {

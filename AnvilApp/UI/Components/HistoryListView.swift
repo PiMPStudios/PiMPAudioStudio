@@ -25,6 +25,8 @@ struct HistoryListView: View {
         }
     }
 
+    // MARK: - Header
+
     private var header: some View {
         HStack {
             Text("HISTORY")
@@ -47,6 +49,13 @@ struct HistoryListView: View {
                             showTrainingSheet = true
                         }
                         .buttonStyle(.borderedProminent)
+                        .controlSize(.mini)
+
+                        // Export all selected items to a chosen folder.
+                        Button("Export…") {
+                            exportSelected()
+                        }
+                        .buttonStyle(.bordered)
                         .controlSize(.mini)
                     }
 
@@ -75,6 +84,8 @@ struct HistoryListView: View {
         .padding(.vertical, 8)
     }
 
+    // MARK: - Empty state
+
     private var emptyState: some View {
         VStack(spacing: 8) {
             Image(systemName: "waveform")
@@ -86,6 +97,8 @@ struct HistoryListView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
+
+    // MARK: - List
 
     private var list: some View {
         List {
@@ -102,9 +115,11 @@ struct HistoryListView: View {
                     if isSelecting {
                         toggleSelection(entry.id)
                     } else {
-                        let url = historyStore.fileURL(for: entry)
-                        playerService.load(url: url)
+                        playerService.load(url: historyStore.fileURL(for: entry))
                     }
+                }
+                .contextMenu {
+                    rowContextMenu(for: entry)
                 }
             }
             .onDelete { indices in
@@ -117,6 +132,45 @@ struct HistoryListView: View {
         .listStyle(.plain)
     }
 
+    // MARK: - Context menu
+
+    @ViewBuilder
+    private func rowContextMenu(for entry: HistoryEntry) -> some View {
+        let url = historyStore.fileURL(for: entry)
+
+        Button("Play") {
+            playerService.load(url: url)
+        }
+
+        Divider()
+
+        ShareLink(
+            item: url,
+            preview: SharePreview(
+                entry.prompt,
+                icon: Image(systemName: "waveform")
+            )
+        ) {
+            Label("Share…", systemImage: "square.and.arrow.up")
+        }
+
+        Button("Export as WAV…") {
+            exportEntry(entry)
+        }
+
+        Button("Reveal in Finder") {
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        }
+
+        Divider()
+
+        Button("Delete", role: .destructive) {
+            historyStore.delete(entry)
+        }
+    }
+
+    // MARK: - Helpers
+
     private func toggleSelection(_ id: UUID) {
         if selectedIDs.contains(id) {
             selectedIDs.remove(id)
@@ -124,7 +178,65 @@ struct HistoryListView: View {
             selectedIDs.insert(id)
         }
     }
+
+    /// Save a single history entry to a user-chosen path via NSSavePanel.
+    private func exportEntry(_ entry: HistoryEntry) {
+        let source = historyStore.fileURL(for: entry)
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.wav]
+        panel.nameFieldStringValue = entry.fileName
+        panel.begin { response in
+            guard response == .OK, let destination = panel.url else { return }
+            try? FileManager.default.copyItem(at: source, to: destination)
+        }
+    }
+
+    /// Copy all selected entries into a user-chosen folder via NSOpenPanel.
+    private func exportSelected() {
+        let sources = historyStore.entries
+            .filter { selectedIDs.contains($0.id) }
+            .map { historyStore.fileURL(for: $0) }
+        guard !sources.isEmpty else { return }
+
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Export Here"
+        panel.message = "Choose a folder to copy \(sources.count) file(s) into."
+
+        panel.begin { response in
+            guard response == .OK, let destination = panel.url else { return }
+            for source in sources {
+                let dest = destination.appending(path: source.lastPathComponent)
+                // Avoid overwriting: append a numeric suffix if needed.
+                let safeURL = uniqueURL(dest)
+                try? FileManager.default.copyItem(at: source, to: safeURL)
+            }
+        }
+    }
+
+    /// Returns a URL that doesn't clash with an existing file by appending -2, -3, …
+    private func uniqueURL(_ url: URL) -> URL {
+        guard FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) else {
+            return url
+        }
+        let base = url.deletingPathExtension().lastPathComponent
+        let ext  = url.pathExtension
+        let dir  = url.deletingLastPathComponent()
+        var n = 2
+        while true {
+            let candidate = dir.appending(path: "\(base)-\(n).\(ext)")
+            if !FileManager.default.fileExists(atPath: candidate.path(percentEncoded: false)) {
+                return candidate
+            }
+            n += 1
+        }
+    }
 }
+
+// MARK: - HistoryRow
 
 struct HistoryRow: View {
     let entry: HistoryEntry

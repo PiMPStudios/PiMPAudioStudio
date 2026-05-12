@@ -37,14 +37,20 @@ struct AdaptersSettingsView: View {
 
 // MARK: - My Adapters (extracted from original)
 
+/// Wraps the imported-files array so it can drive `.sheet(item:)`.
+/// A new UUID each time guarantees SwiftUI treats it as a fresh presentation.
+private struct TrainingPresentation: Identifiable {
+    let id = UUID()
+    let files: [(url: URL, description: String)]
+}
+
 private struct MyAdaptersListView: View {
     @EnvironmentObject private var outputManager: OutputDirectoryManager
 
     @State private var adapters: [LoRAAdapter] = []
     @State private var showingMergeSheet = false
-    @State private var showingTrainingSheet = false
+    @State private var trainingPresentation: TrainingPresentation?
     @State private var showingYouTubeSheet = false
-    @State private var youTubePreloadedFiles: [(url: URL, description: String)] = []
     @State private var renamingAdapter: LoRAAdapter?
     @State private var renameText: String = ""
     @State private var errorMessage: String?
@@ -58,7 +64,7 @@ private struct MyAdaptersListView: View {
                 Spacer()
                 Button("From YouTube…") { showingYouTubeSheet = true }
                     .buttonStyle(.bordered)
-                Button("Train from Files…") { showingTrainingSheet = true }
+                Button("Train from Files…") { trainingPresentation = TrainingPresentation(files: []) }
                     .buttonStyle(.bordered)
                 Button("Merge Two") {
                     showingMergeSheet = true
@@ -95,14 +101,15 @@ private struct MyAdaptersListView: View {
             MergeSheet(onComplete: { refreshAdapters() })
                 .frame(minWidth: 400, minHeight: 300)
         }
-        .sheet(isPresented: $showingTrainingSheet, onDismiss: { refreshAdapters(); youTubePreloadedFiles = [] }) {
-            TrainingSheet(selectedEntries: [], initialImportedFiles: youTubePreloadedFiles)
+        .sheet(item: $trainingPresentation, onDismiss: { refreshAdapters() }) { presentation in
+            TrainingSheet(selectedEntries: [], initialImportedFiles: presentation.files)
         }
         .sheet(isPresented: $showingYouTubeSheet) {
             YouTubeImportSheet { files in
-                youTubePreloadedFiles = files
                 showingYouTubeSheet = false
-                showingTrainingSheet = true
+                DispatchQueue.main.async {
+                    trainingPresentation = TrainingPresentation(files: files)
+                }
             }
             .environmentObject(outputManager)
         }

@@ -23,6 +23,10 @@ actor ACEStepGenerationService {
     private let weightConverter: WeightConverter
     private let registry: ModelRegistry
 
+    /// Called after the real ConditioningActor (with full tokenizer + weights) replaces the
+    /// launch-time stub. TrainingService uses this to stay in sync with the generation path.
+    var onConditioningUpgraded: (@Sendable (ConditioningActor) async -> Void)?
+
     private var currentlyLoadedDiTModelID: String?
     private var currentlyLoadedVAEModelID: String?
     private var currentlyLoadedDiTConfig: DiTConfig?
@@ -31,12 +35,14 @@ actor ACEStepGenerationService {
         pipeline: MusicPipeline,
         conditioning: ConditioningActor,
         weightConverter: WeightConverter,
-        registry: ModelRegistry
+        registry: ModelRegistry,
+        onConditioningUpgraded: (@Sendable (ConditioningActor) async -> Void)? = nil
     ) {
         self.pipeline = pipeline
         self.conditioning = conditioning
         self.weightConverter = weightConverter
         self.registry = registry
+        self.onConditioningUpgraded = onConditioningUpgraded
     }
 
     /// On-demand: checks active model IDs vs loaded IDs, loads/swaps weights if stale, then generates.
@@ -233,6 +239,11 @@ actor ACEStepGenerationService {
                 logger.info("silence_latent.pt not present at \(silenceFSPath) — falling back to zeros for text2music src_latents")
                 await conditioning.setSilenceLatent(nil)
             }
+
+            // Notify dependents (e.g. TrainingService) that a fully-initialised
+            // ConditioningActor is now available.
+            await onConditioningUpgraded?(conditioning)
+
         } catch {
             if let previousModelID {
                 try? await registry.setActiveModel(id: previousModelID, for: .aceStepDiT)

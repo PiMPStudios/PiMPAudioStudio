@@ -5,6 +5,9 @@ struct PlayerView: View {
     @EnvironmentObject private var playerService: AudioPlayerService
 
     let fileURL: URL
+    /// Pre-computed waveform peaks from generation time.
+    /// When provided the player skips re-reading the WAV file for peak extraction.
+    var precomputedPeaks: [Float]? = nil
 
     var body: some View {
         VStack(spacing: 12) {
@@ -53,6 +56,19 @@ struct PlayerView: View {
 
                 Spacer()
 
+                // Share sheet — AirDrop, Mail, Messages, Notes, etc.
+                ShareLink(
+                    item: fileURL,
+                    preview: SharePreview(
+                        fileURL.deletingPathExtension().lastPathComponent,
+                        icon: Image(systemName: "waveform")
+                    )
+                ) {
+                    Label("Share", systemImage: "square.and.arrow.up")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+
                 Button("Export WAV") {
                     exportToFinder()
                 }
@@ -79,10 +95,10 @@ struct PlayerView: View {
         .padding()
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
         .onAppear {
-            playerService.load(url: fileURL)
+            playerService.load(url: fileURL, precomputedPeaks: precomputedPeaks)
         }
         .onChange(of: fileURL) { _, newURL in
-            playerService.load(url: newURL)
+            playerService.load(url: newURL, precomputedPeaks: precomputedPeaks)
         }
     }
 

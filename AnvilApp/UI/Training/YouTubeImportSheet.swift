@@ -10,6 +10,7 @@ struct YouTubeImportSheet: View {
     @StateObject private var builder = YouTubeDatasetBuilder()
 
     @State private var urlText = ""
+    @State private var styleTemplate = ""
     @State private var config = YouTubeDatasetConfig()
     @State private var editableClips: [(url: URL, caption: String)] = []
     @State private var ytDlpVersion: String?
@@ -124,6 +125,18 @@ struct YouTubeImportSheet: View {
             Text("Accepted: channel URL (@handle or /channel/), playlist URL (/playlist?list=), or any YouTube URL yt-dlp can parse as a playlist.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Style Description")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                TextField("dark blues, slow tempo, minor key, atmospheric guitar", text: $styleTemplate)
+                    .textFieldStyle(.roundedBorder)
+                    .disabled(builder.phase.isRunning)
+                Text("Applied to every clip as its training caption. Leave blank to use video titles.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -313,7 +326,7 @@ struct YouTubeImportSheet: View {
             VStack(spacing: 4) {
                 ForEach(editableClips.indices, id: \.self) { idx in
                     HStack(spacing: 8) {
-                        Image(systemName: "doc.audio")
+                        Image(systemName: "waveform")
                             .foregroundStyle(.secondary)
                             .frame(width: 16)
                         TextField("Caption", text: Binding(
@@ -393,6 +406,7 @@ struct YouTubeImportSheet: View {
     private func startImport() {
         let trimmed = urlText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let url = URL(string: trimmed), let outputBase = outputManager.directory else { return }
-        builder.start(channelURL: url, config: config, outputBase: outputBase)
+        let template = styleTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
+        builder.start(channelURL: url, config: config, outputBase: outputBase, styleTemplate: template)
     }
 }

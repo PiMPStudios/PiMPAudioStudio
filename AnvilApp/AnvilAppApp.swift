@@ -218,7 +218,8 @@ final class AppServices: ObservableObject {
             outputManager: outputManager,
             sfxModelManager: sfxModelManager,
             registry: registry,
-            llmManager: llmManager
+            llmManager: llmManager,
+            trainingService: self.trainingService
         )
     }
 
@@ -244,7 +245,8 @@ final class AppServices: ObservableObject {
             outputManager: outputManager,
             sfxModelManager: sfxModelManager,
             registry: registry,
-            llmManager: llmManager
+            llmManager: llmManager,
+            trainingService: self.trainingService
         )
     }
 
@@ -256,16 +258,24 @@ final class AppServices: ObservableObject {
         outputManager: OutputDirectoryManager,
         sfxModelManager: SFXModelManager,
         registry: ModelRegistry,
-        llmManager: LLMModelManager
+        llmManager: LLMModelManager,
+        trainingService: TrainingService? = nil
     ) -> GenerationService {
         let pipeline = MusicPipeline(vae: vaeActor, diffusion: diffusionActor)
         let converter = WeightConverter()
 
+        // Propagate the upgraded ConditioningActor (real tokenizer + weights) to
+        // TrainingService so it doesn't keep the launch-time stub when training starts.
+        let conditioningUpgradeHandler: (@Sendable (ConditioningActor) async -> Void)? =
+            trainingService.map { ts in
+                { @Sendable newConditioning in await ts.updateConditioning(newConditioning) }
+            }
         let aceStep = ACEStepGenerationService(
             pipeline: pipeline,
             conditioning: conditioningActor,
             weightConverter: converter,
-            registry: registry
+            registry: registry,
+            onConditioningUpgraded: conditioningUpgradeHandler
         )
         let sfx = SFXGenerationService(sfxModelManager: sfxModelManager)
         let lora = LoRACoordinator(pipeline: pipeline, registry: registry)

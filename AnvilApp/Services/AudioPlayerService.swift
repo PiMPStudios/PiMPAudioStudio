@@ -22,7 +22,7 @@ final class AudioPlayerService: ObservableObject {
     private var player: AVAudioPlayer?
     private var timer: Timer?
 
-    func load(url: URL) {
+    func load(url: URL, precomputedPeaks: [Float]? = nil) {
         guard url != loadedURL else { return }
         stop()
         loadedURL = url
@@ -32,7 +32,13 @@ final class AudioPlayerService: ObservableObject {
             player?.volume = volume
             duration = player?.duration ?? 0
             currentTime = 0
-            waveform = computeWaveform(url: url)
+            if let peaks = precomputedPeaks, !peaks.isEmpty {
+                // Use peaks computed at generation time — avoids re-reading the file.
+                // sampleRate/channelCount are metadata only; WaveformView only uses peaks.
+                waveform = WaveformData(peaks: peaks, sampleRate: 44100, channelCount: 2)
+            } else {
+                waveform = computeWaveform(url: url)
+            }
         } catch {
             logger.error("Failed to load audio: \(error, privacy: .public)")
         }
