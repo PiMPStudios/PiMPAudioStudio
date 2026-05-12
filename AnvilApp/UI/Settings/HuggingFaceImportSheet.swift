@@ -46,7 +46,7 @@ struct HuggingFaceImportSheet: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Import from HuggingFace")
                     .font(.headline)
-                Text("Paste a HuggingFace repo URL containing an Anvil adapter.")
+                Text("Paste a HuggingFace repo URL containing an Anvil or PEFT LoRA adapter.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -78,7 +78,7 @@ struct HuggingFaceImportSheet: View {
                     ProgressView().controlSize(.small)
                 }
             }
-            Text("The repo must contain \u{2018}adapter.json\u{2019} and \u{2018}adapter.safetensors\u{2019} at its root.")
+            Text("Accepts PEFT repos (adapter_config.json + adapter_model.safetensors) and native Anvil repos (adapter.json + adapter.safetensors).")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
         }
