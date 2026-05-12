@@ -216,6 +216,12 @@ final class TrainingService: ObservableObject {
         isConditioningReady = true
     }
 
+    /// Reset to idle so the training sheet can reconfigure and re-run with the same dataset.
+    func resetToIdle() {
+        guard case .complete = state else { return }
+        state = .idle
+    }
+
     /// Stop training. Pipeline will save best checkpoint if available.
     func stopTraining() {
         isStopping = true

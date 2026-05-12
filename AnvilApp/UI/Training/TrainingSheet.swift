@@ -365,8 +365,16 @@ struct TrainingSheet: View {
 
             Spacer()
 
-            Button("Done") { dismiss() }
-                .buttonStyle(.borderedProminent)
+            HStack(spacing: 12) {
+                Button("Train Again") {
+                    trainingService.resetToIdle()
+                }
+                .buttonStyle(.bordered)
+                .help("Return to config with the same dataset — adjust epochs or settings and retrain")
+
+                Button("Done") { dismiss() }
+                    .buttonStyle(.borderedProminent)
+            }
         }
         .padding()
     }

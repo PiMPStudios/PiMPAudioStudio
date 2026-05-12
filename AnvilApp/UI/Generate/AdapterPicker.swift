@@ -6,7 +6,18 @@ struct AdapterPicker: View {
     @Binding var selectedAdapterID: String?
     let activeModelCategory: ModelCategory
 
-    @State private var adapters: [LoRAAdapter] = []
+    @EnvironmentObject private var trainingService: TrainingService
+
+    /// Incrementing this causes SwiftUI to re-evaluate `adapters` on the next render.
+    @State private var adapterListVersion = 0
+
+    /// Always reads live from the registry — no onAppear timing gap that would
+    /// produce "selection is invalid" warnings when the view first renders with a
+    /// previously-saved adapter ID.
+    private var adapters: [LoRAAdapter] {
+        _ = adapterListVersion
+        return AdapterRegistry.compatibleAdapters(for: activeModelCategory)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -27,17 +38,15 @@ struct AdapterPicker: View {
             }
             .pickerStyle(.menu)
         }
-        .onAppear { refreshAdapters() }
         .onChange(of: activeModelCategory) { _, _ in
-            refreshAdapters()
+            adapterListVersion += 1
             if let selected = selectedAdapterID,
                !adapters.contains(where: { $0.id == selected }) {
                 selectedAdapterID = nil
             }
         }
-    }
-
-    private func refreshAdapters() {
-        adapters = AdapterRegistry.compatibleAdapters(for: activeModelCategory)
+        .onReceive(trainingService.$state) { newState in
+            if case .complete = newState { adapterListVersion += 1 }
+        }
     }
 }
