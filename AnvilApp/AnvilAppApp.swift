@@ -62,6 +62,7 @@ struct AnvilAppApp: App {
                 .environmentObject(adapterStackManager)
                 .environmentObject(generationParameters)
                 .environmentObject(services.editorService)
+                .environmentObject(services.trainingService)
                 .task(id: outputManager.directory) {
                     services.configure(outputManager: outputManager)
                 }
@@ -126,6 +127,8 @@ struct AnvilAppApp: App {
 
                 AdaptersSettingsView()
                     .tabItem { Label("Adapters", systemImage: "puzzlepiece.extension") }
+                    .environmentObject(services.trainingService)
+                    .environmentObject(services.historyStore)
             }
             .frame(minWidth: 550, minHeight: 450)
         }
@@ -140,6 +143,11 @@ final class AppServices: ObservableObject {
     /// Shared ML actors — created once, reused by both generation and the editor
     /// so weights are never duplicated in GPU memory.
     let editorService: EditorService
+
+    /// LoRA training service — owns the training task and publishes progress.
+    /// Created once and injected into every scene so both the History sidebar
+    /// and the Adapters settings tab share the same running state.
+    let trainingService: TrainingService
 
     private var currentOutputManager: OutputDirectoryManager?
     private var currentDirectory: URL?
@@ -190,6 +198,13 @@ final class AppServices: ObservableObject {
             sfxModelManager: sfxModelManager
         )
         self.editorService = editorSvc
+
+        self.trainingService = TrainingService(
+            pipeline: MusicPipeline(vae: vae, diffusion: diffusion),
+            vae: vae,
+            conditioning: conditioning,
+            registry: registry
+        )
 
         let dir = outputManager.directory ?? FileManager.default.temporaryDirectory
         let store = HistoryStore(directory: dir)

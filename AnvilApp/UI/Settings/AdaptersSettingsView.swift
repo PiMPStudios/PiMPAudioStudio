@@ -40,6 +40,7 @@ struct AdaptersSettingsView: View {
 private struct MyAdaptersListView: View {
     @State private var adapters: [LoRAAdapter] = []
     @State private var showingMergeSheet = false
+    @State private var showingTrainingSheet = false
     @State private var renamingAdapter: LoRAAdapter?
     @State private var renameText: String = ""
     @State private var errorMessage: String?
@@ -51,6 +52,10 @@ private struct MyAdaptersListView: View {
                 Text("LoRA Adapters")
                     .font(.headline)
                 Spacer()
+                Button("Train from Files…") {
+                    showingTrainingSheet = true
+                }
+                .buttonStyle(.bordered)
                 Button("Merge Two") {
                     showingMergeSheet = true
                 }
@@ -85,6 +90,9 @@ private struct MyAdaptersListView: View {
         .sheet(isPresented: $showingMergeSheet) {
             MergeSheet(onComplete: { refreshAdapters() })
                 .frame(minWidth: 400, minHeight: 300)
+        }
+        .sheet(isPresented: $showingTrainingSheet, onDismiss: refreshAdapters) {
+            TrainingSheet(selectedEntries: [])
         }
         .alert("Rename Adapter", isPresented: Binding(
             get: { renamingAdapter != nil },
