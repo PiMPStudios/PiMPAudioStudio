@@ -38,8 +38,13 @@ struct AdaptersSettingsView: View {
 // MARK: - My Adapters (extracted from original)
 
 private struct MyAdaptersListView: View {
+    @EnvironmentObject private var outputManager: OutputDirectoryManager
+
     @State private var adapters: [LoRAAdapter] = []
     @State private var showingMergeSheet = false
+    @State private var showingTrainingSheet = false
+    @State private var showingYouTubeSheet = false
+    @State private var youTubePreloadedFiles: [(url: URL, description: String)] = []
     @State private var renamingAdapter: LoRAAdapter?
     @State private var renameText: String = ""
     @State private var errorMessage: String?
@@ -51,6 +56,10 @@ private struct MyAdaptersListView: View {
                 Text("LoRA Adapters")
                     .font(.headline)
                 Spacer()
+                Button("From YouTube…") { showingYouTubeSheet = true }
+                    .buttonStyle(.bordered)
+                Button("Train from Files…") { showingTrainingSheet = true }
+                    .buttonStyle(.bordered)
                 Button("Merge Two") {
                     showingMergeSheet = true
                 }
@@ -85,6 +94,17 @@ private struct MyAdaptersListView: View {
         .sheet(isPresented: $showingMergeSheet) {
             MergeSheet(onComplete: { refreshAdapters() })
                 .frame(minWidth: 400, minHeight: 300)
+        }
+        .sheet(isPresented: $showingTrainingSheet, onDismiss: { refreshAdapters(); youTubePreloadedFiles = [] }) {
+            TrainingSheet(selectedEntries: [], initialImportedFiles: youTubePreloadedFiles)
+        }
+        .sheet(isPresented: $showingYouTubeSheet) {
+            YouTubeImportSheet { files in
+                youTubePreloadedFiles = files
+                showingYouTubeSheet = false
+                showingTrainingSheet = true
+            }
+            .environmentObject(outputManager)
         }
         .alert("Rename Adapter", isPresented: Binding(
             get: { renamingAdapter != nil },

@@ -60,6 +60,7 @@ struct AnvilAppApp: App {
                 .environmentObject(sfxModelManager)
                 .environmentObject(adapterStackManager)
                 .environmentObject(generationParameters)
+                .environmentObject(services.trainingService)
                 .task(id: outputManager.directory) {
                     services.configure(outputManager: outputManager)
                 }
@@ -105,6 +106,9 @@ struct AnvilAppApp: App {
 
                 AdaptersSettingsView()
                     .tabItem { Label("Adapters", systemImage: "puzzlepiece.extension") }
+                    .environmentObject(outputManager)
+                    .environmentObject(services.historyStore)
+                    .environmentObject(services.trainingService)
             }
             .frame(minWidth: 550, minHeight: 450)
         }
@@ -116,10 +120,15 @@ final class AppServices: ObservableObject {
     @Published var historyStore: HistoryStore
     @Published var generationService: GenerationService
 
+    let trainingService: TrainingService
+
     private var currentOutputManager: OutputDirectoryManager?
     private var currentDirectory: URL?
     private let sfxModelManager: SFXModelManager
     private let registry: ModelRegistry
+    private let vaeActor: VAEActor
+    private let diffusionActor: DiffusionActor
+    private let conditioningActor: ConditioningActor
 
     init(
         sfxModelManager: SFXModelManager,
@@ -131,10 +140,33 @@ final class AppServices: ObservableObject {
         self.currentOutputManager = outputManager
         self.currentDirectory = outputManager.directory
 
+        let vae = VAEActor()
+        let dit = DiTActor(config: .v15Base)
+        let diffusion = DiffusionActor(dit: dit)
+        let conditioning: ConditioningActor
+        do {
+            conditioning = try ConditioningActor.stub()
+        } catch {
+            fatalError("Failed to create stub ConditioningActor at launch: \(error)")
+        }
+        self.vaeActor = vae
+        self.diffusionActor = diffusion
+        self.conditioningActor = conditioning
+
+        self.trainingService = TrainingService(
+            pipeline: MusicPipeline(vae: vae, diffusion: diffusion),
+            vae: vae,
+            conditioning: conditioning,
+            registry: registry
+        )
+
         let dir = outputManager.directory ?? FileManager.default.temporaryDirectory
         let store = HistoryStore(directory: dir)
         self.historyStore = store
         self.generationService = Self.makeGenerationService(
+            vaeActor: vae,
+            diffusionActor: diffusion,
+            conditioningActor: conditioning,
             historyStore: store,
             outputManager: outputManager,
             sfxModelManager: sfxModelManager,
@@ -157,6 +189,9 @@ final class AppServices: ObservableObject {
         let store = HistoryStore(directory: dir)
         self.historyStore = store
         self.generationService = Self.makeGenerationService(
+            vaeActor: vaeActor,
+            diffusionActor: diffusionActor,
+            conditioningActor: conditioningActor,
             historyStore: store,
             outputManager: outputManager,
             sfxModelManager: sfxModelManager,
@@ -165,26 +200,20 @@ final class AppServices: ObservableObject {
     }
 
     private static func makeGenerationService(
+        vaeActor: VAEActor,
+        diffusionActor: DiffusionActor,
+        conditioningActor: ConditioningActor,
         historyStore: HistoryStore,
         outputManager: OutputDirectoryManager,
         sfxModelManager: SFXModelManager,
         registry: ModelRegistry
     ) -> GenerationService {
-        let vae = VAEActor()
-        let dit = DiTActor(config: .v15Base)
-        let diffusion = DiffusionActor(dit: dit)
-        let pipeline = MusicPipeline(vae: vae, diffusion: diffusion)
-        let conditioning: ConditioningActor
-        do {
-            conditioning = try ConditioningActor.stub()
-        } catch {
-            fatalError("Failed to create stub ConditioningActor at launch: \(error)")
-        }
+        let pipeline = MusicPipeline(vae: vaeActor, diffusion: diffusionActor)
         let converter = WeightConverter()
 
         let aceStep = ACEStepGenerationService(
             pipeline: pipeline,
-            conditioning: conditioning,
+            conditioning: conditioningActor,
             weightConverter: converter,
             registry: registry
         )
