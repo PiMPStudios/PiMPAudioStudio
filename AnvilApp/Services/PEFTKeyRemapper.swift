@@ -160,17 +160,20 @@ enum PEFTKeyRemapper {
 
     /// Map a PEFT HuggingFace repo ID / model path to the AnvilApp local model ID.
     ///
-    /// ACE-Step v1.5 variants (turbo, base, SFT) share the same 24-layer DiT architecture,
-    /// so PEFT adapters trained on any of them are compatible. The turbo checkpoint is the
-    /// default and most commonly installed, so map all ACE-Step HF paths to it.
+    /// ACE-Step v1.5 variants (turbo, base, SFT, XL) share the same architecture family.
+    /// We detect the variant from keywords in the HF path so the adapter list can show
+    /// "Turbo", "SFT", "XL", or "Base" rather than collapsing everything to turbo.
     static func resolveBaseModelID(from hfPath: String?) -> String {
         guard let path = hfPath else { return "ace-step-dit-turbo" }
         let lower = path.lowercased()
-        if lower.contains("ace-step") || lower.contains("ace_step") {
-            return "ace-step-dit-turbo"
+        guard lower.contains("ace-step") || lower.contains("ace_step") else {
+            // Unknown model — preserve the HF path so the UI can show a mismatch warning
+            return path
         }
-        // Unknown model — preserve the HF path so the UI can show a mismatch warning
-        return path
+        if lower.contains("xl")    { return "ace-step-dit-xl" }
+        if lower.contains("turbo") { return "ace-step-dit-turbo" }
+        if lower.contains("sft")   { return "ace-step-dit-sft" }
+        return "ace-step-dit-base"
     }
 
     // MARK: - Private Helpers

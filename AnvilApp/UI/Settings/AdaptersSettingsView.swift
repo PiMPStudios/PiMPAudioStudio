@@ -162,6 +162,14 @@ private struct MyAdaptersListView: View {
                         .padding(.vertical, 2)
                         .background(.blue.opacity(0.1))
                         .clipShape(Capsule())
+                    if let variant = modelVariant(for: adapter.baseModelID) {
+                        Text(variant)
+                            .font(.caption2)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(.secondary.opacity(0.15))
+                            .clipShape(Capsule())
+                    }
                     Text("Rank \(adapter.config.rank)")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
@@ -178,6 +186,19 @@ private struct MyAdaptersListView: View {
                 .foregroundStyle(.tertiary)
         }
         .padding(.vertical, 4)
+    }
+
+    // MARK: - Helpers
+
+    /// Short display name for the model variant, or nil for unknown / non-ACE-Step IDs.
+    private func modelVariant(for baseModelID: String) -> String? {
+        switch baseModelID {
+        case "ace-step-dit-turbo": return "Turbo"
+        case "ace-step-dit-sft":   return "SFT"
+        case "ace-step-dit-base":  return "Base"
+        case "ace-step-dit-xl":    return "XL"
+        default:                   return nil
+        }
     }
 
     // MARK: - Actions
