@@ -129,6 +129,7 @@ struct AnvilAppApp: App {
                     .tabItem { Label("Adapters", systemImage: "puzzlepiece.extension") }
                     .environmentObject(services.trainingService)
                     .environmentObject(services.historyStore)
+                    .environmentObject(outputManager)
             }
             .frame(minWidth: 550, minHeight: 450)
         }

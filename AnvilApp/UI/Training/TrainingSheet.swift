@@ -15,9 +15,14 @@ struct TrainingSheet: View {
     @State private var selectedTargetLayers: Set<TargetLayer> = [.selfAttention, .crossAttention]
     @State private var warmupFraction: Float = 0.10
     @State private var gradientAccumulationSteps: Int = 1
-    @State private var importedFiles: [(url: URL, description: String)] = []
+    @State private var importedFiles: [(url: URL, description: String)]
     @State private var showingFileImporter: Bool = false
     @State private var showingStopConfirmation: Bool = false
+
+    init(selectedEntries: [HistoryEntry], initialImportedFiles: [(url: URL, description: String)] = []) {
+        self.selectedEntries = selectedEntries
+        self._importedFiles = State(initialValue: initialImportedFiles)
+    }
 
     private let rankOptions = [8, 16, 32]
     private let epochOptions = [5, 10, 20, 50]
