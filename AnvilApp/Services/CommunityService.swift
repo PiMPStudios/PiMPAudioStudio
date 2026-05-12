@@ -150,21 +150,22 @@ final class CommunityService: ObservableObject {
 
     /// Import an adapter from a HuggingFace repo URL.
     ///
-    /// Supports two repo formats:
-    /// - **PEFT repos**: contain `adapter_config.json` + `adapter_model.safetensors`.
-    ///   Keys are remapped from PEFT format to AnvilApp format at import time so the
-    ///   stored safetensors is always in native format. Metadata is synthesised from
-    ///   the PEFT config (rank, alpha, target modules).
-    /// - **Native Anvil repos**: contain `adapter.json` + `adapter.safetensors`.
-    ///   Metadata is loaded verbatim and weights are stored as-is.
+    /// Probes three formats in order, stopping at the first hit:
+    ///
+    /// 1. **PEFT with config** (`adapter_config.json` + `adapter_model.safetensors`) —
+    ///    rank/alpha/target_modules parsed from the config; keys remapped at import time.
+    /// 2. **Native Anvil** (`adapter.json` + `adapter.safetensors`) —
+    ///    metadata loaded verbatim, weights stored as-is.
+    /// 3. **Weights-only PEFT** (`adapter_model.safetensors` only, no config) —
+    ///    rank inferred from tensor shape, target modules inferred from key names.
+    ///    Handles community repos that ship only the weights file.
     ///
     /// - Parameter repoURL: The HuggingFace repo URL (e.g. `https://huggingface.co/user/repo`)
     /// - Returns: The installed `LoRAAdapter`.
     func importFromHuggingFace(repoURL: URL) async throws -> LoRAAdapter {
         let baseURL = repoURL.appendingPathComponent("resolve/main")
 
-        // ── PEFT probe ────────────────────────────────────────────────────────
-        // Try adapter_config.json first; a 200 response means this is a PEFT repo.
+        // ── 1. PEFT with config ───────────────────────────────────────────────
         let peftConfigURL = baseURL.appendingPathComponent("adapter_config.json")
         let (peftConfigData, peftConfigResp) = try await URLSession.shared.data(from: peftConfigURL)
         if let http = peftConfigResp as? HTTPURLResponse, http.statusCode == 200 {
@@ -175,39 +176,46 @@ final class CommunityService: ObservableObject {
             )
         }
 
-        // ── Native Anvil format ───────────────────────────────────────────────
+        // ── 2. Native Anvil format ────────────────────────────────────────────
         let metadataURL = baseURL.appendingPathComponent("adapter.json")
-        let weightsURL  = baseURL.appendingPathComponent("adapter.safetensors")
-
         let (metaData, metaResponse) = try await URLSession.shared.data(from: metadataURL)
-        guard let httpResponse = metaResponse as? HTTPURLResponse,
-              httpResponse.statusCode == 200 else {
-            throw CommunityError.missingFile("adapter_config.json or adapter.json", repoURL)
+        if let http = metaResponse as? HTTPURLResponse, http.statusCode == 200 {
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            var adapter = try decoder.decode(LoRAAdapter.self, from: metaData)
+
+            if AdapterRegistry.listAdapters().contains(where: { $0.remoteRepoURL == repoURL }) {
+                throw CommunityError.alreadyInstalled(adapter.name)
+            }
+
+            adapter.source = .huggingface
+            adapter.remoteRepoURL = repoURL
+
+            let weightsURL = baseURL.appendingPathComponent("adapter.safetensors")
+            let (weightsData, weightsResponse) = try await URLSession.shared.data(from: weightsURL)
+            guard let httpW = weightsResponse as? HTTPURLResponse, httpW.statusCode == 200 else {
+                throw CommunityError.missingFile("adapter.safetensors", repoURL)
+            }
+
+            let dir = AdapterRegistry.adapterDirectory(id: adapter.id)
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            try metaData.write(to: dir.appending(path: "adapter.json"))
+            try weightsData.write(to: dir.appending(path: "adapter.safetensors"))
+            return adapter
         }
 
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        var adapter = try decoder.decode(LoRAAdapter.self, from: metaData)
-
-        if AdapterRegistry.listAdapters().contains(where: { $0.remoteRepoURL == repoURL }) {
-            throw CommunityError.alreadyInstalled(adapter.name)
+        // ── 3. Weights-only PEFT (no adapter_config.json) ────────────────────
+        // Community repos often ship only adapter_model.safetensors. Infer rank
+        // and target modules from the tensor shapes and key names.
+        let peftWeightsURL = baseURL.appendingPathComponent("adapter_model.safetensors")
+        let (peftWeightsData, peftWeightsResp) = try await URLSession.shared.data(from: peftWeightsURL)
+        if let http = peftWeightsResp as? HTTPURLResponse, http.statusCode == 200 {
+            return try await importWeightsOnlyPEFT(repoURL: repoURL, weightsData: peftWeightsData)
         }
 
-        adapter.source = .huggingface
-        adapter.remoteRepoURL = repoURL
-
-        let (weightsData, weightsResponse) = try await URLSession.shared.data(from: weightsURL)
-        guard let httpWeightsResponse = weightsResponse as? HTTPURLResponse,
-              httpWeightsResponse.statusCode == 200 else {
-            throw CommunityError.missingFile("adapter.safetensors", repoURL)
-        }
-
-        let dir = AdapterRegistry.adapterDirectory(id: adapter.id)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        try metaData.write(to: dir.appending(path: "adapter.json"))
-        try weightsData.write(to: dir.appending(path: "adapter.safetensors"))
-
-        return adapter
+        throw CommunityError.missingFile(
+            "adapter_config.json, adapter.json, or adapter_model.safetensors", repoURL
+        )
     }
 
     // MARK: - PEFT Import
@@ -286,6 +294,73 @@ final class CommunityService: ObservableObject {
         guard !remapped.isEmpty else {
             throw CommunityError.noMappableWeights(repoURL)
         }
+
+        let remappedWeights = remapped.map { ($0.key, $0.value) }
+        try AdapterRegistry.save(adapter: adapter, weights: remappedWeights)
+
+        return adapter
+    }
+
+    /// Import a weights-only PEFT repo (no `adapter_config.json`).
+    ///
+    /// Rank is inferred from the `lora_A` tensor shape; target modules from key names.
+    /// This handles community repos that publish only `adapter_model.safetensors`.
+    private func importWeightsOnlyPEFT(
+        repoURL: URL,
+        weightsData: Data
+    ) async throws -> LoRAAdapter {
+        let repoSlug = repoURL.lastPathComponent
+        let adapterID = repoSlug
+            .lowercased()
+            .replacingOccurrences(of: "[^a-z0-9\\-]", with: "-", options: .regularExpression)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+
+        if AdapterRegistry.listAdapters().contains(where: { $0.remoteRepoURL == repoURL }) {
+            throw CommunityError.alreadyInstalled(repoSlug)
+        }
+
+        // Load weights from a temp file so MLX can parse the safetensors format
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("safetensors")
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        try weightsData.write(to: tmp)
+
+        let rawArrays = try MLX.loadArrays(url: tmp)
+
+        guard PEFTKeyRemapper.isPEFT(Array(rawArrays.keys)) else {
+            throw CommunityError.noMappableWeights(repoURL)
+        }
+
+        guard let inferred = PEFTKeyRemapper.inferConfig(from: rawArrays) else {
+            throw CommunityError.noMappableWeights(repoURL)
+        }
+
+        let remapped = PEFTKeyRemapper.remap(rawArrays)
+        guard !remapped.isEmpty else {
+            throw CommunityError.noMappableWeights(repoURL)
+        }
+
+        let targetLayers = PEFTKeyRemapper.inferTargetLayers(from: inferred.targetModules)
+        let config = LoRAConfig(
+            rank: inferred.rank,
+            alpha: inferred.alpha,
+            dropout: 0.0,
+            targetLayers: targetLayers
+        )
+
+        let adapter = LoRAAdapter(
+            id: adapterID,
+            name: repoSlug,
+            config: config,
+            baseModelID: PEFTKeyRemapper.resolveBaseModelID(from: nil),
+            baseModelCategory: .aceStepDiT,
+            createdAt: Date(),
+            sampleCount: 0,
+            finalLoss: nil,
+            source: .huggingface,
+            remoteRepoURL: repoURL
+        )
 
         let remappedWeights = remapped.map { ($0.key, $0.value) }
         try AdapterRegistry.save(adapter: adapter, weights: remappedWeights)

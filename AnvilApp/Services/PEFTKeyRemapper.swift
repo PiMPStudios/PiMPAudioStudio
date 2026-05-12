@@ -85,6 +85,48 @@ enum PEFTKeyRemapper {
         return layerPrefix + mappedPath + loraSuffix
     }
 
+    // MARK: - Config Inference (weights-only repos)
+
+    /// Synthesised configuration inferred from weight keys and tensor shapes.
+    /// Used when the repo ships `adapter_model.safetensors` with no `adapter_config.json`.
+    struct InferredConfig {
+        let rank: Int
+        let alpha: Float
+        let targetModules: [String]
+    }
+
+    /// Infer rank, alpha, and target_modules from raw PEFT weight keys and shapes.
+    ///
+    /// PEFT stores `lora_A` with shape `[rank, in_features]`, so `shape[0]` is rank.
+    /// Alpha defaults to rank (the PEFT library default when not specified).
+    /// Target modules are extracted by scanning keys for known projection names.
+    ///
+    /// Returns `nil` if no `lora_A` weights are found (not a LoRA checkpoint).
+    static func inferConfig(from dict: [String: MLXArray]) -> InferredConfig? {
+        // Find any lora_A tensor — shape is [rank, in_features]
+        guard let (_, loraA) = dict.first(where: { $0.key.contains("lora_A") }),
+              loraA.shape.count >= 2 else { return nil }
+
+        // rank is always the smaller dimension (rank << in_features in practice)
+        let rank = min(loraA.shape[0], loraA.shape[1])
+
+        let targetModules = extractTargetModules(from: Array(dict.keys))
+        return InferredConfig(rank: rank, alpha: Float(rank), targetModules: targetModules)
+    }
+
+    /// Scan raw PEFT key strings for known projection names (e.g. `q_proj`, `v_proj`).
+    private static func extractTargetModules(from keys: [String]) -> [String] {
+        let known = ["q_proj", "k_proj", "v_proj", "o_proj", "out_proj",
+                     "gate_proj", "up_proj", "down_proj"]
+        var found = Set<String>()
+        for key in keys {
+            for name in known where key.contains(".\(name).") {
+                found.insert(name)
+            }
+        }
+        return found.sorted()
+    }
+
     // MARK: - LoRAConfig Inference
 
     /// Infer the closest `Set<TargetLayer>` from PEFT `target_modules`.
