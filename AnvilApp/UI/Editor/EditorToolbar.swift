@@ -4,6 +4,7 @@ import AnvilCore
 struct EditorToolbar: View {
     @ObservedObject var state: EditorState
     let onOpen: () -> Void
+    let onExport: () -> Void
     let onUndo: () -> Void
     let onRedo: () -> Void
 
@@ -14,6 +15,14 @@ struct EditorToolbar: View {
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
+
+            if state.isLoaded {
+                Button(action: onExport) {
+                    Label("Export", systemImage: "square.and.arrow.down")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
 
             if state.isLoaded {
                 Divider().frame(height: 20)

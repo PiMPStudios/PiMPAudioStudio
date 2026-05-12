@@ -47,6 +47,12 @@ class EditorState: ObservableObject {
 
     private let dspProcessor = DSPProcessor()
 
+    // DSP undo/redo — stores raw AudioBuffer snapshots.
+    // AI inpainting also pushes here (via saveUndoSnapshot) so both paths
+    // share a single undo button.
+    private var undoStack: [AudioBuffer] = []
+    private var redoStack: [AudioBuffer] = []
+
     var hasSelection: Bool {
         selectionEnd > selectionStart
     }
@@ -111,10 +117,15 @@ class EditorState: ObservableObject {
             ? .selection(start: selectionStart, end: selectionEnd)
             : .wholeTrack
 
-        let operation = dspProcessor.makeDescription(effect: effect, target: target, parameters: parameters)
-
         do {
             let result = try dspProcessor.apply(effect: effect, to: buffer, target: target, parameters: parameters)
+
+            // Commit: save pre-op buffer so it can be restored by undo.
+            undoStack.append(buffer)
+            redoStack.removeAll()
+            canUndo = true
+            canRedo = false
+
             audioBuffer = result
             duration = result.duration
             waveformPeaks = computePeaks(from: result)
@@ -124,8 +135,52 @@ class EditorState: ObservableObject {
                 selectionEnd = 0
             }
         } catch {
-            // Effect failed — buffer unchanged
+            // Effect failed — buffer unchanged, undo stack not modified.
         }
+    }
+
+    // MARK: - Undo / Redo
+
+    /// Push the current buffer onto the undo stack without applying any effect.
+    /// Call this before starting an AI inpaint so the result is also undoable.
+    func saveUndoSnapshot() {
+        guard let buffer = audioBuffer else { return }
+        undoStack.append(buffer)
+        redoStack.removeAll()
+        canUndo = true
+        canRedo = false
+    }
+
+    func undoDSP() {
+        guard let previous = undoStack.popLast() else { return }
+        if let current = audioBuffer {
+            redoStack.append(current)
+        }
+        audioBuffer = previous
+        duration = previous.duration
+        waveformPeaks = computePeaks(from: previous)
+        canUndo = !undoStack.isEmpty
+        canRedo = !redoStack.isEmpty
+    }
+
+    func redoDSP() {
+        guard let next = redoStack.popLast() else { return }
+        if let current = audioBuffer {
+            undoStack.append(current)
+        }
+        audioBuffer = next
+        duration = next.duration
+        waveformPeaks = computePeaks(from: next)
+        canUndo = !undoStack.isEmpty
+        canRedo = !redoStack.isEmpty
+    }
+
+    /// Wipe undo/redo history — call when a new file is loaded.
+    func resetUndoHistory() {
+        undoStack.removeAll()
+        redoStack.removeAll()
+        canUndo = false
+        canRedo = false
     }
 
     func computePeaks(from buffer: AudioBuffer) -> [Float] {

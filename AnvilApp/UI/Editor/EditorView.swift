@@ -4,6 +4,7 @@ import AnvilCore
 
 struct EditorView: View {
     @StateObject private var state = EditorState()
+    @EnvironmentObject private var editorService: EditorService
 
     var preloadedAudioURL: URL?
     var preloadedPrompt: String?
@@ -13,6 +14,7 @@ struct EditorView: View {
             EditorToolbar(
                 state: state,
                 onOpen: openFile,
+                onExport: exportFile,
                 onUndo: performUndo,
                 onRedo: performRedo
             )
@@ -184,18 +186,82 @@ struct EditorView: View {
             state.isLoaded = true
             state.selectionStart = 0
             state.selectionEnd = 0
+            state.resetUndoHistory()
+
+            // VAE-encode into the coordinator so inpainting has a starting latent.
+            // Runs off the main thread — fires and forgets from the UI's perspective.
+            Task {
+                guard let coordinator = editorService.coordinator else { return }
+                let mlxArray = AudioBufferConverter.toMLXArray(buffer)
+                _ = try? await coordinator.loadAudio(
+                    samples: mlxArray,
+                    sampleRate: buffer.sampleRate,
+                    precision: .float32
+                )
+            }
         } catch {
             state.isLoaded = false
         }
     }
 
     private func executeEdit() {
+        guard let coordinator = editorService.coordinator else {
+            state.progress = .failed("Editor pipeline not ready")
+            return
+        }
+        guard !state.isProcessing else { return }
+
+        let request = state.buildRequest()
+        state.saveUndoSnapshot()   // save pre-inpaint buffer so AI edits are undoable
         state.isProcessing = true
         state.progress = .buildingMask
+
+        Task { @MainActor in
+            for await progress in await coordinator.edit(request: request) {
+                state.progress = progress
+                switch progress {
+                case .complete, .failed:
+                    state.isProcessing = false
+                default:
+                    break
+                }
+            }
+            // Pull the regenerated audio back from the coordinator and update
+            // the editor buffer so DSP tools and the waveform view stay in sync.
+            if let updatedAudio = await coordinator.getCurrentAudio() {
+                let newBuffer = AudioBufferConverter.fromMLXArray(
+                    updatedAudio,
+                    sampleRate: state.sampleRate
+                )
+                state.audioBuffer = newBuffer
+                state.duration = newBuffer.duration
+                state.waveformPeaks = state.computePeaks(from: newBuffer)
+            }
+        }
     }
 
-    private func performUndo() {}
-    private func performRedo() {}
+    private func performUndo() { state.undoDSP() }
+    private func performRedo() { state.redoDSP() }
+
+    private func exportFile() {
+        guard let buffer = state.audioBuffer else { return }
+
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.wav]
+        let baseName = (state.fileName as NSString).deletingPathExtension
+        panel.nameFieldStringValue = baseName.isEmpty ? "edited" : "\(baseName)-edited"
+
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            do {
+                let pcmBuffer = try AudioBufferConverter.toPCMBuffer(buffer)
+                let outputFile = try AVAudioFile(forWriting: url, settings: pcmBuffer.format.settings)
+                try outputFile.write(from: pcmBuffer)
+            } catch {
+                // Export failed silently — could surface an alert in a future pass
+            }
+        }
+    }
 
     private func formatTime(_ time: TimeInterval) -> String {
         let minutes = Int(time) / 60
