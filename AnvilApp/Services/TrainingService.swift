@@ -189,6 +189,17 @@ final class TrainingService: ObservableObject {
                 )
 
                 try AdapterRegistry.save(adapter: adapter, weights: result.weights)
+
+                // Persist the training manifest so the session can be reloaded
+                // later for retraining with the same (or expanded) dataset.
+                let manifest = TrainingManifest(
+                    historyEntryIDs: entries.map(\.id),
+                    importedFiles: importedFiles.map {
+                        TrainingManifest.ImportedFileRef(url: $0.url, description: $0.description)
+                    }
+                )
+                AdapterRegistry.saveManifest(manifest, adapterID: adapterID)
+
                 self.state = .complete(adapter)
 
             } catch is CancellationError {

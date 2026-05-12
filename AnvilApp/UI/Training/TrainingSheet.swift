@@ -19,9 +19,22 @@ struct TrainingSheet: View {
     @State private var showingFileImporter: Bool = false
     @State private var showingStopConfirmation: Bool = false
 
-    init(selectedEntries: [HistoryEntry], initialImportedFiles: [(url: URL, description: String)] = []) {
+    init(
+        selectedEntries: [HistoryEntry],
+        initialImportedFiles: [(url: URL, description: String)] = [],
+        initialName: String = "",
+        initialConfig: LoRAConfig? = nil
+    ) {
         self.selectedEntries = selectedEntries
         self._importedFiles = State(initialValue: initialImportedFiles)
+        self._adapterName = State(initialValue: initialName)
+        if let config = initialConfig {
+            self._selectedRank = State(initialValue: config.rank)
+            self._selectedEpochs = State(initialValue: config.maxEpochs)
+            self._selectedTargetLayers = State(initialValue: config.targetLayers)
+            self._warmupFraction = State(initialValue: config.warmupFraction)
+            self._gradientAccumulationSteps = State(initialValue: config.gradientAccumulationSteps)
+        }
     }
 
     private let rankOptions = [8, 16, 32]

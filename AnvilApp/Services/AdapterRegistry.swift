@@ -184,6 +184,25 @@ struct AdapterRegistry {
         try fm.copyItem(at: metaSource, to: metaDest)
     }
 
+    // MARK: - Training Manifest
+
+    /// Persists a training manifest so the session can be reloaded for retraining.
+    /// Silently ignored on failure — the adapter itself is already saved.
+    static func saveManifest(_ manifest: TrainingManifest, adapterID: String) {
+        let url = adapterDirectory(id: adapterID).appending(path: "training_manifest.json")
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        guard let data = try? encoder.encode(manifest) else { return }
+        try? data.write(to: url)
+    }
+
+    /// Returns the saved training manifest for an adapter, or nil if none exists.
+    static func loadManifest(adapterID: String) -> TrainingManifest? {
+        let url = adapterDirectory(id: adapterID).appending(path: "training_manifest.json")
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(TrainingManifest.self, from: data)
+    }
+
     /// Merge two adapters with weighted interpolation: alpha * A + (1-alpha) * B.
     ///
     /// Both adapters must have the same rank. Creates a new adapter.

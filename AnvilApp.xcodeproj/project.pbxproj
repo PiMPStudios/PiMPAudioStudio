@@ -49,6 +49,7 @@
 		CC0001010101010101010101 /* SFXModelManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC0002010101010101010101 /* SFXModelManager.swift */; };
 		DD0001010101010101010101 /* AdapterRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD0002010101010101010101 /* AdapterRegistry.swift */; };
 		EE0001010101010101010101 /* TrainingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE0002010101010101010101 /* TrainingService.swift */; };
+		TM0001010101010101010101 /* TrainingManifest.swift in Sources */ = {isa = PBXBuildFile; fileRef = TM0002010101010101010101 /* TrainingManifest.swift */; };
 		LL0001010101010101010101 /* AdapterStackManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = LL0002010101010101010101 /* AdapterStackManager.swift */; };
 		FF0001010101010101010101 /* TrainingSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF0002010101010101010101 /* TrainingSheet.swift */; };
 		BB00010E0101010101010101 /* ModelsSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00020E0101010101010101 /* ModelsSettingsView.swift */; };
@@ -146,6 +147,7 @@
 		CC0002010101010101010101 /* SFXModelManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SFXModelManager.swift; sourceTree = "<group>"; };
 		DD0002010101010101010101 /* AdapterRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdapterRegistry.swift; sourceTree = "<group>"; };
 		EE0002010101010101010101 /* TrainingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingService.swift; sourceTree = "<group>"; };
+		TM0002010101010101010101 /* TrainingManifest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingManifest.swift; sourceTree = "<group>"; };
 		LL0002010101010101010101 /* AdapterStackManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdapterStackManager.swift; sourceTree = "<group>"; };
 		FF0002010101010101010101 /* TrainingSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingSheet.swift; sourceTree = "<group>"; };
 		BB00020E0101010101010101 /* ModelsSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsSettingsView.swift; sourceTree = "<group>"; };
@@ -258,6 +260,7 @@
 				BB0002040101010101010101 /* PromptEnhancer.swift */,
 				CC0002010101010101010101 /* SFXModelManager.swift */,
 				EE0002010101010101010101 /* TrainingService.swift */,
+				TM0002010101010101010101 /* TrainingManifest.swift */,
 				KK0002010101010101010101 /* CommunityService.swift */,
 				PP0002010101010101010101 /* PEFTKeyRemapper.swift */,
 				QQ0002010101010101010101 /* EditorService.swift */,
@@ -521,6 +524,7 @@
 				CC0001010101010101010101 /* SFXModelManager.swift in Sources */,
 				DD0001010101010101010101 /* AdapterRegistry.swift in Sources */,
 				EE0001010101010101010101 /* TrainingService.swift in Sources */,
+				TM0001010101010101010101 /* TrainingManifest.swift in Sources */,
 				LL0001010101010101010101 /* AdapterStackManager.swift in Sources */,
 				FF0001010101010101010101 /* TrainingSheet.swift in Sources */,
 				BB00010E0101010101010101 /* ModelsSettingsView.swift in Sources */,

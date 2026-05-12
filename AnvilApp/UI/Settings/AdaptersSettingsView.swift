@@ -37,15 +37,45 @@ struct AdaptersSettingsView: View {
 
 // MARK: - My Adapters (extracted from original)
 
-/// Wraps the imported-files array so it can drive `.sheet(item:)`.
-/// A new UUID each time guarantees SwiftUI treats it as a fresh presentation.
+/// Drives `.sheet(item:)` for any training sheet presentation.
+/// Carrying all data as value types ensures the sheet closure sees the
+/// correct dataset regardless of when SwiftUI evaluates it.
 private struct TrainingPresentation: Identifiable {
     let id = UUID()
+    /// History entries resolved from the manifest (may be empty for new sessions).
+    let selectedEntries: [HistoryEntry]
+    /// Imported file entries — from manifest, YouTube, or manual selection.
     let files: [(url: URL, description: String)]
+    /// Pre-fill the adapter name field (empty = blank for new sessions).
+    let initialName: String
+    /// Pre-fill training config (nil = use defaults for new sessions).
+    let initialConfig: LoRAConfig?
+
+    /// Blank new training session.
+    init(files: [(url: URL, description: String)] = []) {
+        self.selectedEntries = []
+        self.files = files
+        self.initialName = ""
+        self.initialConfig = nil
+    }
+
+    /// Pre-populated retrain session.
+    init(
+        selectedEntries: [HistoryEntry],
+        files: [(url: URL, description: String)],
+        initialName: String,
+        initialConfig: LoRAConfig?
+    ) {
+        self.selectedEntries = selectedEntries
+        self.files = files
+        self.initialName = initialName
+        self.initialConfig = initialConfig
+    }
 }
 
 private struct MyAdaptersListView: View {
     @EnvironmentObject private var outputManager: OutputDirectoryManager
+    @EnvironmentObject private var historyStore: HistoryStore
 
     @State private var adapters: [LoRAAdapter] = []
     @State private var showingMergeSheet = false
@@ -64,7 +94,7 @@ private struct MyAdaptersListView: View {
                 Spacer()
                 Button("From YouTube…") { showingYouTubeSheet = true }
                     .buttonStyle(.bordered)
-                Button("Train from Files…") { trainingPresentation = TrainingPresentation(files: []) }
+                Button("Train from Files…") { trainingPresentation = TrainingPresentation() }
                     .buttonStyle(.bordered)
                 Button("Merge Two") {
                     showingMergeSheet = true
@@ -102,7 +132,12 @@ private struct MyAdaptersListView: View {
                 .frame(minWidth: 400, minHeight: 300)
         }
         .sheet(item: $trainingPresentation, onDismiss: { refreshAdapters() }) { presentation in
-            TrainingSheet(selectedEntries: [], initialImportedFiles: presentation.files)
+            TrainingSheet(
+                selectedEntries: presentation.selectedEntries,
+                initialImportedFiles: presentation.files,
+                initialName: presentation.initialName,
+                initialConfig: presentation.initialConfig
+            )
         }
         .sheet(isPresented: $showingYouTubeSheet) {
             YouTubeImportSheet { files in
@@ -148,6 +183,8 @@ private struct MyAdaptersListView: View {
             ForEach(adapters) { adapter in
                 adapterRow(adapter)
                     .contextMenu {
+                        Button("Retrain…") { beginRetrain(adapter) }
+                        Divider()
                         Button("Rename...") {
                             renameText = adapter.name
                             renamingAdapter = adapter
@@ -232,6 +269,45 @@ private struct MyAdaptersListView: View {
 
     private func refreshAdapters() {
         adapters = AdapterRegistry.listAdapters()
+    }
+
+    /// Opens the training sheet pre-populated from the adapter's saved manifest.
+    ///
+    /// - History entries are resolved from the live `historyStore`; any that were
+    ///   deleted since training are silently skipped.
+    /// - Imported file references whose paths no longer exist on disk are skipped.
+    /// - If no manifest was saved (adapter trained before this feature), the sheet
+    ///   opens with just the name and config pre-filled; the dataset will be empty.
+    private func beginRetrain(_ adapter: LoRAAdapter) {
+        let manifest = AdapterRegistry.loadManifest(adapterID: adapter.id)
+
+        // Resolve history entries still present in the store
+        let resolvedEntries: [HistoryEntry]
+        if let ids = manifest?.historyEntryIDs {
+            let idSet = Set(ids)
+            resolvedEntries = historyStore.entries.filter { idSet.contains($0.id) }
+        } else {
+            resolvedEntries = []
+        }
+
+        // Resolve imported file references still accessible on disk
+        let resolvedFiles: [(url: URL, description: String)]
+        if let refs = manifest?.importedFiles {
+            resolvedFiles = refs.compactMap { ref in
+                FileManager.default.fileExists(atPath: ref.url.path(percentEncoded: false))
+                    ? (url: ref.url, description: ref.description)
+                    : nil
+            }
+        } else {
+            resolvedFiles = []
+        }
+
+        trainingPresentation = TrainingPresentation(
+            selectedEntries: resolvedEntries,
+            files: resolvedFiles,
+            initialName: adapter.name,
+            initialConfig: adapter.config
+        )
     }
 
     private func performRename() {
