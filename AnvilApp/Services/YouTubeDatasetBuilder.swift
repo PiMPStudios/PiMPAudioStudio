@@ -77,27 +77,28 @@ final class YouTubeDatasetBuilder: ObservableObject {
 
     // MARK: - yt-dlp Discovery
 
-    static func locateYtDlp() -> URL? {
-        let paths = [
-            "/opt/homebrew/bin/yt-dlp",
-            "/usr/local/bin/yt-dlp",
-            "/opt/local/bin/yt-dlp",
-            "/usr/bin/yt-dlp",
-        ]
-        // isExecutableFile(atPath:) always returns false in a sandboxed app for
-        // paths outside the container even with Full Disk Access, because the
-        // execute-permission check is a separate sandbox gate. fileExists is
-        // sufficient — Homebrew always installs with correct execute bits.
-        return paths
-            .first { FileManager.default.fileExists(atPath: $0) }
-            .map { URL(fileURLWithPath: $0) }
-    }
+    /// /usr/bin/env is always reachable from a sandboxed app.
+    /// We route every yt-dlp call through it so we never need to touch
+    /// /opt/homebrew directly — the sandbox blocks fileExists and direct
+    /// execution of arbitrary Homebrew paths even with Full Disk Access.
+    private static let envURL = URL(fileURLWithPath: "/usr/bin/env")
 
-    /// Returns the installed yt-dlp version string, or nil if not found.
+    /// PATH passed to every subprocess.  Sandboxed processes inherit a minimal
+    /// environment that does not include /opt/homebrew/bin, so we set it explicitly.
+    private static let ytDlpEnvironment: [String: String] = [
+        "PATH": "/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin",
+        "HOME": NSHomeDirectory(),
+    ]
+
+    /// Returns the installed yt-dlp version string, or nil if not reachable.
     static func ytDlpVersion() -> String? {
-        guard let ytDlp = locateYtDlp() else { return nil }
-        return try? runProcessSync(executable: ytDlp, arguments: ["--version"])
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let result = try? runProcessSync(
+            arguments: ["yt-dlp", "--version"],
+            environment: ytDlpEnvironment
+        ).trimmingCharacters(in: .whitespacesAndNewlines)
+        // Sanity check: a real version string is non-empty and starts with a digit
+        guard let v = result, !v.isEmpty, v.first?.isNumber == true else { return nil }
+        return v
     }
 
     // MARK: - Core Pipeline
@@ -108,12 +109,12 @@ final class YouTubeDatasetBuilder: ObservableObject {
         outputBase: URL,
         onPhase: @escaping (YouTubeImportPhase) async -> Void
     ) async throws -> YouTubeDatasetResult {
-        guard let ytDlp = locateYtDlp() else { throw YouTubeDatasetError.ytDlpNotFound }
+        guard ytDlpVersion() != nil else { throw YouTubeDatasetError.ytDlpNotFound }
 
         let maxVideos = max(1,
             Int(ceil(Double(config.maxTotalClips) / Double(max(1, config.clipsPerTrack)))) + 1
         )
-        let videos = try await fetchPlaylist(ytDlp: ytDlp, url: channelURL, limit: maxVideos)
+        let videos = try await fetchPlaylist(url: channelURL, limit: maxVideos)
         guard !videos.isEmpty else { throw YouTubeDatasetError.emptyPlaylist }
 
         // Create output dirs (app has write access here via security-scoped bookmark)
@@ -140,7 +141,7 @@ final class YouTubeDatasetBuilder: ObservableObject {
             try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
 
             do {
-                let audioURL = try await downloadAudio(ytDlp: ytDlp, video: video, to: tempDir)
+                let audioURL = try await downloadAudio(video: video, to: tempDir)
 
                 try Task.checkCancellation()
                 await onPhase(.chunking(index: idx + 1, total: videoCount))
@@ -173,10 +174,10 @@ final class YouTubeDatasetBuilder: ObservableObject {
 
     // MARK: - Playlist Fetch
 
-    static func fetchPlaylist(ytDlp: URL, url: URL, limit: Int) async throws -> [YouTubeVideoInfo] {
+    static func fetchPlaylist(url: URL, limit: Int) async throws -> [YouTubeVideoInfo] {
         let raw = try await runProcess(
-            executable: ytDlp,
             arguments: [
+                "yt-dlp",
                 "--flat-playlist",
                 "--dump-json",
                 "--no-warnings",
@@ -201,10 +202,10 @@ final class YouTubeDatasetBuilder: ObservableObject {
 
     // MARK: - Audio Download
 
-    static func downloadAudio(ytDlp: URL, video: YouTubeVideoInfo, to outputDir: URL) async throws -> URL {
+    static func downloadAudio(video: YouTubeVideoInfo, to outputDir: URL) async throws -> URL {
         _ = try await runProcess(
-            executable: ytDlp,
             arguments: [
+                "yt-dlp",
                 "-x",
                 "--audio-quality", "0",
                 "--no-cache-dir",
@@ -304,13 +305,16 @@ final class YouTubeDatasetBuilder: ObservableObject {
 
     // MARK: - Process Helpers
 
-    static func runProcess(executable: URL, arguments: [String]) async throws -> String {
+    /// Run a command via /usr/bin/env with the Homebrew PATH injected.
+    /// `arguments` should start with the command name (e.g. "yt-dlp").
+    static func runProcess(arguments: [String]) async throws -> String {
         try await withCheckedThrowingContinuation { continuation in
             let process = Process()
             let stdout = Pipe()
             let stderr = Pipe()
-            process.executableURL = executable
+            process.executableURL = envURL
             process.arguments = arguments
+            process.environment = ytDlpEnvironment
             process.standardOutput = stdout
             process.standardError = stderr
             process.terminationHandler = { p in
@@ -327,11 +331,14 @@ final class YouTubeDatasetBuilder: ObservableObject {
         }
     }
 
-    static func runProcessSync(executable: URL, arguments: [String]) throws -> String {
+    /// Synchronous variant — used only for the version check on the UI thread.
+    static func runProcessSync(arguments: [String],
+                               environment: [String: String]) throws -> String {
         let process = Process()
         let pipe = Pipe()
-        process.executableURL = executable
+        process.executableURL = envURL
         process.arguments = arguments
+        process.environment = environment
         process.standardOutput = pipe
         process.standardError = Pipe()
         try process.run()
