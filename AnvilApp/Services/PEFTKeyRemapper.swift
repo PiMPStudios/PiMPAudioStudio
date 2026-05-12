@@ -16,9 +16,12 @@ enum PEFTKeyRemapper {
 
     // MARK: - Detection
 
-    /// Returns `true` if the weight dictionary looks like a PEFT checkpoint.
+    /// Returns `true` if the weight dictionary contains LoRA A/B matrices in either
+    /// PEFT format (`base_model.model.` prefix) or Diffusers format (direct path,
+    /// e.g. `transformer.layers.0.self_attn.q_proj.lora_A.weight`).
     static func isPEFT(_ keys: [String]) -> Bool {
-        keys.contains { $0.hasPrefix("base_model.model.") }
+        keys.contains { $0.hasPrefix("base_model.model.") } ||
+        keys.contains { $0.contains(".lora_A.") || $0.contains(".lora_B.") }
     }
 
     // MARK: - Weight Remapping
