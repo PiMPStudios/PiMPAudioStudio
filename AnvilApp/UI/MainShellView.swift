@@ -7,6 +7,7 @@ struct MainShellView: View {
     @EnvironmentObject private var sfxModelManager: SFXModelManager
     @EnvironmentObject private var llmManager: LLMModelManager
     @EnvironmentObject private var generationParameters: GenerationParameters
+    @EnvironmentObject private var presetStore: PresetStore
     @State private var selectedSidebarItem: SidebarItem = .generate
     @State private var editAudioURL: URL?
     @State private var editOriginalPrompt: String?
@@ -23,6 +24,10 @@ struct MainShellView: View {
                 inspector
             }
             .navigationSplitViewStyle(.balanced)
+            .onReceive(presetStore.$presetToLoad) { preset in
+                guard preset != nil else { return }
+                selectedSidebarItem = .generate
+            }
             .onReceive(NotificationCenter.default.publisher(for: .navigateToEditor)) { notification in
                 if let url = notification.userInfo?["url"] as? URL {
                     editAudioURL = url
@@ -94,8 +99,7 @@ struct MainShellView: View {
         case .history:
             HistoryListView()
         case .presets:
-            Text("Presets coming in Phase 4b")
-                .foregroundStyle(.secondary)
+            PresetsView()
         }
     }
 

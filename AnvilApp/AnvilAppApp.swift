@@ -15,6 +15,7 @@ struct AnvilAppApp: App {
     @StateObject private var sfxModelManager: SFXModelManager
     @StateObject private var adapterStackManager = AdapterStackManager()
     @StateObject private var generationParameters = GenerationParameters()
+    @StateObject private var presetStore = PresetStore()
 
     init() {
         let apiKeys = APIKeyStore()
@@ -61,6 +62,7 @@ struct AnvilAppApp: App {
                 .environmentObject(sfxModelManager)
                 .environmentObject(adapterStackManager)
                 .environmentObject(generationParameters)
+                .environmentObject(presetStore)
                 .environmentObject(services.editorService)
                 .environmentObject(services.trainingService)
                 .task(id: outputManager.directory) {

@@ -11,7 +11,10 @@ struct GenerateView: View {
     @EnvironmentObject private var sfxModelManager: SFXModelManager
     @EnvironmentObject private var stackManager: AdapterStackManager
     @EnvironmentObject private var generationParameters: GenerationParameters
+    @EnvironmentObject private var presetStore: PresetStore
 
+    @State private var showingSavePreset: Bool = false
+    @State private var presetName: String = ""
     @State private var promptText: String = ""
     @State private var lyricsText: String = ""
     @State private var method: InferMethod = .ode
@@ -47,6 +50,18 @@ struct GenerateView: View {
         }
         .onChange(of: promptText) { _, newValue in
             intentRouter.classify(prompt: newValue)
+        }
+        .onReceive(presetStore.$presetToLoad) { preset in
+            guard let preset else { return }
+            applyPreset(preset)
+            presetStore.presetToLoad = nil
+        }
+        .alert("Save as Preset", isPresented: $showingSavePreset) {
+            TextField("Preset name", text: $presetName)
+            Button("Cancel", role: .cancel) {}
+            Button("Save") { saveCurrentAsPreset() }
+        } message: {
+            Text("Enter a name for this preset.")
         }
     }
 
@@ -331,6 +346,16 @@ struct GenerateView: View {
 
             Spacer()
 
+            // Save as Preset
+            Button {
+                presetName = ""
+                showingSavePreset = true
+            } label: {
+                Image(systemName: "square.and.arrow.down")
+            }
+            .buttonStyle(.bordered)
+            .help("Save current settings as a preset")
+
             if let eta = estimatedTime {
                 Text("~\(Int(eta))s remaining")
                     .font(.caption)
@@ -508,5 +533,56 @@ struct GenerateView: View {
             return eta
         }
         return nil
+    }
+
+    // MARK: - Presets
+
+    private func saveCurrentAsPreset() {
+        let name = presetName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+
+        let resolvedModeForPreset: GenerationMode? = {
+            switch modeSelection {
+            case .auto: return nil
+            case .manual(let mode): return mode
+            }
+        }()
+
+        let preset = GenerationPreset(
+            name: name,
+            prompt: promptText,
+            lyrics: lyricsText,
+            mode: resolvedModeForPreset,
+            duration: generationParameters.duration,
+            seedText: generationParameters.seedText,
+            guidanceScale: generationParameters.guidanceScale,
+            pipelineOverride: generationParameters.pipelineOverride,
+            method: method,
+            precision: precision,
+            stepsOverride: stepsOverrideText,
+            shiftOverride: shiftOverride,
+            adapterID: selectedAdapterID,
+            coverStrength: coverStrength
+        )
+        presetStore.save(preset)
+    }
+
+    private func applyPreset(_ preset: GenerationPreset) {
+        promptText = preset.prompt
+        lyricsText = preset.lyrics
+        modeSelection = preset.mode.map { .manual($0) } ?? .auto
+        method = preset.method
+        precision = preset.precision
+        stepsOverrideText = preset.stepsOverride
+        shiftOverride = preset.shiftOverride
+        selectedAdapterID = preset.adapterID
+        persistedAdapterID = preset.adapterID ?? ""
+        coverStrength = preset.coverStrength
+
+        // Shared parameters
+        generationParameters.duration = preset.duration
+        generationParameters.seedText = preset.seedText
+        generationParameters.guidanceScale = preset.guidanceScale
+        generationParameters.pipelineOverride = preset.pipelineOverride
     }
 }
