@@ -43,8 +43,10 @@ enum PEFTKeyRemapper {
     static func remapKey(_ key: String) -> String? {
         var k = key
 
-        // 1. Strip `base_model.model.` PEFT prefix
-        if k.hasPrefix("base_model.model.") {
+        // 1. Strip `base_model.model.` PEFT prefix.
+        // Some training scripts nest the wrapper multiple times
+        // (e.g. `base_model.model.base_model.model.…`) — loop until clean.
+        while k.hasPrefix("base_model.model.") {
             k = String(k.dropFirst("base_model.model.".count))
         }
 
