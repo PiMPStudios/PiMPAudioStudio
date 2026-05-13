@@ -118,3 +118,69 @@ import Foundation
     I'm searching for a light, a guiding tone
     """)
 }
+
+@Test func longLyricPlanRequiresExplicitSongSections() {
+    let plan = LyricWritingPlan.make(duration: 200)
+
+    #expect(plan.sectionPlan.contains("[Verse 1]"))
+    #expect(plan.sectionPlan.contains("[Chorus]"))
+    #expect(plan.sectionPlan.contains("[Verse 2]"))
+    #expect(plan.sectionPlan.contains("[Bridge]"))
+    #expect(plan.systemPrompt.contains("Do not collapse the whole song into one [Verse]"))
+}
+
+@Test func lyricSanitizerRestructuresOversizedSingleVerseForLongSongs() {
+    let raw = """
+    [Verse]
+    In the shadows, I'll be waiting
+    For the ghosts that I've made
+    A slow descent into the night
+    With the weight of my mistakes
+    I'll follow the echoes of my heart
+    Through the emptiness I'll depart
+    Lost in the haze of a love so cold
+    I'll search for a light to hold
+    In the dark, I'll find my way
+    Through the shards of a broken day
+    And I'll whisper my name aloud
+    A prayer to a love that's lost
+    In the silence, I'll confess
+    My heart is a heavy mess
+    A skeleton of what used to be
+    A ghost of love that's lost its sea
+    And I'll wander, lost and alone
+    Through the shadows, I'll call home
+    """
+
+    let sanitized = LyricOutputSanitizer.sanitize(raw, targetDuration: 200)
+
+    #expect(sanitized == """
+    [Verse 1]
+    In the shadows, I'll be waiting
+    For the ghosts that I've made
+    A slow descent into the night
+    With the weight of my mistakes
+
+    [Chorus]
+    I'll follow the echoes of my heart
+    Through the emptiness I'll depart
+    Lost in the haze of a love so cold
+    I'll search for a light to hold
+
+    [Verse 2]
+    In the dark, I'll find my way
+    Through the shards of a broken day
+    And I'll whisper my name aloud
+    A prayer to a love that's lost
+
+    [Chorus]
+    In the silence, I'll confess
+    My heart is a heavy mess
+    A skeleton of what used to be
+
+    [Bridge]
+    A ghost of love that's lost its sea
+    And I'll wander, lost and alone
+    Through the shadows, I'll call home
+    """)
+}

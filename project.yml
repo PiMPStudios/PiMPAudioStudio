@@ -9,6 +9,9 @@ options:
 packages:
   AnvilCore:
     path: ./AnvilCore
+  mlx-swift:
+    url: https://github.com/ml-explore/mlx-swift
+    from: 0.21.0
 
 targets:
   AnvilApp:
@@ -17,6 +20,10 @@ targets:
     sources: [AnvilApp]
     dependencies:
       - package: AnvilCore
+      - package: mlx-swift
+        product: MLX
+      - package: mlx-swift
+        product: MLXNN
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: net.pimp.anvil.AnvilApp
@@ -36,6 +43,10 @@ targets:
         com.apple.security.app-sandbox: true
         com.apple.security.network.client: true
         com.apple.security.files.user-selected.read-write: true
+        com.apple.security.temporary-exception.files.absolute-path.read-only:
+          - /opt/homebrew/
+          - /usr/local/
+          - /opt/local/
 
   AnvilAppTests:
     type: bundle.unit-test

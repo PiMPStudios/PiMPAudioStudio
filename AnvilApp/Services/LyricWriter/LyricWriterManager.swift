@@ -70,7 +70,10 @@ final class LyricWriterManager: ObservableObject {
                 binding.wrappedValue = rawLyrics
             }
             if !Task.isCancelled {
-                let sanitized = LyricOutputSanitizer.sanitize(rawLyrics)
+                let sanitized = LyricOutputSanitizer.sanitize(
+                    rawLyrics,
+                    targetDuration: duration
+                )
                 let finalLyrics = sanitized.isEmpty
                     ? rawLyrics.trimmingCharacters(in: .whitespacesAndNewlines)
                     : sanitized

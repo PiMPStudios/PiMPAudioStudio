@@ -28,28 +28,28 @@ struct LyricWritingPlan {
             return LyricWritingPlan(
                 durationSeconds: seconds,
                 lineBudget: "6 to 10 total lyric lines",
-                sectionPlan: "Use [Verse] and [Chorus]. Keep each section short. Do not use [Bridge].",
+                sectionPlan: "Use exactly these section markers in this order: [Verse 1], [Chorus]. Keep each section short. Do not use [Bridge].",
                 maxTokens: 140
             )
         case ...90:
             return LyricWritingPlan(
                 durationSeconds: seconds,
                 lineBudget: "10 to 14 total lyric lines",
-                sectionPlan: "Use [Verse], [Chorus], and optional [Verse 2]. Do not use [Bridge] unless it replaces [Verse 2].",
+                sectionPlan: "Use exactly these section markers in this order: [Verse 1], [Chorus], optional [Verse 2]. Do not use [Bridge] unless it replaces [Verse 2].",
                 maxTokens: 200
             )
         case ...150:
             return LyricWritingPlan(
                 durationSeconds: seconds,
                 lineBudget: "14 to 20 total lyric lines",
-                sectionPlan: "Use [Verse 1], [Chorus], [Verse 2], [Chorus], and optional [Bridge]. Keep the bridge to 2 lines.",
+                sectionPlan: "Use exactly these section markers in this order: [Verse 1], [Chorus], [Verse 2], [Chorus], optional [Bridge]. Keep the bridge to 2 lines.",
                 maxTokens: 300
             )
         default:
             return LyricWritingPlan(
                 durationSeconds: seconds,
                 lineBudget: "20 to 32 total lyric lines",
-                sectionPlan: "Use a full song structure, but keep sections compact and avoid repeated filler.",
+                sectionPlan: "Use exactly these section markers in this order: [Verse 1], [Chorus], [Verse 2], [Chorus], [Bridge], optional [Outro]. Keep sections compact and avoid repeated filler.",
                 maxTokens: 420
             )
         }
@@ -66,6 +66,8 @@ struct LyricWritingPlan {
         Prefer short concrete phrases over long narrative lines.
         End on a complete line. Never trail off mid-sentence.
         The first non-empty character of your answer must be "[".
+        Every requested section marker must appear on its own line. Do not collapse the whole song into one [Verse].
+        Do not put more than 6 lyric lines under a single section marker.
         Output only section markers and singable lyric lines.
         Do not include commentary, titles, key, tempo, duration, line counts, explanations, markdown bullets, chord symbols like (Am), timestamps like [0:00 - 0:10], or performance directions like [Ambient fade-out].
         """
@@ -84,7 +86,7 @@ struct LyricWritingPlan {
 }
 
 enum LyricOutputSanitizer {
-    static func sanitize(_ rawText: String) -> String {
+    static func sanitize(_ rawText: String, targetDuration: TimeInterval? = nil) -> String {
         let normalized = rawText
             .replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
@@ -118,7 +120,12 @@ enum LyricOutputSanitizer {
             appendLine(cleaned, to: &sanitizedLines)
         }
 
-        return collapseBlankLines(in: sanitizedLines).joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        let collapsedLines = collapseBlankLines(in: sanitizedLines)
+        let repairedLines = repairOversizedSingleVerse(
+            collapsedLines,
+            targetDuration: targetDuration
+        )
+        return repairedLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private static func cleanLine(_ line: String) -> String? {
@@ -232,6 +239,82 @@ enum LyricOutputSanitizer {
             lines.append("")
         }
         lines.append(line)
+    }
+
+    private static func repairOversizedSingleVerse(
+        _ lines: [String],
+        targetDuration: TimeInterval?
+    ) -> [String] {
+        let nonBlankLines = lines.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let sectionMarkers = nonBlankLines.filter { isSectionMarker($0) }
+        guard sectionMarkers.count == 1,
+              isGenericVerseMarker(sectionMarkers[0])
+        else {
+            return lines
+        }
+
+        let lyricLines = nonBlankLines.filter { !isSectionMarker($0) }
+        guard lyricLines.count >= oversizedVerseThreshold(targetDuration: targetDuration) else {
+            return lines
+        }
+
+        let markers = repairSectionMarkers(
+            targetDuration: targetDuration,
+            lyricLineCount: lyricLines.count
+        )
+        guard markers.count > 1 else { return lines }
+
+        var repaired: [String] = []
+        var lyricIndex = 0
+        let baseCount = lyricLines.count / markers.count
+        let extraCount = lyricLines.count % markers.count
+
+        for markerIndex in markers.indices {
+            appendLine(markers[markerIndex], to: &repaired)
+            let sectionLineCount = baseCount + (markerIndex < extraCount ? 1 : 0)
+            for _ in 0..<sectionLineCount where lyricIndex < lyricLines.count {
+                appendLine(lyricLines[lyricIndex], to: &repaired)
+                lyricIndex += 1
+            }
+        }
+
+        return collapseBlankLines(in: repaired)
+    }
+
+    private static func isGenericVerseMarker(_ line: String) -> Bool {
+        let lowercased = line.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return lowercased == "[verse]" || lowercased == "[verse 1]"
+    }
+
+    private static func oversizedVerseThreshold(targetDuration: TimeInterval?) -> Int {
+        guard let targetDuration else { return 16 }
+        switch targetDuration {
+        case ..<60: return 10
+        case ..<90: return 12
+        case ..<150: return 14
+        default: return 12
+        }
+    }
+
+    private static func repairSectionMarkers(
+        targetDuration: TimeInterval?,
+        lyricLineCount: Int
+    ) -> [String] {
+        if (targetDuration ?? 0) >= 150 || lyricLineCount >= 16 {
+            if lyricLineCount >= 28 {
+                return ["[Verse 1]", "[Chorus]", "[Verse 2]", "[Chorus]", "[Bridge]", "[Chorus]", "[Outro]"]
+            }
+            if lyricLineCount >= 22 {
+                return ["[Verse 1]", "[Chorus]", "[Verse 2]", "[Chorus]", "[Bridge]", "[Chorus]"]
+            }
+            return ["[Verse 1]", "[Chorus]", "[Verse 2]", "[Chorus]", "[Bridge]"]
+        }
+
+        if (targetDuration ?? 0) >= 90 || lyricLineCount >= 10 {
+            return ["[Verse 1]", "[Chorus]", "[Verse 2]", "[Chorus]"]
+        }
+
+        return ["[Verse 1]", "[Chorus]"]
     }
 
     private static func collapseBlankLines(in lines: [String]) -> [String] {
