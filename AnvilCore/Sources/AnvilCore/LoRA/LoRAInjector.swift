@@ -14,10 +14,18 @@ public enum LoRAInjector {
     ///   - config: LoRA configuration specifying rank, alpha, dropout, and target patterns.
     /// - Returns: List of fully-qualified key paths that were injected (e.g. "layers.0.selfAttn.qProj").
     @discardableResult
-    public static func inject(model: DiTDecoder, config: LoRAConfig) -> [String] {
+    public static func inject(
+        model: DiTDecoder,
+        config: LoRAConfig,
+        layerIndices: Set<Int>? = nil
+    ) -> [String] {
         var injectedPaths: [String] = []
 
         for (layerIdx, layer) in model.layers.enumerated() {
+            if let layerIndices, !layerIndices.contains(layerIdx) {
+                continue
+            }
+
             for pattern in config.injectionPatterns {
                 let keyPath = "layers.\(layerIdx).\(pattern)"
 
@@ -100,11 +108,25 @@ public enum LoRAInjector {
             let layer = model.layers[layerIdx]
             if let loraLinear = resolveLinear(in: layer, path: subPath) as? LoRALinear {
                 if let a = weightDict["\(path).loraA"] {
-                    loraLinear.loraA = a
+                    loraLinear.loraA._updateInternal(a)
                 }
                 if let b = weightDict["\(path).loraB"] {
-                    loraLinear.loraB = b
+                    loraLinear.loraB._updateInternal(b)
                 }
+            }
+        }
+    }
+
+    /// Mark only the adapter matrices as trainable after the parent DiT has
+    /// been frozen for LoRA training.
+    public static func unfreezeAdapters(model: DiTDecoder, paths: [String]) {
+        for path in paths {
+            guard let (layerIdx, subPath) = parsePath(path),
+                  layerIdx < model.layers.count else { continue }
+
+            let layer = model.layers[layerIdx]
+            if let loraLinear = resolveLinear(in: layer, path: subPath) as? LoRALinear {
+                loraLinear.unfreeze(recursive: false, keys: ["loraA", "loraB"])
             }
         }
     }
@@ -182,19 +204,16 @@ public enum LoRAInjector {
 
     private static func setAttentionProj(_ attn: DiTAttention, proj: String, value: Linear) {
         switch proj {
-        case "qProj": attn.qProj = value
-        case "kProj": attn.kProj = value
-        case "vProj": attn.vProj = value
-        case "oProj": attn.oProj = value
+        case "qProj", "kProj", "vProj", "oProj":
+            attn.update(modules: ModuleChildren.unflattened([(proj, value)]))
         default: break
         }
     }
 
     private static func setMLPProj(_ mlp: SwiGLUMLP, proj: String, value: Linear) {
         switch proj {
-        case "gateProj": mlp.gateProj = value
-        case "upProj": mlp.upProj = value
-        case "downProj": mlp.downProj = value
+        case "gateProj", "upProj", "downProj":
+            mlp.update(modules: ModuleChildren.unflattened([(proj, value)]))
         default: break
         }
     }

@@ -28,18 +28,23 @@ public enum AudioDiagnostics {
 
         let shape = array.shape
         let dtype = "\(array.dtype)"
-        let absArr = MLX.abs(array)
+        // Compute reductions in float32. Large finite float16 tensors can
+        // overflow the reduction accumulator and report `abs_mean=inf` even
+        // when `any_inf=false`, which makes diagnostics look scarier than the
+        // tensor actually is.
+        let statsArray = array.asType(.float32)
+        let absArr = MLX.abs(statsArray)
         let absMean = absArr.mean().item(Float.self)
         let absMax = absArr.max().item(Float.self)
 
         // NaN/Inf checks — relevant for diagnosing exploded gradients/embeddings.
-        let nanMask = (array .!= array)
+        let nanMask = (statsArray .!= statsArray)
         let anyNaN = nanMask.any().item(Bool.self)
-        let infMask = MLX.isInf(array)
+        let infMask = MLX.isInf(statsArray)
         let anyInf = infMask.any().item(Bool.self)
 
         // First 5 scalar values from the flattened array, for sanity-eyeballing.
-        let flat = array.reshaped([-1]).asType(.float32)
+        let flat = statsArray.reshaped([-1])
         let count = min(5, flat.shape[0])
         var firstN: [Float] = []
         for i in 0..<count {

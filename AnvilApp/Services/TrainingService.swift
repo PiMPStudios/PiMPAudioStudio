@@ -5,6 +5,7 @@ import MLX
 /// Training state for UI observation.
 enum TrainingState: Equatable {
     case idle
+    case loadingModels
     case preparingDataset(current: Int, total: Int)
     case training(TrainingUIState)
     case saving
@@ -36,6 +37,12 @@ struct LoRATrainingResult: Sendable {
 final class TrainingService: ObservableObject {
     @Published var state: TrainingState = .idle
 
+    /// ACE-Step LoRA backprop stores DiT activations for every latent frame.
+    /// Training on full 30-200s clips can exhaust unified memory, so each
+    /// sample contributes a short random window while preserving the clip's
+    /// caption/conditioning signal.
+    private static let maxTrainingLatentFrames = 64
+
     private let pipeline: MusicPipeline
     private let vae: VAEActor
     private var conditioning: ConditioningActor
@@ -44,8 +51,11 @@ final class TrainingService: ObservableObject {
     /// the SFT prompt template uses newlines outside the stub's ASCII-only vocab.
     private var isConditioningReady = false
     private let registry: ModelRegistry
+    private var ensureModelsLoaded: (() async throws -> Void)?
+    private var onTrainingFinished: (() async -> Void)?
     private var trainingTask: Task<Void, Never>?
     private var isStopping = false
+    private var shouldSaveCheckpointOnStop = false
     private let stackManager: AdapterStackManager?
     private var savedStack: [(adapter: LoRAAdapter, strength: Float)] = []
 
@@ -76,26 +86,83 @@ final class TrainingService: ObservableObject {
         audioURLs: [URL],
         importedFiles: [(url: URL, description: String)],
         adapterName: String,
-        config: LoRAConfig
+        config: LoRAConfig,
+        resumeAdapterID: String? = nil
     ) {
-        guard isConditioningReady else {
-            state = .failed(
-                "The AI model hasn't been loaded yet. Generate a track first, then return here to train."
-            )
-            return
+        let effectiveResumeAdapterID: String?
+        if let resumeAdapterID {
+            effectiveResumeAdapterID = resumeAdapterID
+        } else if case .paused = state {
+            effectiveResumeAdapterID = Self.adapterID(from: adapterName)
+        } else {
+            effectiveResumeAdapterID = nil
         }
 
         trainingTask?.cancel()
         isStopping = false
+        shouldSaveCheckpointOnStop = false
 
         trainingTask = Task { [weak self] in
             guard let self else { return }
+            defer {
+                if let sm = self.stackManager, !self.savedStack.isEmpty {
+                    for entry in self.savedStack {
+                        sm.addToStack(entry.adapter, strength: entry.strength)
+                    }
+                    self.savedStack = []
+                }
+                self.trainingTask = nil
+                if let onTrainingFinished {
+                    Task {
+                        await onTrainingFinished()
+                    }
+                }
+            }
 
             do {
+                self.state = .loadingModels
+                if let ensureModelsLoaded {
+                    try await ensureModelsLoaded()
+                }
+                guard self.isConditioningReady else {
+                    self.state = .failed("Could not load the ACE-Step models needed for training.")
+                    return
+                }
+
                 // Clear stack during training (restore after)
                 if let sm = self.stackManager, sm.isStacking {
                     self.savedStack = sm.additionalAdapters
                     sm.clearStack()
+                }
+
+                let activeModelID = await self.registry.activeModelID(
+                    for: .aceStepDiT
+                ) ?? "unknown"
+                let sessionConfig: LoRAConfig
+                let resumeCheckpoint: TrainingCheckpoint?
+                let initialWeights: [(String, MLXArray)]?
+
+                if let resumeAdapterID = effectiveResumeAdapterID {
+                    guard let checkpoint = AdapterRegistry.loadCheckpoint(adapterID: resumeAdapterID) else {
+                        self.state = .failed("No paused training checkpoint found for this adapter.")
+                        return
+                    }
+                    guard checkpoint.baseModelID == activeModelID else {
+                        self.state = .failed(
+                            CheckpointError.modelMismatch(
+                                expected: checkpoint.baseModelID,
+                                actual: activeModelID
+                            ).localizedDescription
+                        )
+                        return
+                    }
+                    resumeCheckpoint = checkpoint
+                    sessionConfig = checkpoint.config
+                    initialWeights = try await AdapterRegistry.loadWeights(adapterID: resumeAdapterID)
+                } else {
+                    resumeCheckpoint = nil
+                    sessionConfig = config
+                    initialWeights = nil
                 }
 
                 // 1. Prepare dataset
@@ -142,7 +209,9 @@ final class TrainingService: ObservableObject {
 
                 let result = try await self.pipeline.trainLoRA(
                     samples: samples,
-                    config: config,
+                    config: sessionConfig,
+                    resumeFrom: resumeCheckpoint,
+                    initialWeights: initialWeights,
                     onProgress: { [weak self] progress in
                         Task { @MainActor in
                             self?.state = .training(TrainingUIState(
@@ -161,26 +230,17 @@ final class TrainingService: ObservableObject {
 
                 try Task.checkCancellation()
 
-                // 3. Save adapter
-                self.state = .saving
-
-                let adapterID = adapterName
-                    .lowercased()
-                    .replacingOccurrences(of: " ", with: "-")
-                    .replacingOccurrences(
-                        of: "[^a-z0-9\\-]",
-                        with: "",
-                        options: .regularExpression
-                    )
-
-                let activeModelID = await self.registry.activeModelID(
-                    for: .aceStepDiT
-                ) ?? "unknown"
-
+                let adapterID = effectiveResumeAdapterID ?? Self.adapterID(from: adapterName)
+                let manifest = TrainingManifest(
+                    historyEntryIDs: entries.map(\.id),
+                    importedFiles: importedFiles.map {
+                        TrainingManifest.ImportedFileRef(url: $0.url, description: $0.description)
+                    }
+                )
                 let adapter = LoRAAdapter(
                     id: adapterID,
                     name: adapterName,
-                    config: config,
+                    config: sessionConfig,
                     baseModelID: activeModelID,
                     baseModelCategory: .aceStepDiT,
                     createdAt: Date(),
@@ -188,17 +248,34 @@ final class TrainingService: ObservableObject {
                     finalLoss: result.finalLoss
                 )
 
+                if self.isStopping {
+                    if self.shouldSaveCheckpointOnStop {
+                        let checkpoint = self.makeCheckpoint(
+                            adapterID: adapterID,
+                            config: sessionConfig,
+                            activeModelID: activeModelID,
+                            sampleCount: samples.count,
+                            fallback: resumeCheckpoint
+                        )
+                        try AdapterRegistry.save(adapter: adapter, weights: result.weights)
+                        AdapterRegistry.saveManifest(manifest, adapterID: adapterID)
+                        try AdapterRegistry.saveCheckpoint(checkpoint, adapterID: adapterID)
+                        self.state = .paused(checkpoint)
+                    } else {
+                        self.state = .cancelled
+                    }
+                    return
+                }
+
+                // 3. Save adapter
+                self.state = .saving
+
                 try AdapterRegistry.save(adapter: adapter, weights: result.weights)
 
                 // Persist the training manifest so the session can be reloaded
                 // later for retraining with the same (or expanded) dataset.
-                let manifest = TrainingManifest(
-                    historyEntryIDs: entries.map(\.id),
-                    importedFiles: importedFiles.map {
-                        TrainingManifest.ImportedFileRef(url: $0.url, description: $0.description)
-                    }
-                )
                 AdapterRegistry.saveManifest(manifest, adapterID: adapterID)
+                AdapterRegistry.deleteCheckpoint(adapterID: adapterID)
 
                 self.state = .complete(adapter)
 
@@ -207,16 +284,6 @@ final class TrainingService: ObservableObject {
             } catch {
                 self.state = .failed(error.localizedDescription)
             }
-
-            // Restore stack if it was cleared
-            if let sm = self.stackManager, !self.savedStack.isEmpty {
-                for entry in self.savedStack {
-                    sm.addToStack(entry.adapter, strength: entry.strength)
-                }
-                self.savedStack = []
-            }
-
-            self.trainingTask = nil
         }
     }
 
@@ -227,29 +294,87 @@ final class TrainingService: ObservableObject {
         isConditioningReady = true
     }
 
+    /// Provides the same ACE-Step lazy-loading path used by generation, so
+    /// training can start cold from launch without a dummy generation first.
+    func setModelLoader(_ loader: @escaping () async throws -> Void) {
+        ensureModelsLoaded = loader
+    }
+
+    /// Called after any training attempt finishes so app-level services can
+    /// restore lightweight helpers that were evicted for memory headroom.
+    func setTrainingFinishedHandler(_ handler: @escaping () async -> Void) {
+        onTrainingFinished = handler
+    }
+
     /// Reset to idle so the training sheet can reconfigure and re-run with the same dataset.
     func resetToIdle() {
         guard case .complete = state else { return }
         state = .idle
     }
 
-    /// Stop training. Pipeline will save best checkpoint if available.
-    func stopTraining() {
+    /// Stop training. When requested, persists the current LoRA weights and checkpoint.
+    func stopTraining(saveCheckpoint: Bool = false) {
         isStopping = true
+        shouldSaveCheckpointOnStop = saveCheckpoint
         Task {
             await pipeline.cancelTraining()
         }
     }
 
-    /// Whether training can produce a usable checkpoint on stop.
+    /// Whether training can produce a persisted pause checkpoint on stop.
     var canSaveOnStop: Bool {
         if case .training(let uiState) = state {
-            return uiState.epoch >= 2
+            return uiState.step > 0
         }
         return false
     }
 
     // MARK: - Private
+
+    private static func adapterID(from adapterName: String) -> String {
+        adapterName
+            .lowercased()
+            .replacingOccurrences(of: " ", with: "-")
+            .replacingOccurrences(
+                of: "[^a-z0-9\\-]",
+                with: "",
+                options: .regularExpression
+            )
+    }
+
+    private func makeCheckpoint(
+        adapterID: String,
+        config: LoRAConfig,
+        activeModelID: String,
+        sampleCount: Int,
+        fallback: TrainingCheckpoint?
+    ) -> TrainingCheckpoint {
+        let uiState: TrainingUIState?
+        if case .training(let current) = state {
+            uiState = current
+        } else {
+            uiState = nil
+        }
+
+        let updatesPerEpoch = max(
+            1,
+            sampleCount / max(1, config.gradientAccumulationSteps)
+        )
+        let totalSteps = updatesPerEpoch * config.maxEpochs
+        let lossHistory = uiState?.lossHistory ?? fallback?.lossHistory ?? []
+
+        return TrainingCheckpoint(
+            epoch: uiState?.epoch ?? fallback?.epoch ?? 0,
+            globalStep: uiState?.step ?? fallback?.globalStep ?? 0,
+            totalSteps: totalSteps,
+            bestLoss: lossHistory.min() ?? fallback?.bestLoss,
+            lossHistory: lossHistory,
+            weightsURL: AdapterRegistry.weightsURL(adapterID: adapterID),
+            optimizerStateURL: AdapterRegistry.optimizerStateURL(adapterID: adapterID),
+            config: config,
+            baseModelID: activeModelID
+        )
+    }
 
     private func preprocessSample(
         audioURL: URL,
@@ -281,11 +406,49 @@ final class TrainingService: ObservableObject {
             precision: .float16
         )
 
-        return TrainingSample(
+        let (windowedLatent, windowedContextLatents) = Self.trainingWindow(
             latent: latent,
-            encoderStates: cond.encoderStates,
-            contextLatents: cond.contextLatents,
-            encoderMask: cond.encoderMask
+            contextLatents: cond.contextLatents
+        )
+
+        let frozenLatent = stopGradient(windowedLatent)
+        let frozenEncoderStates = stopGradient(cond.encoderStates)
+        let frozenContextLatents = stopGradient(windowedContextLatents)
+        let frozenEncoderMask = stopGradient(cond.encoderMask)
+
+        var arraysToMaterialize = [
+            frozenLatent,
+            frozenEncoderStates,
+            frozenContextLatents
+        ]
+        arraysToMaterialize.append(frozenEncoderMask)
+        eval(arraysToMaterialize)
+
+        return TrainingSample(
+            latent: frozenLatent,
+            encoderStates: frozenEncoderStates,
+            contextLatents: frozenContextLatents,
+            encoderMask: frozenEncoderMask
+        )
+    }
+
+    private static func trainingWindow(
+        latent: MLXArray,
+        contextLatents: MLXArray
+    ) -> (latent: MLXArray, contextLatents: MLXArray) {
+        let availableFrames = min(latent.shape[1], contextLatents.shape[1])
+        guard availableFrames > 0 else {
+            return (latent, contextLatents)
+        }
+
+        let frameCount = min(availableFrames, maxTrainingLatentFrames)
+        let maxStart = max(0, availableFrames - frameCount)
+        let start = maxStart > 0 ? Int.random(in: 0...maxStart) : 0
+        let end = start + frameCount
+
+        return (
+            latent[0..., start..<end, 0...],
+            contextLatents[0..., start..<end, 0...]
         )
     }
 }

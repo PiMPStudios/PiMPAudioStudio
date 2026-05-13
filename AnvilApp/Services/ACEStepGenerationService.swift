@@ -51,24 +51,12 @@ actor ACEStepGenerationService {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    // Check DiT model
                     let activeDiTID = await registry.activeModelID(for: .aceStepDiT)
-                    guard let activeDiTID else {
-                        throw GenerationError.modelNotConfigured("ACE-Step DiT")
-                    }
-                    if activeDiTID != currentlyLoadedDiTModelID {
-                        continuation.yield(.loadingWeights(progress: 0))
-                        try await loadDiTWeights()
-                    }
-
-                    // Check VAE model
                     let activeVAEID = await registry.activeModelID(for: .aceStepVAE)
-                    guard let activeVAEID else {
-                        throw GenerationError.modelNotConfigured("ACE-Step VAE")
+                    if activeDiTID != currentlyLoadedDiTModelID || activeVAEID != currentlyLoadedVAEModelID {
+                        continuation.yield(.loadingWeights(progress: 0))
                     }
-                    if activeVAEID != currentlyLoadedVAEModelID {
-                        try await loadVAEWeights()
-                    }
+                    try await ensureLoadedForTraining()
 
                     try Task.checkCancellation()
                     continuation.yield(.conditioning)
@@ -153,6 +141,26 @@ actor ACEStepGenerationService {
         currentlyLoadedDiTModelID = nil
         currentlyLoadedDiTConfig = nil
         currentlyLoadedVAEModelID = nil
+    }
+
+    /// Loads the ACE-Step stack without generating audio.
+    /// Training uses this path when launched cold from Settings.
+    func ensureLoadedForTraining() async throws {
+        let activeDiTID = await registry.activeModelID(for: .aceStepDiT)
+        guard let activeDiTID else {
+            throw GenerationError.modelNotConfigured("ACE-Step DiT")
+        }
+        if activeDiTID != currentlyLoadedDiTModelID {
+            try await loadDiTWeights()
+        }
+
+        let activeVAEID = await registry.activeModelID(for: .aceStepVAE)
+        guard let activeVAEID else {
+            throw GenerationError.modelNotConfigured("ACE-Step VAE")
+        }
+        if activeVAEID != currentlyLoadedVAEModelID {
+            try await loadVAEWeights()
+        }
     }
 
     // MARK: - Weight Loading

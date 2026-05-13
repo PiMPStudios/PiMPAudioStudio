@@ -103,9 +103,17 @@ public actor MusicPipeline {
     public func trainLoRA(
         samples: [TrainingSample],
         config: LoRAConfig,
+        resumeFrom checkpoint: TrainingCheckpoint? = nil,
+        initialWeights: [(String, MLXArray)]? = nil,
         onProgress: @escaping @Sendable (TrainingProgress) -> Void
     ) async throws -> (weights: [(String, MLXArray)], finalLoss: Float?) {
-        try await diffusion.trainLoRA(samples: samples, config: config, onProgress: onProgress)
+        try await diffusion.trainLoRA(
+            samples: samples,
+            config: config,
+            resumeFrom: checkpoint,
+            initialWeights: initialWeights,
+            onProgress: onProgress
+        )
     }
 
     /// Cancel ongoing training cooperatively.

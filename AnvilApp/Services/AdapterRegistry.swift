@@ -203,6 +203,55 @@ struct AdapterRegistry {
         return try? JSONDecoder().decode(TrainingManifest.self, from: data)
     }
 
+    // MARK: - Training Checkpoints
+
+    static func checkpointURL(adapterID: String) -> URL {
+        adapterDirectory(id: adapterID).appending(path: "training_checkpoint.json")
+    }
+
+    static func optimizerStateURL(adapterID: String) -> URL {
+        adapterDirectory(id: adapterID).appending(path: "optimizer_state.json")
+    }
+
+    static func weightsURL(adapterID: String) -> URL {
+        adapterDirectory(id: adapterID).appending(path: "adapter.safetensors")
+    }
+
+    /// Saves the metadata needed to resume an interrupted training session.
+    static func saveCheckpoint(_ checkpoint: TrainingCheckpoint, adapterID: String) throws {
+        let dir = adapterDirectory(id: adapterID)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try encoder.encode(checkpoint)
+        try data.write(to: checkpointURL(adapterID: adapterID))
+
+        if !FileManager.default.fileExists(atPath: checkpoint.optimizerStateURL.path(percentEncoded: false)) {
+            try Data("{}".utf8).write(to: checkpoint.optimizerStateURL)
+        }
+    }
+
+    /// Returns the saved training checkpoint for a paused adapter, or nil.
+    static func loadCheckpoint(adapterID: String) -> TrainingCheckpoint? {
+        guard let data = try? Data(contentsOf: checkpointURL(adapterID: adapterID)) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(TrainingCheckpoint.self, from: data)
+    }
+
+    static func hasCheckpoint(adapterID: String) -> Bool {
+        FileManager.default.fileExists(atPath: checkpointURL(adapterID: adapterID).path(percentEncoded: false))
+    }
+
+    /// Removes pause/resume metadata after training completes successfully.
+    static func deleteCheckpoint(adapterID: String) {
+        let fm = FileManager.default
+        try? fm.removeItem(at: checkpointURL(adapterID: adapterID))
+        try? fm.removeItem(at: optimizerStateURL(adapterID: adapterID))
+    }
+
     /// Merge two adapters with weighted interpolation: alpha * A + (1-alpha) * B.
     ///
     /// Both adapters must have the same rank. Creates a new adapter.

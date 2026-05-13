@@ -10,6 +10,7 @@ struct TrainingSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var adapterName: String = ""
+    private let resumeAdapterID: String?
     @State private var selectedRank: Int = 16
     @State private var selectedEpochs: Int = 10
     @State private var selectedTargetLayers: Set<TargetLayer> = [.selfAttention, .crossAttention]
@@ -23,9 +24,11 @@ struct TrainingSheet: View {
         selectedEntries: [HistoryEntry],
         initialImportedFiles: [(url: URL, description: String)] = [],
         initialName: String = "",
-        initialConfig: LoRAConfig? = nil
+        initialConfig: LoRAConfig? = nil,
+        resumeAdapterID: String? = nil
     ) {
         self.selectedEntries = selectedEntries
+        self.resumeAdapterID = resumeAdapterID
         self._importedFiles = State(initialValue: initialImportedFiles)
         self._adapterName = State(initialValue: initialName)
         if let config = initialConfig {
@@ -63,7 +66,7 @@ struct TrainingSheet: View {
                     configView
                 case .paused:
                     configView
-                case .preparingDataset, .training, .saving:
+                case .loadingModels, .preparingDataset, .training, .saving:
                     progressView
                 case .complete(let adapter):
                     completionView(adapter: adapter)
@@ -71,6 +74,9 @@ struct TrainingSheet: View {
             }
         }
         .frame(minWidth: 500, minHeight: 500)
+        .onAppear {
+            trainingService.resetToIdle()
+        }
         .fileImporter(
             isPresented: $showingFileImporter,
             allowedContentTypes: [.audio],
@@ -82,17 +88,21 @@ struct TrainingSheet: View {
                 }
             }
         }
-        .alert("Stop Training?", isPresented: $showingStopConfirmation) {
+        .alert("Pause or Stop Training?", isPresented: $showingStopConfirmation) {
             Button("Continue Training", role: .cancel) {}
             if trainingService.canSaveOnStop {
-                Button("Save & Stop") { trainingService.stopTraining() }
+                Button("Save & Pause") {
+                    trainingService.stopTraining(saveCheckpoint: true)
+                }
             }
-            Button("Discard & Stop", role: .destructive) { trainingService.stopTraining() }
+            Button("Discard & Stop", role: .destructive) {
+                trainingService.stopTraining(saveCheckpoint: false)
+            }
         } message: {
             if trainingService.canSaveOnStop {
-                Text("Training has completed 2+ epochs. The best checkpoint will be saved.")
+                Text("Training has made progress. Save a checkpoint so you can resume this adapter later.")
             } else {
-                Text("Not enough epochs completed to save. Progress will be lost.")
+                Text("No training step has completed yet. Progress will be lost.")
             }
         }
     }
@@ -102,11 +112,11 @@ struct TrainingSheet: View {
     private var configView: some View {
         VStack(alignment: .leading, spacing: 16) {
             // Resume banner
-            if case .paused = trainingService.state {
+            if isCheckpointResume {
                 HStack {
                     Image(systemName: "pause.circle.fill")
                         .foregroundStyle(.orange)
-                    Text("Training paused. Configure and resume, or start fresh.")
+                    Text("Training paused. Resume from the saved checkpoint, or start fresh from Retrain.")
                         .font(.callout)
                     Spacer()
                 }
@@ -145,6 +155,7 @@ struct TrainingSheet: View {
                             ))
                             .font(.callout)
                             .textFieldStyle(.roundedBorder)
+                            .disabled(isCheckpointResume)
                             Button {
                                 importedFiles.remove(at: idx)
                             } label: {
@@ -152,6 +163,7 @@ struct TrainingSheet: View {
                                     .foregroundStyle(.secondary)
                             }
                             .buttonStyle(.borderless)
+                            .disabled(isCheckpointResume)
                         }
                     }
                 }
@@ -170,6 +182,7 @@ struct TrainingSheet: View {
                     }
                     .buttonStyle(.borderless)
                     .font(.caption)
+                    .disabled(isCheckpointResume)
                 }
             }
 
@@ -183,6 +196,7 @@ struct TrainingSheet: View {
                     TextField("e.g. My Jazz Style", text: $adapterName)
                         .textFieldStyle(.roundedBorder)
                         .frame(maxWidth: 200)
+                        .disabled(isCheckpointResume)
                 }
                 LabeledContent("Base Model") {
                     Text("ACE-Step DiT (active)")
@@ -194,6 +208,7 @@ struct TrainingSheet: View {
                     }
                     .pickerStyle(.segmented)
                     .frame(maxWidth: 150)
+                    .disabled(isCheckpointResume)
                 }
                 LabeledContent("Epochs") {
                     Picker("Epochs", selection: $selectedEpochs) {
@@ -201,6 +216,7 @@ struct TrainingSheet: View {
                     }
                     .pickerStyle(.segmented)
                     .frame(maxWidth: 200)
+                    .disabled(isCheckpointResume)
                 }
 
                 // Target layers
@@ -218,6 +234,7 @@ struct TrainingSheet: View {
                                 }
                             ))
                             .toggleStyle(.checkbox)
+                            .disabled(isCheckpointResume)
                         }
                     }
                 }
@@ -235,6 +252,7 @@ struct TrainingSheet: View {
                                 step: 0.05
                             )
                             .frame(maxWidth: 150)
+                            .disabled(isCheckpointResume)
                             Text("\(Int(warmupFraction * 100))%")
                                 .monospacedDigit()
                                 .frame(width: 40)
@@ -246,6 +264,7 @@ struct TrainingSheet: View {
                         }
                         .pickerStyle(.segmented)
                         .frame(maxWidth: 200)
+                        .disabled(isCheckpointResume)
                     }
                 }
             }
@@ -260,7 +279,7 @@ struct TrainingSheet: View {
             // Start/Resume button
             HStack {
                 Spacer()
-                if case .paused = trainingService.state {
+                if isCheckpointResume {
                     Button("Resume Training") {
                         startTraining()
                     }
@@ -282,6 +301,19 @@ struct TrainingSheet: View {
     private var progressView: some View {
         VStack(spacing: 16) {
             switch trainingService.state {
+            case .loadingModels:
+                VStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.large)
+                    Text("Loading ACE-Step Models")
+                        .font(.headline)
+                    Text("Preparing DiT, VAE, tokenizer, text encoders, and silence prior for training.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                .padding(.top, 40)
+
             case .preparingDataset(let current, let total):
                 VStack(spacing: 8) {
                     Text("Preparing Dataset")
@@ -340,7 +372,7 @@ struct TrainingSheet: View {
             Spacer()
 
             if case .training = trainingService.state {
-                Button("Stop Training", role: .destructive) {
+                Button("Pause / Stop Training", role: .destructive) {
                     showingStopConfirmation = true
                 }
                 .buttonStyle(.bordered)
@@ -400,6 +432,19 @@ struct TrainingSheet: View {
             && !selectedTargetLayers.isEmpty
     }
 
+    private var isResumeSession: Bool {
+        resumeAdapterID != nil
+    }
+
+    private var isPausedState: Bool {
+        if case .paused = trainingService.state { return true }
+        return false
+    }
+
+    private var isCheckpointResume: Bool {
+        isResumeSession || isPausedState
+    }
+
     private func statView(value: String, label: String) -> some View {
         VStack(spacing: 2) {
             Text(value)
@@ -432,7 +477,8 @@ struct TrainingSheet: View {
             audioURLs: audioURLs,
             importedFiles: importedFiles,
             adapterName: adapterName,
-            config: config
+            config: config,
+            resumeAdapterID: resumeAdapterID
         )
     }
 }

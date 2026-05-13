@@ -112,25 +112,53 @@ public final class LoRATrainer {
         dataset: [TrainingSample],
         onProgress: @escaping @Sendable (TrainingProgress) -> Void
     ) async throws -> [(String, MLXArray)] {
+        print("[LoRATrainer] train entered dataset=\(dataset.count)")
         guard !dataset.isEmpty else { return [] }
 
         let accumSteps = max(1, min(config.gradientAccumulationSteps, dataset.count))
+        print("[LoRATrainer] creating optimizer")
         let optimizer = AdamW(learningRate: scheduler.learningRate(atStep: globalStep))
         let startTime = Date()
 
+        print("[LoRATrainer] setTrainingMode begin")
         setTrainingMode(true)
+        print("[LoRATrainer] setTrainingMode complete")
 
         // Build the valueAndGrad closure
-        let lossGrad = valueAndGrad(model: model) {
-            (model: DiTDecoder, args: [MLXArray]) -> [MLXArray] in
-            let xt = args[0]
-            let t = args[1]
-            let encoderStates = args[2]
-            let contextLatents = args[3]
-            let vTarget = args[4]
-            let encoderMask: MLXArray? = args.count > 5 ? args[5] : nil
+        print("[LoRATrainer] building valueAndGrad")
+        var hasLoggedGradientClosure = false
+        let trainingModel = model
+        let trainableParameterKeys = model.trainableParameters().flattened().map(\.0)
+        let trainableArgumentCount = trainableParameterKeys.count
+        let gradientArgumentNumbers = Array(0..<trainableArgumentCount)
+        let lossGrad = valueAndGrad({ (allArgs: [MLXArray]) -> [MLXArray] in
+            let shouldLogGradientClosure = !hasLoggedGradientClosure
+            if shouldLogGradientClosure {
+                hasLoggedGradientClosure = true
+                print("[LoRATrainer] gradClosure entered paramKeys=\(trainableParameterKeys)")
+                print("[LoRATrainer] gradClosure updating model parameters")
+            }
+            let parameterValues = Array(allArgs.prefix(trainableArgumentCount))
+            let parameterPairs = zip(trainableParameterKeys, parameterValues).map { ($0.0, $0.1) }
+            trainingModel.update(parameters: ModuleParameters.unflattened(parameterPairs))
+            if shouldLogGradientClosure {
+                print("[LoRATrainer] gradClosure model parameters updated")
+            }
 
-            let (vPred, _) = model(
+            let argOffset = trainableArgumentCount
+            let xt = allArgs[argOffset]
+            let t = allArgs[argOffset + 1]
+            let encoderStates = allArgs[argOffset + 2]
+            let contextLatents = allArgs[argOffset + 3]
+            let vTarget = allArgs[argOffset + 4]
+            let encoderMask: MLXArray? = allArgs.count > argOffset + 5
+                ? allArgs[argOffset + 5]
+                : nil
+
+            if shouldLogGradientClosure {
+                print("[LoRATrainer] gradClosure calling DiT forward")
+            }
+            let (vPred, _) = trainingModel(
                 hiddenStates: xt,
                 timestep: t,
                 timestepR: t,
@@ -140,21 +168,34 @@ public final class LoRATrainer {
                 cache: nil,
                 useCache: false
             )
+            if shouldLogGradientClosure {
+                print("[LoRATrainer] gradClosure DiT forward returned")
+            }
 
-            let diff = vPred - vTarget
+            let diff = (vPred - vTarget).asType(.float32)
             let loss = (diff * diff).mean()
+            if shouldLogGradientClosure {
+                print("[LoRATrainer] gradClosure loss graph built")
+            }
             return [loss]
-        }
+        }, argumentNumbers: gradientArgumentNumbers)
+        print("[LoRATrainer] valueAndGrad built trainableArgumentCount=\(trainableArgumentCount)")
 
         let startEpoch = currentEpoch + 1
+        print(
+            "[LoRATrainer] loop startEpoch=\(startEpoch) maxEpochs=\(config.maxEpochs) globalStep=\(globalStep) lossHistory=\(lossHistory.count)"
+        )
+        var hasLoggedFirstProcessedSample = false
 
         for epoch in startEpoch...config.maxEpochs {
             guard !isCancelled else { break }
             currentEpoch = epoch
+            print("[LoRATrainer] epoch \(epoch) begin")
 
             var epochLoss: Float = 0
             var epochSamples: Int = 0
             let shuffledIndices = Array(0..<dataset.count).shuffled()
+            print("[LoRATrainer] epoch \(epoch) shuffled count=\(shuffledIndices.count)")
 
             // Per-window tracking for accurate loss reporting
             var windowLoss: Float = 0
@@ -164,15 +205,35 @@ public final class LoRATrainer {
                 guard !isCancelled else { break }
                 try Task.checkCancellation()
                 let sample = dataset[idx]
+                let shouldLogSample = !hasLoggedFirstProcessedSample
+                if shouldLogSample {
+                    hasLoggedFirstProcessedSample = true
+                    let trainableKeys = model.trainableParameters().flattened().map(\.0)
+                    print(
+                        "[LoRATrainer] firstSample selected idx=\(idx) latent=\(sample.latent.shape) context=\(sample.contextLatents.shape) encoder=\(sample.encoderStates.shape) trainableKeys=\(trainableKeys)"
+                    )
+                }
 
                 // Sample random timestep t in [0, 1]
+                if shouldLogSample {
+                    print("[LoRATrainer] firstSample making timestep")
+                }
                 let t = MLXRandom.uniform(0..<1, [1])
 
                 // Interpolate: x_t = (1 - t) * x_0 + t * noise
+                if shouldLogSample {
+                    print("[LoRATrainer] firstSample making noise")
+                }
                 let noise = MLXRandom.normal(sample.latent.shape)
+                if shouldLogSample {
+                    print("[LoRATrainer] firstSample making xt")
+                }
                 let xt = (1.0 - t) * sample.latent + t * noise
 
                 // Target velocity: v_target = noise - x_0
+                if shouldLogSample {
+                    print("[LoRATrainer] firstSample making target")
+                }
                 let vTarget = noise - sample.latent
 
                 // Build args array
@@ -181,13 +242,33 @@ public final class LoRATrainer {
                     args.append(mask)
                 }
 
+                if shouldLogSample {
+                    print("[LoRATrainer] firstSample calling valueAndGrad args=\(args.map { $0.shape })")
+                }
+
                 // Forward + backward + step (per-sample optimizer update)
-                let (lossValues, grads) = lossGrad(model, args)
+                let trainableParameters = model.trainableParameters().flattened()
+                let trainableValues = trainableParameters.map(\.1)
+                let (lossValues, flatGrads) = lossGrad(trainableValues + args)
+                if shouldLogSample {
+                    print("[LoRATrainer] firstSample valueAndGrad returned flatGrads=\(flatGrads.count)")
+                }
+                let gradPairs = zip(trainableParameterKeys, flatGrads).map { ($0.0, $0.1) }
+                let grads = ModuleParameters.unflattened(gradPairs)
                 let loss = lossValues[0]
                 let lossValue = loss.item(Float.self)
+                if shouldLogSample {
+                    print("[LoRATrainer] firstSample loss materialized \(lossValue)")
+                }
 
                 optimizer.update(model: model, gradients: grads)
-                eval(model.parameters())
+                if shouldLogSample {
+                    print("[LoRATrainer] firstSample optimizer updated")
+                }
+                eval(model.trainableParameters(), optimizer.innerState())
+                if shouldLogSample {
+                    print("[LoRATrainer] firstSample trainable state evaluated")
+                }
 
                 epochLoss += lossValue
                 epochSamples += 1

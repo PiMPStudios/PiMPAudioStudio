@@ -50,6 +50,8 @@ private struct TrainingPresentation: Identifiable {
     let initialName: String
     /// Pre-fill training config (nil = use defaults for new sessions).
     let initialConfig: LoRAConfig?
+    /// Adapter ID to resume from a saved checkpoint. Nil means fresh training/retraining.
+    let resumeAdapterID: String?
 
     /// Blank new training session.
     init(files: [(url: URL, description: String)] = []) {
@@ -57,6 +59,7 @@ private struct TrainingPresentation: Identifiable {
         self.files = files
         self.initialName = ""
         self.initialConfig = nil
+        self.resumeAdapterID = nil
     }
 
     /// Pre-populated retrain session.
@@ -64,12 +67,14 @@ private struct TrainingPresentation: Identifiable {
         selectedEntries: [HistoryEntry],
         files: [(url: URL, description: String)],
         initialName: String,
-        initialConfig: LoRAConfig?
+        initialConfig: LoRAConfig?,
+        resumeAdapterID: String? = nil
     ) {
         self.selectedEntries = selectedEntries
         self.files = files
         self.initialName = initialName
         self.initialConfig = initialConfig
+        self.resumeAdapterID = resumeAdapterID
     }
 }
 
@@ -136,7 +141,8 @@ private struct MyAdaptersListView: View {
                 selectedEntries: presentation.selectedEntries,
                 initialImportedFiles: presentation.files,
                 initialName: presentation.initialName,
-                initialConfig: presentation.initialConfig
+                initialConfig: presentation.initialConfig,
+                resumeAdapterID: presentation.resumeAdapterID
             )
         }
         .sheet(isPresented: $showingYouTubeSheet) {
@@ -183,6 +189,9 @@ private struct MyAdaptersListView: View {
             ForEach(adapters) { adapter in
                 adapterRow(adapter)
                     .contextMenu {
+                        if AdapterRegistry.hasCheckpoint(adapterID: adapter.id) {
+                            Button("Resume Training…") { beginResume(adapter) }
+                        }
                         Button("Retrain…") { beginRetrain(adapter) }
                         Divider()
                         Button("Rename...") {
@@ -203,12 +212,24 @@ private struct MyAdaptersListView: View {
     }
 
     private func adapterRow(_ adapter: LoRAAdapter) -> some View {
-        HStack {
+        let hasCheckpoint = AdapterRegistry.hasCheckpoint(adapterID: adapter.id)
+
+        return HStack {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(adapter.name)
                         .font(.body)
                         .fontWeight(.medium)
+                    if hasCheckpoint {
+                        Text("In Progress")
+                            .font(.caption2)
+                            .fontWeight(.medium)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(.orange.opacity(0.15))
+                            .foregroundStyle(.orange)
+                            .clipShape(Capsule())
+                    }
                     // Source badge
                     if adapter.source != .local {
                         Text(adapter.source.rawValue.capitalized)
@@ -271,14 +292,9 @@ private struct MyAdaptersListView: View {
         adapters = AdapterRegistry.listAdapters()
     }
 
-    /// Opens the training sheet pre-populated from the adapter's saved manifest.
-    ///
-    /// - History entries are resolved from the live `historyStore`; any that were
-    ///   deleted since training are silently skipped.
-    /// - Imported file references whose paths no longer exist on disk are skipped.
-    /// - If no manifest was saved (adapter trained before this feature), the sheet
-    ///   opens with just the name and config pre-filled; the dataset will be empty.
-    private func beginRetrain(_ adapter: LoRAAdapter) {
+    private func resolvedTrainingSources(
+        for adapter: LoRAAdapter
+    ) -> (entries: [HistoryEntry], files: [(url: URL, description: String)]) {
         let manifest = AdapterRegistry.loadManifest(adapterID: adapter.id)
 
         // Resolve history entries still present in the store
@@ -302,11 +318,46 @@ private struct MyAdaptersListView: View {
             resolvedFiles = []
         }
 
+        return (resolvedEntries, resolvedFiles)
+    }
+
+    /// Opens the training sheet pre-populated from the adapter's saved manifest.
+    ///
+    /// - History entries are resolved from the live `historyStore`; any that were
+    ///   deleted since training are silently skipped.
+    /// - Imported file references whose paths no longer exist on disk are skipped.
+    /// - If no manifest was saved (adapter trained before this feature), the sheet
+    ///   opens with just the name and config pre-filled; the dataset will be empty.
+    private func beginRetrain(_ adapter: LoRAAdapter) {
+        let sources = resolvedTrainingSources(for: adapter)
+
         trainingPresentation = TrainingPresentation(
-            selectedEntries: resolvedEntries,
-            files: resolvedFiles,
+            selectedEntries: sources.entries,
+            files: sources.files,
             initialName: adapter.name,
             initialConfig: adapter.config
+        )
+    }
+
+    private func beginResume(_ adapter: LoRAAdapter) {
+        guard let checkpoint = AdapterRegistry.loadCheckpoint(adapterID: adapter.id) else {
+            errorMessage = "No paused checkpoint was found for \(adapter.name)."
+            refreshAdapters()
+            return
+        }
+
+        let sources = resolvedTrainingSources(for: adapter)
+        guard !sources.entries.isEmpty || !sources.files.isEmpty else {
+            errorMessage = "Cannot resume \(adapter.name) because its original training files are missing."
+            return
+        }
+
+        trainingPresentation = TrainingPresentation(
+            selectedEntries: sources.entries,
+            files: sources.files,
+            initialName: adapter.name,
+            initialConfig: checkpoint.config,
+            resumeAdapterID: adapter.id
         )
     }
 

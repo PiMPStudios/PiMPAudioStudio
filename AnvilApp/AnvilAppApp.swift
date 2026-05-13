@@ -279,6 +279,13 @@ final class AppServices: ObservableObject {
             registry: registry,
             onConditioningUpgraded: conditioningUpgradeHandler
         )
+        trainingService?.setModelLoader {
+            await llmManager.evict()
+            try await aceStep.ensureLoadedForTraining()
+        }
+        trainingService?.setTrainingFinishedHandler {
+            await llmManager.reload()
+        }
         let sfx = SFXGenerationService(sfxModelManager: sfxModelManager)
         let lora = LoRACoordinator(pipeline: pipeline, registry: registry)
         let coverSong = CoverSongCoordinator(

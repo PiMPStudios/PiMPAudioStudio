@@ -61,14 +61,14 @@ public func createSlidingWindowMask(seqLen: Int, windowSize: Int, dtype: DType =
 // MARK: - SwiGLU MLP
 
 public class SwiGLUMLP: Module, UnaryLayer {
-    var gateProj: Linear
-    var upProj: Linear
-    var downProj: Linear
+    @ModuleInfo var gateProj: Linear
+    @ModuleInfo var upProj: Linear
+    @ModuleInfo var downProj: Linear
 
     public init(hiddenSize: Int, intermediateSize: Int) {
-        self.gateProj = Linear(hiddenSize, intermediateSize, bias: false)
-        self.upProj = Linear(hiddenSize, intermediateSize, bias: false)
-        self.downProj = Linear(intermediateSize, hiddenSize, bias: false)
+        self._gateProj.wrappedValue = Linear(hiddenSize, intermediateSize, bias: false)
+        self._upProj.wrappedValue = Linear(hiddenSize, intermediateSize, bias: false)
+        self._downProj.wrappedValue = Linear(intermediateSize, hiddenSize, bias: false)
     }
 
     public func callAsFunction(_ x: MLXArray) -> MLXArray {
@@ -89,10 +89,10 @@ public class DiTAttention: Module {
     let isCrossAttention: Bool
     let slidingWindow: Int?
 
-    var qProj: Linear
-    var kProj: Linear
-    var vProj: Linear
-    var oProj: Linear
+    @ModuleInfo var qProj: Linear
+    @ModuleInfo var kProj: Linear
+    @ModuleInfo var vProj: Linear
+    @ModuleInfo var oProj: Linear
     let qNorm: RMSNorm
     let kNorm: RMSNorm
 
@@ -117,10 +117,10 @@ public class DiTAttention: Module {
         self.isCrossAttention = isCrossAttention
         self.slidingWindow = slidingWindow
 
-        self.qProj = Linear(hiddenSize, numAttentionHeads * headDim, bias: attentionBias)
-        self.kProj = Linear(hiddenSize, numKeyValueHeads * headDim, bias: attentionBias)
-        self.vProj = Linear(hiddenSize, numKeyValueHeads * headDim, bias: attentionBias)
-        self.oProj = Linear(numAttentionHeads * headDim, hiddenSize, bias: attentionBias)
+        self._qProj.wrappedValue = Linear(hiddenSize, numAttentionHeads * headDim, bias: attentionBias)
+        self._kProj.wrappedValue = Linear(hiddenSize, numKeyValueHeads * headDim, bias: attentionBias)
+        self._vProj.wrappedValue = Linear(hiddenSize, numKeyValueHeads * headDim, bias: attentionBias)
+        self._oProj.wrappedValue = Linear(numAttentionHeads * headDim, hiddenSize, bias: attentionBias)
         self.qNorm = RMSNorm(dimensions: headDim, eps: rmsNormEps)
         self.kNorm = RMSNorm(dimensions: headDim, eps: rmsNormEps)
     }

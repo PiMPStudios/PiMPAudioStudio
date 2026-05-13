@@ -228,9 +228,17 @@ public actor DiffusionActor {
     public func trainLoRA(
         samples: [TrainingSample],
         config: LoRAConfig,
+        resumeFrom checkpoint: TrainingCheckpoint? = nil,
+        initialWeights: [(String, MLXArray)]? = nil,
         onProgress: @escaping @Sendable (TrainingProgress) -> Void
     ) async throws -> (weights: [(String, MLXArray)], finalLoss: Float?) {
-        try await dit.trainLoRA(samples: samples, config: config, onProgress: onProgress)
+        try await dit.trainLoRA(
+            samples: samples,
+            config: config,
+            resumeFrom: checkpoint,
+            initialWeights: initialWeights,
+            onProgress: onProgress
+        )
     }
 
     public func cancelTraining() async {

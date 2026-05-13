@@ -22,11 +22,11 @@ public class LoRALinear: Linear {
 
     /// Low-rank matrix A: shape (rank, inFeatures). Kaiming uniform init.
     /// Used for training (single adapter mode). For stacking, see contributions.
-    var loraA: MLXArray
+    @ParameterInfo var loraA: MLXArray
 
     /// Low-rank matrix B: shape (outFeatures, rank). Zero init.
     /// Used for training (single adapter mode). For stacking, see contributions.
-    var loraB: MLXArray
+    @ParameterInfo var loraB: MLXArray
 
     /// Scaling factor = alpha / rank.
     let scaling: Float
@@ -58,10 +58,10 @@ public class LoRALinear: Linear {
 
         // Kaiming uniform for A: bound = sqrt(1/inFeatures)
         let bound = Float(1.0 / Float(inFeatures).squareRoot())
-        self.loraA = MLXRandom.uniform(-bound ..< bound, [rank, inFeatures])
+        self._loraA.wrappedValue = MLXRandom.uniform(-bound ..< bound, [rank, inFeatures])
 
         // Zero init for B so adapter starts as identity
-        self.loraB = MLXArray.zeros([outFeatures, rank])
+        self._loraB.wrappedValue = MLXArray.zeros([outFeatures, rank])
 
         // Initialize Linear superclass with the base weights
         super.init(weight: base.weight, bias: base.bias)

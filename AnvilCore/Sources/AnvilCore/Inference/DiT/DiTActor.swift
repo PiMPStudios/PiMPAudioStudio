@@ -14,6 +14,11 @@ public enum DiTActorError: Error, LocalizedError, Sendable {
 }
 
 public actor DiTActor {
+    /// Keep on-device LoRA training inside a memory envelope that can survive
+    /// local backprop. Late DiT blocks carry style/timbre detail and are the
+    /// safest first target for local adapter training.
+    private static let maxLoRATrainingLayers = 4
+
     private var decoder: DiTDecoder?
     private var decoderConfig: DiTConfig
     public private(set) var loadedModelID: String?
@@ -184,20 +189,61 @@ public actor DiTActor {
     public func trainLoRA(
         samples: [TrainingSample],
         config: LoRAConfig,
+        resumeFrom checkpoint: TrainingCheckpoint? = nil,
+        initialWeights: [(String, MLXArray)]? = nil,
         onProgress: @escaping @Sendable (TrainingProgress) -> Void
     ) async throws -> (weights: [(String, MLXArray)], finalLoss: Float?) {
         guard let decoder else {
             throw DiTActorError.weightsNotLoaded
         }
-        // Inject, train, extract, remove
-        let paths = LoRAInjector.inject(model: decoder, config: config)
-        let trainer = LoRATrainer(model: decoder, config: config, injectedPaths: paths, datasetSize: samples.count)
+        // Inject first so the module tree contains the LoRA wrappers, then
+        // freeze the full DiT and unfreeze only the tiny adapter matrices.
+        let trainableLayerIndices = Self.trainingLayerIndices(for: decoder.layers.count)
+        let paths = LoRAInjector.inject(
+            model: decoder,
+            config: config,
+            layerIndices: trainableLayerIndices
+        )
+        decoder.freeze()
+        LoRAInjector.unfreezeAdapters(model: decoder, paths: paths)
+        let trainableCount = decoder.trainableParameters().flattened().count
+        print(
+            "[DiTActor.trainLoRA] injectedLoRALayers=\(paths.count) trainableParams=\(trainableCount) layers=\(trainableLayerIndices.sorted())"
+        )
+        if let initialWeights {
+            print("[DiTActor.trainLoRA] loading initialWeights count=\(initialWeights.count)")
+            LoRAInjector.loadWeights(model: decoder, paths: paths, weights: initialWeights)
+            print("[DiTActor.trainLoRA] loaded initialWeights")
+        } else {
+            print("[DiTActor.trainLoRA] no initialWeights")
+        }
+        print("[DiTActor.trainLoRA] creating trainer")
+        let trainer = LoRATrainer(
+            model: decoder,
+            config: config,
+            injectedPaths: paths,
+            datasetSize: samples.count,
+            resumeFrom: checkpoint
+        )
+        print("[DiTActor.trainLoRA] trainer created")
         activeTrainer = trainer
+        print("[DiTActor.trainLoRA] starting trainer.train samples=\(samples.count)")
+        defer {
+            activeTrainer = nil
+            LoRAInjector.remove(model: decoder, paths: paths)
+            decoder.unfreeze()
+        }
+
         let weights = try await trainer.train(dataset: samples, onProgress: onProgress)
-        let finalLoss = trainer.lowestLoss
-        activeTrainer = nil
-        LoRAInjector.remove(model: decoder, paths: paths)
-        return (weights, finalLoss)
+        return (weights, trainer.lowestLoss)
+    }
+
+    private static func trainingLayerIndices(for layerCount: Int) -> Set<Int> {
+        guard layerCount > maxLoRATrainingLayers else {
+            return Set(0..<layerCount)
+        }
+
+        return Set((layerCount - maxLoRATrainingLayers)..<layerCount)
     }
 
     /// Cancel ongoing training.
