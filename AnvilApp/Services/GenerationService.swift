@@ -152,6 +152,13 @@ final class GenerationService: ObservableObject {
     }
 
     func unloadAllWeights() async {
+        if let generationTask {
+            generationTask.cancel()
+            self.generationTask = nil
+            state = .cancelled
+            await generationTask.value
+        }
+
         // Snapshot MLX GPU memory before/after so the user can see the
         // actual delta in the Xcode console. MLX-Swift maintains an internal
         // allocator pool that is NOT returned to the OS just by setting
@@ -160,24 +167,27 @@ final class GenerationService: ObservableObject {
         memLogger.info("[unloadAllWeights] before active=\(before.activeMemory) cache=\(before.cacheMemory) peak=\(before.peakMemory)")
 
         await aceStepService.unloadWeights()
+        await coverSongCoordinator.unloadWeights()
         await loraCoordinator.clearAll()
+        sfxModelManager.unloadPipeline()
+        llmManager.evict(clearCache: false)
 
         // Return MLX's GPU allocator pool to the OS. Without this, even
         // after DiT/VAE weights are released, multi-GB stays "held" by MLX
         // and Activity Monitor doesn't drop. This is the actual fix for
         // "Release didn't actually free memory."
-        MLX.GPU.clearCache()
-        MLX.GPU.resetPeakMemory()
+        await Self.flushMLXGPUAllocator()
 
         let after = MLX.GPU.snapshot()
         memLogger.info("[unloadAllWeights] after  active=\(after.activeMemory) cache=\(after.cacheMemory) peak=\(after.peakMemory)")
         memLogger.info("[unloadAllWeights] delta active=-\(before.activeMemory - after.activeMemory) cache=-\(before.cacheMemory - after.cacheMemory)")
+    }
 
-        // NOTE: Conditioning sub-modules (Qwen3 ~1.2 GB, lyric/timbre/
-        // condition encoders, silence_latent) are NOT unloaded here yet —
-        // their fields are `let` on ConditioningActor and need a refactor
-        // to make replaceable. Tracked as a follow-up: most of the savings
-        // already come from DiT (4.8 GB) + VAE (0.3 GB) + clearCache.
+    private nonisolated static func flushMLXGPUAllocator() async {
+        await Task.detached(priority: .utility) {
+            MLX.GPU.clearCache()
+            MLX.GPU.resetPeakMemory()
+        }.value
     }
 
     private func shouldUseStableAudio(request: GenerationRequest) -> Bool {

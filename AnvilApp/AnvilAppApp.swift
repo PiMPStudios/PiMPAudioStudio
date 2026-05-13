@@ -120,8 +120,8 @@ struct AnvilAppApp: App {
                     // SwiftUI's `Settings` scene is a separate scene from
                     // `WindowGroup`, so environment objects injected on
                     // ContentView do NOT propagate here. The Release GPU
-                    // Memory button accesses `generationService` and
-                    // `sfxModelManager` — without explicit injection here,
+                    // Memory button accesses `generationService`; without
+                    // explicit injection here,
                     // tapping it fatal-errors with "No ObservableObject of
                     // type GenerationService found."
                     .environmentObject(services.generationService)

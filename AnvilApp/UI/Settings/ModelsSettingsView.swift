@@ -4,7 +4,6 @@ import AnvilCore
 struct ModelsSettingsView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var generationService: GenerationService
-    @EnvironmentObject private var sfxModelManager: SFXModelManager
     @EnvironmentObject private var apiKeyStore: APIKeyStore
 
     @State private var huggingFaceToken: String = ""
@@ -232,7 +231,6 @@ struct ModelsSettingsView: View {
         isReleasingMemory = true
         Task {
             await generationService.unloadAllWeights()
-            sfxModelManager.unloadPipeline()
             await MainActor.run {
                 isReleasingMemory = false
             }

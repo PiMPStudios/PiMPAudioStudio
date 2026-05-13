@@ -187,9 +187,11 @@ final class LLMModelManager: ObservableObject {
     /// top of the resident LLM weights.  The `$llmActor` publisher fires
     /// automatically, propagating `nil` to PromptEnhancer, IntentRouter,
     /// and LyricWriterManager — disabling inference during generation.
-    func evict() {
+    func evict(clearCache: Bool = true) {
         llmActor = nil
-        MLX.GPU.clearCache()
+        if clearCache {
+            MLX.GPU.clearCache()
+        }
     }
 
     /// Recreates the LLMActor from the active model path (lazy — weights are

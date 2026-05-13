@@ -8,6 +8,8 @@ All notable changes to AnvilApp are documented here.
 
 ### Fixed
 
+- **Release GPU Memory now clears ACE conditioning weights too** — `ConditioningActor` can now unload Qwen3, lyric/timbre encoders, the condition encoder, and `silence_latent`; both ACE text-to-music and cover-song coordinators call it during release so the button no longer leaves the conditioning stack resident.
+- **Release GPU Memory is safer around active generation** — the release path now cancels any active generation task before tearing down weights, unloads ACE, cover-song, LoRA, SFX, and local LLM resources through one consolidated path, then flushes the MLX GPU allocator off the main actor.
 - **Editor undo/redo history no longer grows without bound** — `EditorState` now caps raw `AudioBuffer` history to 10 snapshots and a 512 MB byte budget per stack. This keeps repeated DSP/inpaint edits from quietly retaining unlimited full-track buffers.
 - **YouTube dataset subprocesses are cancellation-safe** — `YouTubeDatasetBuilder.runProcess` now drains stdout/stderr while `yt-dlp` runs and terminates the child process when the Swift task is cancelled, avoiding background downloads and pipe back-pressure hangs.
 

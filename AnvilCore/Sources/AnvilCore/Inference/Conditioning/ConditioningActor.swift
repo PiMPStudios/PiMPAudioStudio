@@ -5,12 +5,20 @@ import OSLog
 
 private let condLogger = Logger(subsystem: "com.pimp.AnvilApp", category: "ConditioningActor")
 
+public enum ConditioningActorError: Error, LocalizedError, Sendable {
+    case weightsNotLoaded
+
+    public var errorDescription: String? {
+        "Conditioning weights are not loaded. Please wait for model loading to complete."
+    }
+}
+
 public actor ConditioningActor {
     private let vae: VAEActor
-    private let qwen3: Qwen3Model
-    private let lyricEncoder: LyricEncoder
-    private let timbreEncoder: TimbreEncoder
-    private let conditionEncoder: ConditionEncoder
+    private var qwen3: Qwen3Model?
+    private var lyricEncoder: LyricEncoder?
+    private var timbreEncoder: TimbreEncoder?
+    private var conditionEncoder: ConditionEncoder?
     private let tokenizer: AnvilTokenizer
     /// Trained "silence" latent prior (shape `[1, 15000, 64]`) — used as the
     /// `src_latents` half of `context_latents` when generating from text
@@ -91,6 +99,15 @@ public actor ConditioningActor {
         precision: Precision,
         srcLatentsOverride: MLXArray? = nil
     ) async throws -> ConditioningResult {
+        guard
+            let qwen3,
+            let lyricEncoder,
+            let timbreEncoder,
+            let conditionEncoder
+        else {
+            throw ConditioningActorError.weightsNotLoaded
+        }
+
         let wrappedText = Self.wrapPromptForSFT(caption: text, duration: duration)
         let wrappedLyrics = Self.wrapLyricsForSFT(lyrics: lyrics)
         let (textIds, textMask) = tokenizer.encodeText(wrappedText, maxLength: 256)
@@ -274,6 +291,29 @@ public actor ConditioningActor {
         qwen3Weights: [(String, MLXArray)],
         conditionWeights: [(String, MLXArray)]
     ) async {
+        if qwen3 == nil {
+            qwen3 = Qwen3Model()
+        }
+        if lyricEncoder == nil {
+            lyricEncoder = LyricEncoder()
+        }
+        if timbreEncoder == nil {
+            timbreEncoder = TimbreEncoder()
+        }
+        if conditionEncoder == nil {
+            conditionEncoder = ConditionEncoder()
+        }
+
+        guard
+            let qwen3,
+            let lyricEncoder,
+            let timbreEncoder,
+            let conditionEncoder
+        else {
+            condLogger.error("[ConditioningActor.loadWeights] failed to initialise conditioning modules")
+            return
+        }
+
         // Diagnostic for each sub-module: how many supplied keys match a
         // real model parameter path? Mirrors the DiTActor / VAEActor
         // diagnostic that revealed the silent-audio root cause.
@@ -305,6 +345,18 @@ public actor ConditioningActor {
         Self.logKeyDiff(name: "conditionEncoder", supplied: condEncWeights, model: conditionEncoder)
         conditionEncoder.update(parameters: ModuleParameters.unflattened(condEncWeights))
         eval(conditionEncoder.parameters())
+    }
+
+    /// Release loaded text/condition encoders and the learned silence prior.
+    /// The tokenizer is cheap and remains available; modules are rebuilt on
+    /// the next `loadWeights` call before generation resumes.
+    public func unloadWeights() {
+        qwen3 = nil
+        lyricEncoder = nil
+        timbreEncoder = nil
+        conditionEncoder = nil
+        silenceLatent = nil
+        condLogger.info("[ConditioningActor.unloadWeights] cleared conditioning modules and silence_latent")
     }
 
     private static func logKeyDiff(

@@ -149,6 +149,7 @@ actor ACEStepGenerationService {
     func unloadWeights() async {
         await pipeline.unloadDiTWeights()
         await pipeline.unloadVAEWeights()
+        await conditioning.unloadWeights()
         currentlyLoadedDiTModelID = nil
         currentlyLoadedDiTConfig = nil
         currentlyLoadedVAEModelID = nil
