@@ -88,6 +88,35 @@ public struct QuantizationConfig: Codable, Sendable {
     }
 }
 
+// MARK: - KV Cache
+
+final class LLMKeyValueCache {
+    private var entries: [Int: (key: MLXArray, value: MLXArray)] = [:]
+
+    var sequenceLength: Int {
+        entries[0]?.key.shape[2] ?? 0
+    }
+
+    func get(layer: Int) -> (key: MLXArray, value: MLXArray)? {
+        entries[layer]
+    }
+
+    func update(key: MLXArray, value: MLXArray, layer: Int) {
+        entries[layer] = (key, value)
+    }
+
+    var arrays: [MLXArray] {
+        entries.keys.sorted().flatMap { layer -> [MLXArray] in
+            guard let entry = entries[layer] else { return [] }
+            return [entry.key, entry.value]
+        }
+    }
+
+    func reset() {
+        entries.removeAll()
+    }
+}
+
 // MARK: - Actor
 
 /// Actor providing local LLM inference using MLX-Swift.
@@ -281,13 +310,14 @@ public actor LLMActor {
         tokenizer: any Tokenizer,
         continuation: AsyncStream<String>.Continuation
     ) throws {
-        var tokens = inputIds
+        let cache = LLMKeyValueCache()
+        var nextInputIds = inputIds
         var key = MLXRandom.key(UInt64(Date().timeIntervalSince1970))
 
         for _ in 0..<maxTokens {
             if Task.isCancelled { break }
 
-            let logits = try forward(inputIds: tokens)
+            let logits = try forward(inputIds: nextInputIds, cache: cache)
             let lastIndex = logits.shape[1] - 1
             var nextLogits = logits[0, lastIndex, 0...]
             if temperature > 0 {
@@ -306,31 +336,42 @@ public actor LLMActor {
             let nextToken = nextArray.item(Int.self)
             if Self.eosTokens.contains(nextToken) { break }
 
-            tokens.append(nextToken)
+            nextInputIds = [nextToken]
             continuation.yield(tokenizer.decode(tokens: [nextToken]))
         }
+        cache.reset()
         continuation.finish()
     }
 
-    private func forward(inputIds: [Int]) throws -> MLXArray {
+    private func forward(inputIds: [Int], cache: LLMKeyValueCache?) throws -> MLXArray {
         guard let config, let arrays else {
             throw LLMError.generationFailed("model is not loaded")
         }
         let ids = MLXArray(inputIds.map(Int32.init)).reshaped([1, inputIds.count])
         var hidden = try embed(ids, arrays: arrays, config: config)
-        let mask = causalMask(seqLen: inputIds.count)
-        let rotary = RotaryEmbedding(
-            headDim: config.headDim,
-            maxLen: inputIds.count,
-            base: config.ropeTheta ?? 500_000.0
-        ).forward(seqLen: inputIds.count)
+        let cachedLength = cache?.sequenceLength ?? 0
+        let mask = causalMask(queryLength: inputIds.count, keyLength: cachedLength + inputIds.count, queryOffset: cachedLength)
+        let rotary = rotaryEmbedding(seqLen: inputIds.count, positionOffset: cachedLength, config: config)
 
         for layer in 0..<config.numHiddenLayers {
-            hidden = try llamaLayer(hidden, layer: layer, mask: mask, rotary: rotary, arrays: arrays, config: config)
+            hidden = try llamaLayer(
+                hidden,
+                layer: layer,
+                mask: mask,
+                rotary: rotary,
+                arrays: arrays,
+                config: config,
+                cache: cache
+            )
         }
 
         hidden = try rmsNorm(hidden, weightKey: "model.norm.weight", arrays: arrays, eps: config.rmsNormEps)
-        return try outputLogits(hidden, arrays: arrays, config: config)
+        let lastHidden = hidden[0..., (hidden.shape[1] - 1)..<hidden.shape[1], 0...]
+        let logits = try outputLogits(lastHidden, arrays: arrays, config: config)
+        if let cache {
+            eval(cache.arrays + [logits])
+        }
+        return logits
     }
 
     private func llamaLayer(
@@ -339,11 +380,21 @@ public actor LLMActor {
         mask: MLXArray?,
         rotary: (cos: MLXArray, sin: MLXArray),
         arrays: [String: MLXArray],
-        config: LLMConfig
+        config: LLMConfig,
+        cache: LLMKeyValueCache?
     ) throws -> MLXArray {
         let prefix = "model.layers.\(layer)"
         let normed = try rmsNorm(hidden, weightKey: "\(prefix).input_layernorm.weight", arrays: arrays, eps: config.rmsNormEps)
-        let attn = try attention(normed, prefix: "\(prefix).self_attn", mask: mask, rotary: rotary, arrays: arrays, config: config)
+        let attn = try attention(
+            normed,
+            prefix: "\(prefix).self_attn",
+            layer: layer,
+            mask: mask,
+            rotary: rotary,
+            arrays: arrays,
+            config: config,
+            cache: cache
+        )
         var h = hidden + attn
 
         let post = try rmsNorm(h, weightKey: "\(prefix).post_attention_layernorm.weight", arrays: arrays, eps: config.rmsNormEps)
@@ -357,10 +408,12 @@ public actor LLMActor {
     private func attention(
         _ hidden: MLXArray,
         prefix: String,
+        layer: Int,
         mask: MLXArray?,
         rotary: (cos: MLXArray, sin: MLXArray),
         arrays: [String: MLXArray],
-        config: LLMConfig
+        config: LLMConfig,
+        cache: LLMKeyValueCache?
     ) throws -> MLXArray {
         let b = hidden.shape[0]
         let seqLen = hidden.shape[1]
@@ -381,8 +434,16 @@ public actor LLMActor {
 
         (q, k) = applyRotaryPosEmb(q: q, k: k, cos: rotary.cos, sin: rotary.sin)
 
-        let kExpanded = repeatKV(k, nRep: nRep)
-        let vExpanded = repeatKV(v, nRep: nRep)
+        var allKeys = k
+        var allValues = v
+        if let cached = cache?.get(layer: layer) {
+            allKeys = concatenated([cached.key, k], axis: 2)
+            allValues = concatenated([cached.value, v], axis: 2)
+        }
+        cache?.update(key: allKeys, value: allValues, layer: layer)
+
+        let kExpanded = repeatKV(allKeys, nRep: nRep)
+        let vExpanded = repeatKV(allValues, nRep: nRep)
         let out = MLXFast.scaledDotProductAttention(
             queries: q,
             keys: kExpanded,
@@ -462,14 +523,37 @@ public actor LLMActor {
         return x * rsqrt(variance + eps) * weight
     }
 
-    private func causalMask(seqLen: Int) -> MLXArray? {
-        guard seqLen > 1 else { return nil }
-        let indices = MLXArray(Array(0..<seqLen).map(Float.init))
-        let row = indices.expandedDimensions(axis: 1)
-        let col = indices.expandedDimensions(axis: 0)
-        let zeros = MLXArray.zeros([seqLen, seqLen])
-        let negInf = MLXArray.full([seqLen, seqLen], values: MLXArray(Float(-1e9)))
-        return which(col .<= row, zeros, negInf).reshaped([1, 1, seqLen, seqLen])
+    private func causalMask(queryLength: Int, keyLength: Int, queryOffset: Int) -> MLXArray? {
+        guard keyLength > 1 else { return nil }
+        if queryLength == 1 && queryOffset == keyLength - 1 {
+            return nil
+        }
+        let queryPositions = MLXArray(Array(queryOffset..<(queryOffset + queryLength)).map(Float.init))
+        let keyPositions = MLXArray(Array(0..<keyLength).map(Float.init))
+        let row = queryPositions.expandedDimensions(axis: 1)
+        let col = keyPositions.expandedDimensions(axis: 0)
+        let zeros = MLXArray.zeros([queryLength, keyLength])
+        let negInf = MLXArray.full([queryLength, keyLength], values: MLXArray(Float(-1e9)))
+        return which(col .<= row, zeros, negInf).reshaped([1, 1, queryLength, keyLength])
+    }
+
+    private func rotaryEmbedding(
+        seqLen: Int,
+        positionOffset: Int,
+        config: LLMConfig
+    ) -> (cos: MLXArray, sin: MLXArray) {
+        let headDim = config.headDim
+        let base = config.ropeTheta ?? 500_000.0
+        let invFreq = 1.0 / pow(
+            MLXArray(base),
+            MLXArray(stride(from: 0, to: headDim, by: 2).map { Float($0) / Float(headDim) })
+        )
+        let positions = MLXArray(Array(positionOffset..<(positionOffset + seqLen)).map(Float.init))
+        let freqs = positions.expandedDimensions(axis: 1) * invFreq.expandedDimensions(axis: 0)
+        let freqsFull = concatenated([freqs, freqs], axis: 1)
+        let c = cos(freqsFull).reshaped([1, 1, seqLen, headDim])
+        let s = sin(freqsFull).reshaped([1, 1, seqLen, headDim])
+        return (c, s)
     }
 
     private func repeatKV(_ x: MLXArray, nRep: Int) -> MLXArray {

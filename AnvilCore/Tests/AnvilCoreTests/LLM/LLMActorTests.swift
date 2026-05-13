@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import MLX
 @testable import AnvilCore
 
 @Suite("LLMActor Tests")
@@ -40,5 +41,30 @@ struct LLMActorTests {
         var tokens: [String] = []
         for await token in stream { tokens.append(token) }
         #expect(tokens.isEmpty)
+    }
+
+    @Test("KV cache tracks per-layer sequence length")
+    func testKVCacheTracksSequenceLength() {
+        let cache = LLMKeyValueCache()
+        #expect(cache.sequenceLength == 0)
+
+        let key0 = MLXArray.zeros([1, 2, 3, 4])
+        let value0 = MLXArray.ones([1, 2, 3, 4])
+        cache.update(key: key0, value: value0, layer: 0)
+
+        #expect(cache.sequenceLength == 3)
+        #expect(cache.get(layer: 0)?.key.shape == [1, 2, 3, 4])
+        #expect(cache.get(layer: 0)?.value.shape == [1, 2, 3, 4])
+
+        let key1 = MLXArray.zeros([1, 2, 5, 4])
+        let value1 = MLXArray.ones([1, 2, 5, 4])
+        cache.update(key: key1, value: value1, layer: 1)
+
+        #expect(cache.sequenceLength == 3)
+        #expect(cache.get(layer: 1)?.key.shape == [1, 2, 5, 4])
+
+        cache.reset()
+        #expect(cache.sequenceLength == 0)
+        #expect(cache.get(layer: 0) == nil)
     }
 }
