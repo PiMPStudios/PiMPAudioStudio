@@ -96,14 +96,11 @@ enum AudioFileLoader {
         let frames = Int(buffer.frameLength)
         let channels = Int(buffer.format.channelCount)
 
-        let ch0 = Array(UnsafeBufferPointer(start: floatData[0], count: frames))
-        let ch1 = channels >= 2
-            ? Array(UnsafeBufferPointer(start: floatData[1], count: frames))
-            : ch0   // duplicate mono → stereo
-
         var interleaved = [Float](repeating: 0, count: frames * 2)
+        let ch0 = floatData[0]
+        let ch1 = channels >= 2 ? floatData[1] : floatData[0]
         for i in 0..<frames {
-            interleaved[i * 2]     = ch0[i]
+            interleaved[i * 2] = ch0[i]
             interleaved[i * 2 + 1] = ch1[i]
         }
         // [1, frames, 2] — NLC layout required by VAEActor.encodeMean

@@ -4,6 +4,19 @@ All notable changes to AnvilApp are documented here.
 
 ---
 
+## [Unreleased] — Runtime + Memory Optimization Pass
+
+### Fixed
+
+- **Editor undo/redo history no longer grows without bound** — `EditorState` now caps raw `AudioBuffer` history to 10 snapshots and a 512 MB byte budget per stack. This keeps repeated DSP/inpaint edits from quietly retaining unlimited full-track buffers.
+- **YouTube dataset subprocesses are cancellation-safe** — `YouTubeDatasetBuilder.runProcess` now drains stdout/stderr while `yt-dlp` runs and terminates the child process when the Swift task is cancelled, avoiding background downloads and pipe back-pressure hangs.
+
+### Changed
+
+- **Audio import avoids two extra full-channel copies** — `AudioFileLoader.bufferToMLX` now interleaves directly from `AVAudioPCMBuffer.floatChannelData` instead of first materialising separate `ch0` / `ch1` arrays.
+
+---
+
 ## [Unreleased] — Cover-Song Generation Phase 2A (foundation)
 
 ### Added

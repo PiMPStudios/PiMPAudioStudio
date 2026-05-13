@@ -59,6 +59,8 @@ class EditorState: ObservableObject {
     // share a single undo button.
     private var undoStack: [AudioBuffer] = []
     private var redoStack: [AudioBuffer] = []
+    private let maxHistorySnapshots = 10
+    private let maxHistoryBytes = 512 * 1024 * 1024
 
     var hasSelection: Bool {
         selectionEnd > selectionStart
@@ -128,7 +130,7 @@ class EditorState: ObservableObject {
             let result = try dspProcessor.apply(effect: effect, to: buffer, target: target, parameters: parameters)
 
             // Commit: save pre-op buffer so it can be restored by undo.
-            undoStack.append(buffer)
+            pushUndoSnapshot(buffer)
             redoStack.removeAll()
             canUndo = true
             canRedo = false
@@ -153,7 +155,7 @@ class EditorState: ObservableObject {
     /// Call this before starting an AI inpaint so the result is also undoable.
     func saveUndoSnapshot() {
         guard let buffer = audioBuffer else { return }
-        undoStack.append(buffer)
+        pushUndoSnapshot(buffer)
         redoStack.removeAll()
         canUndo = true
         canRedo = false
@@ -162,7 +164,7 @@ class EditorState: ObservableObject {
     func undoDSP() {
         guard let previous = undoStack.popLast() else { return }
         if let current = audioBuffer {
-            redoStack.append(current)
+            pushRedoSnapshot(current)
         }
         invalidatePreviewPlayer()
         audioBuffer = previous
@@ -175,7 +177,7 @@ class EditorState: ObservableObject {
     func redoDSP() {
         guard let next = redoStack.popLast() else { return }
         if let current = audioBuffer {
-            undoStack.append(current)
+            pushUndoSnapshot(current)
         }
         invalidatePreviewPlayer()
         audioBuffer = next
@@ -191,6 +193,30 @@ class EditorState: ObservableObject {
         redoStack.removeAll()
         canUndo = false
         canRedo = false
+    }
+
+    private func pushUndoSnapshot(_ buffer: AudioBuffer) {
+        undoStack.append(buffer)
+        trimHistoryStack(&undoStack)
+    }
+
+    private func pushRedoSnapshot(_ buffer: AudioBuffer) {
+        redoStack.append(buffer)
+        trimHistoryStack(&redoStack)
+    }
+
+    private func trimHistoryStack(_ stack: inout [AudioBuffer]) {
+        while stack.count > maxHistorySnapshots {
+            stack.removeFirst()
+        }
+
+        while historyByteCount(stack) > maxHistoryBytes, stack.count > 1 {
+            stack.removeFirst()
+        }
+    }
+
+    private func historyByteCount(_ stack: [AudioBuffer]) -> Int {
+        stack.reduce(0) { $0 + $1.data.count }
     }
 
     // MARK: - Preview playback
