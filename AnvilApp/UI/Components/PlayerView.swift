@@ -100,6 +100,9 @@ struct PlayerView: View {
         .onChange(of: fileURL) { _, newURL in
             playerService.load(url: newURL, precomputedPeaks: precomputedPeaks)
         }
+        .onChange(of: precomputedPeaks ?? []) { _, newPeaks in
+            playerService.load(url: fileURL, precomputedPeaks: newPeaks)
+        }
     }
 
     private func timeString(_ time: TimeInterval) -> String {

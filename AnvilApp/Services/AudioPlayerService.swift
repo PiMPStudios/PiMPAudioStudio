@@ -23,8 +23,22 @@ final class AudioPlayerService: ObservableObject {
     private var timer: Timer?
 
     func load(url: URL, precomputedPeaks: [Float]? = nil) {
-        guard url != loadedURL else { return }
+        if url == loadedURL {
+            if let peaks = precomputedPeaks, !peaks.isEmpty {
+                waveform = WaveformData(peaks: peaks, sampleRate: 44100, channelCount: 2)
+            } else if waveform == nil {
+                waveform = computeWaveform(url: url)
+            }
+
+            if player != nil, duration > 0 {
+                return
+            }
+        }
+
         stop()
+        player = nil
+        waveform = nil
+        duration = 0
         loadedURL = url
         do {
             player = try AVAudioPlayer(contentsOf: url)
@@ -40,6 +54,11 @@ final class AudioPlayerService: ObservableObject {
                 waveform = computeWaveform(url: url)
             }
         } catch {
+            loadedURL = nil
+            player = nil
+            waveform = nil
+            duration = 0
+            currentTime = 0
             logger.error("Failed to load audio: \(error, privacy: .public)")
         }
     }

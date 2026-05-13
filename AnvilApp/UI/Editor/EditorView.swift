@@ -100,7 +100,10 @@ struct EditorView: View {
                 playbackProgress: state.playbackProgress,
                 selectionStart: $state.selectionStart,
                 selectionEnd: $state.selectionEnd,
-                isSelectionEnabled: state.editMode == .inpaint
+                isSelectionEnabled: state.editMode == .inpaint,
+                onSeek: { fraction in
+                    state.seekPreview(to: fraction)
+                }
             )
             .padding(.horizontal, 16)
 

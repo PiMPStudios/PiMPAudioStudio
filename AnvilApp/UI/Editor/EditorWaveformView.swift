@@ -7,6 +7,7 @@ struct EditorWaveformView: View {
     @Binding var selectionStart: TimeInterval
     @Binding var selectionEnd: TimeInterval
     let isSelectionEnabled: Bool
+    let onSeek: (Double) -> Void
 
     @State private var isDragging = false
     @State private var dragOrigin: Double = 0
@@ -56,9 +57,16 @@ struct EditorWaveformView: View {
             }
             .contentShape(Rectangle())
             .gesture(
-                DragGesture(minimumDistance: 4)
+                DragGesture(minimumDistance: 0)
                     .onChanged { value in
-                        guard isSelectionEnabled else { return }
+                        guard isSelectionEnabled else {
+                            seek(to: value.location.x, width: geo.size.width)
+                            return
+                        }
+
+                        let dragDistance = abs(value.location.x - value.startLocation.x)
+                        guard dragDistance >= 4 else { return }
+
                         let startFrac = max(0, min(1, value.startLocation.x / geo.size.width))
                         let currentFrac = max(0, min(1, value.location.x / geo.size.width))
                         if !isDragging {
@@ -69,12 +77,23 @@ struct EditorWaveformView: View {
                         selectionStart = min(dragOrigin, currentTime)
                         selectionEnd = max(dragOrigin, currentTime)
                     }
-                    .onEnded { _ in isDragging = false }
+                    .onEnded { value in
+                        if !isDragging {
+                            seek(to: value.location.x, width: geo.size.width)
+                        }
+                        isDragging = false
+                    }
             )
         }
         .frame(height: 120)
         .background(Color.black.opacity(0.3))
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.gray.opacity(0.3), lineWidth: 1))
+    }
+
+    private func seek(to xPosition: CGFloat, width: CGFloat) {
+        guard width > 0 else { return }
+        let fraction = max(0, min(1, xPosition / width))
+        onSeek(Double(fraction))
     }
 }

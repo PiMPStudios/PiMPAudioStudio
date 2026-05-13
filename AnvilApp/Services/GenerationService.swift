@@ -101,10 +101,9 @@ final class GenerationService: ObservableObject {
                 let fileName = HistoryEntry.fileName(prompt: request.text)
                 let fileURL = outputDir.appending(path: fileName)
 
-                try WAVWriter.write(
-                    samples: audioResult.samples,
-                    sampleRate: audioResult.sampleRate,
-                    to: fileURL
+                let peaks = try await Self.writeAudioAndComputeWaveformPeaks(
+                    audioResult: audioResult,
+                    fileURL: fileURL
                 )
 
                 let pipelineLabel: String
@@ -131,7 +130,6 @@ final class GenerationService: ObservableObject {
                 )
 
                 self.historyStore.add(entry)
-                let peaks = Self.computeWaveformPeaks(from: audioResult.samples)
                 self.currentResult = GenerationResult(fileURL: fileURL, entry: entry, waveformPeaks: peaks)
                 self.state = .complete
             } catch is CancellationError {
@@ -187,6 +185,20 @@ final class GenerationService: ObservableObject {
         await Task.detached(priority: .utility) {
             MLX.GPU.clearCache()
             MLX.GPU.resetPeakMemory()
+        }.value
+    }
+
+    private nonisolated static func writeAudioAndComputeWaveformPeaks(
+        audioResult: AudioResult,
+        fileURL: URL
+    ) async throws -> [Float]? {
+        try await Task.detached(priority: .utility) {
+            try WAVWriter.write(
+                samples: audioResult.samples,
+                sampleRate: audioResult.sampleRate,
+                to: fileURL
+            )
+            return computeWaveformPeaks(from: audioResult.samples)
         }.value
     }
 
@@ -284,7 +296,7 @@ final class GenerationService: ObservableObject {
     ///   3D  [batch, frames, channels] — standard VAE output (batch=1)
     ///
     /// Returns an empty array on unexpected input so callers get a graceful no-op.
-    private static func computeWaveformPeaks(
+    private nonisolated static func computeWaveformPeaks(
         from samples: MLXArray,
         bucketCount: Int = 400
     ) -> [Float] {

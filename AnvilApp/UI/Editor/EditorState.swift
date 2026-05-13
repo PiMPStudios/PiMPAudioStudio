@@ -1,7 +1,6 @@
 import SwiftUI
 import AVFoundation
 import AnvilCore
-import Accelerate
 
 @MainActor
 class EditorState: ObservableObject {
@@ -222,11 +221,7 @@ class EditorState: ObservableObject {
     // MARK: - Preview playback
 
     func playPreview() {
-        if previewPlayer == nil, let buffer = audioBuffer {
-            let data = makeWAVData(from: buffer)
-            previewPlayer = try? AVAudioPlayer(data: data, fileTypeHint: AVFileType.wav.rawValue)
-            previewPlayer?.prepareToPlay()
-        }
+        ensurePreviewPlayer()
         previewPlayer?.play()
         isPlayingPreview = true
         startPreviewTimer()
@@ -239,11 +234,20 @@ class EditorState: ObservableObject {
     }
 
     func seekPreview(to fraction: Double) {
+        ensurePreviewPlayer()
         guard let player = previewPlayer else { return }
-        let t = fraction * player.duration
+        let clampedFraction = max(0, min(1, fraction))
+        let t = clampedFraction * player.duration
         player.currentTime = t
         previewCurrentTime = t
-        playbackProgress = fraction
+        playbackProgress = clampedFraction
+    }
+
+    private func ensurePreviewPlayer() {
+        guard previewPlayer == nil, let buffer = audioBuffer else { return }
+        let data = makeWAVData(from: buffer)
+        previewPlayer = try? AVAudioPlayer(data: data, fileTypeHint: AVFileType.wav.rawValue)
+        previewPlayer?.prepareToPlay()
     }
 
     /// Nil out the player whenever the buffer changes — playPreview reloads lazily.
@@ -304,21 +308,35 @@ class EditorState: ObservableObject {
     }
 
     func computePeaks(from buffer: AudioBuffer) -> [Float] {
-        let floats = AudioBufferConverter.toFloats(buffer)
+        let sampleCount = buffer.data.count / MemoryLayout<Int16>.size
         let peakCount = 200
-        guard floats.count > peakCount else {
-            return floats.map { abs($0) }
+        guard sampleCount > 0 else {
+            return []
         }
-        let chunkSize = floats.count / peakCount
-        var peaks = [Float](repeating: 0, count: peakCount)
-        for i in 0..<peakCount {
-            let start = i * chunkSize
-            let end = min(start + chunkSize, floats.count)
-            let slice = Array(floats[start..<end])
-            var peak: Float = 0
-            vDSP_maxmgv(slice, 1, &peak, vDSP_Length(slice.count))
-            peaks[i] = peak
+
+        let outputCount = min(peakCount, sampleCount)
+        let chunkSize = max(sampleCount / outputCount, 1)
+        var peaks = [Float](repeating: 0, count: outputCount)
+
+        buffer.data.withUnsafeBytes { rawBuffer in
+            let samples = rawBuffer.bindMemory(to: Int16.self)
+            for bucket in 0..<outputCount {
+                let start = bucket * chunkSize
+                let end = bucket == outputCount - 1
+                    ? sampleCount
+                    : min(start + chunkSize, sampleCount)
+                var maxMagnitude = 0
+                for index in start..<end {
+                    let sample = Int(samples[index])
+                    let magnitude = sample == Int(Int16.min) ? 32768 : abs(sample)
+                    if magnitude > maxMagnitude {
+                        maxMagnitude = magnitude
+                    }
+                }
+                peaks[bucket] = Float(maxMagnitude) / 32768.0
+            }
         }
+
         return peaks
     }
 }
