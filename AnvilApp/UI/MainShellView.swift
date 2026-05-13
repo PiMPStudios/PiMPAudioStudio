@@ -173,12 +173,6 @@ private struct ModelInspectorSection: View {
     @State private var activeDiTID: String? = nil
     @State private var ditStatuses: [String: ModelStatus] = [:]
     @State private var isSwitching = false
-    @State private var lmStatus: LMAvailability = .notDownloaded
-
-    private enum LMAvailability {
-        case notDownloaded
-        case ready(String)  // variant display name
-    }
 
     private var activeDiTSpec: ModelSpec? {
         guard let id = activeDiTID else { return nil }
@@ -193,7 +187,6 @@ private struct ModelInspectorSection: View {
     var body: some View {
         Section("Models") {
             aceStepRow
-            lmRow
             sfxRow
             Button("Manage Models…") { openSettings() }
                 .buttonStyle(.link)
@@ -241,36 +234,6 @@ private struct ModelInspectorSection: View {
             }
         }
         .padding(.vertical, 2)
-    }
-
-    // MARK: Cover Song LM row
-
-    @ViewBuilder
-    private var lmRow: some View {
-        HStack(spacing: 6) {
-            statusDot(lmStatusColor)
-            Text("Cover Song LM")
-                .font(.subheadline)
-            Spacer()
-            Text(lmStatusLabel)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-        }
-        .padding(.vertical, 2)
-    }
-
-    private var lmStatusColor: Color {
-        switch lmStatus {
-        case .notDownloaded: return .secondary
-        case .ready: return .green
-        }
-    }
-
-    private var lmStatusLabel: String {
-        switch lmStatus {
-        case .notDownloaded: return "Not downloaded"
-        case .ready(let name): return name
-        }
     }
 
     // MARK: Stable Audio row
@@ -348,17 +311,6 @@ private struct ModelInspectorSection: View {
         ditSpecs      = runnable
         activeDiTID   = activeID
         ditStatuses   = statuses
-
-        // Check LM availability
-        let lmSpecs = await registry.specs(for: .aceStepLM)
-        var foundLM: LMAvailability = .notDownloaded
-        for spec in lmSpecs {
-            if await registry.status(for: spec.id) == .ready {
-                foundLM = .ready(spec.displayName)
-                break
-            }
-        }
-        lmStatus = foundLM
     }
 
     private func switchDiT(to id: String) {

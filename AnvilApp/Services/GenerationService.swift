@@ -218,10 +218,6 @@ final class GenerationService: ObservableObject {
                 self.state = .conditioning
             case .tokenizingSource:
                 self.state = .tokenizingSource
-            case .runningLM:
-                self.state = .runningLM
-            case .detokenizing:
-                self.state = .detokenizing
             case .generating(let step, let totalSteps, let eta):
                 self.state = .generating(step: step, totalSteps: totalSteps, eta: eta)
             case .decoding:
@@ -256,8 +252,8 @@ final class GenerationService: ObservableObject {
                 self.state = .loadingWeights(progress: progress)
             case .conditioning:
                 self.state = .conditioning
-            case .tokenizingSource, .runningLM, .detokenizing:
-                // Cover-song-only stages — not emitted by the standard ACE-Step path.
+            case .tokenizingSource:
+                // Cover-song-only stage — not emitted by the standard ACE-Step path.
                 break
             case .generating(let step, let totalSteps, let eta):
                 self.state = .generating(step: step, totalSteps: totalSteps, eta: eta)
