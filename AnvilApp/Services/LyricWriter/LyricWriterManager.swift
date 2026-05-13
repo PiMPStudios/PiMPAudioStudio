@@ -63,9 +63,18 @@ final class LyricWriterManager: ObservableObject {
 
         writeTask = Task { [weak self] in
             let stream = backend.write(prompt: prompt, style: style, duration: duration)
+            var rawLyrics = ""
             for await token in stream {
                 if Task.isCancelled { break }
-                binding.wrappedValue += token
+                rawLyrics += token
+                binding.wrappedValue = rawLyrics
+            }
+            if !Task.isCancelled {
+                let sanitized = LyricOutputSanitizer.sanitize(rawLyrics)
+                let finalLyrics = sanitized.isEmpty
+                    ? rawLyrics.trimmingCharacters(in: .whitespacesAndNewlines)
+                    : sanitized
+                binding.wrappedValue = finalLyrics
             }
             guard let self else { return }
             self.isWriting = false
