@@ -101,7 +101,7 @@ struct GenerationAnalyzerView: View {
             HStack {
                 panelTitle("Run \(title)", systemImage: "waveform.path.ecg")
                 Spacer()
-                tracePlaybackButton(title: title, trace: trace)
+                traceActionButtons(title: title, trace: trace)
             }
             metricRow("Created", trace.createdAt.formatted(date: .abbreviated, time: .standard))
             metricRow("Pipeline", trace.pipeline)
@@ -195,7 +195,7 @@ struct GenerationAnalyzerView: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
-                tracePlaybackButton(title: title, trace: trace)
+                traceActionButtons(title: title, trace: trace)
             }
             metricRow("Duration", String(format: "%.1fs", audio.duration))
             metricRow("Abs Mean", String(format: "%.4f", audio.absMean))
@@ -203,6 +203,20 @@ struct GenerationAnalyzerView: View {
             metricRow("Shape", audio.sampleShape.map(String.init).joined(separator: " x "))
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private func traceActionButtons(title: String, trace: GenerationTrace) -> some View {
+        HStack(spacing: 6) {
+            tracePlaybackButton(title: title, trace: trace)
+            Button {
+                openTraceInEditor(trace)
+            } label: {
+                Label("Edit \(title)", systemImage: "waveform.badge.minus")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.mini)
+            .help("Edit Run \(title)")
+        }
     }
 
     private func tracePlaybackButton(title: String, trace: GenerationTrace) -> some View {
@@ -614,6 +628,18 @@ struct GenerationAnalyzerView: View {
 
         playerService.load(url: url, precomputedPeaks: trace.audio.waveformPeaks)
         playerService.play()
+    }
+
+    private func openTraceInEditor(_ trace: GenerationTrace) {
+        playerService.pause()
+        NotificationCenter.default.post(
+            name: .navigateToEditor,
+            object: nil,
+            userInfo: [
+                "url": historyStore.fileURL(forAudioFileName: trace.audioFileName),
+                "prompt": trace.originalPrompt ?? trace.prompt
+            ]
+        )
     }
 
     private func format(_ value: Float, digits: Int = 1) -> String {
