@@ -1,0 +1,66 @@
+[
+  {
+    "id": "sparse-dark-guitar",
+    "prompt": "slow dark guitar riff",
+    "lyrics": "",
+    "durationSeconds": 30,
+    "seed": 42,
+    "coverage": ["sparse-prompt", "guitar", "no-lyrics"]
+  },
+  {
+    "id": "rich-dark-guitar",
+    "prompt": "A somber atmospheric post-rock track in A minor, slow 80 BPM, heavy distorted electric guitar, sparse pulsing drums, haunting pads, dark dense texture, warm analog mix.",
+    "lyrics": "",
+    "durationSeconds": 30,
+    "seed": 42,
+    "coverage": ["rich-prompt", "guitar", "no-lyrics"]
+  },
+  {
+    "id": "ambient-texture-long",
+    "prompt": "dark ambient soundscape, evolving drones, subtle low percussion, wide stereo field, slow movement, cinematic melancholy",
+    "lyrics": "",
+    "durationSeconds": 150,
+    "seed": 42,
+    "coverage": ["long-duration", "ambient", "texture"]
+  },
+  {
+    "id": "lyrics-blues-short",
+    "prompt": "dark blues, vocals, slow tempo, minor key, raw guitar, atmospheric",
+    "lyrics": "[Verse]\nShadows creep, darkness falls\nHeavy hearts, heavy calls\nEchoes of a distant past\nHaunting what's forever last",
+    "durationSeconds": 30,
+    "seed": 42,
+    "coverage": ["lyrics", "vocals", "short-duration"]
+  },
+  {
+    "id": "high-energy-drums",
+    "prompt": "high-energy electronic rock, crisp punchy drums, distorted bass, aggressive synth lead, tight modern production",
+    "lyrics": "",
+    "durationSeconds": 30,
+    "seed": 42,
+    "coverage": ["high-energy", "drums", "bass"]
+  },
+  {
+    "id": "bass-groove",
+    "prompt": "slow heavy bass groove, clean kick drum, muted guitar stabs, smoky club atmosphere, restrained arrangement",
+    "lyrics": "",
+    "durationSeconds": 30,
+    "seed": 42,
+    "coverage": ["bass", "groove", "arrangement"]
+  },
+  {
+    "id": "vocal-ballad",
+    "prompt": "melancholic vocal ballad, piano and soft electric guitar, intimate room sound, clear lead vocal, gentle dynamics",
+    "lyrics": "[Verse]\nI kept a light beside the door\nFor every night we lost before\n[Chorus]\nHold on, hold on\nThe morning is not gone",
+    "durationSeconds": 45,
+    "seed": 42,
+    "coverage": ["lyrics", "vocals", "prompt-adherence"]
+  },
+  {
+    "id": "wide-cinematic",
+    "prompt": "wide cinematic instrumental, low strings, distant piano, swelling percussion, deep sub bass, dramatic but controlled",
+    "lyrics": "",
+    "durationSeconds": 60,
+    "seed": 42,
+    "coverage": ["stereo-image", "cinematic", "dynamics"]
+  }
+]

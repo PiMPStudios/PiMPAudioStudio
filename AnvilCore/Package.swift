@@ -6,6 +6,7 @@ let package = Package(
     platforms: [.macOS(.v14)],
     products: [
         .library(name: "AnvilCore", targets: ["AnvilCore"]),
+        .executable(name: "QualityEval", targets: ["QualityEval"]),
     ],
     dependencies: [
         .package(url: "https://github.com/ml-explore/mlx-swift", from: "0.21.0"),
@@ -21,6 +22,13 @@ let package = Package(
                 .product(name: "MLXRandom", package: "mlx-swift"),
                 .product(name: "MLXFast", package: "mlx-swift"),
                 .product(name: "Transformers", package: "swift-transformers"),
+            ]
+        ),
+        .executableTarget(
+            name: "QualityEval",
+            dependencies: [
+                "AnvilCore",
+                .product(name: "MLX", package: "mlx-swift"),
             ]
         ),
         .testTarget(name: "AnvilCoreTests", dependencies: ["AnvilCore"]),
