@@ -29,15 +29,18 @@ first 60 seconds when verbose audio diagnostics are enabled. Use these arrays
 on the next seed-42 retest to determine whether the 27-28 second ending is
 already present in the VAE output or introduced later by playback/export/UI.
 
-**Codex note (2026-05-19, tail-guard experiment):** The next retest showed
+**Codex note (2026-05-19, tail-guard validated):** The next retest showed
 `vae/out_audio_abs_mean_per_sec` values stayed musical through second 27, then
 collapsed to ≈0.00139 for seconds 28 and 29. That proves the 28-second ending
-is already present in the VAE-decoded tensor. Swift now tests a pragmatic
+is already present in the VAE-decoded tensor. Swift now uses a pragmatic
 text-to-music tail guard: internally generate up to 2 extra seconds, then crop
-the result back to the requested duration. This is a product workaround, not a
-parity claim; if it works, the deeper root is still likely duration/LM-code or
-chunk-mask semantics. New diagnostics: `config/tailGuard`,
-`diff/final_latent_abs_mean_per_sec`, and `vae/out_audio_crop`.
+the result back to the requested duration. User retest confirmed the 30-second
+clip now reaches the requested end (`config/tailGuard requested=30.0
+internal=32.0 crop=true`, `vae/out_audio_crop internalSamples=1536000
+requestedSamples=1440000`). This is a product workaround, not a parity claim;
+the deeper root is still likely duration/LM-code or chunk-mask semantics. New
+diagnostics: `config/tailGuard`, `diff/final_latent_abs_mean_per_sec`, and
+`vae/out_audio_crop`.
 
 > Use this doc to resume troubleshooting after a context reset. Skim "Current symptom" + "Hypotheses still open" first.
 
@@ -217,7 +220,7 @@ The biggest conditioning bugs are fixed, but still worth verifying:
 - lyric language default is now `en`; verify UI/user settings do not override it to `unknown` unexpectedly
 - empty text + empty lyrics baseline should generate a much weaker/less directed output than a real prompt
 - chunk-mask semantics/schedule: Swift `1.0` is musical but can end early; upstream-auto `2.0` reaches duration but currently collapses to hum/buzz in direct-DiT. Next experiment should be a controlled mask value/schedule A/B (`1.25`, `1.5`, `1.75`, late-only) or wiring the upstream LM/audio-code path before using `2.0` as default.
-- tail-guard result: if overgenerate+crop fixes 30-second endings, keep it as a guarded product workaround while continuing to investigate why direct-DiT spends the last two seconds as silence.
+- tail-guard result: overgenerate+crop is validated for the 30-second seed-42 retest; keep it as a guarded product workaround while continuing to investigate why direct-DiT spends the last two seconds as silence.
 
 ### Resolved during this pass
 
