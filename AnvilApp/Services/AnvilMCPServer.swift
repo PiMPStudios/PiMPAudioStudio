@@ -141,6 +141,10 @@ final class AnvilMCPServer: ObservableObject {
                 "capabilities": [
                     "tools": [
                         "listChanged": false
+                    ],
+                    "resources": [
+                        "listChanged": false,
+                        "subscribe": false
                     ]
                 ],
                 "serverInfo": [
@@ -158,8 +162,29 @@ final class AnvilMCPServer: ObservableObject {
         case "tools/call":
             return await callTool(request)
 
+        case "resources/list":
+            return .result(id: request.id, value: [
+                "resources": await facade.listResources()
+            ])
+
+        case "resources/read":
+            return await readResource(request)
+
         default:
             return .error(id: request.id, code: -32601, message: "Unknown MCP method: \(request.method)")
+        }
+    }
+
+    private func readResource(_ request: MCPJSONRPCRequest) async -> MCPJSONRPCResponse {
+        guard let uri = request.params?["uri"] as? String, !uri.isEmpty else {
+            return .error(id: request.id, code: -32602, message: "resources/read requires a resource uri")
+        }
+
+        do {
+            let payload = try await facade.readResource(uri: uri)
+            return .result(id: request.id, value: MCPResourceResult.success(uri: uri, payload: payload))
+        } catch {
+            return .error(id: request.id, code: -32602, message: error.localizedDescription)
         }
     }
 
@@ -627,6 +652,29 @@ private enum MCPToolResult {
                 [
                     "type": "text",
                     "text": message
+                ]
+            ]
+        ]
+    }
+
+    private static func prettyJSON(_ object: Any) -> String {
+        guard JSONSerialization.isValidJSONObject(object),
+              let data = try? JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys]),
+              let text = String(data: data, encoding: .utf8) else {
+            return String(describing: object)
+        }
+        return text
+    }
+}
+
+private enum MCPResourceResult {
+    static func success(uri: String, payload: Any) -> [String: Any] {
+        [
+            "contents": [
+                [
+                    "uri": uri,
+                    "mimeType": "application/json",
+                    "text": prettyJSON(payload)
                 ]
             ]
         ]

@@ -24,7 +24,7 @@ Authorization: Bearer <token>
 
 ## Tools
 
-Phase 1 exposes read-only tools:
+The local MCP endpoint exposes read-only tools:
 
 - `anvil.list_models`
 - `anvil.list_adapters`
@@ -32,7 +32,37 @@ Phase 1 exposes read-only tools:
 - `anvil.get_trace`
 - `anvil.compare_traces`
 
+## Resources
+
+The same data is also available as MCP resources:
+
+- `anvil://models`
+- `anvil://model/{id}`
+- `anvil://adapters`
+- `anvil://adapter/{id}`
+- `anvil://history`
+- `anvil://history/{id}`
+- `anvil://trace/{id}`
+- `anvil://audio/{id}`
+
+Audio resources return local file metadata and paths only. They do not stream
+audio bytes over MCP.
+
 ## Smoke Test With Curl
+
+The repo includes a smoke script:
+
+```bash
+scripts/smoke-mcp.sh
+```
+
+If token mode is enabled:
+
+```bash
+ANVIL_MCP_TOKEN='<token>' scripts/smoke-mcp.sh
+```
+
+You can also run the calls manually.
 
 Initialize:
 

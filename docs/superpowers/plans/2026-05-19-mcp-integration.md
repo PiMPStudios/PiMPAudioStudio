@@ -40,6 +40,8 @@ tools and can be toggled from Settings.
   - [x] `anvil.compare_traces`
 - [x] Ensure every response is DTO/JSON oriented and stable across app changes.
 - [x] Add docs for connecting a local MCP client.
+- [x] Add a `scripts/smoke-mcp.sh` localhost smoke test for health,
+      initialize, tool discovery, history, trace reads, resources, and compare.
 
 Implementation note: Phase 1 now ships as an app-hosted Streamable HTTP-style
 JSON-RPC endpoint at `http://127.0.0.1:38765/mcp`. It is off by default,
@@ -51,12 +53,14 @@ comparison grouping through `GenerationTraceComparator`.
 **Deliverable:** MCP clients can browse Anvil artifacts without guessing file
 paths.
 
-- [ ] Add `anvil://models`.
-- [ ] Add `anvil://adapters`.
-- [ ] Add `anvil://history`.
-- [ ] Add `anvil://history/{id}`.
-- [ ] Add `anvil://trace/{id}`.
-- [ ] Add `anvil://audio/{id}` metadata with local file path, not streamed audio
+- [x] Add `anvil://models`.
+- [x] Add `anvil://model/{id}`.
+- [x] Add `anvil://adapters`.
+- [x] Add `anvil://adapter/{id}`.
+- [x] Add `anvil://history`.
+- [x] Add `anvil://history/{id}`.
+- [x] Add `anvil://trace/{id}`.
+- [x] Add `anvil://audio/{id}` metadata with local file path, not streamed audio
       by default.
 
 ## Phase 3 — Controlled Local Actions
