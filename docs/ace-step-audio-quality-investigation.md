@@ -11,6 +11,13 @@ tail fade for generated output. Upstream ACE-Step only applies fade when
 explicitly requested, so generated WAVs should stay byte-faithful to the VAE
 decode while investigating the recurring ~28-second ending in 30-second clips.
 
+**Codex note (2026-05-19, follow-up):** The next conditioning mismatch found
+after the no-fade retest was `chunk_mask_mode`. Upstream defaults
+`GenerationParams.chunk_mask_mode` to `"auto"` and converts the full-generation
+mask to value `2.0` in `conditioning_masks.py`; Swift had been sending `1.0`.
+Swift now uses `2.0` for full-generation context masks and logs
+`AUDIODIAG cond/chunkMask mode=auto value=2.0`.
+
 > Use this doc to resume troubleshooting after a context reset. Skim "Current symptom" + "Hypotheses still open" first.
 
 > **Quick orientation for the next session:** the runtime `AudioDiagnostics` toggle (Generate → Advanced → "Verbose audio diagnostics") emits `[AUDIODIAG]` lines at every pipeline boundary. That instrumentation cracked the structural bugs in this session. Filter the Xcode console for `AUDIODIAG`.
