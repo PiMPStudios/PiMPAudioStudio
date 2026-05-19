@@ -17,6 +17,30 @@ Use 48 kHz stereo audio. Keep the first direct-decode case at 30 seconds
 (`latentFrames <= 2048`) so it bypasses `VAETiledDecode`, then add one
 120-200 second case to exercise the tiled path.
 
+## Export Upstream Artifacts
+
+With `PiMPStudios/ACE-Step-1.5` checked out beside this repo, export the first
+direct-decode case with:
+
+```sh
+python3 ../ACE-Step-1.5/scripts/export_vae_parity_case.py \
+  --output-dir /tmp/anvil-quality \
+  --case-name sparse-dark-guitar-direct \
+  --caption "slow dark guitar riff" \
+  --lyrics "[Instrumental]" \
+  --duration 30 \
+  --seed 42 \
+  --steps 50 \
+  --guidance 7.5 \
+  --shift 3.0 \
+  --config-path acestep-v15-sft
+```
+
+That script writes the expected `*-latents.safetensors` and `*-upstream.wav`
+pair from the same upstream generation run. The WAV is decoded directly from
+the exported latent before ACE-Step generation applies its final peak
+normalization, so the comparison stays focused on VAE parity.
+
 ## Run
 
 From the repo root:
