@@ -26,6 +26,7 @@ final class LoRACoordinator {
     func ensureAdapter(selectedID: String?) async {
         // Defensive: clear if base model changed
         let activeBaseID = await registry.activeModelID(for: .aceStepDiT)
+        let activeSpec = await registry.activeSpec(for: .aceStepDiT)
         if activeBaseID != lastKnownBaseModelID {
             if currentlyInjectedAdapterID != nil {
                 await pipeline.removeLoRA()
@@ -54,8 +55,8 @@ final class LoRACoordinator {
                 logger.warning("Adapter '\(adapterID)' not found in registry — skipping injection")
                 return
             }
-            if let activeBaseID, adapter.baseModelID != activeBaseID {
-                logger.warning("Adapter '\(adapterID)' was trained for '\(adapter.baseModelID)', active DiT is '\(activeBaseID)' — skipping injection")
+            if !isCompatible(adapter: adapter, activeBaseID: activeBaseID, activeSpec: activeSpec) {
+                logger.warning("Adapter '\(adapterID)' was trained for '\(adapter.baseModelID)', active DiT is '\(activeBaseID ?? "unknown")' — skipping injection")
                 return
             }
             let _ = try await pipeline.injectLoRA(config: adapter.config)
@@ -83,6 +84,7 @@ final class LoRACoordinator {
     func ensureStack(stack: [(id: String, weight: Float)]) async {
         // Defensive: clear if base model changed
         let activeBaseID = await registry.activeModelID(for: .aceStepDiT)
+        let activeSpec = await registry.activeSpec(for: .aceStepDiT)
         if activeBaseID != lastKnownBaseModelID {
             if currentlyInjectedAdapterID != nil {
                 await pipeline.removeLoRA()
@@ -107,8 +109,8 @@ final class LoRACoordinator {
                 logger.warning("Adapter '\(entry.id)' not found in registry — skipping")
                 return nil
             }
-            if let activeBaseID, adapter.baseModelID != activeBaseID {
-                logger.warning("Adapter '\(entry.id)' trained for '\(adapter.baseModelID)', active DiT is '\(activeBaseID)' — skipping")
+            if !isCompatible(adapter: adapter, activeBaseID: activeBaseID, activeSpec: activeSpec) {
+                logger.warning("Adapter '\(entry.id)' trained for '\(adapter.baseModelID)', active DiT is '\(activeBaseID ?? "unknown")' — skipping")
                 return nil
             }
             return (adapter, entry.weight)
@@ -169,5 +171,53 @@ final class LoRACoordinator {
             currentlyInjectedAdapterID = nil
         }
         lastKnownBaseModelID = nil
+    }
+
+    private func isCompatible(
+        adapter: LoRAAdapter,
+        activeBaseID: String?,
+        activeSpec: ModelSpec?
+    ) -> Bool {
+        guard let activeBaseID else { return true }
+        guard adapter.baseModelCategory == .aceStepDiT else {
+            return adapter.baseModelID == activeBaseID
+        }
+        if adapter.baseModelID == activeBaseID { return true }
+
+        guard let adapterVariant = canonicalACEVariant(adapter.baseModelID),
+              let activeVariant = canonicalACEVariant(
+                activeBaseID,
+                spec: activeSpec
+              ) else {
+            return false
+        }
+        return adapterVariant == activeVariant
+    }
+
+    private func canonicalACEVariant(_ id: String, spec: ModelSpec? = nil) -> String? {
+        let values = [
+            id,
+            spec?.id,
+            spec?.displayName,
+            spec?.huggingFaceRepo,
+            spec?.variantFamily,
+        ]
+        let haystack = values
+            .compactMap { $0?.lowercased() }
+            .joined(separator: " ")
+
+        if haystack.contains("xl") || haystack.contains("ace-step-1.5-xl") {
+            return "ace-step-dit-xl"
+        }
+        if haystack.contains("turbo") {
+            return "ace-step-dit-turbo"
+        }
+        if haystack.contains("sft") {
+            return "ace-step-dit-sft"
+        }
+        if haystack.contains("base") || haystack.contains("full") {
+            return "ace-step-dit-base"
+        }
+        return nil
     }
 }
