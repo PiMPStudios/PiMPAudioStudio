@@ -109,6 +109,8 @@ struct AnvilAppApp: App {
         WindowGroup("Generation Analyzer", id: "generationAnalyzer") {
             GenerationAnalyzerView()
                 .environmentObject(services.traceMonitor)
+                .environmentObject(services.historyStore)
+                .environmentObject(playerService)
         }
         .defaultSize(width: 860, height: 640)
 

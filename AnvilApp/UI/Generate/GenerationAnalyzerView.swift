@@ -2,6 +2,8 @@ import SwiftUI
 
 struct GenerationAnalyzerView: View {
     @EnvironmentObject private var traceMonitor: GenerationTraceMonitor
+    @EnvironmentObject private var historyStore: HistoryStore
+    @EnvironmentObject private var playerService: AudioPlayerService
 
     var body: some View {
         Group {
@@ -96,7 +98,11 @@ struct GenerationAnalyzerView: View {
 
     private func traceSummaryColumn(title: String, trace: GenerationTrace) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            panelTitle("Run \(title)", systemImage: "waveform.path.ecg")
+            HStack {
+                panelTitle("Run \(title)", systemImage: "waveform.path.ecg")
+                Spacer()
+                tracePlaybackButton(title: title, trace: trace)
+            }
             metricRow("Created", trace.createdAt.formatted(date: .abbreviated, time: .standard))
             metricRow("Pipeline", trace.pipeline)
             metricRow("Model", trace.primaryModel?.displayName ?? trace.primaryModel?.id ?? "Unknown")
@@ -161,8 +167,8 @@ struct GenerationAnalyzerView: View {
         VStack(alignment: .leading, spacing: 10) {
             panelTitle("Audio", systemImage: "waveform")
             HStack(alignment: .top, spacing: 16) {
-                audioSummaryColumn(title: "A", audio: comparison.left.audio)
-                audioSummaryColumn(title: "B", audio: comparison.right.audio)
+                audioSummaryColumn(title: "A", trace: comparison.left)
+                audioSummaryColumn(title: "B", trace: comparison.right)
             }
         }
         .padding(12)
@@ -181,17 +187,39 @@ struct GenerationAnalyzerView: View {
         }
     }
 
-    private func audioSummaryColumn(title: String, audio: GenerationTraceAudioSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Run \(title)")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+    private func audioSummaryColumn(title: String, trace: GenerationTrace) -> some View {
+        let audio = trace.audio
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Run \(title)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                tracePlaybackButton(title: title, trace: trace)
+            }
             metricRow("Duration", String(format: "%.1fs", audio.duration))
             metricRow("Abs Mean", String(format: "%.4f", audio.absMean))
             metricRow("Abs Max", String(format: "%.3f", audio.absMax))
             metricRow("Shape", audio.sampleShape.map(String.init).joined(separator: " x "))
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private func tracePlaybackButton(title: String, trace: GenerationTrace) -> some View {
+        let isSelected = isTraceLoaded(trace)
+        let isPlaying = isSelected && playerService.isPlaying
+
+        return Button {
+            toggleTracePlayback(trace)
+        } label: {
+            Label(
+                isPlaying ? "Pause \(title)" : "Play \(title)",
+                systemImage: isPlaying ? "pause.fill" : "play.fill"
+            )
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.mini)
+        .help(isPlaying ? "Pause Run \(title)" : "Play Run \(title)")
     }
 
     private func header(for session: LiveGenerationTraceSession) -> some View {
@@ -562,6 +590,30 @@ struct GenerationAnalyzerView: View {
             return String(oneLine.prefix(177)) + "..."
         }
         return oneLine
+    }
+
+    private func isTraceLoaded(_ trace: GenerationTrace) -> Bool {
+        playerService.loadedURL == historyStore.fileURL(forAudioFileName: trace.audioFileName)
+    }
+
+    private func toggleTracePlayback(_ trace: GenerationTrace) {
+        let url = historyStore.fileURL(forAudioFileName: trace.audioFileName)
+
+        if playerService.loadedURL == url {
+            if playerService.isPlaying {
+                playerService.pause()
+            } else {
+                if playerService.duration > 0,
+                   playerService.currentTime >= playerService.duration - 0.1 {
+                    playerService.seek(to: 0)
+                }
+                playerService.play()
+            }
+            return
+        }
+
+        playerService.load(url: url, precomputedPeaks: trace.audio.waveformPeaks)
+        playerService.play()
     }
 
     private func format(_ value: Float, digits: Int = 1) -> String {

@@ -46,6 +46,10 @@ final class HistoryStore: ObservableObject {
         directory.appending(path: entry.fileName)
     }
 
+    func fileURL(forAudioFileName fileName: String) -> URL {
+        directory.appending(path: fileName)
+    }
+
     func traceURL(for entry: HistoryEntry) -> URL? {
         if let traceFileName = entry.traceFileName {
             return directory.appending(path: traceFileName)
