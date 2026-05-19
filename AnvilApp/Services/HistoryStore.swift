@@ -69,10 +69,75 @@ final class HistoryStore: ObservableObject {
             throw HistoryStoreError.missingTrace
         }
 
+        return try loadTrace(at: url)
+    }
+
+    func saveTraceReview(
+        traceFileName: String,
+        listeningNote: String?,
+        isPreferred: Bool?
+    ) throws -> GenerationTrace {
+        let url = directory.appending(path: traceFileName)
+        let trace = try loadTrace(at: url)
+        let updated = trace.withReview(
+            listeningNote: normalizedNote(listeningNote),
+            isPreferred: isPreferred
+        )
+        try writeTrace(updated, to: url)
+        updateHistoryReview(
+            traceFileName: traceFileName,
+            listeningNote: updated.listeningNote,
+            isPreferred: updated.isPreferred
+        )
+        return updated
+    }
+
+    func saveFailureTrace(_ trace: GenerationFailureTrace) throws {
+        let url = directory.appending(path: trace.traceFileName)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try encoder.encode(trace)
+        try data.write(to: url, options: .atomic)
+    }
+
+    private func loadTrace(at url: URL) throws -> GenerationTrace {
         let data = try Data(contentsOf: url)
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return try decoder.decode(GenerationTrace.self, from: data)
+    }
+
+    private func writeTrace(_ trace: GenerationTrace, to url: URL) throws {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try encoder.encode(trace)
+        try data.write(to: url, options: .atomic)
+    }
+
+    private func updateHistoryReview(
+        traceFileName: String,
+        listeningNote: String?,
+        isPreferred: Bool?
+    ) {
+        guard let index = entries.firstIndex(where: { entry in
+            entry.traceFileName == traceFileName ||
+            HistoryEntry.traceFileName(forAudioFileName: entry.fileName) == traceFileName
+        }) else {
+            return
+        }
+
+        entries[index] = entries[index].withReview(
+            listeningNote: listeningNote,
+            isPreferred: isPreferred
+        )
+        saveToDisk()
+    }
+
+    private func normalizedNote(_ note: String?) -> String? {
+        let trimmed = note?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     private func loadFromDisk() {

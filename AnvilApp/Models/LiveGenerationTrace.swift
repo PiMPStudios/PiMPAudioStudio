@@ -72,6 +72,8 @@ struct LiveGenerationTraceSession: Identifiable, Sendable, Equatable {
     var audio: GenerationTraceAudioSnapshot?
     var traceFileName: String?
     var errorMessage: String?
+    var listeningNote: String?
+    var isPreferred: Bool?
 }
 
 struct GenerationTraceComparison: Sendable, Equatable {
@@ -118,7 +120,9 @@ final class GenerationTraceMonitor: ObservableObject {
             ),
             audio: nil,
             traceFileName: nil,
-            errorMessage: nil
+            errorMessage: nil,
+            listeningNote: nil,
+            isPreferred: nil
         )
         appendEvent(stage: "Request", message: "Generation request accepted", detail: request.text)
     }
@@ -143,6 +147,15 @@ final class GenerationTraceMonitor: ObservableObject {
 
     func clearComparison() {
         comparison = nil
+    }
+
+    func updateComparison(left: GenerationTrace, right: GenerationTrace) {
+        guard comparison != nil else { return }
+        comparison = GenerationTraceComparison(
+            left: left,
+            right: right,
+            loadedAt: Date()
+        )
     }
 
     func configure(
@@ -283,6 +296,31 @@ final class GenerationTraceMonitor: ObservableObject {
         archiveCurrentSession()
     }
 
+    func failureTrace(fileName: String, errorMessage: String) -> GenerationFailureTrace? {
+        guard let session = currentSession else { return nil }
+        return GenerationFailureTrace(
+            schemaVersion: GenerationFailureTrace.currentSchemaVersion,
+            traceType: "failure",
+            id: session.id,
+            createdAt: session.startedAt,
+            completedAt: session.completedAt,
+            traceFileName: fileName,
+            pipeline: session.pipeline,
+            prompt: session.prompt,
+            lyrics: session.lyrics,
+            request: session.request,
+            primaryModel: session.primaryModel,
+            supportingModels: session.supportingModels,
+            adapters: session.adapters,
+            errorMessage: errorMessage,
+            events: session.events.map(Self.eventSnapshot)
+        )
+    }
+
+    func currentEventSnapshots() -> [GenerationTraceEventSnapshot] {
+        currentSession?.events.map(Self.eventSnapshot) ?? []
+    }
+
     private func updateProgress(
         label: String,
         fraction: Double?,
@@ -358,7 +396,18 @@ final class GenerationTraceMonitor: ObservableObject {
 
     private static func session(from trace: GenerationTrace) -> LiveGenerationTraceSession {
         let loadedAt = Date()
-        let events = [
+        let traceEvents = trace.events?.map { snapshot in
+            LiveGenerationTraceEvent(
+                id: UUID(),
+                timestamp: snapshot.timestamp,
+                stage: snapshot.stage,
+                message: snapshot.message,
+                detail: snapshot.detail,
+                progress: snapshot.progress,
+                level: LiveTraceEventLevel(rawValue: snapshot.level) ?? .info
+            )
+        } ?? []
+        let events = traceEvents.isEmpty ? [
             LiveGenerationTraceEvent(
                 id: UUID(),
                 timestamp: loadedAt,
@@ -386,7 +435,7 @@ final class GenerationTraceMonitor: ObservableObject {
                 progress: 1,
                 level: .success
             )
-        ]
+        ] : traceEvents
 
         return LiveGenerationTraceSession(
             id: trace.historyEntryID,
@@ -412,7 +461,20 @@ final class GenerationTraceMonitor: ObservableObject {
             ),
             audio: trace.audio,
             traceFileName: trace.traceFileName,
-            errorMessage: nil
+            errorMessage: nil,
+            listeningNote: trace.listeningNote,
+            isPreferred: trace.isPreferred
+        )
+    }
+
+    private static func eventSnapshot(_ event: LiveGenerationTraceEvent) -> GenerationTraceEventSnapshot {
+        GenerationTraceEventSnapshot(
+            timestamp: event.timestamp,
+            stage: event.stage,
+            message: event.message,
+            detail: event.detail,
+            progress: event.progress,
+            level: event.level.rawValue
         )
     }
 }

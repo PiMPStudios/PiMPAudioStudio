@@ -186,10 +186,12 @@ proposed fix expensive and noisy.
 flywheel now exists in the app. Each generation writes a `.trace.json` sidecar
 with request/model/adapter/audio metadata; History can reopen saved traces;
 the Generation Analyzer can compare two traces side by side, highlight changed
-settings, play A/B audio, and send either run into the editor. This does not
-replace objective metrics or golden-set reports, but it closes the practical
-"what changed between the good one and the wrecked one?" loop that was missing
-from day-to-day quality tuning.
+settings, play A/B audio, save listening notes, mark a preferred take, show a
+compact waveform/loudness preview, and send either run into the editor. Failed
+generations also write a `.failed.trace.json` event-log artifact when possible.
+This does not replace objective metrics or golden-set reports, but it closes the
+practical "what changed between the good one and the wrecked one?" loop that was
+missing from day-to-day quality tuning.
 
 ---
 

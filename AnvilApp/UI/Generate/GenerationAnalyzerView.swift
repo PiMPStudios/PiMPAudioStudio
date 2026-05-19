@@ -5,6 +5,10 @@ struct GenerationAnalyzerView: View {
     @EnvironmentObject private var historyStore: HistoryStore
     @EnvironmentObject private var playerService: AudioPlayerService
 
+    @State private var showAllComparisonRows = false
+    @State private var compareNotes: [String: String] = [:]
+    @State private var reviewStatusMessage: String?
+
     var body: some View {
         Group {
             if let comparison = traceMonitor.comparison {
@@ -19,8 +23,8 @@ struct GenerationAnalyzerView: View {
     }
 
     private func comparisonContent(_ comparison: GenerationTraceComparison) -> some View {
-        let rows = comparisonRows(comparison)
-        let changedCount = rows.filter(\.isDifferent).count
+        let groups = comparisonGroups(comparison)
+        let changedCount = groups.flatMap(\.rows).filter(\.isDifferent).count
 
         return ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -45,7 +49,8 @@ struct GenerationAnalyzerView: View {
                 }
 
                 compareSummary(comparison)
-                changedFieldsPanel(rows)
+                listeningReviewPanel(comparison)
+                changedFieldsPanel(groups)
                 promptDiffPanel(comparison)
                 audioComparePanel(comparison)
             }
@@ -115,33 +120,117 @@ struct GenerationAnalyzerView: View {
         .background(.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
     }
 
-    private func changedFieldsPanel(_ rows: [ComparisonRow]) -> some View {
+    private func listeningReviewPanel(_ comparison: GenerationTraceComparison) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            panelTitle("Changed Settings", systemImage: "list.bullet.rectangle")
-            VStack(spacing: 0) {
-                ForEach(rows) { row in
-                    HStack(alignment: .top, spacing: 12) {
-                        Text(row.label)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 110, alignment: .leading)
-                        Text(row.left)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        Text(row.right)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .font(.callout)
-                    .lineLimit(3)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .background(row.isDifferent ? Color.accentColor.opacity(0.12) : Color.clear)
+            HStack {
+                panelTitle("Listening Notes", systemImage: "checklist")
+                Spacer()
+                Button("Save Notes") {
+                    saveReviewNotes(comparison)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
 
-                    if row.id != rows.last?.id {
-                        Divider()
+            HStack(alignment: .top, spacing: 16) {
+                reviewColumn(title: "A", trace: comparison.left, other: comparison.right)
+                reviewColumn(title: "B", trace: comparison.right, other: comparison.left)
+            }
+
+            if let reviewStatusMessage {
+                Text(reviewStatusMessage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(12)
+        .background(.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func reviewColumn(title: String, trace: GenerationTrace, other: GenerationTrace) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Run \(title)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if trace.isPreferred == true {
+                    Label("Preferred", systemImage: "star.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.yellow)
+                } else {
+                    Button {
+                        markPreferred(trace, other: other, isLeft: title == "A")
+                    } label: {
+                        Label("Mark Preferred", systemImage: "star")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
+                }
+            }
+
+            TextEditor(text: noteBinding(for: trace))
+                .font(.caption)
+                .scrollContentBackground(.hidden)
+                .frame(minHeight: 72)
+                .padding(6)
+                .background(.black.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private func changedFieldsPanel(_ groups: [ComparisonGroup]) -> some View {
+        let visibleGroups = visibleComparisonGroups(groups)
+
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                panelTitle(showAllComparisonRows ? "All Settings" : "Changed Settings", systemImage: "list.bullet.rectangle")
+                Spacer()
+                Toggle("Show unchanged", isOn: $showAllComparisonRows)
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+            }
+
+            if visibleGroups.isEmpty {
+                Text("No changed fields")
+                    .foregroundStyle(.secondary)
+                    .padding(.vertical, 8)
+            } else {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(visibleGroups) { group in
+                        VStack(alignment: .leading, spacing: 6) {
+                            Label(group.title, systemImage: group.systemImage)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+
+                            VStack(spacing: 0) {
+                                ForEach(group.rows) { row in
+                                    HStack(alignment: .top, spacing: 12) {
+                                        Text(row.label)
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(.secondary)
+                                            .frame(width: 110, alignment: .leading)
+                                        Text(row.left)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                        Text(row.right)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                    }
+                                    .font(.callout)
+                                    .lineLimit(3)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 8)
+                                    .background(row.isDifferent ? Color.accentColor.opacity(0.12) : Color.clear)
+
+                                    if row.id != group.rows.last?.id {
+                                        Divider()
+                                    }
+                                }
+                            }
+                            .background(.black.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+                        }
                     }
                 }
             }
-            .background(.black.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
         }
         .padding(12)
         .background(.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
@@ -197,6 +286,8 @@ struct GenerationAnalyzerView: View {
                 Spacer()
                 traceActionButtons(title: title, trace: trace)
             }
+            TraceAudioStrip(audio: audio)
+                .frame(height: 44)
             metricRow("Duration", String(format: "%.1fs", audio.duration))
             metricRow("Abs Mean", String(format: "%.4f", audio.absMean))
             metricRow("Abs Max", String(format: "%.3f", audio.absMax))
@@ -340,6 +431,24 @@ struct GenerationAnalyzerView: View {
                     .lineLimit(8)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
+
+            if session.isPreferred == true || !(session.listeningNote ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Divider()
+                HStack(spacing: 6) {
+                    if session.isPreferred == true {
+                        Label("Preferred take", systemImage: "star.fill")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.yellow)
+                    }
+                    if let note = session.listeningNote,
+                       !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Text(note)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+                }
+            }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -412,6 +521,8 @@ struct GenerationAnalyzerView: View {
                 metricColumn("Abs Max", String(format: "%.3f", audio.absMax))
                 metricColumn("Shape", audio.sampleShape.map(String.init).joined(separator: " x "))
             }
+            TraceAudioStrip(audio: audio)
+                .frame(height: 52)
         }
         .padding(12)
         .background(.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
@@ -532,34 +643,74 @@ struct GenerationAnalyzerView: View {
         }
     }
 
-    private func comparisonRows(_ comparison: GenerationTraceComparison) -> [ComparisonRow] {
+    private func comparisonGroups(_ comparison: GenerationTraceComparison) -> [ComparisonGroup] {
         let left = comparison.left
         let right = comparison.right
 
         return [
-            row("Pipeline", left.pipeline, right.pipeline),
-            row("Model", modelSummary(left.primaryModel), modelSummary(right.primaryModel)),
-            row("Supporting", modelListSummary(left.supportingModels), modelListSummary(right.supportingModels)),
-            row("LoRA", adapterSummary(left.adapters), adapterSummary(right.adapters)),
-            row("Duration", "\(Int(left.request.duration))s", "\(Int(right.request.duration))s"),
-            row("Seed", left.request.seed.map(String.init) ?? "Random", right.request.seed.map(String.init) ?? "Random"),
-            row("Method", left.request.method, right.request.method),
-            row("Guidance", format(left.request.guidanceScale), format(right.request.guidanceScale)),
-            row("Preset", left.request.guidancePresetName, right.request.guidancePresetName),
-            row(
-                "CFG Window",
-                "\(left.request.cfgIntervalStart) → \(left.request.cfgIntervalEnd)",
-                "\(right.request.cfgIntervalStart) → \(right.request.cfgIntervalEnd)"
+            ComparisonGroup(
+                title: "Model",
+                systemImage: "cube.box",
+                rows: [
+                    row("Pipeline", left.pipeline, right.pipeline),
+                    row("Model", modelSummary(left.primaryModel), modelSummary(right.primaryModel)),
+                    row("Supporting", modelListSummary(left.supportingModels), modelListSummary(right.supportingModels))
+                ]
             ),
-            row("Precision", left.request.precision, right.request.precision),
-            row("Steps", left.request.stepsOverride.map(String.init) ?? "Auto", right.request.stepsOverride.map(String.init) ?? "Auto"),
-            row("Shift", optionalFormat(left.request.shiftOverride), optionalFormat(right.request.shiftOverride)),
-            row("Mode", left.request.resolvedMode, right.request.resolvedMode),
-            row("Prompt", compact(left.prompt), compact(right.prompt)),
-            row("Lyrics", lyricsSummary(left.lyrics), lyricsSummary(right.lyrics)),
-            row("Abs Mean", format(left.audio.absMean, digits: 4), format(right.audio.absMean, digits: 4)),
-            row("Abs Max", format(left.audio.absMax, digits: 3), format(right.audio.absMax, digits: 3))
+            ComparisonGroup(
+                title: "Adapters",
+                systemImage: "slider.horizontal.2.square",
+                rows: [
+                    row("LoRA", adapterSummary(left.adapters), adapterSummary(right.adapters))
+                ]
+            ),
+            ComparisonGroup(
+                title: "Sampling",
+                systemImage: "dial.low",
+                rows: [
+                    row("Duration", "\(Int(left.request.duration))s", "\(Int(right.request.duration))s"),
+                    row("Seed", left.request.seed.map(String.init) ?? "Random", right.request.seed.map(String.init) ?? "Random"),
+                    row("Method", left.request.method, right.request.method),
+                    row("Guidance", format(left.request.guidanceScale), format(right.request.guidanceScale)),
+                    row("Preset", left.request.guidancePresetName, right.request.guidancePresetName),
+                    row(
+                        "CFG Window",
+                        "\(left.request.cfgIntervalStart) → \(left.request.cfgIntervalEnd)",
+                        "\(right.request.cfgIntervalStart) → \(right.request.cfgIntervalEnd)"
+                    ),
+                    row("Precision", left.request.precision, right.request.precision),
+                    row("Steps", left.request.stepsOverride.map(String.init) ?? "Auto", right.request.stepsOverride.map(String.init) ?? "Auto"),
+                    row("Shift", optionalFormat(left.request.shiftOverride), optionalFormat(right.request.shiftOverride)),
+                    row("Mode", left.request.resolvedMode, right.request.resolvedMode)
+                ]
+            ),
+            ComparisonGroup(
+                title: "Prompt & Lyrics",
+                systemImage: "text.quote",
+                rows: [
+                    row("Prompt", compact(left.prompt), compact(right.prompt)),
+                    row("Lyrics", lyricsSummary(left.lyrics), lyricsSummary(right.lyrics))
+                ]
+            ),
+            ComparisonGroup(
+                title: "Audio",
+                systemImage: "waveform",
+                rows: [
+                    row("Abs Mean", format(left.audio.absMean, digits: 4), format(right.audio.absMean, digits: 4)),
+                    row("Abs Max", format(left.audio.absMax, digits: 3), format(right.audio.absMax, digits: 3)),
+                    row("Duration", String(format: "%.1fs", left.audio.duration), String(format: "%.1fs", right.audio.duration))
+                ]
+            )
         ]
+    }
+
+    private func visibleComparisonGroups(_ groups: [ComparisonGroup]) -> [ComparisonGroup] {
+        guard !showAllComparisonRows else { return groups }
+        return groups.compactMap { group in
+            let rows = group.rows.filter(\.isDifferent)
+            guard !rows.isEmpty else { return nil }
+            return ComparisonGroup(title: group.title, systemImage: group.systemImage, rows: rows)
+        }
     }
 
     private func row(_ label: String, _ left: String, _ right: String) -> ComparisonRow {
@@ -649,6 +800,74 @@ struct GenerationAnalyzerView: View {
     private func optionalFormat(_ value: Float?) -> String {
         value.map { String(format: "%.1f", $0) } ?? "Auto"
     }
+
+    private func noteBinding(for trace: GenerationTrace) -> Binding<String> {
+        Binding(
+            get: {
+                compareNotes[trace.traceFileName] ?? trace.listeningNote ?? ""
+            },
+            set: { newValue in
+                compareNotes[trace.traceFileName] = newValue
+                reviewStatusMessage = nil
+            }
+        )
+    }
+
+    private func noteValue(for trace: GenerationTrace) -> String? {
+        let raw = compareNotes[trace.traceFileName] ?? trace.listeningNote ?? ""
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func saveReviewNotes(_ comparison: GenerationTraceComparison) {
+        do {
+            let left = try historyStore.saveTraceReview(
+                traceFileName: comparison.left.traceFileName,
+                listeningNote: noteValue(for: comparison.left),
+                isPreferred: comparison.left.isPreferred
+            )
+            let right = try historyStore.saveTraceReview(
+                traceFileName: comparison.right.traceFileName,
+                listeningNote: noteValue(for: comparison.right),
+                isPreferred: comparison.right.isPreferred
+            )
+            traceMonitor.updateComparison(left: left, right: right)
+            reviewStatusMessage = "Listening notes saved"
+        } catch {
+            reviewStatusMessage = "Could not save notes: \(error.localizedDescription)"
+        }
+    }
+
+    private func markPreferred(_ trace: GenerationTrace, other: GenerationTrace, isLeft: Bool) {
+        do {
+            let updatedPreferred = try historyStore.saveTraceReview(
+                traceFileName: trace.traceFileName,
+                listeningNote: noteValue(for: trace),
+                isPreferred: true
+            )
+            let updatedOther = try historyStore.saveTraceReview(
+                traceFileName: other.traceFileName,
+                listeningNote: noteValue(for: other),
+                isPreferred: false
+            )
+            if isLeft {
+                traceMonitor.updateComparison(left: updatedPreferred, right: updatedOther)
+            } else {
+                traceMonitor.updateComparison(left: updatedOther, right: updatedPreferred)
+            }
+            reviewStatusMessage = "Preferred take saved"
+        } catch {
+            reviewStatusMessage = "Could not mark preferred: \(error.localizedDescription)"
+        }
+    }
+}
+
+private struct ComparisonGroup: Identifiable, Equatable {
+    let title: String
+    let systemImage: String
+    let rows: [ComparisonRow]
+
+    var id: String { title }
 }
 
 private struct ComparisonRow: Identifiable, Equatable {
@@ -659,5 +878,58 @@ private struct ComparisonRow: Identifiable, Equatable {
 
     var isDifferent: Bool {
         left != right
+    }
+}
+
+private struct TraceAudioStrip: View {
+    let audio: GenerationTraceAudioSnapshot
+
+    var body: some View {
+        GeometryReader { _ in
+            Canvas { context, size in
+                drawWaveform(context: context, size: size)
+                drawEnergyLine(context: context, size: size)
+            }
+        }
+        .background(.black.opacity(0.16), in: RoundedRectangle(cornerRadius: 6))
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(.white.opacity(0.08), lineWidth: 1))
+        .help("Waveform bars with per-second loudness overlay")
+    }
+
+    private func drawWaveform(context: GraphicsContext, size: CGSize) {
+        let peaks = audio.waveformPeaks
+        guard !peaks.isEmpty, size.width > 0, size.height > 0 else { return }
+
+        let barWidth = size.width / CGFloat(peaks.count)
+        let midY = size.height / 2
+        for (index, peak) in peaks.enumerated() {
+            let clampedPeak = max(0, min(1, CGFloat(peak)))
+            let height = max(1, clampedPeak * size.height * 0.72)
+            let rect = CGRect(
+                x: CGFloat(index) * barWidth,
+                y: midY - height / 2,
+                width: max(1, barWidth - 1),
+                height: height
+            )
+            context.fill(Path(roundedRect: rect, cornerRadius: 1), with: .color(.accentColor.opacity(0.58)))
+        }
+    }
+
+    private func drawEnergyLine(context: GraphicsContext, size: CGSize) {
+        let values = audio.perSecondAbsMean
+        guard values.count > 1, let maxValue = values.max(), maxValue > 0 else { return }
+
+        var path = Path()
+        for (index, value) in values.enumerated() {
+            let x = CGFloat(index) / CGFloat(values.count - 1) * size.width
+            let normalized = max(0, min(1, CGFloat(value / maxValue)))
+            let y = size.height - normalized * size.height * 0.86 - size.height * 0.07
+            if index == 0 {
+                path.move(to: CGPoint(x: x, y: y))
+            } else {
+                path.addLine(to: CGPoint(x: x, y: y))
+            }
+        }
+        context.stroke(path, with: .color(.white.opacity(0.78)), lineWidth: 1.2)
     }
 }

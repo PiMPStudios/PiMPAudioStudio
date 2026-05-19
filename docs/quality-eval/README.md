@@ -11,7 +11,9 @@ For everyday listening A/Bs inside the app, use the Generation Analyzer rather
 than this parity harness. Current Anvil builds write `.trace.json` sidecars next
 to generated WAVs; History can reopen those traces and compare two runs with
 changed settings, prompt/lyrics, audio summaries, A/B playback, and editor
-handoff. This folder remains the lower-level parity/metric workspace.
+handoff. Compare mode also saves listening notes and preferred-take flags back
+into the trace/history metadata. This folder remains the lower-level
+parity/metric workspace.
 
 ## VAE Artifact Contract
 

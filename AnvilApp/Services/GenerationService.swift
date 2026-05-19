@@ -177,7 +177,9 @@ final class GenerationService: ObservableObject {
                     modelID: mainModel?.id,
                     modelName: mainModel?.displayName,
                     supportingModels: supportingModels.isEmpty ? nil : supportingModels,
-                    adapters: adapters.isEmpty ? nil : adapters
+                    adapters: adapters.isEmpty ? nil : adapters,
+                    listeningNote: nil,
+                    isPreferred: nil
                 )
                 let trace = self.makeGenerationTrace(
                     entryID: entryID,
@@ -212,6 +214,11 @@ final class GenerationService: ObservableObject {
             } catch {
                 self.state = .error(error.localizedDescription)
                 self.traceMonitor.fail(error.localizedDescription)
+                self.writeFailureTraceIfPossible(
+                    request: resolvedRequest,
+                    outputDir: outputDir,
+                    errorMessage: error.localizedDescription
+                )
             }
 
             // Recreate the LLMActor (lazy — no weights loaded yet) so prompt
@@ -340,6 +347,38 @@ final class GenerationService: ObservableObject {
         }.value
     }
 
+    private func writeFailureTraceIfPossible(
+        request: GenerationRequest,
+        outputDir: URL,
+        errorMessage: String
+    ) {
+        let traceFileName = Self.failureTraceFileName(prompt: request.text)
+        guard let failureTrace = traceMonitor.failureTrace(
+            fileName: traceFileName,
+            errorMessage: errorMessage
+        ) else {
+            return
+        }
+
+        do {
+            try historyStore.saveFailureTrace(failureTrace)
+            traceMonitor.recordStage(
+                "Trace",
+                message: "Failure trace written",
+                detail: outputDir.appending(path: traceFileName).lastPathComponent,
+                level: .warning
+            )
+        } catch {
+            traceLogger.warning("Failed to write failure trace \(traceFileName, privacy: .public): \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private nonisolated static func failureTraceFileName(prompt: String, date: Date = Date()) -> String {
+        let audioName = HistoryEntry.fileName(prompt: prompt, date: date)
+        let baseName = (audioName as NSString).deletingPathExtension
+        return "\(baseName).failed.trace.json"
+    }
+
     private func historyModelSnapshot(for category: ModelCategory) async -> HistoryModelSnapshot? {
         if let spec = await registry.activeSpec(for: category) {
             return HistoryModelSnapshot(
@@ -421,7 +460,7 @@ final class GenerationService: ObservableObject {
         audioSnapshot: GenerationTraceAudioSnapshot
     ) -> GenerationTrace {
         GenerationTrace(
-            schemaVersion: 1,
+            schemaVersion: GenerationTrace.currentSchemaVersion,
             historyEntryID: entryID,
             createdAt: createdAt,
             audioFileName: audioFileName,
@@ -462,7 +501,11 @@ final class GenerationService: ObservableObject {
                 totalTime: timing.totalTime
             ),
             audio: audioSnapshot,
-            listeningNote: nil
+            listeningNote: nil,
+            isPreferred: nil,
+            status: "complete",
+            errorMessage: nil,
+            events: traceMonitor.currentEventSnapshots()
         )
     }
 

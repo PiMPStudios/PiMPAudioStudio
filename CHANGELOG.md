@@ -14,12 +14,17 @@ All notable changes to AnvilApp are documented here.
 - **Two-run trace compare mode** — selecting exactly two traced history rows now offers `Compare`, opening a side-by-side analyzer view with run summaries, changed settings highlighted, prompt/lyrics columns, and audio summary columns. This makes guidance/seed/model/adapter A/B listening less guessy.
 - **A/B playback in trace compare** — compare mode now has `Play A` / `Play B` controls wired through the shared audio player and uses waveform peaks stored in the trace sidecar for fast switching.
 - **Edit handoff from trace compare** — compare mode now exposes `Edit A` / `Edit B`; choosing a run pauses compare playback, switches the main app to the editor, loads that WAV, and passes the trace prompt as editor context.
+- **Trace compare listening notes and preferred takes** — compare mode now has per-run note fields plus `Mark Preferred`. Notes and preferred flags are saved back into the `.trace.json` sidecars and mirrored into `history.json`, so listening decisions survive relaunches and show up in History.
+- **Trace audio preview strips** — saved traces and compare columns now render a compact waveform with a per-second loudness overlay, giving quick visual signal context before A/B playback.
+- **Failure trace sidecars** — failed generations now preserve the live event log into a `.failed.trace.json` artifact when possible, giving failed runs enough request/model/stage context for later debugging.
 
 ### Fixed
 
 - **Random seed generations are now reproducible** — "Random" seeds are resolved to a concrete integer before dispatching to any backend, then recorded into the history entry and trace sidecar. ACE-Step SDE per-step noise also receives the resolved seed plus step index, so a liked random take can be regenerated or modified later instead of being lost as `0` / missing seed metadata.
 - **Imported LoRA adapters refresh the UI without relaunch** — adapter save/import/delete paths now post an adapter-registry change notification. The picker, stack view, and settings list refresh when local or HuggingFace PEFT adapters are imported, so newly imported adapters appear immediately.
 - **Local PEFT adapter imports are normalized into Anvil's registry** — importing a local `adapter_config.json` + `adapter_model.safetensors` directory now reuses the same PEFT config parsing, key remapping, base-model resolution, and registry-save path as HuggingFace adapter imports.
+- **Trace compare defaults to the useful differences** — the compare table is now grouped into Model, Adapters, Sampling, Prompt/Lyrics, and Audio sections, hides unchanged rows by default, and includes a `Show unchanged` toggle for full audits.
+- **Trace decoding is more tolerant of older sidecars** — trace JSON now has explicit schema versioning and defaults for optional review/event metadata, so older successful traces keep loading while new traces can carry review notes, preferred state, and event snapshots.
 
 ---
 

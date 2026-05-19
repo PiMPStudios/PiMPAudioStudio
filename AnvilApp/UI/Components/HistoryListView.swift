@@ -176,6 +176,12 @@ struct HistoryListView: View {
             Button("Analyze Trace") {
                 analyzeTrace(for: entry)
             }
+
+            Button("Reveal Trace in Finder") {
+                if let traceURL = historyStore.traceURL(for: entry) {
+                    NSWorkspace.shared.activateFileViewerSelecting([traceURL])
+                }
+            }
         }
 
         Divider()
@@ -327,6 +333,24 @@ struct HistoryRow: View {
                 Text(entry.createdAt, style: .date)
                 Text("\u{2022}")
                 Text("seed: \(entry.seed)")
+                if entry.traceFileName != nil {
+                    Label("Trace", systemImage: "waveform.path.ecg")
+                        .labelStyle(.iconOnly)
+                        .foregroundStyle(.blue)
+                        .help("Trace sidecar available")
+                }
+                if entry.isPreferred == true {
+                    Label("Preferred", systemImage: "star.fill")
+                        .labelStyle(.iconOnly)
+                        .foregroundStyle(.yellow)
+                        .help("Preferred take")
+                }
+                if !(entry.listeningNote ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Label("Note", systemImage: "note.text")
+                        .labelStyle(.iconOnly)
+                        .foregroundStyle(.secondary)
+                        .help(entry.listeningNote ?? "")
+                }
             }
             .font(.caption2)
             .foregroundStyle(.secondary)
