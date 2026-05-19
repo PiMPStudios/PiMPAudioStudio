@@ -38,6 +38,7 @@ struct GenerationPreset: Identifiable, Codable, Sendable, Equatable {
 
     // Adapter
     var adapterID: String?
+    var adapterStrength: Double
 
     // Cover song
     var coverStrength: Double
@@ -59,6 +60,7 @@ struct GenerationPreset: Identifiable, Codable, Sendable, Equatable {
         stepsOverride: String = "",
         shiftOverride: Double = 3.0,
         adapterID: String? = nil,
+        adapterStrength: Double = 1.0,
         coverStrength: Double = 0.7
     ) {
         self.id = id
@@ -77,6 +79,7 @@ struct GenerationPreset: Identifiable, Codable, Sendable, Equatable {
         self.stepsOverride = stepsOverride
         self.shiftOverride = shiftOverride
         self.adapterID = adapterID
+        self.adapterStrength = adapterStrength
         self.coverStrength = coverStrength
     }
 
@@ -97,6 +100,7 @@ struct GenerationPreset: Identifiable, Codable, Sendable, Equatable {
         case stepsOverride
         case shiftOverride
         case adapterID
+        case adapterStrength
         case coverStrength
     }
 
@@ -118,6 +122,7 @@ struct GenerationPreset: Identifiable, Codable, Sendable, Equatable {
         stepsOverride = try container.decodeIfPresent(String.self, forKey: .stepsOverride) ?? ""
         shiftOverride = try container.decodeIfPresent(Double.self, forKey: .shiftOverride) ?? 3.0
         adapterID = try container.decodeIfPresent(String.self, forKey: .adapterID)
+        adapterStrength = try container.decodeIfPresent(Double.self, forKey: .adapterStrength) ?? 1.0
         coverStrength = try container.decodeIfPresent(Double.self, forKey: .coverStrength) ?? 0.7
     }
 }

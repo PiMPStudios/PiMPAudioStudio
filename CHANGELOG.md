@@ -17,6 +17,7 @@ All notable changes to AnvilApp are documented here.
 - **Trace compare listening notes and preferred takes** — compare mode now has per-run note fields plus `Mark Preferred`. Notes and preferred flags are saved back into the `.trace.json` sidecars and mirrored into `history.json`, so listening decisions survive relaunches and show up in History.
 - **Trace audio preview strips** — saved traces and compare columns now render a compact waveform with a per-second loudness overlay, giving quick visual signal context before A/B playback.
 - **Failure trace sidecars** — failed generations now preserve the live event log into a `.failed.trace.json` artifact when possible, giving failed runs enough request/model/stage context for later debugging.
+- **Primary LoRA strength control** — the Generate view now exposes the selected LoRA adapter's strength, routes the primary adapter through the same weighted stack path as additional adapters, persists the value in saved presets, and records the actual weight in history/trace sidecars. This makes XL PEFT adapter A/B tests line up with the `lora_scale` knob used by the Python ACE-Step path.
 
 ### Fixed
 

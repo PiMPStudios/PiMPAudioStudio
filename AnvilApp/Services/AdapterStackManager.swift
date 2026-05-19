@@ -11,8 +11,12 @@ final class AdapterStackManager: ObservableObject {
 
     // MARK: - Published State
 
-    /// The primary adapter (shown in the main AdapterPicker, strength always 1.0).
+    /// The primary adapter shown in the main AdapterPicker.
     @Published var primaryAdapter: LoRAAdapter?
+
+    /// Strength for the primary adapter. Upstream PEFT LoRA exposes this as
+    /// lora_scale, and XL adapters often need A/B tuning below 1.0.
+    @Published var primaryStrength: Float = 1.0
 
     /// Additional stacked adapters with their individual strengths.
     @Published var additionalAdapters: [(adapter: LoRAAdapter, strength: Float)] = []
@@ -33,7 +37,7 @@ final class AdapterStackManager: ObservableObject {
 
     /// Total combined strength of all active adapters.
     var totalStrength: Float {
-        var total: Float = primaryAdapter != nil ? 1.0 : 0.0
+        var total: Float = primaryAdapter != nil ? primaryStrength : 0.0
         for entry in additionalAdapters {
             total += entry.strength
         }
@@ -45,6 +49,14 @@ final class AdapterStackManager: ObservableObject {
     /// Set the primary adapter. Replaces any existing primary.
     func setPrimary(_ adapter: LoRAAdapter?) {
         primaryAdapter = adapter
+        if let adapter {
+            additionalAdapters.removeAll { $0.adapter.id == adapter.id }
+        }
+    }
+
+    /// Update the primary adapter strength.
+    func setPrimaryStrength(_ strength: Float) {
+        primaryStrength = min(max(strength, 0.0), 1.0)
     }
 
     /// Add an adapter to the additional stack.
@@ -86,7 +98,7 @@ final class AdapterStackManager: ObservableObject {
     var allStackedAdapters: [(adapter: LoRAAdapter, strength: Float)] {
         var result: [(adapter: LoRAAdapter, strength: Float)] = []
         if let primary = primaryAdapter {
-            result.append((adapter: primary, strength: 1.0))
+            result.append((adapter: primary, strength: primaryStrength))
         }
         result.append(contentsOf: additionalAdapters)
         return result

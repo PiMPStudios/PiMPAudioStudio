@@ -27,6 +27,7 @@ struct GenerateView: View {
     @State private var modeSelection: ModeSelection = .auto
     @State private var selectedAdapterID: String?
     @AppStorage("selectedAdapterID") private var persistedAdapterID: String = ""
+    @AppStorage("selectedAdapterStrength") private var persistedAdapterStrength: Double = 1.0
 
     // Cover song
     @State private var sourceAudioURL: URL? = nil
@@ -314,6 +315,7 @@ struct GenerateView: View {
     private var controlsBar: some View {
         HStack {
             Button(sourceAudioURL != nil ? "Generate Cover" : "Generate") {
+                syncPrimaryAdapter(id: selectedAdapterID)
                 let request = GenerationRequest(
                     text: promptText,
                     lyrics: lyricsText,
@@ -385,12 +387,21 @@ struct GenerateView: View {
             .onChange(of: selectedAdapterID) { _, newValue in
                 persistedAdapterID = newValue ?? ""
                 generationService.selectedAdapterID = newValue
+                syncPrimaryAdapter(id: newValue)
             }
             .onAppear {
+                stackManager.setPrimaryStrength(Float(persistedAdapterStrength))
                 if !persistedAdapterID.isEmpty {
                     selectedAdapterID = persistedAdapterID
                     generationService.selectedAdapterID = persistedAdapterID
+                    syncPrimaryAdapter(id: persistedAdapterID)
+                } else {
+                    syncPrimaryAdapter(id: nil)
                 }
+            }
+
+            if selectedAdapterID != nil {
+                primaryAdapterStrengthRow
             }
 
             // Multi-adapter stacking controls
@@ -400,6 +411,39 @@ struct GenerateView: View {
                     activeModelCategory: .aceStepDiT
                 )
             }
+        }
+    }
+
+    private var primaryAdapterStrengthRow: some View {
+        HStack(spacing: 8) {
+            Text("LoRA Strength")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(width: 96, alignment: .leading)
+
+            Slider(
+                value: Binding(
+                    get: { Double(stackManager.primaryStrength) },
+                    set: { newValue in
+                        let strength = Float(newValue)
+                        stackManager.setPrimaryStrength(strength)
+                        persistedAdapterStrength = Double(stackManager.primaryStrength)
+                    }
+                ),
+                in: 0.0...1.0,
+                step: 0.05
+            )
+            .frame(maxWidth: 240)
+
+            Text(String(format: "%.2f", stackManager.primaryStrength))
+                .font(.caption.monospacedDigit())
+                .frame(width: 36, alignment: .trailing)
+
+            Text("Use Constant guidance for closest XL PEFT parity")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+
+            Spacer()
         }
     }
 
@@ -570,6 +614,16 @@ struct GenerateView: View {
         return nil
     }
 
+    private func syncPrimaryAdapter(id: String?) {
+        guard let id, !id.isEmpty else {
+            stackManager.setPrimary(nil)
+            return
+        }
+
+        let adapter = AdapterRegistry.listAdapters().first { $0.id == id }
+        stackManager.setPrimary(adapter)
+    }
+
     // MARK: - Presets
 
     private func saveCurrentAsPreset() {
@@ -598,6 +652,7 @@ struct GenerateView: View {
             stepsOverride: stepsOverrideText,
             shiftOverride: shiftOverride,
             adapterID: selectedAdapterID,
+            adapterStrength: Double(stackManager.primaryStrength),
             coverStrength: coverStrength
         )
         presetStore.save(preset)
@@ -613,6 +668,10 @@ struct GenerateView: View {
         shiftOverride = preset.shiftOverride
         selectedAdapterID = preset.adapterID
         persistedAdapterID = preset.adapterID ?? ""
+        generationService.selectedAdapterID = preset.adapterID
+        stackManager.setPrimaryStrength(Float(preset.adapterStrength))
+        persistedAdapterStrength = preset.adapterStrength
+        syncPrimaryAdapter(id: preset.adapterID)
         coverStrength = preset.coverStrength
 
         // Shared parameters
