@@ -63,6 +63,7 @@ struct AnvilAppApp: App {
                 .environmentObject(adapterStackManager)
                 .environmentObject(generationParameters)
                 .environmentObject(presetStore)
+                .environmentObject(services.traceMonitor)
                 .environmentObject(services.editorService)
                 .environmentObject(services.trainingService)
                 .task(id: outputManager.directory) {
@@ -105,6 +106,12 @@ struct AnvilAppApp: App {
         .windowStyle(.titleBar)
         .defaultSize(width: 1200, height: 800)
 
+        WindowGroup("Generation Analyzer", id: "generationAnalyzer") {
+            GenerationAnalyzerView()
+                .environmentObject(services.traceMonitor)
+        }
+        .defaultSize(width: 860, height: 640)
+
         Settings {
             TabView {
                 IntelligenceSettingsView()
@@ -142,6 +149,7 @@ struct AnvilAppApp: App {
 final class AppServices: ObservableObject {
     @Published var historyStore: HistoryStore
     @Published var generationService: GenerationService
+    let traceMonitor: GenerationTraceMonitor
 
     /// Shared ML actors — created once, reused by both generation and the editor
     /// so weights are never duplicated in GPU memory.
@@ -172,6 +180,7 @@ final class AppServices: ObservableObject {
         self.llmManager = llmManager
         self.currentOutputManager = outputManager
         self.currentDirectory = outputManager.directory
+        self.traceMonitor = GenerationTraceMonitor()
 
         // Create shared ML actors once. Weights are loaded lazily on first use,
         // so this is cheap at launch. The editor and generation service both hold
@@ -221,7 +230,8 @@ final class AppServices: ObservableObject {
             sfxModelManager: sfxModelManager,
             registry: registry,
             llmManager: llmManager,
-            trainingService: self.trainingService
+            trainingService: self.trainingService,
+            traceMonitor: traceMonitor
         )
     }
 
@@ -248,7 +258,8 @@ final class AppServices: ObservableObject {
             sfxModelManager: sfxModelManager,
             registry: registry,
             llmManager: llmManager,
-            trainingService: self.trainingService
+            trainingService: self.trainingService,
+            traceMonitor: traceMonitor
         )
     }
 
@@ -261,7 +272,8 @@ final class AppServices: ObservableObject {
         sfxModelManager: SFXModelManager,
         registry: ModelRegistry,
         llmManager: LLMModelManager,
-        trainingService: TrainingService? = nil
+        trainingService: TrainingService? = nil,
+        traceMonitor: GenerationTraceMonitor
     ) -> GenerationService {
         let pipeline = MusicPipeline(vae: vaeActor, diffusion: diffusionActor)
         let converter = WeightConverter()
@@ -304,7 +316,8 @@ final class AppServices: ObservableObject {
             historyStore: historyStore,
             outputDirectoryManager: outputManager,
             llmManager: llmManager,
-            registry: registry
+            registry: registry,
+            traceMonitor: traceMonitor
         )
     }
 }

@@ -12,6 +12,7 @@ struct GenerateView: View {
     @EnvironmentObject private var stackManager: AdapterStackManager
     @EnvironmentObject private var generationParameters: GenerationParameters
     @EnvironmentObject private var presetStore: PresetStore
+    @Environment(\.openWindow) private var openWindow
 
     @State private var showingSavePreset: Bool = false
     @State private var presetName: String = ""
@@ -347,6 +348,15 @@ struct GenerateView: View {
             }
 
             Spacer()
+
+            Button {
+                openWindow(id: "generationAnalyzer")
+            } label: {
+                Label("Analyzer", systemImage: "waveform.path.ecg")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .help("Open the live generation analyzer")
 
             // Save as Preset
             Button {

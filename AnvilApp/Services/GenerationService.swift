@@ -35,6 +35,7 @@ final class GenerationService: ObservableObject {
     private let outputDirectoryManager: OutputDirectoryManager
     private let llmManager: LLMModelManager
     private let registry: ModelRegistry
+    private let traceMonitor: GenerationTraceMonitor
 
     init(
         aceStepService: ACEStepGenerationService,
@@ -45,7 +46,8 @@ final class GenerationService: ObservableObject {
         historyStore: HistoryStore,
         outputDirectoryManager: OutputDirectoryManager,
         llmManager: LLMModelManager,
-        registry: ModelRegistry
+        registry: ModelRegistry,
+        traceMonitor: GenerationTraceMonitor
     ) {
         self.aceStepService = aceStepService
         self.sfxService = sfxService
@@ -56,6 +58,7 @@ final class GenerationService: ObservableObject {
         self.outputDirectoryManager = outputDirectoryManager
         self.llmManager = llmManager
         self.registry = registry
+        self.traceMonitor = traceMonitor
     }
 
     func generate(request: GenerationRequest) {
@@ -77,15 +80,42 @@ final class GenerationService: ObservableObject {
                 return
             }
 
+            self.traceMonitor.start(request: request)
+
             // Free the LLM (~2 GB GPU) before loading DiT + VAE (~5+ GB).
             // The $llmActor publisher propagates nil to PromptEnhancer /
             // IntentRouter / LyricWriterManager automatically, disabling
             // inference for the duration.
+            self.traceMonitor.recordStage("Memory", message: "Evicting lyric model before generation")
             self.llmManager.evict()
 
             do {
                 let usesStableAudio = self.shouldUseStableAudio(request: request)
                 let usesCoverSong = !usesStableAudio && self.shouldUseCoverSong(request: request)
+                let pipelineLabel: String
+                if usesStableAudio {
+                    pipelineLabel = "stableAudio"
+                } else if usesCoverSong {
+                    pipelineLabel = "coverSong"
+                } else {
+                    pipelineLabel = "aceStep"
+                }
+                let mainModelCategory: ModelCategory = usesStableAudio ? .stableAudio : .aceStepDiT
+                let mainModel = await self.historyModelSnapshot(for: mainModelCategory)
+                let supportingModels = await self.supportingModelSnapshots(
+                    usesStableAudio: usesStableAudio,
+                    usesCoverSong: usesCoverSong
+                )
+                let adapters = usesStableAudio || usesCoverSong
+                    ? []
+                    : self.historyAdapterSnapshots()
+                self.traceMonitor.configure(
+                    pipeline: pipelineLabel,
+                    primaryModel: mainModel,
+                    supportingModels: supportingModels,
+                    adapters: adapters
+                )
+
                 let audioResult: AudioResult
                 if usesStableAudio {
                     audioResult = try await self.runSFX(request: request)
@@ -93,8 +123,10 @@ final class GenerationService: ObservableObject {
                     audioResult = try await self.runCoverSong(request: request)
                 } else {
                     if !self.adapterStack.isEmpty {
+                        self.traceMonitor.recordStage("Adapters", message: "Applying adapter stack")
                         await self.loraCoordinator.ensureStack(stack: self.adapterStack)
                     } else {
+                        self.traceMonitor.recordStage("Adapters", message: "Applying selected adapter")
                         await self.loraCoordinator.ensureAdapter(selectedID: self.selectedAdapterID)
                     }
                     audioResult = try await self.runACEStep(request: request)
@@ -105,31 +137,21 @@ final class GenerationService: ObservableObject {
                 let fileName = HistoryEntry.fileName(prompt: request.text)
                 let fileURL = outputDir.appending(path: fileName)
 
+                self.traceMonitor.recordStage("File", message: "Writing WAV and analyzing waveform", detail: fileName)
                 let audioSnapshot = try await Self.writeAudioAndAnalyze(
                     audioResult: audioResult,
                     fileURL: fileURL
                 )
+                self.traceMonitor.recordStage(
+                    "Audio",
+                    message: "Waveform analysis complete",
+                    detail: String(format: "absMean %.4f, absMax %.3f", audioSnapshot.absMean, audioSnapshot.absMax),
+                    level: .success
+                )
 
-                let pipelineLabel: String
-                if usesStableAudio {
-                    pipelineLabel = "stableAudio"
-                } else if usesCoverSong {
-                    pipelineLabel = "coverSong"
-                } else {
-                    pipelineLabel = "aceStep"
-                }
                 let recordedGuidanceScale = usesStableAudio
                     ? request.guidanceScale
                     : request.effectiveGuidanceScale
-                let mainModelCategory: ModelCategory = usesStableAudio ? .stableAudio : .aceStepDiT
-                let mainModel = await self.historyModelSnapshot(for: mainModelCategory)
-                let supportingModels = await self.supportingModelSnapshots(
-                    usesStableAudio: usesStableAudio,
-                    usesCoverSong: usesCoverSong
-                )
-                let adapters = usesStableAudio || usesCoverSong
-                    ? []
-                    : self.historyAdapterSnapshots()
                 let entryID = UUID()
                 let createdAt = Date()
                 let traceFileName = HistoryEntry.traceFileName(forAudioFileName: fileName)
@@ -171,6 +193,7 @@ final class GenerationService: ObservableObject {
                 } catch {
                     traceLogger.warning("Failed to write trace sidecar \(traceFileName, privacy: .public): \(error.localizedDescription, privacy: .public)")
                 }
+                self.traceMonitor.finish(trace: trace)
 
                 self.historyStore.add(entry)
                 self.currentResult = GenerationResult(
@@ -181,8 +204,10 @@ final class GenerationService: ObservableObject {
                 self.state = .complete
             } catch is CancellationError {
                 self.state = .cancelled
+                self.traceMonitor.cancel()
             } catch {
                 self.state = .error(error.localizedDescription)
+                self.traceMonitor.fail(error.localizedDescription)
             }
 
             // Recreate the LLMActor (lazy — no weights loaded yet) so prompt
@@ -194,6 +219,7 @@ final class GenerationService: ObservableObject {
     func cancel() {
         generationTask?.cancel()
         state = .cancelled
+        traceMonitor.cancel()
     }
 
     func unloadAllWeights() async {
@@ -449,15 +475,21 @@ final class GenerationService: ObservableObject {
             switch event {
             case .loadingWeights(let progress):
                 self.state = .loadingWeights(progress: progress)
+                self.traceMonitor.updateLoadingWeights(progress: progress)
             case .conditioning:
                 self.state = .conditioning
+                self.traceMonitor.recordStage("Conditioning", message: "Encoding prompt, lyrics, and source audio")
             case .tokenizingSource:
                 self.state = .tokenizingSource
+                self.traceMonitor.recordStage("Source Audio", message: "Tokenizing source audio")
             case .generating(let step, let totalSteps, let eta):
                 self.state = .generating(step: step, totalSteps: totalSteps, eta: eta)
+                self.traceMonitor.updateGenerationStep(step: step, totalSteps: totalSteps, eta: eta)
             case .decoding:
                 self.state = .decoding
+                self.traceMonitor.recordStage("Decode", message: "Decoding latents to audio")
             case .result(let audioResult):
+                self.traceMonitor.recordStage("Result", message: "Audio returned from cover pipeline", level: .success)
                 return audioResult
             }
         }
@@ -469,11 +501,15 @@ final class GenerationService: ObservableObject {
             switch event {
             case .downloadingModel(let progress):
                 self.state = .downloadingModel(progress: progress)
+                self.traceMonitor.updateLoadingWeights(progress: progress)
             case .generating(let step, let totalSteps, let eta):
                 self.state = .generating(step: step, totalSteps: totalSteps, eta: eta)
+                self.traceMonitor.updateGenerationStep(step: step, totalSteps: totalSteps, eta: eta)
             case .decoding:
                 self.state = .decoding
+                self.traceMonitor.recordStage("Decode", message: "Decoding latents to audio")
             case .result(let audioResult):
+                self.traceMonitor.recordStage("Result", message: "Audio returned from Stable Audio pipeline", level: .success)
                 return audioResult
             }
         }
@@ -485,16 +521,21 @@ final class GenerationService: ObservableObject {
             switch event {
             case .loadingWeights(let progress):
                 self.state = .loadingWeights(progress: progress)
+                self.traceMonitor.updateLoadingWeights(progress: progress)
             case .conditioning:
                 self.state = .conditioning
+                self.traceMonitor.recordStage("Conditioning", message: "Encoding prompt and lyrics")
             case .tokenizingSource:
                 // Cover-song-only stage — not emitted by the standard ACE-Step path.
                 break
             case .generating(let step, let totalSteps, let eta):
                 self.state = .generating(step: step, totalSteps: totalSteps, eta: eta)
+                self.traceMonitor.updateGenerationStep(step: step, totalSteps: totalSteps, eta: eta)
             case .decoding:
                 self.state = .decoding
+                self.traceMonitor.recordStage("Decode", message: "Decoding latents to audio")
             case .result(let audioResult):
+                self.traceMonitor.recordStage("Result", message: "Audio returned from ACE-Step pipeline", level: .success)
                 return audioResult
             }
         }
