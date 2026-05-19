@@ -169,6 +169,7 @@ public actor DiffusionActor {
         }
         let statStrs = perSecStats.map { (s, v) in "s\(s)=\(String(format: "%.4f", v))" }.joined(separator: " ")
         diagLogger.info("[DiffusionActor] per-sec latent abs_mean: \(statStrs)")
+        AudioDiagnostics.floats("diff/final_latent_abs_mean_per_sec", perSecStats.map(\.1))
 
         progressContinuation?.finish()
         progressContinuation = nil

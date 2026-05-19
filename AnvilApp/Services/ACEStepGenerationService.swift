@@ -10,6 +10,11 @@ private let logger = Logger(subsystem: "com.pimp.AnvilApp", category: "ACEStepGe
 /// Handles ACE-Step generation: weight loading (DiT + VAE), ConditioningActor lifecycle,
 /// and diffusion. Internal to the GenerationService facade.
 actor ACEStepGenerationService {
+    /// Text-to-music generations consistently show a near-silent VAE tail of
+    /// about two seconds. Generate a small guard band, then crop back to the
+    /// requested duration so the audible body reaches the UI/export boundary.
+    private static let textToMusicTailGuardSeconds: TimeInterval = 2.0
+
     enum Event {
         case loadingWeights(progress: Float)
         case conditioning
@@ -113,14 +118,23 @@ actor ACEStepGenerationService {
                     }
                     defer { progressTask.cancel() }
 
-                    let audioResult = try await pipeline.generate(
+                    let generationDuration = Self.durationWithTailGuard(request.duration)
+                    if generationDuration > request.duration {
+                        AudioDiagnostics.note(
+                            "config/tailGuard",
+                            "requested=\(request.duration) internal=\(generationDuration) crop=true"
+                        )
+                    }
+
+                    let generatedAudio = try await pipeline.generate(
                         text: request.text,
                         lyrics: request.lyrics,
                         referenceAudio: nil,
-                        duration: request.duration,
+                        duration: generationDuration,
                         config: config,
                         conditioning: conditioning
                     )
+                    let audioResult = Self.crop(generatedAudio, toDuration: request.duration)
 
                     continuation.yield(.decoding)
                     continuation.yield(.result(audioResult))
@@ -131,6 +145,36 @@ actor ACEStepGenerationService {
             }
             continuation.onTermination = { _ in task.cancel() }
         }
+    }
+
+    private static func durationWithTailGuard(_ requested: TimeInterval) -> TimeInterval {
+        guard requested >= 10 else { return requested }
+        return requested + min(textToMusicTailGuardSeconds, requested * 0.10)
+    }
+
+    private static func crop(_ result: AudioResult, toDuration requestedDuration: TimeInterval) -> AudioResult {
+        let requestedFrames = max(1, Int((requestedDuration * Double(result.sampleRate)).rounded()))
+        guard result.samples.shape.count >= 3, result.samples.shape[1] > requestedFrames else {
+            return AudioResult(
+                samples: result.samples,
+                sampleRate: result.sampleRate,
+                duration: requestedDuration,
+                timeCosts: result.timeCosts
+            )
+        }
+
+        let cropped = result.samples[0..., 0..<requestedFrames, 0...]
+        eval(cropped)
+        AudioDiagnostics.note(
+            "vae/out_audio_crop",
+            "internalSamples=\(result.samples.shape[1]) requestedSamples=\(requestedFrames)"
+        )
+        return AudioResult(
+            samples: cropped,
+            sampleRate: result.sampleRate,
+            duration: requestedDuration,
+            timeCosts: result.timeCosts
+        )
     }
 
     /// Unloads all model weights. Call before model swap or on memory pressure.
