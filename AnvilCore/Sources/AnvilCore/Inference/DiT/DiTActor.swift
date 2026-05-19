@@ -73,6 +73,44 @@ public actor DiTActor {
         return (output, returnedCache)
     }
 
+    public func traceStep(
+        noisyLatents: MLXArray,
+        timestep: Float,
+        timestepR: Float,
+        encoderStates: MLXArray,
+        contextLatents: MLXArray,
+        encoderAttentionMask: MLXArray?,
+        layerIndices: Set<Int>,
+        cache: CrossAttentionCache? = nil,
+        useCache: Bool = false
+    ) throws -> [String: MLXArray] {
+        guard let decoder else {
+            throw DiTActorError.weightsNotLoaded
+        }
+        let batchSize = noisyLatents.shape[0]
+        let tArray = MLXArray.full([batchSize], values: MLXArray(timestep))
+        let trArray = MLXArray.full([batchSize], values: MLXArray(timestepR))
+
+        let result = decoder.trace(
+            hiddenStates: noisyLatents,
+            timestep: tArray,
+            timestepR: trArray,
+            encoderHiddenStates: encoderStates,
+            contextLatents: contextLatents,
+            encoderAttentionMask: encoderAttentionMask,
+            cache: cache,
+            useCache: useCache,
+            layerIndices: layerIndices
+        )
+
+        var tensors = result.tensors
+        tensors["output"] = result.output
+        for tensor in tensors.values {
+            eval(tensor)
+        }
+        return tensors
+    }
+
     public func loadWeights(_ weights: [(String, MLXArray)], modelID: String) {
         if decoder == nil {
             decoder = DiTDecoder(config: decoderConfig)

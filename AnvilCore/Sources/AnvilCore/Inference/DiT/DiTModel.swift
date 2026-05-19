@@ -184,6 +184,16 @@ public struct DiTConfig: Codable, Sendable, Equatable {
     }
 }
 
+public struct DiTTraceOutput {
+    public let output: MLXArray
+    public let tensors: [String: MLXArray]
+
+    public init(output: MLXArray, tensors: [String: MLXArray]) {
+        self.output = output
+        self.tensors = tensors
+    }
+}
+
 public class DiTDecoder: Module {
     let hiddenSize: Int
     let encoderHiddenSize: Int
@@ -304,6 +314,59 @@ public class DiTDecoder: Module {
         cache: CrossAttentionCache?,
         useCache: Bool
     ) -> (MLXArray, CrossAttentionCache?) {
+        let result = run(
+            hiddenStates: hiddenStates,
+            timestep: timestep,
+            timestepR: timestepR,
+            encoderHiddenStates: encoderHiddenStates,
+            contextLatents: contextLatents,
+            encoderAttentionMask: encoderAttentionMask,
+            cache: cache,
+            useCache: useCache,
+            traceLayerIndices: nil
+        )
+        return (result.output, result.cache)
+    }
+
+    public func trace(
+        hiddenStates: MLXArray,
+        timestep: MLXArray,
+        timestepR: MLXArray,
+        encoderHiddenStates: MLXArray,
+        contextLatents: MLXArray,
+        encoderAttentionMask: MLXArray?,
+        cache: CrossAttentionCache?,
+        useCache: Bool,
+        layerIndices: Set<Int>
+    ) -> DiTTraceOutput {
+        let result = run(
+            hiddenStates: hiddenStates,
+            timestep: timestep,
+            timestepR: timestepR,
+            encoderHiddenStates: encoderHiddenStates,
+            contextLatents: contextLatents,
+            encoderAttentionMask: encoderAttentionMask,
+            cache: cache,
+            useCache: useCache,
+            traceLayerIndices: layerIndices
+        )
+        return DiTTraceOutput(output: result.output, tensors: result.trace)
+    }
+
+    private func run(
+        hiddenStates: MLXArray,
+        timestep: MLXArray,
+        timestepR: MLXArray,
+        encoderHiddenStates: MLXArray,
+        contextLatents: MLXArray,
+        encoderAttentionMask: MLXArray?,
+        cache: CrossAttentionCache?,
+        useCache: Bool,
+        traceLayerIndices: Set<Int>?
+    ) -> (output: MLXArray, cache: CrossAttentionCache?, trace: [String: MLXArray]) {
+        var trace: [String: MLXArray] = [:]
+        let shouldTrace = traceLayerIndices != nil
+
         // Timestep embeddings
         let (tembT, projT) = timeEmbed(timestep)
         let (tembR, projR) = timeEmbedR(timestep - timestepR)
@@ -324,9 +387,11 @@ public class DiTDecoder: Module {
 
         // Patch embedding via strided convolution
         h = projIn(h)
+        if shouldTrace { trace["proj_in"] = h }
 
         // Project encoder states
         let encStates = conditionEmbedder(encoderHiddenStates)
+        if shouldTrace { trace["condition_embed"] = encStates }
 
         let seqLen = h.shape[1]
 
@@ -349,7 +414,8 @@ public class DiTDecoder: Module {
         let _ = encoderAttentionMask  // intentionally unused
 
         // Process through transformer layers
-        for layer in layers {
+        let tracedLayers = traceLayerIndices ?? []
+        for (layerIndex, layer) in layers.enumerated() {
             let selfAttnMask = layer.layerType == "sliding_attention" ? slidingMask : nil
             h = layer(
                 hiddenStates: h,
@@ -361,6 +427,9 @@ public class DiTDecoder: Module {
                 cache: cache,
                 useCache: useCache
             )
+            if tracedLayers.contains(layerIndex) {
+                trace["layers.\(layerIndex)"] = h
+            }
         }
 
         // Output adaptive layer norm
@@ -369,13 +438,15 @@ public class DiTDecoder: Module {
         let outParts = outMod.split(parts: 2, axis: 1)
         let (shift, scale) = (outParts[0], outParts[1])
         h = normOut(h) * (1.0 + scale) + shift
+        if shouldTrace { trace["post_norm_out"] = h }
 
         // De-patchify via transposed convolution
         h = projOut(h)
 
         // Crop back to original sequence length
         h = h[0..., 0..<originalSeqLen, 0...]
+        if shouldTrace { trace["output"] = h }
 
-        return (h, cache)
+        return (h, cache, trace)
     }
 }

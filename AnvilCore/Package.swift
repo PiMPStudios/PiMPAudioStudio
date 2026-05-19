@@ -7,6 +7,7 @@ let package = Package(
     products: [
         .library(name: "AnvilCore", targets: ["AnvilCore"]),
         .executable(name: "QualityEval", targets: ["QualityEval"]),
+        .executable(name: "DiTProbeEval", targets: ["DiTProbeEval"]),
     ],
     dependencies: [
         .package(url: "https://github.com/ml-explore/mlx-swift", from: "0.21.0"),
@@ -26,6 +27,13 @@ let package = Package(
         ),
         .executableTarget(
             name: "QualityEval",
+            dependencies: [
+                "AnvilCore",
+                .product(name: "MLX", package: "mlx-swift"),
+            ]
+        ),
+        .executableTarget(
+            name: "DiTProbeEval",
             dependencies: [
                 "AnvilCore",
                 .product(name: "MLX", package: "mlx-swift"),

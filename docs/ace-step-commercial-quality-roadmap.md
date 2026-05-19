@@ -99,6 +99,17 @@ Small tensor layout, channel ordering, or mask construction errors that are
 repeat direction, q/k-norm placement, and sliding attention mask parity as
 open items after conditioning was fixed.
 
+**Codex implementation note (2026-05-18):** First PyTorch-vs-Swift DiT probe
+now passes on a fixed SFT one-step case. Report:
+`docs/quality-eval/reports/sparse-dark-guitar-dit-step.md`. Key metrics:
+`proj_in` MAE `2.56e-7`, `layers.23` MAE `9.43e-5`, final `output` MAE
+`1.09e-6`, all shape matches and cosine similarities effectively `1.0`.
+This sharply lowers the probability that patch projection, GQA repeat, RoPE,
+sliding masks, output projection, or core block math are the current dominant
+quality blocker. Keep DiT parity on the watch list, but shift the next
+commercial-quality work toward inference recipe, prompt/metas, and evaluation
+A/Bs unless a future multi-step probe contradicts this.
+
 **Files:**
 
 - `AnvilCore/Sources/AnvilCore/Inference/DiT/DiTModel.swift`
@@ -176,6 +187,17 @@ a simple report. Expand only after the first evidence points at the bottleneck.
      `AudioParityMetrics`. It consumes upstream `latents.safetensors` and
      upstream decoded WAV/audio tensors, decodes the same latent through
      `VAEActor.decode`, and emits a Markdown parity report.
+   - Codex implementation note (2026-05-18): DiT probe scaffolding added as
+     `DiTProbeEval` plus reusable `TensorParityMetrics`. It runs one fixed DiT
+     forward pass from safetensor inputs, captures `proj_in`,
+     `condition_embed`, selected `layers.N`, `post_norm_out`, and `output`,
+     then compares them against upstream reference tensors. This intentionally
+     keeps normal generation untouched while giving the next reviewer a
+     block-by-block parity read.
+   - Codex result note (2026-05-18): first SFT one-step DiT parity report
+     passes with tiny numerical deltas against upstream PyTorch. The Phase 0
+     evidence now says both VAE decode and one-step DiT math are broadly
+     aligned.
 
 2. Create an **internal golden evaluation set**.
    - Start with 8 prompts, not 20. Keep it small enough to rerun after every
@@ -278,6 +300,12 @@ territory and is cheap to iterate.
    - Codex implementation note (2026-05-18): first pass implemented as
      `swift run --package-path AnvilCore QualityEval ...`, with docs in
      `docs/quality-eval/README.md`.
+   - Codex implementation note (2026-05-18): second pass added
+     `swift run --package-path AnvilCore DiTProbeEval ...`, documented in
+     `docs/quality-eval/README.md`. The first upstream export was generated
+     locally from `../ACE-Step-1.5/scripts/export_dit_probe_case.py` and the
+     resulting report is
+     `docs/quality-eval/reports/sparse-dark-guitar-dit-step.md`.
    - New file: `AnvilCore/Sources/QualityEval/main.swift`.
    - Export a 30-second latent from upstream on the golden prompt "slow dark
      guitar riff", seed 42, and compare Swift direct decode against upstream
