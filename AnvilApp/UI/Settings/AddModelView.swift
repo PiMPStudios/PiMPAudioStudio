@@ -145,6 +145,9 @@ struct AddModelView: View {
 
                 try await registry.downloadModels([spec]) { _, progress in
                     Task { @MainActor in
+                        if progress < downloadProgress {
+                            return
+                        }
                         downloadProgress = progress
                         onModelStatusChanged(spec.id, .downloading(progress: progress))
                     }

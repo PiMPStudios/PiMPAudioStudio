@@ -193,6 +193,9 @@ private struct ModelInspectorSection: View {
                 .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .task { await loadModelInfo() }
+        .onReceive(NotificationCenter.default.publisher(for: .modelRegistryDidChange)) { _ in
+            Task { await loadModelInfo() }
+        }
     }
 
     // MARK: ACE-Step row
@@ -324,3 +327,6 @@ private struct ModelInspectorSection: View {
     }
 }
 
+extension Notification.Name {
+    static let modelRegistryDidChange = Notification.Name("modelRegistryDidChange")
+}

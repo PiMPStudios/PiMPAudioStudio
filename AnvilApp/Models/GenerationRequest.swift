@@ -9,6 +9,7 @@ struct GenerationRequest: Sendable {
     let seed: Int?
     let method: InferMethod
     let guidanceScale: Float
+    let guidancePreset: GuidancePreset
     let precision: Precision
     let stepsOverride: Int?
     let shiftOverride: Float?
@@ -27,6 +28,7 @@ struct GenerationRequest: Sendable {
         seed: Int? = nil,
         method: InferMethod = .ode,
         guidanceScale: Float = 1.0,
+        guidancePreset: GuidancePreset = GuidancePreset.defaultSelection,
         precision: Precision = .float32,
         stepsOverride: Int? = nil,
         shiftOverride: Float? = nil,
@@ -41,11 +43,24 @@ struct GenerationRequest: Sendable {
         self.seed = seed
         self.method = method
         self.guidanceScale = guidanceScale
+        self.guidancePreset = guidancePreset
         self.precision = precision
         self.stepsOverride = stepsOverride
         self.shiftOverride = shiftOverride
         self.resolvedMode = resolvedMode
         self.pipelineOverride = pipelineOverride
         self.coverStrength = coverStrength
+    }
+
+    var effectiveGuidanceScale: Float {
+        guidancePreset.effectiveGuidanceScale(userValue: guidanceScale)
+    }
+
+    var cfgIntervalStart: Float {
+        guidancePreset.cfgInterval.start
+    }
+
+    var cfgIntervalEnd: Float {
+        guidancePreset.cfgInterval.end
     }
 }

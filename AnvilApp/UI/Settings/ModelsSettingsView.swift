@@ -27,7 +27,10 @@ struct ModelsSettingsView: View {
             memorySection
             AddModelView(
                 registry: appState.registry,
-                onModelAdded: { refreshModels() },
+                onModelAdded: {
+                    refreshModels()
+                    postModelRegistryChanged()
+                },
                 onModelStatusChanged: { id, status in
                     statuses[id] = status
                 }
@@ -266,6 +269,7 @@ struct ModelsSettingsView: View {
         Task {
             do {
                 try await appState.registry.setActiveModel(id: spec.id, for: spec.category)
+                postModelRegistryChanged()
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -288,11 +292,14 @@ struct ModelsSettingsView: View {
                         switch statuses[spec.id] {
                         case .ready, .failed:
                             return
+                        case .downloading(let current) where progress < current:
+                            return
                         default:
                             statuses[spec.id] = .downloading(progress: progress)
                         }
                     }
                 }
+                postModelRegistryChanged()
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -304,6 +311,7 @@ struct ModelsSettingsView: View {
         Task {
             do {
                 try await appState.registry.deleteModelFiles(id: id)
+                postModelRegistryChanged()
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -316,11 +324,16 @@ struct ModelsSettingsView: View {
             do {
                 try await appState.registry.deleteModelFiles(id: id)
                 try await appState.registry.removeModel(id: id)
+                postModelRegistryChanged()
             } catch {
                 errorMessage = error.localizedDescription
             }
             refreshModels()
         }
+    }
+
+    private func postModelRegistryChanged() {
+        NotificationCenter.default.post(name: .modelRegistryDidChange, object: nil)
     }
 }
 

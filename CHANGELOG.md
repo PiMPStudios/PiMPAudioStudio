@@ -29,9 +29,12 @@ All notable changes to AnvilApp are documented here.
 - **LoRA training bypasses the MLX nested-parameter gradient crash** — the trainer now calls the flat-array `valueAndGrad` transform directly, passes only LoRA matrices as differentiable arguments, rebuilds the small gradient dictionary afterward, and computes MSE loss in float32. This avoids the `ModuleParameters` wrapper crash while preserving normal AdamW updates.
 - **LoRA training uses a stricter on-device memory envelope** — each preprocessed training sample now contributes a random window capped at 64 latent frames, training injection is limited to the final four DiT blocks, and the optimizer materializes only trainable adapter parameters/state after each step. This prevents full-length clips from forcing MLX to retain huge DiT backward activations for 30-200 second samples.
 - **Audio diagnostics no longer report false `abs_mean=inf` for float16 tensors** — diagnostic reductions now cast to float32 before computing mean/max, so finite conditioning tensors no longer look exploded just because the float16 reduction accumulator overflowed.
+- **Model downloads now report aggregate progress across every file and shard** — multi-file downloads such as ACE-Step XL no longer show a misleading 0→100% loop for each individual shard; the Models UI now receives one monotonic model-level progress value.
+- **The main-window model sidebar refreshes after Settings changes** — downloading, deleting, adding, or setting an ACE-Step model active now notifies the inspector so the right sidebar updates without relaunching the app.
 
 ### Changed
 
+- **ACE-Step generation now defaults to the Soft Late guidance schedule** — Advanced settings now expose Constant, Late Emphasis, Mid-to-Late, and Soft Late CFG schedules. The presets route through the existing `cfgIntervalStart/End` diffusion path for music and cover generation; the first listening A/B favored late guidance, with Soft Late giving the best sparse-prompt result and gentler endings.
 - **Audio import avoids two extra full-channel copies** — `AudioFileLoader.bufferToMLX` now interleaves directly from `AVAudioPCMBuffer.floatChannelData` instead of first materialising separate `ch0` / `ch1` arrays.
 
 ---

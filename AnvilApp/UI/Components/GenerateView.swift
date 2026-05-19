@@ -321,6 +321,7 @@ struct GenerateView: View {
                     seed: generationParameters.seed,
                     method: method,
                     guidanceScale: Float(generationParameters.guidanceScale),
+                    guidancePreset: generationParameters.guidancePreset,
                     precision: precision,
                     stepsOverride: Int(stepsOverrideText.trimmingCharacters(in: .whitespacesAndNewlines)),
                     shiftOverride: Float(shiftOverride),
@@ -425,6 +426,26 @@ struct GenerateView: View {
                         .textFieldStyle(.roundedBorder)
                         .frame(maxWidth: 80)
                     Text("(blank = auto: 8 Turbo / 50 Base, SFT, or XL)")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                    Spacer()
+                }
+
+                // Guidance schedule
+                HStack {
+                    Text("Guidance")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 80, alignment: .leading)
+                    Picker("", selection: $generationParameters.guidancePreset) {
+                        ForEach(GuidancePreset.allCases) { preset in
+                            Text(preset.displayName).tag(preset)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    .frame(maxWidth: 180)
+                    Text(generationParameters.guidancePreset.detail)
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                     Spacer()
@@ -560,6 +581,7 @@ struct GenerateView: View {
             duration: generationParameters.duration,
             seedText: generationParameters.seedText,
             guidanceScale: generationParameters.guidanceScale,
+            guidancePreset: generationParameters.guidancePreset,
             pipelineOverride: generationParameters.pipelineOverride,
             method: method,
             precision: precision,
@@ -587,6 +609,7 @@ struct GenerateView: View {
         generationParameters.duration = preset.duration
         generationParameters.seedText = preset.seedText
         generationParameters.guidanceScale = preset.guidanceScale
+        generationParameters.guidancePreset = preset.guidancePreset
         generationParameters.pipelineOverride = preset.pipelineOverride
     }
 }

@@ -114,6 +114,9 @@ final class GenerationService: ObservableObject {
                 } else {
                     pipelineLabel = "aceStep"
                 }
+                let recordedGuidanceScale = usesStableAudio
+                    ? request.guidanceScale
+                    : request.effectiveGuidanceScale
                 let entry = HistoryEntry(
                     id: UUID(),
                     createdAt: Date(),
@@ -122,7 +125,7 @@ final class GenerationService: ObservableObject {
                     duration: request.duration,
                     seed: request.seed ?? 0,
                     method: request.method.rawValue,
-                    guidanceScale: request.guidanceScale,
+                    guidanceScale: recordedGuidanceScale,
                     precision: request.precision.rawValue,
                     fileName: fileName,
                     pipeline: pipelineLabel,

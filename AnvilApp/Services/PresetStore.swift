@@ -64,6 +64,7 @@ final class PresetStore: ObservableObject {
             duration: preset.duration,
             seedText: preset.seedText,
             guidanceScale: preset.guidanceScale,
+            guidancePreset: preset.guidancePreset,
             pipelineOverride: preset.pipelineOverride,
             method: preset.method,
             precision: preset.precision,

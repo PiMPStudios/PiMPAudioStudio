@@ -95,8 +95,7 @@ actor CoverSongCoordinator {
                     logger.info("[CoverSongCoordinator] blendedLatents shape=\(blendedLatents.shape)")
 
                     // Build DiffusionConfig (mirrors ACEStepGenerationService logic)
-                    let effectiveGuidance: Float = request.guidanceScale > 1.0
-                        ? request.guidanceScale : 7.5
+                    let effectiveGuidance = request.effectiveGuidanceScale
                     let loadedDiTID = self.currentlyLoadedDiTModelID ?? ""
                     let autoSteps: Int =
                         (self.currentlyLoadedDiTConfig?.isTurbo == true ||
@@ -109,6 +108,8 @@ actor CoverSongCoordinator {
                         shift: shift,
                         steps: inferSteps,
                         guidanceScale: effectiveGuidance,
+                        cfgIntervalStart: request.cfgIntervalStart,
+                        cfgIntervalEnd: request.cfgIntervalEnd,
                         precision: request.precision
                     )
 

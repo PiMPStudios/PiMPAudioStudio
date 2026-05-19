@@ -360,6 +360,17 @@ public actor ModelRegistry {
         statuses[modelID] = status
     }
 
+    private func setDownloadProgress(_ modelID: String, progress: Double) {
+        switch statuses[modelID] {
+        case .ready, .failed:
+            return
+        case .downloading(let current) where progress < current:
+            return
+        default:
+            statuses[modelID] = .downloading(progress: progress)
+        }
+    }
+
     // MARK: - Download
 
     /// Downloads the specified models with SHA256 verification and auto-retry.
@@ -370,6 +381,7 @@ public actor ModelRegistry {
         for spec in specs {
             guard status(for: spec.id) != .ready else { continue }
             statuses[spec.id] = .downloading(progress: 0)
+            onProgress(spec.id, 0)
 
             let bearerToken: String?
             if spec.requiresAuth {
@@ -382,8 +394,16 @@ public actor ModelRegistry {
                 bearerToken = nil
             }
 
-            for fileSpec in spec.files {
+            let totalBytes = spec.files.reduce(Int64(0)) { $0 + max($1.sizeBytes, 0) }
+            var completedBytes: Int64 = 0
+            let fileCount = max(spec.files.count, 1)
+
+            for (index, fileSpec) in spec.files.enumerated() {
                 let destination = spec.localPath(for: fileSpec.localName, base: baseDirectory)
+                let fileStartBytes = completedBytes
+                let fileSizeBytes = max(fileSpec.sizeBytes, 0)
+                let fileStartFraction = Double(index) / Double(fileCount)
+                let fileWeightFraction = 1.0 / Double(fileCount)
 
                 do {
                     try await client.downloadAndVerify(
@@ -392,16 +412,26 @@ public actor ModelRegistry {
                         to: destination,
                         expectedHash: fileSpec.sha256,
                         bearerToken: bearerToken,
-                        onProgress: { [id = spec.id] progress in
-                            Task { [weak self] in
-                                await self?.setStatus(id, to: .downloading(progress: progress))
+                        onProgress: { [id = spec.id] fileProgress in
+                            let clampedFileProgress = min(max(fileProgress, 0), 1)
+                            let modelProgress: Double
+                            if totalBytes > 0, fileSizeBytes > 0 {
+                                let bytesDone = Double(fileStartBytes) + Double(fileSizeBytes) * clampedFileProgress
+                                modelProgress = bytesDone / Double(totalBytes)
+                            } else {
+                                modelProgress = fileStartFraction + fileWeightFraction * clampedFileProgress
                             }
-                            onProgress(id, progress)
+                            let clampedModelProgress = min(max(modelProgress, 0), 1)
+                            Task { [weak self] in
+                                await self?.setDownloadProgress(id, progress: clampedModelProgress)
+                            }
+                            onProgress(id, clampedModelProgress)
                         },
                         onRetry: { [id = spec.id, remote = fileSpec.remotePath] in
                             logger.warning("Verification failed for \(remote) in \(id), retrying...")
                         }
                     )
+                    completedBytes += fileSizeBytes
                 } catch {
                     if let httpError = error as? DownloadError,
                        case .httpError(let code) = httpError,
@@ -422,6 +452,7 @@ public actor ModelRegistry {
             }
 
             statuses[spec.id] = .ready
+            onProgress(spec.id, 1)
         }
     }
 

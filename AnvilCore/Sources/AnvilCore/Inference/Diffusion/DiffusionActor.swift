@@ -33,7 +33,7 @@ public actor DiffusionActor {
         let C = shape.channels
 
         var xt = DiffusionSampler.generateNoise(shape: [bsz, T, C], seed: config.seed)
-        AudioDiagnostics.note("config", "shift=\(config.shift) steps=\(config.steps ?? -1) method=\(config.method) guidance=\(config.guidanceScale) precision=\(config.precision) seed=\(config.seed.map(String.init) ?? "random")")
+        AudioDiagnostics.note("config", "shift=\(config.shift) steps=\(config.steps ?? -1) method=\(config.method) guidance=\(config.guidanceScale) cfgInterval=\(config.cfgIntervalStart)...\(config.cfgIntervalEnd) precision=\(config.precision) seed=\(config.seed.map(String.init) ?? "random")")
         AudioDiagnostics.tensor("init/xt(noise)", xt)
         AudioDiagnostics.tensor("init/encoderStates", encoderStates)
         AudioDiagnostics.tensor("init/contextLatents", contextLatents)

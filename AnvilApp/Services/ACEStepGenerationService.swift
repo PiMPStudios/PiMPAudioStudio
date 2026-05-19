@@ -65,9 +65,7 @@ actor ACEStepGenerationService {
                     // an instruction-tuned diffusion model — guidance ≤ 1.0 runs
                     // the unconditional path and produces near-silent noise.
                     // Mirror SFXGenerationService's defensive fallback here.
-                    let effectiveGuidance: Float = request.guidanceScale > 1.0
-                        ? request.guidanceScale
-                        : 7.5
+                    let effectiveGuidance = request.effectiveGuidanceScale
 
                     // Auto-pick diffusion step count based on the active DiT
                     // variant. Turbo is trained for 8 steps; Full (base) and
@@ -90,6 +88,8 @@ actor ACEStepGenerationService {
                         shift: shift,
                         steps: inferSteps,
                         guidanceScale: effectiveGuidance,
+                        cfgIntervalStart: request.cfgIntervalStart,
+                        cfgIntervalEnd: request.cfgIntervalEnd,
                         precision: request.precision
                     )
 

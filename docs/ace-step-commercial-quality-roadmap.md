@@ -118,16 +118,30 @@ A/Bs unless a future multi-step probe contradicts this.
 
 ### 3. Inference Recipe Is Still Basic
 
-Current `DiffusionConfig` and `DiffusionActor.generate` apply constant guidance
-across all timesteps, use a fixed APG momentum path, and have no dynamic
-thresholding or guidance rescale. The `cfgIntervalStart/End` fields exist but
-are never varied from `[0, 1]`.
+Before the guidance preset pass, `DiffusionConfig` and
+`DiffusionActor.generate` applied constant guidance across all timesteps, used
+a fixed APG momentum path, and had no dynamic thresholding or guidance rescale.
 
 **Codex review note (2026-05-18):** This is one of the safest practical
 experiments because `cfgIntervalStart/End` are already wired into
 `DiffusionActor`; the missing piece is productized presets and a measured A/B
 matrix. Prefer trying schedule presets after the Phase 0 harness but before
 major DiT rewrites.
+
+**Codex implementation note (2026-05-19):** Advanced generation settings now
+include four guidance schedule presets: Constant, Late Emphasis, Mid-to-Late,
+and Soft Late. These route through `cfgIntervalStart/End` for ACE-Step music
+and cover generation. Soft Late also lowers effective guidance to 6.0 so the
+first listening pass can test whether high constant guidance is contributing
+to overcooked artifacts.
+
+**Codex result note (2026-05-19):** First user listening A/B on
+`slow dark guitar riff` and
+`dark blues, vocals, slow tempo, minor key, raw guitar, atmospheric` favored
+late guidance over Constant. On the sparse prompt, Soft Late was the strongest
+variant and faded more naturally than Constant's hard ending. Based on that
+pass, Soft Late is now the app default while Constant remains available as the
+baseline comparison preset.
 
 Commercial systems schedule guidance strength, apply norm clipping or
 orthogonal projection more selectively, and often use a higher-order or
@@ -321,13 +335,18 @@ territory and is cheap to iterate.
    - Start with 8 prompts. Emit a Markdown report with file paths, settings,
      metrics, and short human listening fields.
 
-3. **Expose cfgInterval and a guidance schedule preset** in the Advanced
+3. **Expose cfgInterval and guidance schedule presets** in the Advanced
    disclosure in `GenerateView.swift`.
-   - Start with three presets: "Constant (current)", "Late emphasis (0.4-1.0)",
-     "Commercial default".
+   - Codex implementation note (2026-05-19): implemented Constant, Late
+     Emphasis (`t <= 0.5`), Mid-to-Late (`t <= 0.75`), and Soft Late
+     (`guidance=6.0`, `t <= 0.6`) presets. Because ACE-Step timesteps descend
+     from `1.0` to `0.0`, "late" guidance means lower `t` intervals.
+   - Codex result note (2026-05-19): first two-prompt listening pass picked
+     Soft Late as the practical default, with Mid-to-Late and Late Emphasis
+     still useful A/B options.
 
 4. **Re-run a small A/B matrix** on the golden set.
-   - First pass: current default vs. two guidance schedule presets.
+   - First pass: Constant vs. Late Emphasis vs. Mid-to-Late vs. Soft Late.
    - Second pass only if needed: shift × steps × guidance schedule.
    - Codex review note (2026-05-18): do not let the matrix explode before the
      harness proves it can produce useful decisions.
