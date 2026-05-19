@@ -126,6 +126,19 @@ final class GenerationService: ObservableObject {
                 } else if usesCoverSong {
                     audioResult = try await self.runCoverSong(request: resolvedRequest)
                 } else {
+                    if await self.aceStepService.needsModelLoad() {
+                        self.state = .loadingWeights(progress: 0)
+                        self.traceMonitor.recordStage("Models", message: "Loading active ACE-Step models")
+                        self.traceMonitor.updateLoadingWeights(progress: 0)
+                    }
+                    try await self.aceStepService.ensureLoaded()
+
+                    // Model loading may unload/recreate the DiT actor. Reset
+                    // LoRA coordinator state so the next injection attaches to
+                    // the freshly active architecture (XL = 32 layers, SFT =
+                    // 24 layers) instead of stale wrappers from a previous run.
+                    await self.loraCoordinator.clearAll()
+
                     if !self.adapterStack.isEmpty {
                         self.traceMonitor.recordStage("Adapters", message: "Applying adapter stack")
                         await self.loraCoordinator.ensureStack(stack: self.adapterStack)

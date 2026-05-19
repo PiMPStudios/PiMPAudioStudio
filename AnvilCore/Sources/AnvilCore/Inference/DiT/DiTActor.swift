@@ -125,6 +125,7 @@ public actor DiTActor {
         let matched = suppliedKeys.intersection(modelKeys).count
         let onlyInSupplied = suppliedKeys.subtracting(modelKeys)
         let onlyInModel = modelKeys.subtracting(suppliedKeys)
+        logger.info("[DiTActor] config hidden=\(self.decoderConfig.hiddenSize) layers=\(self.decoderConfig.numHiddenLayers) decoderLayers=\(self.decoder?.layers.count ?? -1)")
         logger.info("[DiTActor] supplied=\(suppliedKeys.count) model=\(modelKeys.count) matched=\(matched)")
         logger.info("[DiTActor] supplied-but-no-model-param (first 12): \(Array(onlyInSupplied.sorted().prefix(12)))")
         logger.info("[DiTActor] model-param-but-no-supplied (first 12): \(Array(onlyInModel.sorted().prefix(12)))")
@@ -166,6 +167,11 @@ public actor DiTActor {
         }
         let paths = LoRAInjector.inject(model: decoder, config: config)
         injectedPaths = paths
+        let expectedPaths = decoder.layers.count * config.injectionPatterns.count
+        AudioDiagnostics.note(
+            "lora/inject",
+            "rank=\(config.rank) alpha=\(String(format: "%.3f", config.alpha)) layers=\(decoder.layers.count) patterns=\(config.injectionPatterns) expected=\(expectedPaths) activePaths=\(paths.count)"
+        )
         return paths
     }
 

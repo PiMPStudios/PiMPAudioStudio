@@ -295,7 +295,7 @@ final class AppServices: ObservableObject {
         )
         trainingService?.setModelLoader {
             await llmManager.evict()
-            try await aceStep.ensureLoadedForTraining()
+            try await aceStep.ensureLoaded()
         }
         trainingService?.setTrainingFinishedHandler {
             await llmManager.reload()

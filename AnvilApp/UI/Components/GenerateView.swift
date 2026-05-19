@@ -388,6 +388,7 @@ struct GenerateView: View {
                 persistedAdapterID = newValue ?? ""
                 generationService.selectedAdapterID = newValue
                 syncPrimaryAdapter(id: newValue)
+                applyXLAdapterRecipeIfNeeded(id: newValue)
             }
             .onAppear {
                 stackManager.setPrimaryStrength(Float(persistedAdapterStrength))
@@ -395,6 +396,7 @@ struct GenerateView: View {
                     selectedAdapterID = persistedAdapterID
                     generationService.selectedAdapterID = persistedAdapterID
                     syncPrimaryAdapter(id: persistedAdapterID)
+                    applyXLAdapterRecipeIfNeeded(id: persistedAdapterID)
                 } else {
                     syncPrimaryAdapter(id: nil)
                 }
@@ -622,6 +624,27 @@ struct GenerateView: View {
 
         let adapter = AdapterRegistry.listAdapters().first { $0.id == id }
         stackManager.setPrimary(adapter)
+    }
+
+    private func applyXLAdapterRecipeIfNeeded(id: String?) {
+        guard let id, !id.isEmpty,
+              generationParameters.guidancePreset == GuidancePreset.defaultSelection,
+              let adapter = AdapterRegistry.listAdapters().first(where: { $0.id == id }),
+              isXLAdapter(adapter) else {
+            return
+        }
+
+        generationParameters.guidancePreset = .constant
+    }
+
+    private func isXLAdapter(_ adapter: LoRAAdapter) -> Bool {
+        let haystack = [
+            adapter.baseModelID,
+            adapter.id,
+            adapter.name
+        ].joined(separator: " ").lowercased()
+
+        return haystack.contains("xl")
     }
 
     // MARK: - Presets

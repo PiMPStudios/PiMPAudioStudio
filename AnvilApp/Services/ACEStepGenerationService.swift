@@ -61,7 +61,7 @@ actor ACEStepGenerationService {
                     if activeDiTID != currentlyLoadedDiTModelID || activeVAEID != currentlyLoadedVAEModelID {
                         continuation.yield(.loadingWeights(progress: 0))
                     }
-                    try await ensureLoadedForTraining()
+                    try await ensureLoaded()
 
                     try Task.checkCancellation()
                     continuation.yield(.conditioning)
@@ -187,9 +187,18 @@ actor ACEStepGenerationService {
         currentlyLoadedVAEModelID = nil
     }
 
+    func needsModelLoad() async -> Bool {
+        let activeDiTID = await registry.activeModelID(for: .aceStepDiT)
+        let activeVAEID = await registry.activeModelID(for: .aceStepVAE)
+        return activeDiTID != currentlyLoadedDiTModelID || activeVAEID != currentlyLoadedVAEModelID
+    }
+
     /// Loads the ACE-Step stack without generating audio.
-    /// Training uses this path when launched cold from Settings.
-    func ensureLoadedForTraining() async throws {
+    /// Generation calls this before LoRA injection so adapters attach to the
+    /// currently active DiT architecture, not whatever model happened to be
+    /// resident from a previous run. Training also uses this path when launched
+    /// cold from Settings.
+    func ensureLoaded() async throws {
         let activeDiTID = await registry.activeModelID(for: .aceStepDiT)
         guard let activeDiTID else {
             throw GenerationError.modelNotConfigured("ACE-Step DiT")

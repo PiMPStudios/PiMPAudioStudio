@@ -20,6 +20,7 @@ public enum LoRAInjector {
         layerIndices: Set<Int>? = nil
     ) -> [String] {
         var injectedPaths: [String] = []
+        var existingPaths: [String] = []
 
         for (layerIdx, layer) in model.layers.enumerated() {
             if let layerIndices, !layerIndices.contains(layerIdx) {
@@ -31,7 +32,10 @@ public enum LoRAInjector {
 
                 if let linear = resolveLinear(in: layer, path: pattern) {
                     // Skip if already wrapped
-                    if linear is LoRALinear { continue }
+                    if linear is LoRALinear {
+                        existingPaths.append(keyPath)
+                        continue
+                    }
 
                     let loraLinear = LoRALinear(
                         base: linear,
@@ -46,7 +50,7 @@ public enum LoRAInjector {
             }
         }
 
-        return injectedPaths
+        return existingPaths + injectedPaths
     }
 
     /// Remove LoRA adapters, restoring original base Linear layers.
@@ -261,6 +265,19 @@ extension LoRAInjector {
         paths: [String]
     ) {
         let weightDict = Dictionary(weights, uniquingKeysWith: { _, last in last })
+        let requestedPaths = Set(paths)
+        let availableWeightPaths = Set(weights.compactMap { key, _ -> String? in
+            if key.hasSuffix(".loraA") {
+                return String(key.dropLast(".loraA".count))
+            }
+            if key.hasSuffix(".loraB") {
+                return String(key.dropLast(".loraB".count))
+            }
+            return nil
+        })
+        let unusedWeightPaths = availableWeightPaths.subtracting(requestedPaths)
+        var matchedPaths = 0
+        var missingPaths: [String] = []
 
         for path in paths {
             guard let (layerIdx, subPath) = parsePath(path),
@@ -273,6 +290,7 @@ extension LoRAInjector {
 
             guard let loraA = weightDict["\(path).loraA"],
                   let loraB = weightDict["\(path).loraB"] else {
+                missingPaths.append(path)
                 continue
             }
 
@@ -285,7 +303,13 @@ extension LoRAInjector {
                 strength: strength
             )
             loraLinear.contributions.append(contribution)
+            matchedPaths += 1
         }
+
+        AudioDiagnostics.note(
+            "lora/contribution",
+            "adapter=\(adapterID) strength=\(String(format: "%.3f", strength)) paths=\(paths.count) matched=\(matchedPaths) missing=\(missingPaths.count) unusedWeightPaths=\(unusedWeightPaths.count) firstMissing=\(Array(missingPaths.prefix(8))) firstUnused=\(Array(unusedWeightPaths.sorted().prefix(8)))"
+        )
     }
 
     /// Remove all contributions from every LoRALinear layer (revert to base model behavior).
