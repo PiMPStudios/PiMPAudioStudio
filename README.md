@@ -146,6 +146,7 @@ CHANGELOG.md              Detailed changelog with road map
 | 10a | ✅ | LoRA Fine-Tuning — trainer, injector, adapter picker |
 | 10b | ✅ | Advanced LoRA — scheduler, checkpoints, merge, export |
 | 10c | ✅ | Community Sharing + Multi-Adapter Stacking |
+| 11 | Planned | Local MCP — localhost-only agent control surface for models, history, traces, compare, and safe app actions |
 
 ---
 

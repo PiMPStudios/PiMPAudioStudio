@@ -16,6 +16,9 @@ DerivedData/
 # Claude Code
 .claude/
 
+# App/runtime local cache
+.cache/
+
 # Models (never commit weights)
 *.safetensors
 *.bin
