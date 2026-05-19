@@ -4,10 +4,13 @@ struct HistoryListView: View {
     @EnvironmentObject private var historyStore: HistoryStore
     @EnvironmentObject private var playerService: AudioPlayerService
     @EnvironmentObject private var trainingService: TrainingService
+    @EnvironmentObject private var traceMonitor: GenerationTraceMonitor
+    @Environment(\.openWindow) private var openWindow
 
     @State private var isSelecting = false
     @State private var selectedIDs: Set<UUID> = []
     @State private var showTrainingSheet = false
+    @State private var traceErrorMessage: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -109,6 +112,16 @@ struct HistoryListView: View {
                             .foregroundStyle(selectedIDs.contains(entry.id) ? Color.accentColor : .secondary)
                     }
                     HistoryRow(entry: entry)
+                    if !isSelecting && canAnalyze(entry) {
+                        Spacer(minLength: 8)
+                        Button {
+                            analyzeTrace(for: entry)
+                        } label: {
+                            Image(systemName: "waveform.path.ecg")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Open trace in Generation Analyzer")
+                    }
                 }
                 .contentShape(Rectangle())
                 .onTapGesture {
@@ -130,6 +143,14 @@ struct HistoryListView: View {
             }
         }
         .listStyle(.plain)
+        .alert("Could not open trace", isPresented: Binding(
+            get: { traceErrorMessage != nil },
+            set: { if !$0 { traceErrorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(traceErrorMessage ?? "")
+        }
     }
 
     // MARK: - Context menu
@@ -140,6 +161,12 @@ struct HistoryListView: View {
 
         Button("Play") {
             playerService.load(url: url)
+        }
+
+        if canAnalyze(entry) {
+            Button("Analyze Trace") {
+                analyzeTrace(for: entry)
+            }
         }
 
         Divider()
@@ -176,6 +203,20 @@ struct HistoryListView: View {
             selectedIDs.remove(id)
         } else {
             selectedIDs.insert(id)
+        }
+    }
+
+    private func canAnalyze(_ entry: HistoryEntry) -> Bool {
+        historyStore.traceURL(for: entry) != nil
+    }
+
+    private func analyzeTrace(for entry: HistoryEntry) {
+        do {
+            let trace = try historyStore.loadTrace(for: entry)
+            traceMonitor.inspect(trace: trace)
+            openWindow(id: "generationAnalyzer")
+        } catch {
+            traceErrorMessage = error.localizedDescription
         }
     }
 

@@ -23,6 +23,18 @@ enum LiveTraceEventLevel: String, Sendable, Equatable {
     case error
 }
 
+enum LiveGenerationTraceSource: String, Sendable, Equatable {
+    case live
+    case saved
+
+    var displayName: String {
+        switch self {
+        case .live: return "Live Run"
+        case .saved: return "Saved Trace"
+        }
+    }
+}
+
 struct LiveGenerationTraceEvent: Identifiable, Sendable, Equatable {
     let id: UUID
     let timestamp: Date
@@ -47,6 +59,7 @@ struct LiveGenerationTraceSession: Identifiable, Sendable, Equatable {
     var updatedAt: Date
     var completedAt: Date?
     var status: LiveGenerationTraceStatus
+    var source: LiveGenerationTraceSource
     var pipeline: String
     var prompt: String
     var lyrics: String
@@ -64,6 +77,7 @@ struct LiveGenerationTraceSession: Identifiable, Sendable, Equatable {
 @MainActor
 final class GenerationTraceMonitor: ObservableObject {
     @Published private(set) var currentSession: LiveGenerationTraceSession?
+    @Published private(set) var inspectedSession: LiveGenerationTraceSession?
     @Published private(set) var recentSessions: [LiveGenerationTraceSession] = []
 
     private let maxEvents = 300
@@ -71,12 +85,14 @@ final class GenerationTraceMonitor: ObservableObject {
 
     func start(request: GenerationRequest) {
         let now = Date()
+        inspectedSession = nil
         currentSession = LiveGenerationTraceSession(
             id: UUID(),
             startedAt: now,
             updatedAt: now,
             completedAt: nil,
             status: .running,
+            source: .live,
             pipeline: "Routing",
             prompt: request.text,
             lyrics: request.lyrics,
@@ -97,6 +113,14 @@ final class GenerationTraceMonitor: ObservableObject {
             errorMessage: nil
         )
         appendEvent(stage: "Request", message: "Generation request accepted", detail: request.text)
+    }
+
+    func inspect(trace: GenerationTrace) {
+        inspectedSession = Self.session(from: trace)
+    }
+
+    func clearInspection() {
+        inspectedSession = nil
     }
 
     func configure(
@@ -307,6 +331,66 @@ final class GenerationTraceMonitor: ObservableObject {
             pipelineOverride: request.pipelineOverride.rawValue,
             coverStrength: request.coverStrength,
             referenceAudioFileName: request.referenceAudioURL?.lastPathComponent
+        )
+    }
+
+    private static func session(from trace: GenerationTrace) -> LiveGenerationTraceSession {
+        let loadedAt = Date()
+        let events = [
+            LiveGenerationTraceEvent(
+                id: UUID(),
+                timestamp: loadedAt,
+                stage: "Trace",
+                message: "Loaded saved generation trace",
+                detail: trace.traceFileName,
+                progress: 1,
+                level: .success
+            ),
+            LiveGenerationTraceEvent(
+                id: UUID(),
+                timestamp: trace.createdAt,
+                stage: "Audio",
+                message: "Saved audio snapshot",
+                detail: String(format: "absMean %.4f, absMax %.3f", trace.audio.absMean, trace.audio.absMax),
+                progress: nil,
+                level: .info
+            ),
+            LiveGenerationTraceEvent(
+                id: UUID(),
+                timestamp: trace.createdAt,
+                stage: "Complete",
+                message: "Generation completed",
+                detail: trace.audioFileName,
+                progress: 1,
+                level: .success
+            )
+        ]
+
+        return LiveGenerationTraceSession(
+            id: trace.historyEntryID,
+            startedAt: trace.createdAt,
+            updatedAt: loadedAt,
+            completedAt: trace.createdAt.addingTimeInterval(trace.timing.totalTime),
+            status: .complete,
+            source: .saved,
+            pipeline: trace.pipeline,
+            prompt: trace.prompt,
+            lyrics: trace.lyrics,
+            request: trace.request,
+            primaryModel: trace.primaryModel,
+            supportingModels: trace.supportingModels,
+            adapters: trace.adapters,
+            events: events,
+            progress: LiveGenerationProgress(
+                label: "Saved trace loaded",
+                fraction: 1,
+                step: nil,
+                totalSteps: nil,
+                eta: nil
+            ),
+            audio: trace.audio,
+            traceFileName: trace.traceFileName,
+            errorMessage: nil
         )
     }
 }

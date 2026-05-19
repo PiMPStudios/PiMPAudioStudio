@@ -123,7 +123,14 @@ public actor DiffusionActor {
                 case .ode:
                     xt = DiffusionSampler.odeStep(xt: xt, vt: velocity, currentT: currentT, nextT: nextT)
                 case .sde:
-                    xt = DiffusionSampler.sdeStep(xt: xt, vt: velocity, currentT: currentT, nextT: nextT)
+                    xt = DiffusionSampler.sdeStep(
+                        xt: xt,
+                        vt: velocity,
+                        currentT: currentT,
+                        nextT: nextT,
+                        seed: config.seed,
+                        stepIndex: stepIdx
+                    )
                 }
             }
             eval(xt)
@@ -333,7 +340,14 @@ public actor DiffusionActor {
                 case .ode:
                     xt = DiffusionSampler.odeStep(xt: xt, vt: velocity, currentT: currentT, nextT: nextT)
                 case .sde:
-                    xt = DiffusionSampler.sdeStep(xt: xt, vt: velocity, currentT: currentT, nextT: nextT)
+                    xt = DiffusionSampler.sdeStep(
+                        xt: xt,
+                        vt: velocity,
+                        currentT: currentT,
+                        nextT: nextT,
+                        seed: config.seed,
+                        stepIndex: stepIdx
+                    )
                 }
             }
             eval(xt)

@@ -11,11 +11,24 @@ public enum DiffusionSampler {
         return xt - vt * dtArr
     }
 
-    public static func sdeStep(xt: MLXArray, vt: MLXArray, currentT: Float, nextT: Float) -> MLXArray {
+    public static func sdeStep(
+        xt: MLXArray,
+        vt: MLXArray,
+        currentT: Float,
+        nextT: Float,
+        seed: Int? = nil,
+        stepIndex: Int = 0
+    ) -> MLXArray {
         let bsz = xt.shape[0]
         let tUnsq = MLXArray.full([bsz, 1, 1], values: MLXArray(currentT))
         let predClean = xt - vt * tUnsq
-        let newNoise = MLXRandom.normal(xt.shape)
+        let newNoise: MLXArray
+        if let seed {
+            let stepSeed = UInt64(seed) &+ UInt64(stepIndex + 1)
+            newNoise = MLXRandom.normal(xt.shape, key: MLXRandom.key(stepSeed))
+        } else {
+            newNoise = MLXRandom.normal(xt.shape)
+        }
         let ntUnsq = MLXArray.full([bsz, 1, 1], values: MLXArray(nextT))
         return ntUnsq * newNoise + (1.0 - ntUnsq) * predClean
     }

@@ -5,7 +5,7 @@ struct GenerationAnalyzerView: View {
 
     var body: some View {
         Group {
-            if let session = traceMonitor.currentSession {
+            if let session = traceMonitor.inspectedSession ?? traceMonitor.currentSession {
                 analyzerContent(for: session)
             } else {
                 emptyState
@@ -58,12 +58,20 @@ struct GenerationAnalyzerView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(session.status.displayName)
                     .font(.title2.weight(.semibold))
-                Text(session.pipeline)
+                Text("\(session.source.displayName) · \(session.pipeline)")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
 
             Spacer()
+
+            if session.source == .saved, traceMonitor.currentSession != nil {
+                Button("Show Live") {
+                    traceMonitor.clearInspection()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
 
             VStack(alignment: .trailing, spacing: 4) {
                 Text(session.startedAt.formatted(date: .omitted, time: .standard))
@@ -225,7 +233,7 @@ struct GenerationAnalyzerView: View {
 
     private func eventTimeline(_ events: [LiveGenerationTraceEvent]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            panelTitle("Live Events", systemImage: "list.bullet.rectangle")
+            panelTitle("Events", systemImage: "list.bullet.rectangle")
 
             if events.isEmpty {
                 Text("Waiting for events")

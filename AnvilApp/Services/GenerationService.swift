@@ -80,7 +80,11 @@ final class GenerationService: ObservableObject {
                 return
             }
 
-            self.traceMonitor.start(request: request)
+            let resolvedRequest = self.resolveSeedIfNeeded(for: request)
+            self.traceMonitor.start(request: resolvedRequest)
+            if request.seed == nil, let seed = resolvedRequest.seed {
+                self.traceMonitor.recordStage("Seed", message: "Resolved random seed", detail: "\(seed)")
+            }
 
             // Free the LLM (~2 GB GPU) before loading DiT + VAE (~5+ GB).
             // The $llmActor publisher propagates nil to PromptEnhancer /
@@ -90,8 +94,8 @@ final class GenerationService: ObservableObject {
             self.llmManager.evict()
 
             do {
-                let usesStableAudio = self.shouldUseStableAudio(request: request)
-                let usesCoverSong = !usesStableAudio && self.shouldUseCoverSong(request: request)
+                let usesStableAudio = self.shouldUseStableAudio(request: resolvedRequest)
+                let usesCoverSong = !usesStableAudio && self.shouldUseCoverSong(request: resolvedRequest)
                 let pipelineLabel: String
                 if usesStableAudio {
                     pipelineLabel = "stableAudio"
@@ -118,9 +122,9 @@ final class GenerationService: ObservableObject {
 
                 let audioResult: AudioResult
                 if usesStableAudio {
-                    audioResult = try await self.runSFX(request: request)
+                    audioResult = try await self.runSFX(request: resolvedRequest)
                 } else if usesCoverSong {
-                    audioResult = try await self.runCoverSong(request: request)
+                    audioResult = try await self.runCoverSong(request: resolvedRequest)
                 } else {
                     if !self.adapterStack.isEmpty {
                         self.traceMonitor.recordStage("Adapters", message: "Applying adapter stack")
@@ -129,12 +133,12 @@ final class GenerationService: ObservableObject {
                         self.traceMonitor.recordStage("Adapters", message: "Applying selected adapter")
                         await self.loraCoordinator.ensureAdapter(selectedID: self.selectedAdapterID)
                     }
-                    audioResult = try await self.runACEStep(request: request)
+                    audioResult = try await self.runACEStep(request: resolvedRequest)
                 }
 
                 try Task.checkCancellation()
 
-                let fileName = HistoryEntry.fileName(prompt: request.text)
+                let fileName = HistoryEntry.fileName(prompt: resolvedRequest.text)
                 let fileURL = outputDir.appending(path: fileName)
 
                 self.traceMonitor.recordStage("File", message: "Writing WAV and analyzing waveform", detail: fileName)
@@ -150,21 +154,21 @@ final class GenerationService: ObservableObject {
                 )
 
                 let recordedGuidanceScale = usesStableAudio
-                    ? request.guidanceScale
-                    : request.effectiveGuidanceScale
+                    ? resolvedRequest.guidanceScale
+                    : resolvedRequest.effectiveGuidanceScale
                 let entryID = UUID()
                 let createdAt = Date()
                 let traceFileName = HistoryEntry.traceFileName(forAudioFileName: fileName)
                 let entry = HistoryEntry(
                     id: entryID,
                     createdAt: createdAt,
-                    prompt: request.text,
-                    lyrics: request.lyrics,
-                    duration: request.duration,
-                    seed: request.seed ?? 0,
-                    method: request.method.rawValue,
+                    prompt: resolvedRequest.text,
+                    lyrics: resolvedRequest.lyrics,
+                    duration: resolvedRequest.duration,
+                    seed: resolvedRequest.seed ?? 0,
+                    method: resolvedRequest.method.rawValue,
                     guidanceScale: recordedGuidanceScale,
-                    precision: request.precision.rawValue,
+                    precision: resolvedRequest.precision.rawValue,
                     fileName: fileName,
                     traceFileName: traceFileName,
                     pipeline: pipelineLabel,
@@ -181,7 +185,7 @@ final class GenerationService: ObservableObject {
                     audioFileName: fileName,
                     traceFileName: traceFileName,
                     pipeline: pipelineLabel,
-                    request: request,
+                    request: resolvedRequest,
                     primaryModel: mainModel,
                     supportingModels: supportingModels,
                     adapters: adapters,
@@ -220,6 +224,27 @@ final class GenerationService: ObservableObject {
         generationTask?.cancel()
         state = .cancelled
         traceMonitor.cancel()
+    }
+
+    private func resolveSeedIfNeeded(for request: GenerationRequest) -> GenerationRequest {
+        guard request.seed == nil else { return request }
+
+        return GenerationRequest(
+            text: request.text,
+            lyrics: request.lyrics,
+            referenceAudioURL: request.referenceAudioURL,
+            duration: request.duration,
+            seed: Int.random(in: 1...Int(Int32.max)),
+            method: request.method,
+            guidanceScale: request.guidanceScale,
+            guidancePreset: request.guidancePreset,
+            precision: request.precision,
+            stepsOverride: request.stepsOverride,
+            shiftOverride: request.shiftOverride,
+            resolvedMode: request.resolvedMode,
+            pipelineOverride: request.pipelineOverride,
+            coverStrength: request.coverStrength
+        )
     }
 
     func unloadAllWeights() async {

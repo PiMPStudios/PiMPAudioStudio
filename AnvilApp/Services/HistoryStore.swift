@@ -46,6 +46,31 @@ final class HistoryStore: ObservableObject {
         directory.appending(path: entry.fileName)
     }
 
+    func traceURL(for entry: HistoryEntry) -> URL? {
+        if let traceFileName = entry.traceFileName {
+            return directory.appending(path: traceFileName)
+        }
+
+        let inferredURL = directory.appending(
+            path: HistoryEntry.traceFileName(forAudioFileName: entry.fileName)
+        )
+        if FileManager.default.fileExists(atPath: inferredURL.path(percentEncoded: false)) {
+            return inferredURL
+        }
+        return nil
+    }
+
+    func loadTrace(for entry: HistoryEntry) throws -> GenerationTrace {
+        guard let url = traceURL(for: entry) else {
+            throw HistoryStoreError.missingTrace
+        }
+
+        let data = try Data(contentsOf: url)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode(GenerationTrace.self, from: data)
+    }
+
     private func loadFromDisk() {
         guard FileManager.default.fileExists(atPath: historyFileURL.path(percentEncoded: false)) else { return }
         do {
@@ -67,6 +92,17 @@ final class HistoryStore: ObservableObject {
             try data.write(to: historyFileURL, options: .atomic)
         } catch {
             logger.error("Failed to save history: \(error, privacy: .public)")
+        }
+    }
+}
+
+enum HistoryStoreError: LocalizedError {
+    case missingTrace
+
+    var errorDescription: String? {
+        switch self {
+        case .missingTrace:
+            return "No trace sidecar was found for this history entry."
         }
     }
 }
