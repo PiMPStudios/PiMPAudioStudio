@@ -28,10 +28,14 @@ public actor ConditioningActor {
     private var silenceLatent: MLXArray?
 
     static let timbreFixFrame = 750
-    /// Upstream ACE-Step's default `chunk_mask_mode="auto"` converts the full
-    /// generation mask to value 2.0, not 1.0. The DiT sees this as part of
-    /// `context_latents`, so the numeric value is semantic conditioning.
-    static let autoChunkMaskValue: Float = 2.0
+    /// Full-generation mask used in Swift's direct-DiT path.
+    ///
+    /// Upstream ACE-Step's default `chunk_mask_mode="auto"` maps this mask to
+    /// 2.0, but a listening A/B in the native direct-DiT path showed 2.0 fixes
+    /// the final-duration symptom while collapsing the output into a hum/buzz.
+    /// Keep 1.0 as the musical default until the upstream LM/audio-code path or
+    /// a better mask schedule is wired in.
+    static let fullGenerationChunkMaskValue: Float = 1.0
     /// Audio sample rate matching MusicPipeline.defaultSampleRate (v1.5 VAE: 48000).
     static let audioSampleRate: Int = 48000
     /// Total VAE downsampling = product of `downsampling_ratios` `[2,4,4,6,10]` from
@@ -280,30 +284,21 @@ public actor ConditioningActor {
                 let padding = MLXArray.zeros([1, tFrames - overrideFrames, 64])
                 src = concatenated([srcOverride, padding], axis: 1)
             }
-            let autoMask = MLXArray.full([1, tFrames, 64], values: MLXArray(Self.autoChunkMaskValue))
+            let autoMask = MLXArray.full([1, tFrames, 64], values: MLXArray(Self.fullGenerationChunkMaskValue))
                 .asType(precision.mlxDtype)
             contextLatents = concatenated([src.asType(precision.mlxDtype), autoMask], axis: -1)
         } else if referenceAudio != nil {
             // Use the already-prepared (padded/truncated) referenceLatents
-            let chunkMask = MLXArray.full(referenceLatents.shape, values: MLXArray(Self.autoChunkMaskValue))
+            let chunkMask = MLXArray.full(referenceLatents.shape, values: MLXArray(Self.fullGenerationChunkMaskValue))
                 .asType(precision.mlxDtype)
             contextLatents = concatenated([referenceLatents, chunkMask], axis: -1)
         } else {
             // Match upstream text2music context construction:
             //   context_latents = cat([silence_latent[:, :tFrames, :], auto_mask], axis=-1)
             //
-            // Upstream defaults `chunk_mask_mode` to "auto", then converts the
-            // full-sequence mask to 2.0 in conditioning_masks.py. Earlier Swift
-            // builds used 1.0, which matched the boolean "generate this span"
-            // idea but not the trained/default conditioning value.
-            //
-            // (acestep/models/turbo/modeling_acestep_v15_turbo.py:1680, 1931
-            // and equivalent in base/sft variants.)
-            //
             // The first half (64 channels) is the trained silence_latent —
             // a learned "no source audio" prior. The second half (64 channels)
-            // is the chunk mask = 2.0, the upstream "auto" full-generation
-            // value.
+            // is the full-generation chunk mask.
             let srcLatents: MLXArray
             if let silence = silenceLatent {
                 // silence has shape [1, 15000, 64]; tFrames typically 750.
@@ -324,11 +319,14 @@ public actor ConditioningActor {
                 // produces still-functional but slightly noisy output.
                 srcLatents = MLXArray.zeros([1, tFrames, 64])
             }
-            let autoMask = MLXArray.full([1, tFrames, 64], values: MLXArray(Self.autoChunkMaskValue))
+            let autoMask = MLXArray.full([1, tFrames, 64], values: MLXArray(Self.fullGenerationChunkMaskValue))
             contextLatents = concatenated([srcLatents, autoMask], axis: -1)
                 .asType(precision.mlxDtype)
         }
-        AudioDiagnostics.note("cond/chunkMask", "mode=auto value=\(Self.autoChunkMaskValue) frames=\(tFrames)")
+        AudioDiagnostics.note(
+            "cond/chunkMask",
+            "mode=full value=\(Self.fullGenerationChunkMaskValue) frames=\(tFrames)"
+        )
 
         let result: ConditioningResult
         if precision == .float16 {

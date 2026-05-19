@@ -31,6 +31,7 @@ public actor VAEActor {
         let audio = VAETiledDecode.decode(input, using: vae)
         let resolved = precision == .float16 ? audio.asType(.float32) : audio
         AudioDiagnostics.tensor("vae/out_audio", resolved)
+        Self.logAudioEnvelope(resolved)
 
         let absA = MLX.abs(resolved)
         let absMean = absA.mean().item(Float.self)
@@ -82,5 +83,33 @@ public actor VAEActor {
     public func unloadWeights() {
         vae = nil
         loadedModelID = nil
+    }
+
+    private static func logAudioEnvelope(_ audio: MLXArray) {
+        guard AudioDiagnostics.isEnabled, audio.shape.count >= 3 else { return }
+
+        let framesPerSecond = 48_000
+        let frameCount = audio.shape[1]
+        guard frameCount > 0 else { return }
+
+        let seconds = min(60, Int(ceil(Double(frameCount) / Double(framesPerSecond))))
+        var absMeans: [Float] = []
+        var absMaxes: [Float] = []
+        absMeans.reserveCapacity(seconds)
+        absMaxes.reserveCapacity(seconds)
+
+        for second in 0..<seconds {
+            let start = second * framesPerSecond
+            let end = min(start + framesPerSecond, frameCount)
+            guard start < end else { break }
+
+            let chunk = audio[0..., start..<end, 0...].asType(.float32)
+            let absChunk = MLX.abs(chunk)
+            absMeans.append(absChunk.mean().item(Float.self))
+            absMaxes.append(absChunk.max().item(Float.self))
+        }
+
+        AudioDiagnostics.floats("vae/out_audio_abs_mean_per_sec", absMeans)
+        AudioDiagnostics.floats("vae/out_audio_abs_max_per_sec", absMaxes)
     }
 }

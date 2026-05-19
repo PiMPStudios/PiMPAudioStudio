@@ -11,12 +11,23 @@ tail fade for generated output. Upstream ACE-Step only applies fade when
 explicitly requested, so generated WAVs should stay byte-faithful to the VAE
 decode while investigating the recurring ~28-second ending in 30-second clips.
 
-**Codex note (2026-05-19, follow-up):** The next conditioning mismatch found
+**Codex note (2026-05-19, follow-up):** The next conditioning mismatch tested
 after the no-fade retest was `chunk_mask_mode`. Upstream defaults
 `GenerationParams.chunk_mask_mode` to `"auto"` and converts the full-generation
 mask to value `2.0` in `conditioning_masks.py`; Swift had been sending `1.0`.
-Swift now uses `2.0` for full-generation context masks and logs
-`AUDIODIAG cond/chunkMask mode=auto value=2.0`.
+A listening A/B was decisive but mixed: `2.0` reached the full 30-second
+duration, but collapsed the output into a hum/buzz with no musical component.
+Swift direct-DiT has therefore been reverted to the musical `1.0` mask while
+keeping an `AUDIODIAG cond/chunkMask` breadcrumb. Treat upstream-auto `2.0` as
+not-yet-compatible with the current Swift direct-DiT path, possibly because the
+upstream default is coupled to the LM/audio-code "thinking" path that Swift does
+not yet run for normal text-to-music.
+
+**Codex note (2026-05-19, ending diagnostics):** `VAEActor.decode` now emits
+`vae/out_audio_abs_mean_per_sec` and `vae/out_audio_abs_max_per_sec` for the
+first 60 seconds when verbose audio diagnostics are enabled. Use these arrays
+on the next seed-42 retest to determine whether the 27-28 second ending is
+already present in the VAE output or introduced later by playback/export/UI.
 
 > Use this doc to resume troubleshooting after a context reset. Skim "Current symptom" + "Hypotheses still open" first.
 
@@ -195,6 +206,7 @@ The biggest conditioning bugs are fixed, but still worth verifying:
 - `wrapPromptForSFT` exact whitespace vs upstream `SFT_GEN_PROMPT.format(...)`
 - lyric language default is now `en`; verify UI/user settings do not override it to `unknown` unexpectedly
 - empty text + empty lyrics baseline should generate a much weaker/less directed output than a real prompt
+- chunk-mask semantics/schedule: Swift `1.0` is musical but can end early; upstream-auto `2.0` reaches duration but currently collapses to hum/buzz in direct-DiT. Next experiment should be a controlled mask value/schedule A/B (`1.25`, `1.5`, `1.75`, late-only) or wiring the upstream LM/audio-code path before using `2.0` as default.
 
 ### Resolved during this pass
 
@@ -218,6 +230,7 @@ The biggest conditioning bugs are fixed, but still worth verifying:
 - **silence_latent body** — fixed in `9757bac`. contextLatents `abs_mean=0.787, abs_max=6.73` matches upstream prediction.
 - **TimbreEncoder bypass / default-init pooler** — fixed locally. v1.5 emits one timbre token from encoded silence/reference latents; Swift now matches that and no longer has unmatched pooler weights.
 - **Empty-lyrics zero hidden states** — fixed locally. This was the breakthrough that produced first recognizable music.
+- **Upstream-auto chunk mask as a drop-in fix** — tested and reverted. Value `2.0` fixed the full-duration symptom but removed the musical signal in the Swift direct-DiT path, so it is not safe as the default without additional upstream-path parity work.
 - **Cross-attn pre-norm absent** — INVESTIGATED via `89c79da`, REVERTED in `3629cec`. v1.5 architecture DOES use pre-norm; weights load correctly via generic snake→camel name map; we were correct before my "fix".
 - **Cross-attn RoPE missing** — INVESTIGATED via `a1a22a2`, REVERTED in `4920923`. v1.5 architecture does NOT use RoPE in cross-attn (only self-attn).
 - **VAE scale_factor / shift_factor** — Reverted; constants belong to MusicDCAE, our VAE is AutoencoderOobleck.
