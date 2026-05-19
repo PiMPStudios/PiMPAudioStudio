@@ -161,6 +161,14 @@ The SFT wrapper is correct in structure, but every generation sends
 richer metadata. The lyric writer also produces structurally reasonable but
 timing-agnostic output.
 
+**Codex implementation note (2026-05-19):** First-pass runtime metadata
+extraction is now wired in `ConditioningActor.wrapPromptForSFT`. Explicit
+prompt phrases such as `70 BPM`, `4/4`, and `A minor` are normalized into the
+SFT meta block, with conservative tempo heuristics for obvious descriptors
+like "slow tempo". This does not replace a richer prompt-enhancer schema yet;
+it removes the all-`N/A` baseline and gives future listening tests an
+`AUDIODIAG cond/promptMetadata` breadcrumb.
+
 **Files:**
 
 - `AnvilCore/Sources/AnvilCore/Inference/Conditioning/ConditioningActor.swift:67-92`
@@ -273,6 +281,11 @@ listening.
      lever because Swift currently sends `bpm: N/A`, `timesignature: N/A`, and
      `keyscale: N/A` for every generation while the prompt enhancer already
      produces tempo/key/style information that could be normalized into metas.
+   - Codex implementation note (2026-05-19): a conservative first pass now
+     extracts BPM, time signature, and key/mode from the final prompt at
+     inference time. The remaining commercial-grade version should make those
+     fields explicit in the prompt enhancer output and UI rather than relying
+     on regex/keyword inference.
 
 2. Improve lyric conditioning.
    - Add explicit timing or section markers (`[Verse 1 0-8s]`) when the lyric

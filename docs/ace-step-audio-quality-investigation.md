@@ -1,7 +1,16 @@
 # ACE-Step Audio Quality Investigation — Resumption Notes
 
-**Last updated:** 2026-05-07 (late night XL/custom-model pass)
+**Last updated:** 2026-05-19 (guidance preset + prompt metadata + ending investigation pass)
 **Status:** Pipeline runs end-to-end and now produces **recognizable music** for the first time. User-reported after latest fixes: "Holy shit! I heard music for the first!! Albeit not very good music but music none the less!!" Quality is still poor, but the structural failure mode has changed from static/noise/"trying" to actual music generation. Latest diagnostic signature for Turbo breakthrough: real lyric header hidden states, one silence-derived timbre token, upstream v1.5 Turbo timestep schedule ending at 0.3, final latent abs_mean ≈ 1.03 / abs_max ≈ 7.44, VAE audio abs_mean ≈ 0.155 / abs_max ≈ 1.98. XL SFT now loads and runs with config-driven DiT architecture; first seed-42 sparse-prompt output produced a sustained tone/drone rather than a good riff, so XL is alive but still needs prompt/sampling/parity A/Bs.
+
+**Codex note (2026-05-19):** A first listening A/B of CFG interval presets
+favored late guidance over constant guidance, with `Soft Late` becoming the
+default. The same pass added SFT prompt metadata extraction (`bpm`,
+`timesignature`, `keyscale`) and guarded WAVWriter's adaptive tail fade so it
+does not zero/fade multi-second quiet endings. The recurring ~27-second ending
+in 30-second generations should now be tested again: if it remains, the model
+or duration conditioning is likely producing the quiet tail rather than the WAV
+writer manufacturing it.
 
 > Use this doc to resume troubleshooting after a context reset. Skim "Current symptom" + "Hypotheses still open" first.
 
@@ -158,7 +167,12 @@ The core conditioning path is now alive enough to produce recognizable music. Re
 
 ### 2. Prompt/meta quality tuning
 
-The structural prompt wrapper is fixed, but quality may improve by matching upstream metadata more closely. Current prompt wrapper includes `duration: 30 seconds` and N/A bpm/key/timesig. Upstream's `_parse_metas` string formatting should be checked byte-for-byte against Swift's `wrapPromptForSFT`.
+The structural prompt wrapper is fixed, and Swift now performs a conservative
+first-pass metadata extraction for `bpm`, `timesignature`, and `keyscale`
+before building the upstream SFT meta block. Explicit prompts such as
+`70 BPM`, `4/4`, and `A minor` should show up in `AUDIODIAG
+cond/promptMetadata`. Remaining quality work should move these fields into a
+proper prompt-enhancer schema/UI instead of relying only on regex heuristics.
 
 ### 3. Guidance / schedule variant A-Bs
 

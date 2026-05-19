@@ -17,6 +17,7 @@ All notable changes to AnvilApp are documented here.
 - **Generated WAV files keep a valid RIFF header after streamed export** — the optimized temp-file writer now seeks past the header before writing PCM bytes, fixing `AVAudioFile` / `AVAudioPlayer` load failures that left the player stuck at `0:00 / 0:00` with a spinner.
 - **Generated audio player recovers from transient same-file load misses** — the player now retries when a URL was previously marked loaded but still has no valid duration/waveform, and it can accept late precomputed peaks for the same file instead of staying stuck on the loading spinner.
 - **Editor waveform supports click-to-scrub again** — a normal click now seeks the editor preview playhead, while dragging still creates the orange inpaint selection region.
+- **ACE-Step WAV export no longer shortens long quiet tails** — the adaptive end fade now only trims genuinely tiny trailing silence. A multi-second quiet tail, such as the recurring 27s-to-30s ending pattern, is preserved so we can hear whether the model or the writer is responsible.
 - **Editor undo/redo history no longer grows without bound** — `EditorState` now caps raw `AudioBuffer` history to 10 snapshots and a 512 MB byte budget per stack. This keeps repeated DSP/inpaint edits from quietly retaining unlimited full-track buffers.
 - **YouTube dataset subprocesses are cancellation-safe** — `YouTubeDatasetBuilder.runProcess` now drains stdout/stderr while `yt-dlp` runs and terminates the child process when the Swift task is cancelled, avoiding background downloads and pipe back-pressure hangs.
 - **LoRA training can now pause and resume from Settings** — stopping a training run after progress is made can save the current adapter weights plus a training checkpoint; paused adapters are marked `In Progress` in the adapter list and expose a right-click `Resume Training…` action that reloads the original dataset, config, checkpoint, and weights.
@@ -35,6 +36,7 @@ All notable changes to AnvilApp are documented here.
 ### Changed
 
 - **ACE-Step generation now defaults to the Soft Late guidance schedule** — Advanced settings now expose Constant, Late Emphasis, Mid-to-Late, and Soft Late CFG schedules. The presets route through the existing `cfgIntervalStart/End` diffusion path for music and cover generation; the first listening A/B favored late guidance, with Soft Late giving the best sparse-prompt result and gentler endings.
+- **ACE-Step prompt conditioning now emits real SFT metadata when it can** — the prompt wrapper still matches the upstream `# Instruction / # Caption / # Metas` format, but now extracts explicit or obvious BPM, time signature, and key/mode from the enhanced prompt instead of always sending `N/A`.
 - **Audio import avoids two extra full-channel copies** — `AudioFileLoader.bufferToMLX` now interleaves directly from `AVAudioPCMBuffer.floatChannelData` instead of first materialising separate `ch0` / `ch1` arrays.
 
 ---

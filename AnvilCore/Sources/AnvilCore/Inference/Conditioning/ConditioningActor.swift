@@ -75,8 +75,111 @@ public actor ConditioningActor {
         // (metas had no trailing \n, and the blank line before the closing """ added
         // an extra \n). Use explicit concatenation to lock in the exact byte sequence.
         let instruction = "Fill the audio semantic mask based on the given conditions:"
-        let metas = "- bpm: N/A\n- timesignature: N/A\n- keyscale: N/A\n- duration: \(Int(duration)) seconds\n"
+        let metadata = promptMetadata(for: caption, duration: duration)
+        let metas = metadata.metaString
         return "# Instruction\n\(instruction)\n\n# Caption\n\(caption)\n\n# Metas\n\(metas)<|endoftext|>\n"
+    }
+
+    private struct PromptMetadata: Sendable {
+        let bpm: String
+        let timeSignature: String
+        let keyscale: String
+        let durationSeconds: Int
+
+        var metaString: String {
+            "- bpm: \(bpm)\n"
+            + "- timesignature: \(timeSignature)\n"
+            + "- keyscale: \(keyscale)\n"
+            + "- duration: \(durationSeconds) seconds\n"
+        }
+    }
+
+    private static func promptMetadata(for caption: String, duration: TimeInterval) -> PromptMetadata {
+        let metadata = PromptMetadata(
+            bpm: extractBPM(from: caption) ?? "N/A",
+            timeSignature: extractTimeSignature(from: caption) ?? "N/A",
+            keyscale: extractKeyscale(from: caption) ?? "N/A",
+            durationSeconds: max(1, Int(duration.rounded()))
+        )
+        AudioDiagnostics.note(
+            "cond/promptMetadata",
+            "bpm=\(metadata.bpm) timesignature=\(metadata.timeSignature) keyscale=\(metadata.keyscale) duration=\(metadata.durationSeconds)"
+        )
+        return metadata
+    }
+
+    private static func extractBPM(from caption: String) -> String? {
+        if let explicit = firstCapture(
+            #"(?<!\d)(3[0-9]|[4-9][0-9]|[12][0-9]{2}|300)\s*(?:bpm|beats\s+per\s+minute)\b"#,
+            in: caption
+        ) {
+            return explicit
+        }
+
+        let lower = caption.lowercased()
+        if lower.contains("very slow") || lower.contains("dirge") || lower.contains("doom") {
+            return "55"
+        }
+        if lower.contains("slow tempo") || lower.contains("slow,") || lower.contains("slow ") || lower.contains("downtempo") {
+            return "70"
+        }
+        if lower.contains("mid-tempo") || lower.contains("medium tempo") || lower.contains("moderate tempo") {
+            return "100"
+        }
+        if lower.contains("very fast") || lower.contains("breakneck") {
+            return "180"
+        }
+        if lower.contains("fast tempo") || lower.contains("upbeat") || lower.contains("high energy") {
+            return "140"
+        }
+
+        return nil
+    }
+
+    private static func extractTimeSignature(from caption: String) -> String? {
+        firstCapture(#"\b([2346])\s*/\s*(?:4|8)\b"#, in: caption)
+    }
+
+    private static func extractKeyscale(from caption: String) -> String? {
+        let pattern = #"\b(?:key(?:\s+of)?\s+)?([A-G])\s*(#|♯|b|♭|sharp|flat)?\s+(major|minor)\b"#
+        guard let captures = firstCaptures(pattern, in: caption, groups: 3),
+              let note = captures[0],
+              let mode = captures[2] else {
+            return nil
+        }
+
+        let accidental: String
+        switch captures[1]?.lowercased() {
+        case "#", "♯", "sharp":
+            accidental = "#"
+        case "b", "♭", "flat":
+            accidental = "b"
+        default:
+            accidental = ""
+        }
+        return "\(note.uppercased())\(accidental) \(mode.lowercased())"
+    }
+
+    private static func firstCapture(_ pattern: String, in text: String) -> String? {
+        firstCaptures(pattern, in: text, groups: 1)?.first ?? nil
+    }
+
+    private static func firstCaptures(_ pattern: String, in text: String, groups: Int) -> [String?]? {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+            return nil
+        }
+        let fullRange = NSRange(text.startIndex..<text.endIndex, in: text)
+        guard let match = regex.firstMatch(in: text, options: [], range: fullRange) else {
+            return nil
+        }
+        return (1...groups).map { index in
+            guard index < match.numberOfRanges,
+                  let range = Range(match.range(at: index), in: text) else {
+                return nil
+            }
+            let value = String(text[range]).trimmingCharacters(in: .whitespacesAndNewlines)
+            return value.isEmpty ? nil : value
+        }
     }
 
     /// Wrap lyrics with upstream's `# Languages / # Lyric` template. Mirrors

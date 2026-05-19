@@ -151,7 +151,8 @@ public struct WAVWriter {
         sampleRate: Int,
         scanWindow: Double = 0.25,
         fadeDuration: Double = 0.75,
-        rmsThreshold: Double = 150.0
+        rmsThreshold: Double = 150.0,
+        maxSilentTailDuration: Double = 1.25
     ) -> Data {
         var faded = pcmData
         applyTailFadeInPlace(
@@ -161,7 +162,8 @@ public struct WAVWriter {
             sampleRate: sampleRate,
             scanWindow: scanWindow,
             fadeDuration: fadeDuration,
-            rmsThreshold: rmsThreshold
+            rmsThreshold: rmsThreshold,
+            maxSilentTailDuration: maxSilentTailDuration
         )
         return faded
     }
@@ -173,7 +175,8 @@ public struct WAVWriter {
         sampleRate: Int,
         scanWindow: Double = 0.25,
         fadeDuration: Double = 0.75,
-        rmsThreshold: Double = 150.0
+        rmsThreshold: Double = 150.0,
+        maxSilentTailDuration: Double = 1.25
     ) {
         guard numFrames > 0, channels > 0, pcmData.count == numFrames * channels * 2 else {
             return
@@ -182,6 +185,7 @@ public struct WAVWriter {
         let bytesPerFrame = channels * 2
         let scanFrames = max(1, Int(Double(sampleRate) * scanWindow))
         let fadeFrames  = max(1, Int(Double(sampleRate) * fadeDuration))
+        let maxSilentTailFrames = max(1, Int(Double(sampleRate) * maxSilentTailDuration))
         let byteCount = pcmData.count
 
         pcmData.withUnsafeMutableBytes { rawBuffer in
@@ -215,7 +219,15 @@ public struct WAVWriter {
                 }
             }
 
-            // ── 2. Apply linear fade from (contentEnd − fadeDuration) → contentEnd
+            let silentTailFrames = numFrames - contentEndFrame
+            guard silentTailFrames > 0 else {
+                return
+            }
+            guard silentTailFrames <= maxSilentTailFrames else {
+                return
+            }
+
+            // ── 2. Apply linear fade from (contentEnd - fadeDuration) to contentEnd
             let fadeStart = max(0, contentEndFrame - fadeFrames)
             let fadeLen   = contentEndFrame - fadeStart
             for f in fadeStart..<contentEndFrame {
