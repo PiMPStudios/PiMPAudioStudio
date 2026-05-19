@@ -6,11 +6,10 @@
 **Codex note (2026-05-19):** A first listening A/B of CFG interval presets
 favored late guidance over constant guidance, with `Soft Late` becoming the
 default. The same pass added SFT prompt metadata extraction (`bpm`,
-`timesignature`, `keyscale`) and guarded WAVWriter's adaptive tail fade so it
-does not zero/fade multi-second quiet endings. The recurring ~27-second ending
-in 30-second generations should now be tested again: if it remains, the model
-or duration conditioning is likely producing the quiet tail rather than the WAV
-writer manufacturing it.
+`timesignature`, `keyscale`) and then disabled WAVWriter's automatic adaptive
+tail fade for generated output. Upstream ACE-Step only applies fade when
+explicitly requested, so generated WAVs should stay byte-faithful to the VAE
+decode while investigating the recurring ~28-second ending in 30-second clips.
 
 > Use this doc to resume troubleshooting after a context reset. Skim "Current symptom" + "Hypotheses still open" first.
 

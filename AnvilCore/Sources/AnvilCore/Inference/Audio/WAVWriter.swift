@@ -11,29 +11,24 @@ public struct WAVWriter {
         // Some training/inference paths return [channels, frames] (CL) or
         // a flat 1-D mono buffer. Normalize to a single shape we understand.
         let channels: Int
-        let numFrames: Int
         let normalized: MLXArray
 
         switch samples.ndim {
         case 1:
             // Mono buffer of audio samples.
             channels = 1
-            numFrames = samples.shape[0]
             normalized = samples
         case 2:
             // [channels, frames] — keep as-is; interleave below.
             channels = samples.shape[0]
-            numFrames = samples.shape[1]
             normalized = samples
         case 3:
             // [batch, length, channels] from the MLX VAE decoder. We always
             // generate batch=1, so take batch 0 to land on [length, channels].
             channels = samples.shape[2]
-            numFrames = samples.shape[1]
             normalized = samples[0]
         default:
             channels = 0
-            numFrames = 0
             normalized = samples
             assertionFailure("WAVWriter received samples of unexpected rank \(samples.ndim)")
         }
@@ -72,21 +67,12 @@ public struct WAVWriter {
         }
         eval(interleaved)
 
-        var pcmData = interleaved.asData(access: .copy).data
+        let pcmData = interleaved.asData(access: .copy).data
 
-        // Adaptive tail fade: ACE-Step (and other diffusion models) commonly
-        // produce near-zero latents for the last 1–4 seconds of the requested
-        // window, resulting in an abrupt silence cutoff mid-beat. Scan the
-        // PCM backwards in 0.25 s windows to find where content actually ends,
-        // then apply a 0.75 s linear fade-out that ramps from full amplitude
-        // to silence right at that transition. Keeps the file at the original
-        // requested duration (no trimming) but eliminates the jarring dropoff.
-        applyTailFadeInPlace(
-            to: &pcmData,
-            numFrames: numFrames,
-            channels: channels,
-            sampleRate: sampleRate
-        )
+        // Keep generated output byte-faithful to the VAE decode. Earlier builds
+        // applied an automatic tail fade here, but upstream ACE-Step only fades
+        // when explicitly requested; hidden post-processing made the recurring
+        // 28-second ending harder to diagnose.
 
         let bitsPerSample: UInt16 = 16
         let blockAlign = UInt16(channels) * (bitsPerSample / 8)
