@@ -12,12 +12,12 @@
 		08FA6D81BBE2FA06E3179185 /* EditorService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5902313AD8C62782D012AF11 /* EditorService.swift */; };
 		0AF9779F80608B35F17064E4 /* AnvilAppApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C8FC85EA6F448C8C5B81968 /* AnvilAppApp.swift */; };
 		0B17463D23FF9E5DD313B2B1 /* DSPParameters.swift in Sources */ = {isa = PBXBuildFile; fileRef = B55D5F52868A4CB02AF03430 /* DSPParameters.swift */; };
+		124894A7CE73E39A02B9CB3E /* AnvilMCPServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A940D53B825C96B03EC22D9 /* AnvilMCPServer.swift */; };
 		13CF74E2ED45EE9086D3FF45 /* DownloadProgressRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3717DC54FFB7427757568719 /* DownloadProgressRow.swift */; };
 		149D0F7AA4A61FF4806E28E0 /* SFXGenerationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCFDE36CECAA5A75A45571D5 /* SFXGenerationService.swift */; };
 		195C4C2F3C08CE060C136194 /* LyricWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FEC311D281782C3E6E6FBF6 /* LyricWriter.swift */; };
 		1A51019FA31EB11E9D2DFD4D /* ACEStepGenerationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A68785FD9393563F70F224C /* ACEStepGenerationService.swift */; };
 		1D4AB4D1E19703F0C2C9CA6F /* GenerationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F48405E290FB7817733FDD4 /* GenerationService.swift */; };
-		2E7A9C97F1D2253380B1F514 /* LiveGenerationTrace.swift in Sources */ = {isa = PBXBuildFile; fileRef = 058E99DC583B55E212360E35 /* LiveGenerationTrace.swift */; };
 		23312C22747B23B6F7645DCA /* PitchShiftControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A037C24F391D586BD629293 /* PitchShiftControlView.swift */; };
 		2373D5492BB683CBA77CD350 /* ModelsSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 623EB62C560692A25F97AA46 /* ModelsSettingsView.swift */; };
 		24016C341DA2BBFDAF09465C /* OutputDirectoryPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE8AAE37A750FD518EE3D50B /* OutputDirectoryPicker.swift */; };
@@ -40,9 +40,9 @@
 		53565B68EB63A02451406264 /* EditorState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6070BCF9C5023DE99A671860 /* EditorState.swift */; };
 		5411AEEC0A08852BE3ED2E9A /* EditorWaveformView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A8162FD9A7391E658879DAB /* EditorWaveformView.swift */; };
 		596591F8662368E4B2938614 /* AVAudioEngineDSP.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43C028BDB7B70C3A0433A831 /* AVAudioEngineDSP.swift */; };
-		061A65E58586B018DC02BA5E /* GenerationAnalyzerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E78547132CEE068488681D6C /* GenerationAnalyzerView.swift */; };
 		5D474882556C3ECFB5ABBB05 /* AudioPlayerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A594BD4883E8061AEA451F27 /* AudioPlayerService.swift */; };
 		6296CD26AB7AC1711F7AA84A /* AdapterStackView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF9A603BF062A10905588D07 /* AdapterStackView.swift */; };
+		655E0446B4C9A5976DE85721 /* MCPSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 544B6CE97E7D9AC0ABDFE91D /* MCPSettingsView.swift */; };
 		65A8865EEC7DFF72F0979081 /* HuggingFaceImportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 823702D3D9DF8DCBBA0EE034 /* HuggingFaceImportSheet.swift */; };
 		66C0A1E3C6C2D18AA1D8CBA6 /* HistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48050CE43319304DFA74A007 /* HistoryStore.swift */; };
 		66E9184590022F8F6F653BC1 /* PresetStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD2CA362A1B0531F8B13B8DD /* PresetStore.swift */; };
@@ -51,6 +51,7 @@
 		7036BAF017D1AD46A18B15AD /* ClaudeLyricWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = C61D0DB6E1E91085513A8234 /* ClaudeLyricWriter.swift */; };
 		75B24388D0F1EDB6F271D54A /* WaveformView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D61C5398208345CF997BA86 /* WaveformView.swift */; };
 		790A321EE01ED0950724C99F /* XAILyricWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28D04E888E8B1CA2FD709FBB /* XAILyricWriter.swift */; };
+		7967C2D9942886BA8BDB76C8 /* GenerationTraceComparator.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF19DBA581151AFFDF4BC90E /* GenerationTraceComparator.swift */; };
 		7A25D4BB0E768F445E4A6673 /* AnvilCore in Frameworks */ = {isa = PBXBuildFile; productRef = 56B6306E7B0D0B036568343F /* AnvilCore */; };
 		7B0E4EE87A097F731F9747B7 /* TimeStretchControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92CB1522D80E9348A28CBBF8 /* TimeStretchControlView.swift */; };
 		7CF15CDBA58712A5E478135C /* MLX in Frameworks */ = {isa = PBXBuildFile; productRef = 4FF57444ACF886882B1431DD /* MLX */; };
@@ -60,6 +61,7 @@
 		8F93F50EFE8E7BF41962638C /* AddModelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5374986729853ECF29EFF76 /* AddModelView.swift */; };
 		987D32242043555415D62524 /* SFXModelManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EC4A8B06E55930149BAC8ED /* SFXModelManager.swift */; };
 		9A7A055DC9656DAA5DF882B8 /* HistoryListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACDBE130986895721B31725F /* HistoryListView.swift */; };
+		9C244BDC817C2D74FD59F5AC /* AnvilCommandFacade.swift in Sources */ = {isa = PBXBuildFile; fileRef = 042E257C28E49A42245142DD /* AnvilCommandFacade.swift */; };
 		A449AF199835468C36A25060 /* DSPProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF5771DD0C0A4C5B33796024 /* DSPProcessor.swift */; };
 		A5490BBF991663BE0AC5926F /* PEFTKeyRemapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17654E4D0E9713010A5AFBC2 /* PEFTKeyRemapper.swift */; };
 		A7E26898FC333EE4A7BCF31A /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CF1F6196D3D92EA32ADB3A2 /* AppState.swift */; };
@@ -72,10 +74,12 @@
 		B26EE3E5C89EA6E41E2AEC9F /* AppStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC923278BD1DFB05336E01E3 /* AppStateTests.swift */; };
 		B4477592A8B1AF4CCDF61504 /* GenerationPreset.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D07375021EF6E02E8B129F8 /* GenerationPreset.swift */; };
 		B5F9E60DAE6EE383EECFE1C5 /* AudioFileLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0817969793777E16A9FE95EE /* AudioFileLoader.swift */; };
+		B6D9AEBAA6EDE808AC0246AA /* GenerationAnalyzerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8A9CC5ADB0CCD85F9248E4C /* GenerationAnalyzerView.swift */; };
 		C11069BE6D94EEE1D25CB5DD /* CommunityBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86328139176C2912FBB1F878 /* CommunityBrowserView.swift */; };
 		C3749E3A58EF18C3ACB47BD5 /* YouTubeImportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83660A831B3C8EA635656CC1 /* YouTubeImportSheet.swift */; };
 		C4F49B3B51D801A622AE353D /* YouTubeDatasetBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD89E89C12A5ED0A47624551 /* YouTubeDatasetBuilder.swift */; };
 		C7C3DB52C2251429C55B8EAF /* AnvilCore in Frameworks */ = {isa = PBXBuildFile; productRef = E3CDBF8443FB369FB268D4A5 /* AnvilCore */; };
+		C86AC26AEE05C99708CBA2BB /* LiveGenerationTrace.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84554118ADCDC786CACDA7A2 /* LiveGenerationTrace.swift */; };
 		C8FD5C2133B259E0AEC730DF /* MainShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43F636E7106FD40FD32886A4 /* MainShellView.swift */; };
 		C93B3DA8FB34DA1E48A90B7D /* GeminiLyricWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = F74E890D6F0523EBED6C11AD /* GeminiLyricWriter.swift */; };
 		CAFBB4872C118D7158334B25 /* LocalLyricWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53B24CDC6767B21FE4F4BBDF /* LocalLyricWriter.swift */; };
@@ -107,9 +111,10 @@
 
 /* Begin PBXFileReference section */
 		02A386DAC90F5E305529D789 /* FirstLaunchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstLaunchView.swift; sourceTree = "<group>"; };
-		058E99DC583B55E212360E35 /* LiveGenerationTrace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveGenerationTrace.swift; sourceTree = "<group>"; };
+		042E257C28E49A42245142DD /* AnvilCommandFacade.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnvilCommandFacade.swift; sourceTree = "<group>"; };
 		0817969793777E16A9FE95EE /* AudioFileLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioFileLoader.swift; sourceTree = "<group>"; };
 		0A68785FD9393563F70F224C /* ACEStepGenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ACEStepGenerationService.swift; sourceTree = "<group>"; };
+		0A940D53B825C96B03EC22D9 /* AnvilMCPServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnvilMCPServer.swift; sourceTree = "<group>"; };
 		0FC7A8B63EFFF96361298608 /* AnvilCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = AnvilCore; path = AnvilCore; sourceTree = SOURCE_ROOT; };
 		127AA276961262D8DFCF37D6 /* GenerationParameters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationParameters.swift; sourceTree = "<group>"; };
 		17140A0355CED442DB2B2EDE /* PromptEnhancer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptEnhancer.swift; sourceTree = "<group>"; };
@@ -136,6 +141,7 @@
 		48050CE43319304DFA74A007 /* HistoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryStore.swift; sourceTree = "<group>"; };
 		4FEC311D281782C3E6E6FBF6 /* LyricWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricWriter.swift; sourceTree = "<group>"; };
 		53B24CDC6767B21FE4F4BBDF /* LocalLyricWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLyricWriter.swift; sourceTree = "<group>"; };
+		544B6CE97E7D9AC0ABDFE91D /* MCPSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MCPSettingsView.swift; sourceTree = "<group>"; };
 		5902313AD8C62782D012AF11 /* EditorService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorService.swift; sourceTree = "<group>"; };
 		5AF7A5173B107BDAC422197D /* CoverSongCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverSongCoordinator.swift; sourceTree = "<group>"; };
 		5C8B4733DB13E444A97CBD50 /* AnvilApp.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AnvilApp.entitlements; sourceTree = "<group>"; };
@@ -152,6 +158,7 @@
 		823702D3D9DF8DCBBA0EE034 /* HuggingFaceImportSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HuggingFaceImportSheet.swift; sourceTree = "<group>"; };
 		83660A831B3C8EA635656CC1 /* YouTubeImportSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouTubeImportSheet.swift; sourceTree = "<group>"; };
 		83D2A2817A2C70C01A7E9060 /* OutputDirectoryManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutputDirectoryManager.swift; sourceTree = "<group>"; };
+		84554118ADCDC786CACDA7A2 /* LiveGenerationTrace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveGenerationTrace.swift; sourceTree = "<group>"; };
 		86328139176C2912FBB1F878 /* CommunityBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommunityBrowserView.swift; sourceTree = "<group>"; };
 		86892F4AB6D7FD9C6D4DFF8E /* AdapterPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdapterPicker.swift; sourceTree = "<group>"; };
 		8D07375021EF6E02E8B129F8 /* GenerationPreset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationPreset.swift; sourceTree = "<group>"; };
@@ -177,12 +184,13 @@
 		CCFDE36CECAA5A75A45571D5 /* SFXGenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SFXGenerationService.swift; sourceTree = "<group>"; };
 		CE8AAE37A750FD518EE3D50B /* OutputDirectoryPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutputDirectoryPicker.swift; sourceTree = "<group>"; };
 		D5374986729853ECF29EFF76 /* AddModelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddModelView.swift; sourceTree = "<group>"; };
+		D8A9CC5ADB0CCD85F9248E4C /* GenerationAnalyzerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationAnalyzerView.swift; sourceTree = "<group>"; };
 		DB6E06E2D459E4DE1F42A7B0 /* TrainingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingService.swift; sourceTree = "<group>"; };
+		DF19DBA581151AFFDF4BC90E /* GenerationTraceComparator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationTraceComparator.swift; sourceTree = "<group>"; };
 		DF5771DD0C0A4C5B33796024 /* DSPProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DSPProcessor.swift; sourceTree = "<group>"; };
 		E305347B027706CE2B6AA495 /* WSOLAProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WSOLAProcessor.swift; sourceTree = "<group>"; };
 		E400A1E8567A583BF24168D8 /* IntentRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentRouter.swift; sourceTree = "<group>"; };
 		E47D5033905544ECC34C19D0 /* EditorControlsBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorControlsBar.swift; sourceTree = "<group>"; };
-		E78547132CEE068488681D6C /* GenerationAnalyzerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationAnalyzerView.swift; sourceTree = "<group>"; };
 		F4D0D4171C6C7051D0FF1370 /* Resampler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Resampler.swift; sourceTree = "<group>"; };
 		F74E890D6F0523EBED6C11AD /* GeminiLyricWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeminiLyricWriter.swift; sourceTree = "<group>"; };
 		F7DBBDB86E7D78D2620F5E8F /* GenerationState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationState.swift; sourceTree = "<group>"; };
@@ -234,8 +242,9 @@
 				8D07375021EF6E02E8B129F8 /* GenerationPreset.swift */,
 				BA236B769F73F3B386B47BE9 /* GenerationRequest.swift */,
 				F7DBBDB86E7D78D2620F5E8F /* GenerationState.swift */,
-				058E99DC583B55E212360E35 /* LiveGenerationTrace.swift */,
+				DF19DBA581151AFFDF4BC90E /* GenerationTraceComparator.swift */,
 				9311E25D69FC689AE37CAC82 /* HistoryEntry.swift */,
+				84554118ADCDC786CACDA7A2 /* LiveGenerationTrace.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -246,6 +255,8 @@
 				0A68785FD9393563F70F224C /* ACEStepGenerationService.swift */,
 				7504C0492EA508363FEAF66E /* AdapterRegistry.swift */,
 				42E80F772D10C2D7C81E20B9 /* AdapterStackManager.swift */,
+				042E257C28E49A42245142DD /* AnvilCommandFacade.swift */,
+				0A940D53B825C96B03EC22D9 /* AnvilMCPServer.swift */,
 				31DBE7D85D080CAF25072FA6 /* APIKeyStore.swift */,
 				0817969793777E16A9FE95EE /* AudioFileLoader.swift */,
 				A594BD4883E8061AEA451F27 /* AudioPlayerService.swift */,
@@ -329,7 +340,7 @@
 			children = (
 				86892F4AB6D7FD9C6D4DFF8E /* AdapterPicker.swift */,
 				FF9A603BF062A10905588D07 /* AdapterStackView.swift */,
-				E78547132CEE068488681D6C /* GenerationAnalyzerView.swift */,
+				D8A9CC5ADB0CCD85F9248E4C /* GenerationAnalyzerView.swift */,
 			);
 			path = Generate;
 			sourceTree = "<group>";
@@ -375,6 +386,7 @@
 				86328139176C2912FBB1F878 /* CommunityBrowserView.swift */,
 				823702D3D9DF8DCBBA0EE034 /* HuggingFaceImportSheet.swift */,
 				246CAC487F928E88DF637278 /* IntelligenceSettingsView.swift */,
+				544B6CE97E7D9AC0ABDFE91D /* MCPSettingsView.swift */,
 				5CB35B71702BA28B8E3D0BEA /* MergeSheet.swift */,
 				623EB62C560692A25F97AA46 /* ModelsSettingsView.swift */,
 			);
@@ -522,6 +534,8 @@
 				4573FE17D14F27B04A5849A9 /* AdaptersSettingsView.swift in Sources */,
 				8F93F50EFE8E7BF41962638C /* AddModelView.swift in Sources */,
 				0AF9779F80608B35F17064E4 /* AnvilAppApp.swift in Sources */,
+				9C244BDC817C2D74FD59F5AC /* AnvilCommandFacade.swift in Sources */,
+				124894A7CE73E39A02B9CB3E /* AnvilMCPServer.swift in Sources */,
 				A7E26898FC333EE4A7BCF31A /* AppState.swift in Sources */,
 				AC540A98D892260F9D4988AC /* AudioBufferConverter.swift in Sources */,
 				B5F9E60DAE6EE383EECFE1C5 /* AudioFileLoader.swift in Sources */,
@@ -546,12 +560,14 @@
 				4916F3A44CF74EEE3A4ECA92 /* FirstLaunchView.swift in Sources */,
 				C93B3DA8FB34DA1E48A90B7D /* GeminiLyricWriter.swift in Sources */,
 				4EFBAEB0CDBBEA54568FEB4C /* GenerateView.swift in Sources */,
+				B6D9AEBAA6EDE808AC0246AA /* GenerationAnalyzerView.swift in Sources */,
 				E33C664871E94A263A99D3C7 /* GenerationMode.swift in Sources */,
 				842730E7F4571DF4897A08AE /* GenerationParameters.swift in Sources */,
 				B4477592A8B1AF4CCDF61504 /* GenerationPreset.swift in Sources */,
 				4595102369E7B0E1AFAC3C0A /* GenerationRequest.swift in Sources */,
 				1D4AB4D1E19703F0C2C9CA6F /* GenerationService.swift in Sources */,
 				4C7D077166CA750B212236F4 /* GenerationState.swift in Sources */,
+				7967C2D9942886BA8BDB76C8 /* GenerationTraceComparator.swift in Sources */,
 				25F1A915F6E1EE934E94EB85 /* HistoryEntry.swift in Sources */,
 				9A7A055DC9656DAA5DF882B8 /* HistoryListView.swift in Sources */,
 				66C0A1E3C6C2D18AA1D8CBA6 /* HistoryStore.swift in Sources */,
@@ -559,14 +575,14 @@
 				F45C62DEE5C2FF96E6CD04D3 /* IntelligenceSettingsView.swift in Sources */,
 				3794B35AA37A6162B20BA858 /* IntentRouter.swift in Sources */,
 				A95BEFD1EEEBDE89CB239B8A /* LLMModelManager.swift in Sources */,
-				2E7A9C97F1D2253380B1F514 /* LiveGenerationTrace.swift in Sources */,
 				DD80478C2C925BA8B2C0C86D /* LPCFormantShifter.swift in Sources */,
+				C86AC26AEE05C99708CBA2BB /* LiveGenerationTrace.swift in Sources */,
 				0287F5C870C67463A38138CC /* LoRACoordinator.swift in Sources */,
 				CAFBB4872C118D7158334B25 /* LocalLyricWriter.swift in Sources */,
-				061A65E58586B018DC02BA5E /* GenerationAnalyzerView.swift in Sources */,
 				43C4DCA2E466BC0ADE303135 /* LossCurveView.swift in Sources */,
 				195C4C2F3C08CE060C136194 /* LyricWriter.swift in Sources */,
 				6E8631F6B78C8B22F7EB1EDD /* LyricWriterManager.swift in Sources */,
+				655E0446B4C9A5976DE85721 /* MCPSettingsView.swift in Sources */,
 				C8FD5C2133B259E0AEC730DF /* MainShellView.swift in Sources */,
 				48A20C1FF1ABFEC16D97DDB4 /* MergeSheet.swift in Sources */,
 				2373D5492BB683CBA77CD350 /* ModelsSettingsView.swift in Sources */,

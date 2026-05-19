@@ -136,6 +136,10 @@ struct AnvilAppApp: App {
                     .environmentObject(services.generationService)
                     .environmentObject(sfxModelManager)
 
+                MCPSettingsView()
+                    .tabItem { Label("MCP", systemImage: "point.3.connected.trianglepath.dotted") }
+                    .environmentObject(services.mcpServer)
+
                 AdaptersSettingsView()
                     .tabItem { Label("Adapters", systemImage: "puzzlepiece.extension") }
                     .environmentObject(services.trainingService)
@@ -152,6 +156,7 @@ final class AppServices: ObservableObject {
     @Published var historyStore: HistoryStore
     @Published var generationService: GenerationService
     let traceMonitor: GenerationTraceMonitor
+    let mcpServer: AnvilMCPServer
 
     /// Shared ML actors — created once, reused by both generation and the editor
     /// so weights are never duplicated in GPU memory.
@@ -170,6 +175,7 @@ final class AppServices: ObservableObject {
     private let vaeActor: VAEActor
     private let diffusionActor: DiffusionActor
     private let conditioningActor: ConditioningActor
+    private let commandFacade: AnvilCommandFacade
 
     init(
         sfxModelManager: SFXModelManager,
@@ -223,6 +229,9 @@ final class AppServices: ObservableObject {
         let dir = outputManager.directory ?? FileManager.default.temporaryDirectory
         let store = HistoryStore(directory: dir)
         self.historyStore = store
+        let facade = AnvilCommandFacade(registry: registry, historyStore: store)
+        self.commandFacade = facade
+        self.mcpServer = AnvilMCPServer(facade: facade)
         self.generationService = Self.makeGenerationService(
             vaeActor: vae,
             diffusionActor: diffusion,
@@ -251,6 +260,7 @@ final class AppServices: ObservableObject {
         let dir = outputManager.directory ?? FileManager.default.temporaryDirectory
         let store = HistoryStore(directory: dir)
         self.historyStore = store
+        commandFacade.configure(historyStore: store)
         self.generationService = Self.makeGenerationService(
             vaeActor: vaeActor,
             diffusionActor: diffusionActor,

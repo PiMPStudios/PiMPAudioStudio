@@ -1,9 +1,10 @@
 # MCP Integration — Design Spec
 
 > **Codex planning note (2026-05-19):** This locks in the agreed MCP shape for
-> Anvil. It is a planned integration, not an implemented feature. The design
-> intentionally treats MCP as a local automation/control surface over existing
-> app workflows, not as a dependency inside the audio generation pipeline.
+> Anvil. Phase 1 read-only localhost tools are now implemented; later phases
+> remain planned. The design intentionally treats MCP as a local
+> automation/control surface over existing app workflows, not as a dependency
+> inside the audio generation pipeline.
 
 ## Goal
 
@@ -154,4 +155,3 @@ facade that wraps the same services the UI already uses.
 - Full training orchestration.
 - Replacing the GUI.
 - Turning Anvil into a general-purpose MCP host for arbitrary plugins.
-

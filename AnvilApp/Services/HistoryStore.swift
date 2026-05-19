@@ -72,6 +72,10 @@ final class HistoryStore: ObservableObject {
         return try loadTrace(at: url)
     }
 
+    func loadTrace(traceFileName: String) throws -> GenerationTrace {
+        try loadTrace(at: directory.appending(path: traceFileName))
+    }
+
     func saveTraceReview(
         traceFileName: String,
         listeningNote: String?,

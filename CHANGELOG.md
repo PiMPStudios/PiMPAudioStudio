@@ -18,6 +18,7 @@ All notable changes to AnvilApp are documented here.
 - **Trace audio preview strips** — saved traces and compare columns now render a compact waveform with a per-second loudness overlay, giving quick visual signal context before A/B playback.
 - **Failure trace sidecars** — failed generations now preserve the live event log into a `.failed.trace.json` artifact when possible, giving failed runs enough request/model/stage context for later debugging.
 - **Primary LoRA strength control** — the Generate view now exposes the selected LoRA adapter's strength, routes the primary adapter through the same weighted stack path as additional adapters, persists the value in saved presets, and records the actual weight in history/trace sidecars. This makes XL PEFT adapter A/B tests line up with the `lora_scale` knob used by the Python ACE-Step path.
+- **Local MCP server foundation** — Settings now includes an MCP tab that can start/stop a localhost-only endpoint at `http://127.0.0.1:38765/mcp`, optionally require a bearer token, and expose read-only tools for models, adapters, history, trace lookup, and Analyzer-style trace comparison.
 
 ### Fixed
 

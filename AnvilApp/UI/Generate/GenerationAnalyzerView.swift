@@ -179,7 +179,7 @@ struct GenerationAnalyzerView: View {
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
-    private func changedFieldsPanel(_ groups: [ComparisonGroup]) -> some View {
+    private func changedFieldsPanel(_ groups: [TraceComparisonGroup]) -> some View {
         let visibleGroups = visibleComparisonGroups(groups)
 
         return VStack(alignment: .leading, spacing: 10) {
@@ -643,88 +643,22 @@ struct GenerationAnalyzerView: View {
         }
     }
 
-    private func comparisonGroups(_ comparison: GenerationTraceComparison) -> [ComparisonGroup] {
-        let left = comparison.left
-        let right = comparison.right
-
-        return [
-            ComparisonGroup(
-                title: "Model",
-                systemImage: "cube.box",
-                rows: [
-                    row("Pipeline", left.pipeline, right.pipeline),
-                    row("Model", modelSummary(left.primaryModel), modelSummary(right.primaryModel)),
-                    row("Supporting", modelListSummary(left.supportingModels), modelListSummary(right.supportingModels))
-                ]
-            ),
-            ComparisonGroup(
-                title: "Adapters",
-                systemImage: "slider.horizontal.2.square",
-                rows: [
-                    row("LoRA", adapterSummary(left.adapters), adapterSummary(right.adapters))
-                ]
-            ),
-            ComparisonGroup(
-                title: "Sampling",
-                systemImage: "dial.low",
-                rows: [
-                    row("Duration", "\(Int(left.request.duration))s", "\(Int(right.request.duration))s"),
-                    row("Seed", left.request.seed.map(String.init) ?? "Random", right.request.seed.map(String.init) ?? "Random"),
-                    row("Method", left.request.method, right.request.method),
-                    row("Guidance", format(left.request.guidanceScale), format(right.request.guidanceScale)),
-                    row("Preset", left.request.guidancePresetName, right.request.guidancePresetName),
-                    row(
-                        "CFG Window",
-                        "\(left.request.cfgIntervalStart) → \(left.request.cfgIntervalEnd)",
-                        "\(right.request.cfgIntervalStart) → \(right.request.cfgIntervalEnd)"
-                    ),
-                    row("Precision", left.request.precision, right.request.precision),
-                    row("Steps", left.request.stepsOverride.map(String.init) ?? "Auto", right.request.stepsOverride.map(String.init) ?? "Auto"),
-                    row("Shift", optionalFormat(left.request.shiftOverride), optionalFormat(right.request.shiftOverride)),
-                    row("Mode", left.request.resolvedMode, right.request.resolvedMode)
-                ]
-            ),
-            ComparisonGroup(
-                title: "Prompt & Lyrics",
-                systemImage: "text.quote",
-                rows: [
-                    row("Prompt", compact(left.prompt), compact(right.prompt)),
-                    row("Lyrics", lyricsSummary(left.lyrics), lyricsSummary(right.lyrics))
-                ]
-            ),
-            ComparisonGroup(
-                title: "Audio",
-                systemImage: "waveform",
-                rows: [
-                    row("Abs Mean", format(left.audio.absMean, digits: 4), format(right.audio.absMean, digits: 4)),
-                    row("Abs Max", format(left.audio.absMax, digits: 3), format(right.audio.absMax, digits: 3)),
-                    row("Duration", String(format: "%.1fs", left.audio.duration), String(format: "%.1fs", right.audio.duration))
-                ]
-            )
-        ]
+    private func comparisonGroups(_ comparison: GenerationTraceComparison) -> [TraceComparisonGroup] {
+        GenerationTraceComparator.groups(left: comparison.left, right: comparison.right)
     }
 
-    private func visibleComparisonGroups(_ groups: [ComparisonGroup]) -> [ComparisonGroup] {
+    private func visibleComparisonGroups(_ groups: [TraceComparisonGroup]) -> [TraceComparisonGroup] {
         guard !showAllComparisonRows else { return groups }
         return groups.compactMap { group in
             let rows = group.rows.filter(\.isDifferent)
             guard !rows.isEmpty else { return nil }
-            return ComparisonGroup(title: group.title, systemImage: group.systemImage, rows: rows)
+            return TraceComparisonGroup(title: group.title, systemImage: group.systemImage, rows: rows)
         }
     }
 
-    private func row(_ label: String, _ left: String, _ right: String) -> ComparisonRow {
-        ComparisonRow(label: label, left: left, right: right)
-    }
-
-    private func modelSummary(_ model: HistoryModelSnapshot?) -> String {
-        guard let model else { return "None" }
-        return model.displayName ?? model.id
-    }
-
-    private func modelListSummary(_ models: [HistoryModelSnapshot]) -> String {
-        guard !models.isEmpty else { return "None" }
-        return models.map { $0.displayName ?? $0.id }.joined(separator: ", ")
+    private func emptyLabel(_ text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "None" : trimmed
     }
 
     private func adapterSummary(_ adapters: [HistoryAdapterSnapshot]) -> String {
@@ -733,28 +667,6 @@ struct GenerationAnalyzerView: View {
             let label = adapter.name ?? adapter.id
             return "\(label) x\(String(format: "%.2f", adapter.weight))"
         }.joined(separator: ", ")
-    }
-
-    private func lyricsSummary(_ lyrics: String) -> String {
-        let trimmed = lyrics.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return "None" }
-        let lines = trimmed.components(separatedBy: .newlines).filter { !$0.isEmpty }
-        return "\(lines.count) lines"
-    }
-
-    private func emptyLabel(_ text: String) -> String {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? "None" : trimmed
-    }
-
-    private func compact(_ text: String) -> String {
-        let oneLine = text
-            .replacingOccurrences(of: "\n", with: " ")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        if oneLine.count > 180 {
-            return String(oneLine.prefix(177)) + "..."
-        }
-        return oneLine
     }
 
     private func isTraceLoaded(_ trace: GenerationTrace) -> Bool {
@@ -791,14 +703,6 @@ struct GenerationAnalyzerView: View {
                 "prompt": trace.originalPrompt ?? trace.prompt
             ]
         )
-    }
-
-    private func format(_ value: Float, digits: Int = 1) -> String {
-        String(format: "%.\(digits)f", value)
-    }
-
-    private func optionalFormat(_ value: Float?) -> String {
-        value.map { String(format: "%.1f", $0) } ?? "Auto"
     }
 
     private func noteBinding(for trace: GenerationTrace) -> Binding<String> {
@@ -859,25 +763,6 @@ struct GenerationAnalyzerView: View {
         } catch {
             reviewStatusMessage = "Could not mark preferred: \(error.localizedDescription)"
         }
-    }
-}
-
-private struct ComparisonGroup: Identifiable, Equatable {
-    let title: String
-    let systemImage: String
-    let rows: [ComparisonRow]
-
-    var id: String { title }
-}
-
-private struct ComparisonRow: Identifiable, Equatable {
-    let id = UUID()
-    let label: String
-    let left: String
-    let right: String
-
-    var isDifferent: Bool {
-        left != right
     }
 }
 

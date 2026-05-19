@@ -25,21 +25,26 @@ take marking, and memory release.
 **Deliverable:** A running localhost MCP endpoint that exposes low-risk read
 tools and can be toggled from Settings.
 
-- [ ] Create an `AnvilMCPServer` service with start/stop/status lifecycle.
-- [ ] Add a small `AnvilCommandFacade` for MCP-safe reads.
-- [ ] Add Settings controls:
-  - [ ] Enable MCP server toggle.
-  - [ ] Running/stopped/failed state.
-  - [ ] Local endpoint display.
-  - [ ] Optional token enable/copy/regenerate controls.
-- [ ] Implement read-only tools:
-  - [ ] `anvil.list_models`
-  - [ ] `anvil.list_adapters`
-  - [ ] `anvil.list_history`
-  - [ ] `anvil.get_trace`
-  - [ ] `anvil.compare_traces`
-- [ ] Ensure every response is DTO/JSON oriented and stable across app changes.
-- [ ] Add docs for connecting a local MCP client.
+- [x] Create an `AnvilMCPServer` service with start/stop/status lifecycle.
+- [x] Add a small `AnvilCommandFacade` for MCP-safe reads.
+- [x] Add Settings controls:
+  - [x] Enable MCP server toggle.
+  - [x] Running/stopped/failed state.
+  - [x] Local endpoint display.
+  - [x] Optional token enable/copy/regenerate controls.
+- [x] Implement read-only tools:
+  - [x] `anvil.list_models`
+  - [x] `anvil.list_adapters`
+  - [x] `anvil.list_history`
+  - [x] `anvil.get_trace`
+  - [x] `anvil.compare_traces`
+- [x] Ensure every response is DTO/JSON oriented and stable across app changes.
+- [x] Add docs for connecting a local MCP client.
+
+Implementation note: Phase 1 now ships as an app-hosted Streamable HTTP-style
+JSON-RPC endpoint at `http://127.0.0.1:38765/mcp`. It is off by default,
+configured from Settings > MCP, and uses the shared Generation Analyzer
+comparison grouping through `GenerationTraceComparator`.
 
 ## Phase 2 — Structured Resources
 
@@ -89,4 +94,3 @@ read-only phase.
 - [ ] `compare_traces` returns the same changed-field grouping as Analyzer.
 - [ ] `release_memory` refuses to run without `confirm: true`.
 - [ ] App quit stops the MCP server cleanly.
-
