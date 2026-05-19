@@ -53,7 +53,7 @@ struct CommunityBrowserView: View {
             Button {
                 showingImportSheet = true
             } label: {
-                Label("Add from URL", systemImage: "plus")
+                Label("Import Adapter", systemImage: "plus")
             }
             Button {
                 Task { await service.refreshManifest(force: true) }

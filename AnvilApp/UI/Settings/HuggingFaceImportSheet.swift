@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import AnvilCore
 
 struct HuggingFaceImportSheet: View {
@@ -23,6 +24,8 @@ struct HuggingFaceImportSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     urlSection
+                    Divider()
+                    localSection
                     if let error = fetchError {
                         errorView(error)
                     }
@@ -44,9 +47,9 @@ struct HuggingFaceImportSheet: View {
             Image(systemName: "arrow.down.circle")
                 .font(.title2)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Import from HuggingFace")
+                Text("Import Adapter")
                     .font(.headline)
-                Text("Paste a HuggingFace repo URL containing an Anvil or PEFT LoRA adapter.")
+                Text("Install an Anvil or PEFT LoRA adapter from HuggingFace or a local folder.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -81,6 +84,27 @@ struct HuggingFaceImportSheet: View {
             Text("Accepts PEFT repos (adapter_config.json + adapter_model.safetensors) and native Anvil repos (adapter.json + adapter.safetensors).")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
+        }
+    }
+
+    private var localSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Local PEFT Folder")
+                .font(.subheadline)
+                .fontWeight(.medium)
+            HStack(spacing: 8) {
+                Button {
+                    importLocalFolder()
+                } label: {
+                    Label("Choose Folder", systemImage: "folder")
+                }
+                .buttonStyle(.bordered)
+                .disabled(isFetching)
+
+                Text("Select a folder containing adapter_config.json and adapter_model.safetensors.")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
         }
     }
 
@@ -193,6 +217,33 @@ struct HuggingFaceImportSheet: View {
                 let adapter = try await service.importFromHuggingFace(repoURL: url)
                 fetchedAdapter = adapter
                 downloadComplete = true   // importFromHuggingFace also downloads
+            } catch {
+                fetchError = error.localizedDescription
+            }
+            isFetching = false
+        }
+    }
+
+    private func importLocalFolder() {
+        let panel = NSOpenPanel()
+        panel.title = "Import PEFT LoRA Folder"
+        panel.prompt = "Import"
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        fetchError = nil
+        fetchedAdapter = nil
+        downloadComplete = false
+        isFetching = true
+
+        Task {
+            do {
+                let adapter = try await service.importLocalPEFTAdapter(directoryURL: url)
+                fetchedAdapter = adapter
+                downloadComplete = true
             } catch {
                 fetchError = error.localizedDescription
             }

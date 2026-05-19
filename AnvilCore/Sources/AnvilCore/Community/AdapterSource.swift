@@ -10,4 +10,7 @@ public enum AdapterSource: String, Codable, Sendable, Hashable {
 
     /// Imported directly from a HuggingFace repo URL.
     case huggingface
+
+    /// Imported from a local PEFT/Anvil adapter folder.
+    case imported
 }

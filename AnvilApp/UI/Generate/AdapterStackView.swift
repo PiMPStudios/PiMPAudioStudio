@@ -8,6 +8,7 @@ struct AdapterStackView: View {
     let activeModelCategory: ModelCategory
 
     @State private var showingAdapterPicker = false
+    @State private var adapterListVersion = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -41,6 +42,9 @@ struct AdapterStackView: View {
         }
         .sheet(isPresented: $showingAdapterPicker) {
             adapterPickerSheet
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .adapterRegistryDidChange)) { _ in
+            adapterListVersion += 1
         }
     }
 
@@ -133,6 +137,7 @@ struct AdapterStackView: View {
 
     /// Adapters compatible with current model that aren't already in the stack.
     private var availableAdapters: [LoRAAdapter] {
+        _ = adapterListVersion
         let allCompatible = AdapterRegistry.compatibleAdapters(for: activeModelCategory)
         let stackedIDs = Set(stackManager.allStackedAdapters.map(\.adapter.id))
         return allCompatible.filter { !stackedIDs.contains($0.id) }

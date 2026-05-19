@@ -43,6 +43,14 @@ public struct LoRAConfig: Codable, Sendable, Equatable, Hashable {
     /// Which module categories to inject LoRA into.
     public var targetLayers: Set<TargetLayer>
 
+    /// Optional exact module paths to inject.
+    ///
+    /// Local training keeps this nil and uses the conservative defaults for each
+    /// `TargetLayer`. Imported PEFT/cloud adapters can set this to preserve the
+    /// exact projection surface they were trained with, such as q/k/v/o on both
+    /// self-attention and cross-attention.
+    public var exactInjectionPatterns: [String]?
+
     /// Learning rate for AdamW optimizer (peak LR when using scheduler).
     public var learningRate: Float
 
@@ -63,6 +71,7 @@ public struct LoRAConfig: Codable, Sendable, Equatable, Hashable {
         alpha: Float = 16.0,
         dropout: Float = 0.0,
         targetLayers: Set<TargetLayer> = [.selfAttention, .crossAttention],
+        exactInjectionPatterns: [String]? = nil,
         learningRate: Float = 1e-4,
         maxEpochs: Int = 10,
         batchSize: Int = 1,
@@ -73,6 +82,7 @@ public struct LoRAConfig: Codable, Sendable, Equatable, Hashable {
         self.alpha = alpha
         self.dropout = dropout
         self.targetLayers = targetLayers
+        self.exactInjectionPatterns = exactInjectionPatterns
         self.learningRate = learningRate
         self.maxEpochs = maxEpochs
         self.batchSize = batchSize
@@ -83,7 +93,10 @@ public struct LoRAConfig: Codable, Sendable, Equatable, Hashable {
     /// Expands targetLayers into the full list of injection pattern strings
     /// (e.g. ["selfAttn.qProj", "selfAttn.vProj", "crossAttn.qProj", ...]).
     public var injectionPatterns: [String] {
-        targetLayers.sorted(by: { $0.rawValue < $1.rawValue })
+        if let exactInjectionPatterns, !exactInjectionPatterns.isEmpty {
+            return exactInjectionPatterns
+        }
+        return targetLayers.sorted(by: { $0.rawValue < $1.rawValue })
             .flatMap(\.defaultPatterns)
     }
 }

@@ -37,6 +37,7 @@ struct AdapterPicker: View {
                 }
             }
             .pickerStyle(.menu)
+            .id(adapterListVersion)
         }
         .onChange(of: activeModelCategory) { _, _ in
             adapterListVersion += 1
@@ -44,6 +45,12 @@ struct AdapterPicker: View {
                !adapters.contains(where: { $0.id == selected }) {
                 selectedAdapterID = nil
             }
+        }
+        .onAppear {
+            adapterListVersion += 1
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .adapterRegistryDidChange)) { _ in
+            adapterListVersion += 1
         }
         .onReceive(trainingService.$state) { newState in
             if case .complete = newState { adapterListVersion += 1 }

@@ -38,6 +38,31 @@ enum PEFTKeyRemapper {
         return result
     }
 
+    /// Infer exact Anvil injection subpaths from already-remapped LoRA keys.
+    ///
+    /// Remapped weights are keyed like `layers.0.selfAttn.qProj.loraA`.
+    /// `LoRAConfig` needs only the layer-local path (`selfAttn.qProj`) because
+    /// the injector applies the pattern across the loaded DiT layers.
+    static func inferInjectionPatterns(fromRemappedKeys keys: [String]) -> [String] {
+        var patterns = Set<String>()
+
+        for key in keys {
+            let parts = key.split(separator: ".")
+            guard parts.count >= 5,
+                  parts[0] == "layers",
+                  Int(parts[1]) != nil,
+                  parts.last == "loraA" || parts.last == "loraB" else { continue }
+
+            let module = String(parts[2])
+            let projection = String(parts[3])
+            patterns.insert("\(module).\(projection)")
+        }
+
+        return patterns.sorted { lhs, rhs in
+            patternSortKey(lhs) < patternSortKey(rhs)
+        }
+    }
+
     /// Remap a single PEFT weight key to AnvilApp format.
     /// Returns `nil` when the key has no AnvilApp equivalent.
     static func remapKey(_ key: String) -> String? {
@@ -135,11 +160,6 @@ enum PEFTKeyRemapper {
     // MARK: - LoRAConfig Inference
 
     /// Infer the closest `Set<TargetLayer>` from PEFT `target_modules`.
-    ///
-    /// Note: `TargetLayer.selfAttention.defaultPatterns` covers q/v only.
-    /// PEFT adapters that also target k/o will have those weights stored in
-    /// the safetensors file, but the k/o contributions will be silently unused
-    /// until AnvilApp adds full q/k/v/o injection pattern support.
     static func inferTargetLayers(from targetModules: [String]) -> Set<TargetLayer> {
         let attnModules: Set<String> = [
             "q_proj", "k_proj", "v_proj", "o_proj", "out_proj",
@@ -158,6 +178,23 @@ enum PEFTKeyRemapper {
         return layers.isEmpty ? [.selfAttention] : layers
     }
 
+    /// Infer target categories from exact Anvil module paths.
+    static func inferTargetLayers(fromInjectionPatterns patterns: [String]) -> Set<TargetLayer> {
+        var layers = Set<TargetLayer>()
+
+        for pattern in patterns {
+            if pattern.hasPrefix("selfAttn.") {
+                layers.insert(.selfAttention)
+            } else if pattern.hasPrefix("crossAttn.") {
+                layers.insert(.crossAttention)
+            } else if pattern.hasPrefix("mlp.") {
+                layers.insert(.mlp)
+            }
+        }
+
+        return layers.isEmpty ? [.selfAttention] : layers
+    }
+
     /// Map a PEFT HuggingFace repo ID / model path to the AnvilApp local model ID.
     ///
     /// ACE-Step v1.5 variants (turbo, base, SFT, XL) share the same architecture family.
@@ -166,7 +203,7 @@ enum PEFTKeyRemapper {
     static func resolveBaseModelID(from hfPath: String?) -> String {
         guard let path = hfPath else { return "ace-step-dit-turbo" }
         let lower = path.lowercased()
-        guard lower.contains("ace-step") || lower.contains("ace_step") else {
+        guard lower.contains("ace-step") || lower.contains("ace_step") || lower.contains("acestep") else {
             // Unknown model — preserve the HF path so the UI can show a mismatch warning
             return path
         }
@@ -221,5 +258,39 @@ enum PEFTKeyRemapper {
         case "down_proj", "w2", "wo":   return "downProj"
         default: return nil
         }
+    }
+
+    private static func patternSortKey(_ pattern: String) -> String {
+        let moduleRank: String
+        if pattern.hasPrefix("selfAttn.") {
+            moduleRank = "0"
+        } else if pattern.hasPrefix("crossAttn.") {
+            moduleRank = "1"
+        } else if pattern.hasPrefix("mlp.") {
+            moduleRank = "2"
+        } else {
+            moduleRank = "9"
+        }
+
+        let projectionRank: String
+        if pattern.hasSuffix(".qProj") {
+            projectionRank = "0"
+        } else if pattern.hasSuffix(".kProj") {
+            projectionRank = "1"
+        } else if pattern.hasSuffix(".vProj") {
+            projectionRank = "2"
+        } else if pattern.hasSuffix(".oProj") {
+            projectionRank = "3"
+        } else if pattern.hasSuffix(".gateProj") {
+            projectionRank = "4"
+        } else if pattern.hasSuffix(".upProj") {
+            projectionRank = "5"
+        } else if pattern.hasSuffix(".downProj") {
+            projectionRank = "6"
+        } else {
+            projectionRank = "9"
+        }
+
+        return "\(moduleRank).\(projectionRank).\(pattern)"
     }
 }

@@ -4,6 +4,7 @@ import MLX
 import OSLog
 
 private let memLogger = Logger(subsystem: "com.pimp.AnvilApp", category: "GenerationService.unload")
+private let traceLogger = Logger(subsystem: "com.pimp.AnvilApp", category: "GenerationTrace")
 
 struct GenerationResult: Sendable {
     let fileURL: URL
@@ -33,6 +34,7 @@ final class GenerationService: ObservableObject {
     private let historyStore: HistoryStore
     private let outputDirectoryManager: OutputDirectoryManager
     private let llmManager: LLMModelManager
+    private let registry: ModelRegistry
 
     init(
         aceStepService: ACEStepGenerationService,
@@ -42,7 +44,8 @@ final class GenerationService: ObservableObject {
         coverSongCoordinator: CoverSongCoordinator,
         historyStore: HistoryStore,
         outputDirectoryManager: OutputDirectoryManager,
-        llmManager: LLMModelManager
+        llmManager: LLMModelManager,
+        registry: ModelRegistry
     ) {
         self.aceStepService = aceStepService
         self.sfxService = sfxService
@@ -52,6 +55,7 @@ final class GenerationService: ObservableObject {
         self.historyStore = historyStore
         self.outputDirectoryManager = outputDirectoryManager
         self.llmManager = llmManager
+        self.registry = registry
     }
 
     func generate(request: GenerationRequest) {
@@ -101,7 +105,7 @@ final class GenerationService: ObservableObject {
                 let fileName = HistoryEntry.fileName(prompt: request.text)
                 let fileURL = outputDir.appending(path: fileName)
 
-                let peaks = try await Self.writeAudioAndComputeWaveformPeaks(
+                let audioSnapshot = try await Self.writeAudioAndAnalyze(
                     audioResult: audioResult,
                     fileURL: fileURL
                 )
@@ -117,9 +121,21 @@ final class GenerationService: ObservableObject {
                 let recordedGuidanceScale = usesStableAudio
                     ? request.guidanceScale
                     : request.effectiveGuidanceScale
+                let mainModelCategory: ModelCategory = usesStableAudio ? .stableAudio : .aceStepDiT
+                let mainModel = await self.historyModelSnapshot(for: mainModelCategory)
+                let supportingModels = await self.supportingModelSnapshots(
+                    usesStableAudio: usesStableAudio,
+                    usesCoverSong: usesCoverSong
+                )
+                let adapters = usesStableAudio || usesCoverSong
+                    ? []
+                    : self.historyAdapterSnapshots()
+                let entryID = UUID()
+                let createdAt = Date()
+                let traceFileName = HistoryEntry.traceFileName(forAudioFileName: fileName)
                 let entry = HistoryEntry(
-                    id: UUID(),
-                    createdAt: Date(),
+                    id: entryID,
+                    createdAt: createdAt,
                     prompt: request.text,
                     lyrics: request.lyrics,
                     duration: request.duration,
@@ -128,12 +144,40 @@ final class GenerationService: ObservableObject {
                     guidanceScale: recordedGuidanceScale,
                     precision: request.precision.rawValue,
                     fileName: fileName,
+                    traceFileName: traceFileName,
                     pipeline: pipelineLabel,
-                    originalPrompt: nil
+                    originalPrompt: nil,
+                    modelCategory: mainModel?.category,
+                    modelID: mainModel?.id,
+                    modelName: mainModel?.displayName,
+                    supportingModels: supportingModels.isEmpty ? nil : supportingModels,
+                    adapters: adapters.isEmpty ? nil : adapters
                 )
+                let trace = self.makeGenerationTrace(
+                    entryID: entryID,
+                    createdAt: createdAt,
+                    audioFileName: fileName,
+                    traceFileName: traceFileName,
+                    pipeline: pipelineLabel,
+                    request: request,
+                    primaryModel: mainModel,
+                    supportingModels: supportingModels,
+                    adapters: adapters,
+                    timing: audioResult.timeCosts,
+                    audioSnapshot: audioSnapshot
+                )
+                do {
+                    try await Self.writeTrace(trace, to: outputDir.appending(path: traceFileName))
+                } catch {
+                    traceLogger.warning("Failed to write trace sidecar \(traceFileName, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                }
 
                 self.historyStore.add(entry)
-                self.currentResult = GenerationResult(fileURL: fileURL, entry: entry, waveformPeaks: peaks)
+                self.currentResult = GenerationResult(
+                    fileURL: fileURL,
+                    entry: entry,
+                    waveformPeaks: audioSnapshot.waveformPeaks
+                )
                 self.state = .complete
             } catch is CancellationError {
                 self.state = .cancelled
@@ -191,18 +235,184 @@ final class GenerationService: ObservableObject {
         }.value
     }
 
-    private nonisolated static func writeAudioAndComputeWaveformPeaks(
+    private nonisolated static func analyzeAudio(
+        samples: MLXArray,
+        sampleRate: Int,
+        duration: TimeInterval
+    ) -> GenerationTraceAudioSnapshot {
+        let absSamples = MLX.abs(samples)
+        let absMeanArray = absSamples.mean()
+        let absMaxArray = absSamples.max()
+        eval(absMeanArray, absMaxArray)
+
+        let perFrame = perFramePeakAmplitudes(from: samples)
+        let waveformPeaks = computeWaveformPeaks(fromPerFramePeaks: perFrame)
+        let perSecond = computePerSecondStats(fromPerFramePeaks: perFrame, sampleRate: sampleRate)
+
+        return GenerationTraceAudioSnapshot(
+            sampleRate: sampleRate,
+            duration: duration,
+            sampleShape: samples.shape,
+            absMean: absMeanArray.item(Float.self),
+            absMax: absMaxArray.item(Float.self),
+            waveformPeaks: waveformPeaks,
+            perSecondAbsMean: perSecond.means,
+            perSecondAbsMax: perSecond.maxes
+        )
+    }
+
+    private nonisolated static func writeAudioAndAnalyze(
         audioResult: AudioResult,
         fileURL: URL
-    ) async throws -> [Float]? {
+    ) async throws -> GenerationTraceAudioSnapshot {
         try await Task.detached(priority: .utility) {
             try WAVWriter.write(
                 samples: audioResult.samples,
                 sampleRate: audioResult.sampleRate,
                 to: fileURL
             )
-            return computeWaveformPeaks(from: audioResult.samples)
+            return analyzeAudio(
+                samples: audioResult.samples,
+                sampleRate: audioResult.sampleRate,
+                duration: audioResult.duration
+            )
         }.value
+    }
+
+    private nonisolated static func writeTrace(_ trace: GenerationTrace, to url: URL) async throws {
+        try await Task.detached(priority: .utility) {
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(trace)
+            try data.write(to: url, options: .atomic)
+        }.value
+    }
+
+    private func historyModelSnapshot(for category: ModelCategory) async -> HistoryModelSnapshot? {
+        if let spec = await registry.activeSpec(for: category) {
+            return HistoryModelSnapshot(
+                category: spec.category.rawValue,
+                id: spec.id,
+                displayName: spec.displayName
+            )
+        }
+
+        guard let id = await registry.activeModelID(for: category) else {
+            return nil
+        }
+        return HistoryModelSnapshot(
+            category: category.rawValue,
+            id: id,
+            displayName: nil
+        )
+    }
+
+    private func supportingModelSnapshots(
+        usesStableAudio: Bool,
+        usesCoverSong: Bool
+    ) async -> [HistoryModelSnapshot] {
+        guard !usesStableAudio else { return [] }
+
+        var categories: [ModelCategory] = [.aceStepVAE]
+        if usesCoverSong {
+            categories.append(.aceStepLM)
+        }
+
+        var snapshots: [HistoryModelSnapshot] = []
+        for category in categories {
+            if let snapshot = await historyModelSnapshot(for: category) {
+                snapshots.append(snapshot)
+            }
+        }
+        return snapshots
+    }
+
+    private func historyAdapterSnapshots() -> [HistoryAdapterSnapshot] {
+        let requestedStack: [(id: String, weight: Float)]
+        if !adapterStack.isEmpty {
+            requestedStack = adapterStack
+        } else if let selectedAdapterID {
+            requestedStack = [(id: selectedAdapterID, weight: 1.0)]
+        } else {
+            requestedStack = []
+        }
+
+        guard !requestedStack.isEmpty else { return [] }
+
+        let adaptersByID = Dictionary(
+            uniqueKeysWithValues: AdapterRegistry.listAdapters().map { ($0.id, $0) }
+        )
+        return requestedStack.map { requested in
+            let adapter = adaptersByID[requested.id]
+            return HistoryAdapterSnapshot(
+                id: requested.id,
+                name: adapter?.name,
+                weight: requested.weight,
+                source: adapter?.source.rawValue,
+                rank: adapter?.config.rank,
+                baseModelID: adapter?.baseModelID
+            )
+        }
+    }
+
+    private func makeGenerationTrace(
+        entryID: UUID,
+        createdAt: Date,
+        audioFileName: String,
+        traceFileName: String,
+        pipeline: String,
+        request: GenerationRequest,
+        primaryModel: HistoryModelSnapshot?,
+        supportingModels: [HistoryModelSnapshot],
+        adapters: [HistoryAdapterSnapshot],
+        timing: TimeCosts,
+        audioSnapshot: GenerationTraceAudioSnapshot
+    ) -> GenerationTrace {
+        GenerationTrace(
+            schemaVersion: 1,
+            historyEntryID: entryID,
+            createdAt: createdAt,
+            audioFileName: audioFileName,
+            traceFileName: traceFileName,
+            pipeline: pipeline,
+            prompt: request.text,
+            originalPrompt: nil,
+            lyrics: request.lyrics,
+            request: GenerationTraceRequestSnapshot(
+                duration: request.duration,
+                seed: request.seed,
+                method: request.method.rawValue,
+                guidanceScale: request.effectiveGuidanceScale,
+                guidancePreset: request.guidancePreset.rawValue,
+                guidancePresetName: request.guidancePreset.displayName,
+                cfgIntervalStart: request.cfgIntervalStart,
+                cfgIntervalEnd: request.cfgIntervalEnd,
+                precision: request.precision.rawValue,
+                stepsOverride: request.stepsOverride,
+                shiftOverride: request.shiftOverride,
+                resolvedMode: request.resolvedMode.rawValue,
+                pipelineOverride: request.pipelineOverride.rawValue,
+                coverStrength: request.coverStrength,
+                referenceAudioFileName: request.referenceAudioURL?.lastPathComponent
+            ),
+            primaryModel: primaryModel,
+            supportingModels: supportingModels,
+            adapters: adapters,
+            featureFlags: GenerationTraceFeatureFlags(
+                lmThinkingEnabled: false,
+                cotMetadataEnabled: false,
+                cotCaptionEnabled: false,
+                dcwEnabled: false
+            ),
+            timing: GenerationTraceTimingSnapshot(
+                diffusionTime: timing.diffusionTime,
+                perStepTime: timing.perStepTime,
+                totalTime: timing.totalTime
+            ),
+            audio: audioSnapshot,
+            listeningNote: nil
+        )
     }
 
     private func shouldUseStableAudio(request: GenerationRequest) -> Bool {
@@ -303,20 +513,32 @@ final class GenerationService: ObservableObject {
         from samples: MLXArray,
         bucketCount: Int = 400
     ) -> [Float] {
-        // Collapse channels → 1-D per-frame peak amplitude.
-        let perFrame: MLXArray
+        computeWaveformPeaks(
+            fromPerFramePeaks: perFramePeakAmplitudes(from: samples),
+            bucketCount: bucketCount
+        )
+    }
+
+    private nonisolated static func perFramePeakAmplitudes(from samples: MLXArray) -> MLXArray? {
         switch samples.ndim {
         case 1:
-            perFrame = MLX.abs(samples)
+            return MLX.abs(samples)
         case 2:
             // [channels, frames] → max across channel axis
-            perFrame = MLX.abs(samples).max(axis: 0)
+            return MLX.abs(samples).max(axis: 0)
         case 3:
             // [batch=1, frames, channels] → drop batch, max across channels
-            perFrame = MLX.abs(samples[0]).max(axis: -1)
+            return MLX.abs(samples[0]).max(axis: -1)
         default:
-            return []
+            return nil
         }
+    }
+
+    private nonisolated static func computeWaveformPeaks(
+        fromPerFramePeaks perFrame: MLXArray?,
+        bucketCount: Int = 400
+    ) -> [Float] {
+        guard let perFrame else { return [] }
 
         let numFrames = perFrame.shape[0]
         guard numFrames >= bucketCount else { return [] }
@@ -338,6 +560,37 @@ final class GenerationService: ObservableObject {
         return rawData.withUnsafeBytes { buffer in
             Array(buffer.bindMemory(to: Float.self))
         }
+    }
+
+    private nonisolated static func computePerSecondStats(
+        fromPerFramePeaks perFrame: MLXArray?,
+        sampleRate: Int
+    ) -> (means: [Float], maxes: [Float]) {
+        guard let perFrame, sampleRate > 0 else { return ([], []) }
+
+        let numFrames = perFrame.shape[0]
+        guard numFrames > 0 else { return ([], []) }
+
+        let seconds = Int(ceil(Double(numFrames) / Double(sampleRate)))
+        var means: [Float] = []
+        var maxes: [Float] = []
+        means.reserveCapacity(seconds)
+        maxes.reserveCapacity(seconds)
+
+        for second in 0..<seconds {
+            let start = second * sampleRate
+            let end = min(start + sampleRate, numFrames)
+            guard start < end else { continue }
+
+            let segment = perFrame[start..<end]
+            let mean = segment.mean()
+            let max = segment.max()
+            eval(mean, max)
+            means.append(mean.item(Float.self))
+            maxes.append(max.item(Float.self))
+        }
+
+        return (means, maxes)
     }
 }
 

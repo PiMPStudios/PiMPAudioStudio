@@ -24,6 +24,9 @@ final class HistoryStore: ObservableObject {
         entries.removeAll { $0.id == entry.id }
         let fileURL = directory.appending(path: entry.fileName)
         try? FileManager.default.removeItem(at: fileURL)
+        if let traceFileName = entry.traceFileName {
+            try? FileManager.default.removeItem(at: directory.appending(path: traceFileName))
+        }
         saveToDisk()
     }
 
@@ -31,6 +34,9 @@ final class HistoryStore: ObservableObject {
         for entry in entries {
             let fileURL = directory.appending(path: entry.fileName)
             try? FileManager.default.removeItem(at: fileURL)
+            if let traceFileName = entry.traceFileName {
+                try? FileManager.default.removeItem(at: directory.appending(path: traceFileName))
+            }
         }
         entries.removeAll()
         saveToDisk()

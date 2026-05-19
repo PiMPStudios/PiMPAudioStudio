@@ -303,7 +303,8 @@ final class AppServices: ObservableObject {
             coverSongCoordinator: coverSong,
             historyStore: historyStore,
             outputDirectoryManager: outputManager,
-            llmManager: llmManager
+            llmManager: llmManager,
+            registry: registry
         )
     }
 }

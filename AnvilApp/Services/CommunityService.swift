@@ -226,51 +226,17 @@ final class CommunityService: ObservableObject {
         baseURL: URL,
         configData: Data
     ) async throws -> LoRAAdapter {
-        // Parse PEFT config
         let peftConfig = try JSONDecoder().decode(PEFTAdapterConfig.self, from: configData)
 
         guard peftConfig.peftType.lowercased() == "lora" else {
             throw CommunityError.unsupportedPEFTType(peftConfig.peftType)
         }
 
-        // Synthesise adapter name and ID from the repo's last path component.
-        // e.g. "ACE-Step-v1.5-chinese-new-year-LoRA" → id "ace-step-v1-5-chinese-new-year-lora"
         let repoSlug = repoURL.lastPathComponent
-        let adapterID = repoSlug
-            .lowercased()
-            .replacingOccurrences(of: "[^a-z0-9\\-]", with: "-", options: .regularExpression)
-            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
-        let adapterName = repoSlug
 
         if AdapterRegistry.listAdapters().contains(where: { $0.remoteRepoURL == repoURL }) {
-            throw CommunityError.alreadyInstalled(adapterName)
+            throw CommunityError.alreadyInstalled(repoSlug)
         }
-
-        // Build LoRAConfig from PEFT metadata
-        let targetLayers = PEFTKeyRemapper.inferTargetLayers(from: peftConfig.targetModules)
-        let config = LoRAConfig(
-            rank: peftConfig.r,
-            alpha: peftConfig.loraAlpha,
-            dropout: peftConfig.loraDropout,
-            targetLayers: targetLayers
-        )
-
-        let baseModelID = PEFTKeyRemapper.resolveBaseModelID(
-            from: peftConfig.baseModelNameOrPath
-        )
-
-        let adapter = LoRAAdapter(
-            id: adapterID,
-            name: adapterName,
-            config: config,
-            baseModelID: baseModelID,
-            baseModelCategory: .aceStepDiT,
-            createdAt: Date(),
-            sampleCount: 0,
-            finalLoss: nil,
-            source: .huggingface,
-            remoteRepoURL: repoURL
-        )
 
         // Download PEFT weights (adapter_model.safetensors)
         let weightsURL = baseURL.appendingPathComponent("adapter_model.safetensors")
@@ -289,16 +255,14 @@ final class CommunityService: ObservableObject {
         try weightsData.write(to: tmp)
 
         let rawArrays = try MLX.loadArrays(url: tmp)
-        let remapped  = PEFTKeyRemapper.remap(rawArrays)
-
-        guard !remapped.isEmpty else {
-            throw CommunityError.noMappableWeights(repoURL)
-        }
-
-        let remappedWeights = remapped.map { ($0.key, $0.value) }
-        try AdapterRegistry.save(adapter: adapter, weights: remappedWeights)
-
-        return adapter
+        return try savePEFTAdapter(
+            rawArrays: rawArrays,
+            peftConfig: peftConfig,
+            nameSeed: repoSlug,
+            source: .huggingface,
+            remoteRepoURL: repoURL,
+            errorURL: repoURL
+        )
     }
 
     /// Import a weights-only PEFT repo (no `adapter_config.json`).
@@ -310,10 +274,6 @@ final class CommunityService: ObservableObject {
         weightsData: Data
     ) async throws -> LoRAAdapter {
         let repoSlug = repoURL.lastPathComponent
-        let adapterID = repoSlug
-            .lowercased()
-            .replacingOccurrences(of: "[^a-z0-9\\-]", with: "-", options: .regularExpression)
-            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
 
         if AdapterRegistry.listAdapters().contains(where: { $0.remoteRepoURL == repoURL }) {
             throw CommunityError.alreadyInstalled(repoSlug)
@@ -336,36 +296,145 @@ final class CommunityService: ObservableObject {
             throw CommunityError.noMappableWeights(repoURL)
         }
 
-        let remapped = PEFTKeyRemapper.remap(rawArrays)
-        guard !remapped.isEmpty else {
-            throw CommunityError.noMappableWeights(repoURL)
+        return try savePEFTAdapter(
+            rawArrays: rawArrays,
+            peftConfig: nil,
+            inferredConfig: inferred,
+            nameSeed: repoSlug,
+            source: .huggingface,
+            remoteRepoURL: repoURL,
+            errorURL: repoURL
+        )
+    }
+
+    /// Import a local PEFT LoRA directory (`adapter_config.json` +
+    /// `adapter_model.safetensors`) and save it in AnvilApp's native adapter
+    /// registry format.
+    func importLocalPEFTAdapter(directoryURL: URL) async throws -> LoRAAdapter {
+        let didAccess = directoryURL.startAccessingSecurityScopedResource()
+        defer {
+            if didAccess {
+                directoryURL.stopAccessingSecurityScopedResource()
+            }
         }
 
-        let targetLayers = PEFTKeyRemapper.inferTargetLayers(from: inferred.targetModules)
+        let configURL = directoryURL.appending(path: "adapter_config.json")
+        let weightsURL = directoryURL.appending(path: "adapter_model.safetensors")
+
+        guard FileManager.default.fileExists(atPath: configURL.path(percentEncoded: false)) else {
+            throw CommunityError.missingFile("adapter_config.json", directoryURL)
+        }
+        guard FileManager.default.fileExists(atPath: weightsURL.path(percentEncoded: false)) else {
+            throw CommunityError.missingFile("adapter_model.safetensors", directoryURL)
+        }
+
+        let configData = try Data(contentsOf: configURL)
+        let peftConfig = try JSONDecoder().decode(PEFTAdapterConfig.self, from: configData)
+
+        guard peftConfig.peftType.lowercased() == "lora" else {
+            throw CommunityError.unsupportedPEFTType(peftConfig.peftType)
+        }
+
+        let rawArrays = try MLX.loadArrays(url: weightsURL)
+        return try savePEFTAdapter(
+            rawArrays: rawArrays,
+            peftConfig: peftConfig,
+            nameSeed: localPEFTNameSeed(for: directoryURL),
+            source: .imported,
+            remoteRepoURL: nil,
+            errorURL: directoryURL
+        )
+    }
+
+    private func savePEFTAdapter(
+        rawArrays: [String: MLXArray],
+        peftConfig: PEFTAdapterConfig?,
+        inferredConfig: PEFTKeyRemapper.InferredConfig? = nil,
+        nameSeed: String,
+        source: AdapterSource,
+        remoteRepoURL: URL?,
+        errorURL: URL
+    ) throws -> LoRAAdapter {
+        let remapped = PEFTKeyRemapper.remap(rawArrays)
+        guard !remapped.isEmpty else {
+            throw CommunityError.noMappableWeights(errorURL)
+        }
+
+        let exactPatterns = PEFTKeyRemapper.inferInjectionPatterns(
+            fromRemappedKeys: Array(remapped.keys)
+        )
+        let targetLayers = PEFTKeyRemapper.inferTargetLayers(
+            fromInjectionPatterns: exactPatterns
+        )
+
+        let rank = peftConfig?.r ?? inferredConfig?.rank ?? 16
+        let alpha = peftConfig?.loraAlpha ?? inferredConfig?.alpha ?? Float(rank)
+        let dropout = peftConfig?.loraDropout ?? 0.0
+
         let config = LoRAConfig(
-            rank: inferred.rank,
-            alpha: inferred.alpha,
-            dropout: 0.0,
-            targetLayers: targetLayers
+            rank: rank,
+            alpha: alpha,
+            dropout: dropout,
+            targetLayers: targetLayers,
+            exactInjectionPatterns: exactPatterns
+        )
+
+        let adapterID = uniqueAdapterID(from: nameSeed)
+        let adapterName = nameSeed
+        let baseModelID = PEFTKeyRemapper.resolveBaseModelID(
+            from: peftConfig?.baseModelNameOrPath
         )
 
         let adapter = LoRAAdapter(
             id: adapterID,
-            name: repoSlug,
+            name: adapterName,
             config: config,
-            baseModelID: PEFTKeyRemapper.resolveBaseModelID(from: nil),
+            baseModelID: baseModelID,
             baseModelCategory: .aceStepDiT,
             createdAt: Date(),
             sampleCount: 0,
             finalLoss: nil,
-            source: .huggingface,
-            remoteRepoURL: repoURL
+            source: source,
+            remoteRepoURL: remoteRepoURL
         )
 
         let remappedWeights = remapped.map { ($0.key, $0.value) }
         try AdapterRegistry.save(adapter: adapter, weights: remappedWeights)
 
         return adapter
+    }
+
+    private func uniqueAdapterID(from seed: String) -> String {
+        let baseID = seed
+            .lowercased()
+            .replacingOccurrences(of: "[^a-z0-9\\-]", with: "-", options: .regularExpression)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        let normalized = baseID.isEmpty ? "imported-adapter" : baseID
+        let existing = Set(AdapterRegistry.listAdapters().map(\.id))
+        guard existing.contains(normalized) else { return normalized }
+
+        var suffix = 2
+        while existing.contains("\(normalized)-\(suffix)") {
+            suffix += 1
+        }
+        return "\(normalized)-\(suffix)"
+    }
+
+    private func localPEFTNameSeed(for directoryURL: URL) -> String {
+        let components = directoryURL.pathComponents
+        if let cloudJobsIndex = components.firstIndex(of: "cloud-jobs"),
+           cloudJobsIndex + 1 < components.count {
+            return components[cloudJobsIndex + 1]
+        }
+
+        if directoryURL.lastPathComponent == "final" {
+            let parent = directoryURL.deletingLastPathComponent().lastPathComponent
+            if !parent.isEmpty && parent != "lora" {
+                return parent
+            }
+        }
+
+        return directoryURL.lastPathComponent
     }
 
     // MARK: - Private

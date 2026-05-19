@@ -132,6 +132,9 @@ private struct MyAdaptersListView: View {
             }
         }
         .onAppear { refreshAdapters() }
+        .onReceive(NotificationCenter.default.publisher(for: .adapterRegistryDidChange)) { _ in
+            refreshAdapters()
+        }
         .sheet(isPresented: $showingMergeSheet) {
             MergeSheet(onComplete: { refreshAdapters() })
                 .frame(minWidth: 400, minHeight: 300)

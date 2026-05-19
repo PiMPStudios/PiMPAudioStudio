@@ -69,6 +69,8 @@ struct AdapterRegistry {
         // Save weights as safetensors
         let dict = Dictionary(weights, uniquingKeysWith: { _, last in last })
         try MLX.save(arrays: dict, url: dir.appending(path: "adapter.safetensors"))
+
+        notifyRegistryChanged()
     }
 
     static func loadWeights(adapterID: String) throws -> [(String, MLXArray)] {
@@ -150,6 +152,8 @@ struct AdapterRegistry {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let updatedData = try encoder.encode(adapter)
         try updatedData.write(to: finalMetadataURL)
+
+        notifyRegistryChanged()
     }
 
     /// Delete an adapter and all its files.
@@ -162,6 +166,8 @@ struct AdapterRegistry {
         }
 
         try fm.removeItem(at: dir)
+
+        notifyRegistryChanged()
     }
 
     /// Export an adapter (safetensors + metadata) to a destination directory.
@@ -330,4 +336,18 @@ struct AdapterRegistry {
         try save(adapter: mergedAdapter, weights: mergedWeights)
         return mergedAdapter
     }
+
+    private static func notifyRegistryChanged() {
+        if Thread.isMainThread {
+            NotificationCenter.default.post(name: .adapterRegistryDidChange, object: nil)
+        } else {
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: .adapterRegistryDidChange, object: nil)
+            }
+        }
+    }
+}
+
+extension Notification.Name {
+    static let adapterRegistryDidChange = Notification.Name("adapterRegistryDidChange")
 }
