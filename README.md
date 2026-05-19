@@ -11,10 +11,11 @@ Anvil runs diffusion-based audio models entirely on-device using Apple Silicon G
 ### Generation
 
 - **Text-to-Music** — Describe what you want, get a full audio clip. Powered by AceStep DiT (flow-matching diffusion transformer)
-- **Sound Effects** — Stable Audio Open pipeline with CLAP conditioning for short-form SFX generation
+- **Sound Effects** — Stable Audio Open pipeline components for short-form SFX generation
 - **Dual Pipeline** — Automatic routing between music and SFX models based on prompt intent
 - **Intelligent Prompting** — IntentRouter classifies prompts; PromptEnhancer expands terse ideas into detailed generation prompts
-- **Lyric Writing** — Local (Qwen3) and API-based (Claude, GPT-4, Gemini, xAI) lyric generation with structured output
+- **Lyric Writing** — Local Llama 3.2 3B Instruct and API-based (Claude, OpenAI, Gemini, xAI) lyric generation with structured, duration-aware output
+- **Generation Analyzer** — Live backend trace, saved `.trace.json` sidecars, two-run compare, A/B playback, and edit handoff for judging quality changes
 
 ### Audio Editing
 
@@ -55,13 +56,13 @@ AnvilCore (Swift Package)
 │   ├── VAE/         Variational Autoencoder (encode/decode audio latents)
 │   ├── Diffusion/   Sampler, timestep scheduling
 │   ├── Conditioning/ Qwen3 text encoder, lyric/timbre encoders
-│   ├── StableAudio/ Sound FX pipeline (CLAP, SFX DiT, SFX VAE)
+│   ├── StableAudio/ Sound FX pipeline components (T5/projection, SFX DiT, SFX VAE)
 │   ├── Pipeline/    MusicPipeline orchestration
 │   ├── Editor/      Inpaint coordinator, mask builder, latent blender
 │   └── Weights/     SafeTensors loading, name mapping, weight conversion
 ├── LoRA/            LoRALinear, LoRAInjector, LoRATrainer, CosineScheduler
 ├── Community/       CommunityAdapter, AdapterSource, manifest types
-├── LLM/             LLMActor (local Qwen3 inference for prompts/lyrics)
+├── LLM/             LLMActor (local Llama inference for prompts/lyrics)
 └── ModelRegistry/   ModelSpec, DownloadClient, registry management
 ```
 
@@ -135,7 +136,7 @@ CHANGELOG.md              Detailed changelog with road map
 | 3 | ✅ | Conditioning — Qwen3 text encoder, lyric/timbre encoders |
 | 4a | ✅ | Generation Flow — full generation UI, WAV output, history |
 | 4b | ✅ | Intelligence — IntentRouter, PromptEnhancer, LyricWriters |
-| 5 | ✅ | Sound FX — Stable Audio Open, CLAP, dual-pipeline routing |
+| 5 | ✅ | Sound FX — Stable Audio Open, dual-pipeline routing |
 | 6 | ✅ | AI Editor — inpaint/repaint via masked latent diffusion |
 | 7 | ✅ | DSP Editor — trim, fade, normalize, EQ, reverb |
 | 8a | ✅ | Time Stretch & Pitch Shift — AVAudioUnit + quality zones |

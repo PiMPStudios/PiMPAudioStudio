@@ -182,6 +182,15 @@ tensor logs. There is no golden prompt set, no automated metrics (FAD, CLAP
 score, spectral convergence), and no systematic A/B harness. This makes every
 proposed fix expensive and noisy.
 
+**Codex implementation note (2026-05-19):** The first product-facing listening
+flywheel now exists in the app. Each generation writes a `.trace.json` sidecar
+with request/model/adapter/audio metadata; History can reopen saved traces;
+the Generation Analyzer can compare two traces side by side, highlight changed
+settings, play A/B audio, and send either run into the editor. This does not
+replace objective metrics or golden-set reports, but it closes the practical
+"what changed between the good one and the wrecked one?" loop that was missing
+from day-to-day quality tuning.
+
 ---
 
 ## Prioritized Roadmap
@@ -240,6 +249,9 @@ a simple report. Expand only after the first evidence points at the bottleneck.
      energy, stereo correlation, transient sharpness
    - Always pair metrics with short blind listening notes; music quality is
      not reducible to one score.
+   - Codex implementation note (2026-05-19): until objective metrics are wired,
+     use the Generation Analyzer trace compare view as the lightweight
+     listening report for schedule/model/seed/adapter A/Bs.
 
 **Deliverable:** A minimal `QualityEval` script/target that produces a one-page
 Markdown report and stores enough artifacts to compare two branches or commits.

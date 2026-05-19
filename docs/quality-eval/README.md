@@ -7,6 +7,12 @@ decoded reference audio. The second target is a narrow DiT tensor probe:
 run one fixed denoising forward pass and compare selected Swift tensors against
 upstream reference tensors from the same inputs.
 
+For everyday listening A/Bs inside the app, use the Generation Analyzer rather
+than this parity harness. Current Anvil builds write `.trace.json` sidecars next
+to generated WAVs; History can reopen those traces and compare two runs with
+changed settings, prompt/lyrics, audio summaries, A/B playback, and editor
+handoff. This folder remains the lower-level parity/metric workspace.
+
 ## VAE Artifact Contract
 
 For each parity case, export:

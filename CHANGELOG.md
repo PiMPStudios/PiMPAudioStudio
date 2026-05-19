@@ -4,6 +4,25 @@ All notable changes to AnvilApp are documented here.
 
 ---
 
+## [Unreleased] — Generation Analyzer + Trace Compare Workflow
+
+### Added
+
+- **Generation Analyzer live window** — a new analyzer scene can be opened before generation to watch the request move through routing, model selection, adapter setup, conditioning, diffusion, decode, WAV write, waveform analysis, and trace writing. Events are shown reverse-chronologically with stage labels, timestamps, progress, ETA, request metadata, model details, LoRA stack, and audio statistics.
+- **Per-generation trace sidecars** — each generated WAV now gets a sibling `.trace.json` sidecar containing the resolved request, prompt, lyrics, pipeline, primary/supporting models, active adapters, timing, feature flags, waveform peaks, per-second envelope stats, and audio summary. History entries now store the trace filename plus model/adapter snapshots, so old generations can be inspected later without rerunning them.
+- **Saved trace viewer from History** — history rows with trace sidecars show an analyzer shortcut and context-menu action. Opening a saved trace reconstructs the analyzer session with the original request, model stack, prompt, lyrics, audio stats, and trace metadata.
+- **Two-run trace compare mode** — selecting exactly two traced history rows now offers `Compare`, opening a side-by-side analyzer view with run summaries, changed settings highlighted, prompt/lyrics columns, and audio summary columns. This makes guidance/seed/model/adapter A/B listening less guessy.
+- **A/B playback in trace compare** — compare mode now has `Play A` / `Play B` controls wired through the shared audio player and uses waveform peaks stored in the trace sidecar for fast switching.
+- **Edit handoff from trace compare** — compare mode now exposes `Edit A` / `Edit B`; choosing a run pauses compare playback, switches the main app to the editor, loads that WAV, and passes the trace prompt as editor context.
+
+### Fixed
+
+- **Random seed generations are now reproducible** — "Random" seeds are resolved to a concrete integer before dispatching to any backend, then recorded into the history entry and trace sidecar. ACE-Step SDE per-step noise also receives the resolved seed plus step index, so a liked random take can be regenerated or modified later instead of being lost as `0` / missing seed metadata.
+- **Imported LoRA adapters refresh the UI without relaunch** — adapter save/import/delete paths now post an adapter-registry change notification. The picker, stack view, and settings list refresh when local or HuggingFace PEFT adapters are imported, so newly imported adapters appear immediately.
+- **Local PEFT adapter imports are normalized into Anvil's registry** — importing a local `adapter_config.json` + `adapter_model.safetensors` directory now reuses the same PEFT config parsing, key remapping, base-model resolution, and registry-save path as HuggingFace adapter imports.
+
+---
+
 ## [Unreleased] — Runtime + Memory Optimization Pass
 
 ### Fixed
