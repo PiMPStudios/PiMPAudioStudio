@@ -74,10 +74,17 @@ struct LiveGenerationTraceSession: Identifiable, Sendable, Equatable {
     var errorMessage: String?
 }
 
+struct GenerationTraceComparison: Sendable, Equatable {
+    let left: GenerationTrace
+    let right: GenerationTrace
+    let loadedAt: Date
+}
+
 @MainActor
 final class GenerationTraceMonitor: ObservableObject {
     @Published private(set) var currentSession: LiveGenerationTraceSession?
     @Published private(set) var inspectedSession: LiveGenerationTraceSession?
+    @Published private(set) var comparison: GenerationTraceComparison?
     @Published private(set) var recentSessions: [LiveGenerationTraceSession] = []
 
     private let maxEvents = 300
@@ -86,6 +93,7 @@ final class GenerationTraceMonitor: ObservableObject {
     func start(request: GenerationRequest) {
         let now = Date()
         inspectedSession = nil
+        comparison = nil
         currentSession = LiveGenerationTraceSession(
             id: UUID(),
             startedAt: now,
@@ -116,11 +124,25 @@ final class GenerationTraceMonitor: ObservableObject {
     }
 
     func inspect(trace: GenerationTrace) {
+        comparison = nil
         inspectedSession = Self.session(from: trace)
     }
 
     func clearInspection() {
         inspectedSession = nil
+    }
+
+    func compare(left: GenerationTrace, right: GenerationTrace) {
+        inspectedSession = nil
+        comparison = GenerationTraceComparison(
+            left: left,
+            right: right,
+            loadedAt: Date()
+        )
+    }
+
+    func clearComparison() {
+        comparison = nil
     }
 
     func configure(

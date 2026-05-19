@@ -48,6 +48,15 @@ struct HistoryListView: View {
             if !historyStore.entries.isEmpty {
                 if isSelecting {
                     if !selectedIDs.isEmpty {
+                        if selectedIDs.count == 2 {
+                            Button("Compare") {
+                                compareSelected()
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.mini)
+                            .disabled(!canCompareSelected)
+                        }
+
                         Button("Train LoRA") {
                             showTrainingSheet = true
                         }
@@ -214,6 +223,29 @@ struct HistoryListView: View {
         do {
             let trace = try historyStore.loadTrace(for: entry)
             traceMonitor.inspect(trace: trace)
+            openWindow(id: "generationAnalyzer")
+        } catch {
+            traceErrorMessage = error.localizedDescription
+        }
+    }
+
+    private var selectedEntries: [HistoryEntry] {
+        historyStore.entries.filter { selectedIDs.contains($0.id) }
+    }
+
+    private var canCompareSelected: Bool {
+        let entries = selectedEntries
+        guard entries.count == 2 else { return false }
+        return entries.allSatisfy { historyStore.traceURL(for: $0) != nil }
+    }
+
+    private func compareSelected() {
+        let entries = selectedEntries
+        guard entries.count == 2 else { return }
+
+        do {
+            let traces = try entries.map { try historyStore.loadTrace(for: $0) }
+            traceMonitor.compare(left: traces[0], right: traces[1])
             openWindow(id: "generationAnalyzer")
         } catch {
             traceErrorMessage = error.localizedDescription

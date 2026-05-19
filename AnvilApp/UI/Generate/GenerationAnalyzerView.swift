@@ -5,13 +5,50 @@ struct GenerationAnalyzerView: View {
 
     var body: some View {
         Group {
-            if let session = traceMonitor.inspectedSession ?? traceMonitor.currentSession {
+            if let comparison = traceMonitor.comparison {
+                comparisonContent(comparison)
+            } else if let session = traceMonitor.inspectedSession ?? traceMonitor.currentSession {
                 analyzerContent(for: session)
             } else {
                 emptyState
             }
         }
         .frame(minWidth: 760, minHeight: 520)
+    }
+
+    private func comparisonContent(_ comparison: GenerationTraceComparison) -> some View {
+        let rows = comparisonRows(comparison)
+        let changedCount = rows.filter(\.isDifferent).count
+
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Trace Compare")
+                            .font(.title2.weight(.semibold))
+                        Text("\(changedCount) changed fields")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    if traceMonitor.currentSession != nil {
+                        Button("Show Live") {
+                            traceMonitor.clearComparison()
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
+                }
+
+                compareSummary(comparison)
+                changedFieldsPanel(rows)
+                promptDiffPanel(comparison)
+                audioComparePanel(comparison)
+            }
+            .padding(18)
+        }
     }
 
     private func analyzerContent(for session: LiveGenerationTraceSession) -> some View {
@@ -48,6 +85,113 @@ struct GenerationAnalyzerView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()
+    }
+
+    private func compareSummary(_ comparison: GenerationTraceComparison) -> some View {
+        HStack(alignment: .top, spacing: 16) {
+            traceSummaryColumn(title: "A", trace: comparison.left)
+            traceSummaryColumn(title: "B", trace: comparison.right)
+        }
+    }
+
+    private func traceSummaryColumn(title: String, trace: GenerationTrace) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            panelTitle("Run \(title)", systemImage: "waveform.path.ecg")
+            metricRow("Created", trace.createdAt.formatted(date: .abbreviated, time: .standard))
+            metricRow("Pipeline", trace.pipeline)
+            metricRow("Model", trace.primaryModel?.displayName ?? trace.primaryModel?.id ?? "Unknown")
+            metricRow("LoRA", adapterSummary(trace.adapters))
+            metricRow("Seed", trace.request.seed.map(String.init) ?? "Random")
+            metricRow("Trace", trace.traceFileName)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .background(.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func changedFieldsPanel(_ rows: [ComparisonRow]) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            panelTitle("Changed Settings", systemImage: "list.bullet.rectangle")
+            VStack(spacing: 0) {
+                ForEach(rows) { row in
+                    HStack(alignment: .top, spacing: 12) {
+                        Text(row.label)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 110, alignment: .leading)
+                        Text(row.left)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text(row.right)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .font(.callout)
+                    .lineLimit(3)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(row.isDifferent ? Color.accentColor.opacity(0.12) : Color.clear)
+
+                    if row.id != rows.last?.id {
+                        Divider()
+                    }
+                }
+            }
+            .background(.black.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        }
+        .padding(12)
+        .background(.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func promptDiffPanel(_ comparison: GenerationTraceComparison) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            panelTitle("Prompt & Lyrics", systemImage: "text.quote")
+            HStack(alignment: .top, spacing: 16) {
+                textCompareColumn(title: "A Prompt", text: comparison.left.prompt)
+                textCompareColumn(title: "B Prompt", text: comparison.right.prompt)
+            }
+            HStack(alignment: .top, spacing: 16) {
+                textCompareColumn(title: "A Lyrics", text: emptyLabel(comparison.left.lyrics))
+                textCompareColumn(title: "B Lyrics", text: emptyLabel(comparison.right.lyrics))
+            }
+        }
+        .padding(12)
+        .background(.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func audioComparePanel(_ comparison: GenerationTraceComparison) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            panelTitle("Audio", systemImage: "waveform")
+            HStack(alignment: .top, spacing: 16) {
+                audioSummaryColumn(title: "A", audio: comparison.left.audio)
+                audioSummaryColumn(title: "B", audio: comparison.right.audio)
+            }
+        }
+        .padding(12)
+        .background(.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func textCompareColumn(title: String, text: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(text)
+                .font(.caption)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+    }
+
+    private func audioSummaryColumn(title: String, audio: GenerationTraceAudioSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Run \(title)")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            metricRow("Duration", String(format: "%.1fs", audio.duration))
+            metricRow("Abs Mean", String(format: "%.4f", audio.absMean))
+            metricRow("Abs Max", String(format: "%.3f", audio.absMax))
+            metricRow("Shape", audio.sampleShape.map(String.init).joined(separator: " x "))
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     private func header(for session: LiveGenerationTraceSession) -> some View {
@@ -344,5 +488,98 @@ struct GenerationAnalyzerView: View {
         case .warning: return "exclamationmark.triangle.fill"
         case .error: return "xmark.octagon.fill"
         }
+    }
+
+    private func comparisonRows(_ comparison: GenerationTraceComparison) -> [ComparisonRow] {
+        let left = comparison.left
+        let right = comparison.right
+
+        return [
+            row("Pipeline", left.pipeline, right.pipeline),
+            row("Model", modelSummary(left.primaryModel), modelSummary(right.primaryModel)),
+            row("Supporting", modelListSummary(left.supportingModels), modelListSummary(right.supportingModels)),
+            row("LoRA", adapterSummary(left.adapters), adapterSummary(right.adapters)),
+            row("Duration", "\(Int(left.request.duration))s", "\(Int(right.request.duration))s"),
+            row("Seed", left.request.seed.map(String.init) ?? "Random", right.request.seed.map(String.init) ?? "Random"),
+            row("Method", left.request.method, right.request.method),
+            row("Guidance", format(left.request.guidanceScale), format(right.request.guidanceScale)),
+            row("Preset", left.request.guidancePresetName, right.request.guidancePresetName),
+            row(
+                "CFG Window",
+                "\(left.request.cfgIntervalStart) → \(left.request.cfgIntervalEnd)",
+                "\(right.request.cfgIntervalStart) → \(right.request.cfgIntervalEnd)"
+            ),
+            row("Precision", left.request.precision, right.request.precision),
+            row("Steps", left.request.stepsOverride.map(String.init) ?? "Auto", right.request.stepsOverride.map(String.init) ?? "Auto"),
+            row("Shift", optionalFormat(left.request.shiftOverride), optionalFormat(right.request.shiftOverride)),
+            row("Mode", left.request.resolvedMode, right.request.resolvedMode),
+            row("Prompt", compact(left.prompt), compact(right.prompt)),
+            row("Lyrics", lyricsSummary(left.lyrics), lyricsSummary(right.lyrics)),
+            row("Abs Mean", format(left.audio.absMean, digits: 4), format(right.audio.absMean, digits: 4)),
+            row("Abs Max", format(left.audio.absMax, digits: 3), format(right.audio.absMax, digits: 3))
+        ]
+    }
+
+    private func row(_ label: String, _ left: String, _ right: String) -> ComparisonRow {
+        ComparisonRow(label: label, left: left, right: right)
+    }
+
+    private func modelSummary(_ model: HistoryModelSnapshot?) -> String {
+        guard let model else { return "None" }
+        return model.displayName ?? model.id
+    }
+
+    private func modelListSummary(_ models: [HistoryModelSnapshot]) -> String {
+        guard !models.isEmpty else { return "None" }
+        return models.map { $0.displayName ?? $0.id }.joined(separator: ", ")
+    }
+
+    private func adapterSummary(_ adapters: [HistoryAdapterSnapshot]) -> String {
+        guard !adapters.isEmpty else { return "None" }
+        return adapters.map { adapter in
+            let label = adapter.name ?? adapter.id
+            return "\(label) x\(String(format: "%.2f", adapter.weight))"
+        }.joined(separator: ", ")
+    }
+
+    private func lyricsSummary(_ lyrics: String) -> String {
+        let trimmed = lyrics.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "None" }
+        let lines = trimmed.components(separatedBy: .newlines).filter { !$0.isEmpty }
+        return "\(lines.count) lines"
+    }
+
+    private func emptyLabel(_ text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "None" : trimmed
+    }
+
+    private func compact(_ text: String) -> String {
+        let oneLine = text
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if oneLine.count > 180 {
+            return String(oneLine.prefix(177)) + "..."
+        }
+        return oneLine
+    }
+
+    private func format(_ value: Float, digits: Int = 1) -> String {
+        String(format: "%.\(digits)f", value)
+    }
+
+    private func optionalFormat(_ value: Float?) -> String {
+        value.map { String(format: "%.1f", $0) } ?? "Auto"
+    }
+}
+
+private struct ComparisonRow: Identifiable, Equatable {
+    let id = UUID()
+    let label: String
+    let left: String
+    let right: String
+
+    var isDifferent: Bool {
+        left != right
     }
 }
