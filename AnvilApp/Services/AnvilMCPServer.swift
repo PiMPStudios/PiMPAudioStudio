@@ -218,6 +218,10 @@ final class AnvilMCPServer: ObservableObject {
                 structured = try await facade.writeLyrics(arguments: arguments)
             case "anvil.apply_adapter":
                 structured = try await facade.applyAdapter(arguments: arguments)
+            case "anvil.generate":
+                structured = try facade.generate(arguments: arguments)
+            case "anvil.generation_status":
+                structured = try facade.generationStatus()
             case "anvil.release_memory":
                 structured = try await facade.releaseMemory(arguments: arguments)
             default:
@@ -877,6 +881,90 @@ private enum MCPToolCatalog {
                     "description": "Clear all selected adapters when true."
                 ]
             ]
+        ),
+        tool(
+            name: "anvil.generate",
+            title: "Generate Audio",
+            description: "Submit a generation request through the same path as the Generate view. Returns immediately; poll anvil.generation_status or history for completion.",
+            required: ["prompt"],
+            properties: [
+                "prompt": [
+                    "type": "string",
+                    "description": "Prompt or audio description."
+                ],
+                "text": [
+                    "type": "string",
+                    "description": "Alias for prompt."
+                ],
+                "lyrics": [
+                    "type": "string",
+                    "description": "Optional lyrics for music generation."
+                ],
+                "duration": [
+                    "type": "number",
+                    "minimum": 1,
+                    "description": "Duration in seconds. Defaults to 30. Stable Audio requests are capped at 47 seconds."
+                ],
+                "seed": [
+                    "description": "Integer seed, 'random', empty, or omitted for random."
+                ],
+                "mode": [
+                    "type": "string",
+                    "enum": ["music", "soundFX", "ambient"],
+                    "description": "Resolved generation mode. Defaults to music."
+                ],
+                "pipeline": [
+                    "type": "string",
+                    "enum": ["auto", "aceStep", "stableAudio"],
+                    "description": "Pipeline override. Defaults to auto."
+                ],
+                "guidanceScale": [
+                    "type": "number",
+                    "description": "CFG guidance scale. Defaults to 7.5."
+                ],
+                "guidancePreset": [
+                    "type": "string",
+                    "enum": ["constant", "lateEmphasis", "midToLate", "softLate"],
+                    "description": "Guidance schedule preset. Defaults to softLate."
+                ],
+                "method": [
+                    "type": "string",
+                    "enum": ["ode", "sde"],
+                    "description": "Diffusion method. Defaults to ode."
+                ],
+                "precision": [
+                    "type": "string",
+                    "enum": ["float32", "float16"],
+                    "description": "Runtime precision. Defaults to float32."
+                ],
+                "steps": [
+                    "description": "Positive integer step override, 'auto', or omitted for auto."
+                ],
+                "shift": [
+                    "type": "number",
+                    "description": "ACE-Step shift override. Defaults to 3.0."
+                ],
+                "referenceAudioPath": [
+                    "type": "string",
+                    "description": "Optional local audio path for cover-song generation."
+                ],
+                "coverStrength": [
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "Cover-song blend strength. Defaults to 0.7."
+                ],
+                "dryRun": [
+                    "type": "boolean",
+                    "description": "Validate and echo the resolved request without starting generation."
+                ]
+            ]
+        ),
+        tool(
+            name: "anvil.generation_status",
+            title: "Generation Status",
+            description: "Return the current generation state and latest completed result metadata.",
+            properties: [:]
         ),
         tool(
             name: "anvil.release_memory",

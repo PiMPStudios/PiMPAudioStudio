@@ -33,15 +33,20 @@ The local MCP endpoint exposes read tools:
 - `anvil.compare_traces`
 - `anvil.enhance_prompt`
 - `anvil.write_lyrics`
+- `anvil.generation_status`
 
 `anvil.enhance_prompt` and `anvil.write_lyrics` call the same local/API
 intelligence services used by the Generate view. They return text only and do
 not update the current prompt, lyric field, history, traces, models, or audio.
 
+`anvil.generation_status` returns the current generation state and latest
+completed result metadata, including local audio/trace paths when available.
+
 It also exposes one controlled metadata write:
 
 - `anvil.mark_preferred_take`
 - `anvil.apply_adapter`
+- `anvil.generate`
 
 `anvil.mark_preferred_take` only updates review metadata on an existing trace:
 the preferred flag and optional listening note. It mirrors the same values into
@@ -53,6 +58,12 @@ generation settings.
 next generation. It validates that adapters are installed and ACE-Step
 compatible, updates the same generation-service state used by the UI, persists
 the primary adapter, and notifies the Generate view when it is open.
+
+`anvil.generate` submits a generation request through the same service path as
+the Generate button. It returns immediately; use `anvil.generation_status`,
+`anvil.list_history`, or trace resources to observe completion. Pass
+`dryRun: true` to validate and echo the resolved request without starting a
+render.
 
 It exposes one guarded cleanup action:
 
@@ -261,7 +272,7 @@ curl -s http://127.0.0.1:38765/mcp \
   }'
 ```
 
-Release model memory:
+Validate a generation request without starting audio:
 
 ```bash
 curl -s http://127.0.0.1:38765/mcp \
@@ -269,6 +280,64 @@ curl -s http://127.0.0.1:38765/mcp \
   -d '{
     "jsonrpc": "2.0",
     "id": 10,
+    "method": "tools/call",
+    "params": {
+      "name": "anvil.generate",
+      "arguments": {
+        "prompt": "slow dark guitar riff",
+        "duration": 30,
+        "seed": 42,
+        "guidancePreset": "constant",
+        "dryRun": true
+      }
+    }
+  }'
+```
+
+Submit a generation:
+
+```bash
+curl -s http://127.0.0.1:38765/mcp \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 11,
+    "method": "tools/call",
+    "params": {
+      "name": "anvil.generate",
+      "arguments": {
+        "prompt": "slow dark guitar riff",
+        "duration": 30,
+        "seed": 42
+      }
+    }
+  }'
+```
+
+Poll generation status:
+
+```bash
+curl -s http://127.0.0.1:38765/mcp \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 12,
+    "method": "tools/call",
+    "params": {
+      "name": "anvil.generation_status",
+      "arguments": {}
+    }
+  }'
+```
+
+Release model memory:
+
+```bash
+curl -s http://127.0.0.1:38765/mcp \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 13,
     "method": "tools/call",
     "params": {
       "name": "anvil.release_memory",
@@ -292,6 +361,9 @@ curl -s http://127.0.0.1:38765/mcp \
   metadata only.
 - `anvil.apply_adapter` changes app adapter-selection state but does not start
   generation, load model weights, or alter adapter files.
+- `anvil.generate` is non-blocking. It starts the same app generation path and
+  returns immediately so MCP clients can poll status or history instead of
+  holding a long-running HTTP request open.
 - `anvil.release_memory` is intentionally guarded because it cancels active
   generation and unloads resident model state. The next generation or LLM tool
   call reloads what it needs.

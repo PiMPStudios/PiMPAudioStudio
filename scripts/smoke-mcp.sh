@@ -69,6 +69,8 @@ grep -q '"anvil.enhance_prompt"' "$TMP_DIR/tools.json"
 grep -q '"anvil.write_lyrics"' "$TMP_DIR/tools.json"
 grep -q '"anvil.mark_preferred_take"' "$TMP_DIR/tools.json"
 grep -q '"anvil.apply_adapter"' "$TMP_DIR/tools.json"
+grep -q '"anvil.generate"' "$TMP_DIR/tools.json"
+grep -q '"anvil.generation_status"' "$TMP_DIR/tools.json"
 grep -q '"anvil.release_memory"' "$TMP_DIR/tools.json"
 
 echo "4. resources/list"

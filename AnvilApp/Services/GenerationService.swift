@@ -78,6 +78,19 @@ final class GenerationService: ObservableObject {
         self.traceMonitor = traceMonitor
     }
 
+    var canSubmitGeneration: Bool {
+        switch state {
+        case .idle, .complete, .cancelled, .error:
+            return true
+        default:
+            return false
+        }
+    }
+
+    var outputDirectoryPath: String? {
+        outputDirectoryManager.directory?.path(percentEncoded: false)
+    }
+
     func generate(request: GenerationRequest) {
         generationTask?.cancel()
 

@@ -332,6 +332,39 @@ final class AnvilCommandFacade {
         return adapterSelectionPayload(selection)
     }
 
+    func generate(arguments: [String: Any]) throws -> [String: Any] {
+        guard let generationService else {
+            throw AnvilCommandFacadeError.generationServiceUnavailable
+        }
+
+        let request = try generationRequest(arguments)
+        let dryRun = boolValue(arguments["dryRun"] ?? arguments["validateOnly"]) == true
+        if dryRun {
+            return generationSubmissionPayload(request: request, submitted: false, dryRun: true)
+        }
+
+        guard generationService.outputDirectoryPath != nil else {
+            throw AnvilCommandFacadeError.outputDirectoryUnavailable
+        }
+        guard generationService.canSubmitGeneration else {
+            throw AnvilCommandFacadeError.generationAlreadyActive(stateName(generationService.state))
+        }
+
+        generationService.generate(request: request)
+        return generationSubmissionPayload(request: request, submitted: true, dryRun: false)
+    }
+
+    func generationStatus() throws -> [String: Any] {
+        guard let generationService else {
+            throw AnvilCommandFacadeError.generationServiceUnavailable
+        }
+
+        return [
+            "state": generationStatePayload(generationService.state),
+            "currentResult": generationService.currentResult.map(generationResultPayload) ?? NSNull()
+        ]
+    }
+
     func releaseMemory(arguments: [String: Any]) async throws -> [String: Any] {
         guard boolValue(arguments["confirm"]) == true else {
             throw AnvilCommandFacadeError.confirmationRequired("release_memory")
@@ -431,6 +464,88 @@ final class AnvilCommandFacade {
             throw AnvilCommandFacadeError.invalidStrength
         }
         return Float(parsed)
+    }
+
+    private func generationRequest(_ arguments: [String: Any]) throws -> GenerationRequest {
+        let prompt = try requiredString("prompt", aliases: ["text"], in: arguments)
+        let lyrics = stringValue(arguments["lyrics"]) ?? ""
+        let mode = generationMode(from: arguments["mode"] ?? arguments["generationMode"]) ?? .music
+        let pipeline = pipelineChoice(from: arguments["pipeline"] ?? arguments["pipelineOverride"]) ?? .auto
+        let requestedDuration = doubleValue(arguments["duration"] ?? arguments["durationSeconds"]) ?? 30.0
+        guard requestedDuration > 0 else {
+            throw AnvilCommandFacadeError.invalidDuration
+        }
+
+        let duration: Double
+        if pipeline == .stableAudio || (pipeline == .auto && (mode == .soundFX || mode == .ambient)) {
+            duration = min(requestedDuration, 47.0)
+        } else {
+            duration = requestedDuration
+        }
+
+        return GenerationRequest(
+            text: prompt,
+            lyrics: lyrics,
+            referenceAudioURL: referenceAudioURL(from: arguments["referenceAudioPath"] ?? arguments["referenceAudioURL"]),
+            duration: duration,
+            seed: try seedValue(arguments["seed"]),
+            method: inferMethod(from: arguments["method"]) ?? .ode,
+            guidanceScale: Float(doubleValue(arguments["guidanceScale"] ?? arguments["guidance"]) ?? 7.5),
+            guidancePreset: guidancePreset(from: arguments["guidancePreset"] ?? arguments["preset"]) ?? .defaultSelection,
+            precision: precision(from: arguments["precision"]) ?? .float32,
+            stepsOverride: try stepsValue(arguments["steps"] ?? arguments["stepsOverride"]),
+            shiftOverride: Float(doubleValue(arguments["shift"] ?? arguments["shiftOverride"]) ?? 3.0),
+            resolvedMode: mode,
+            pipelineOverride: pipeline,
+            coverStrength: Float(min(max(doubleValue(arguments["coverStrength"]) ?? 0.7, 0.0), 1.0))
+        )
+    }
+
+    private func referenceAudioURL(from value: Any?) -> URL? {
+        guard let path = stringValue(value)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !path.isEmpty else {
+            return nil
+        }
+        if let url = URL(string: path), url.scheme != nil {
+            return url
+        }
+        return URL(fileURLWithPath: NSString(string: path).expandingTildeInPath)
+    }
+
+    private func seedValue(_ value: Any?) throws -> Int? {
+        guard let value else { return nil }
+        if value is NSNull { return nil }
+        if let int = value as? Int { return int }
+        if let number = value as? NSNumber { return number.intValue }
+        if let string = value as? String {
+            let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty || trimmed.lowercased() == "random" {
+                return nil
+            }
+            guard let parsed = Int(trimmed) else {
+                throw AnvilCommandFacadeError.invalidSeed
+            }
+            return parsed
+        }
+        throw AnvilCommandFacadeError.invalidSeed
+    }
+
+    private func stepsValue(_ value: Any?) throws -> Int? {
+        guard let value else { return nil }
+        if value is NSNull { return nil }
+        if let int = value as? Int, int > 0 { return int }
+        if let number = value as? NSNumber, number.intValue > 0 { return number.intValue }
+        if let string = value as? String {
+            let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty || trimmed.lowercased() == "auto" {
+                return nil
+            }
+            guard let parsed = Int(trimmed), parsed > 0 else {
+                throw AnvilCommandFacadeError.invalidSteps
+            }
+            return parsed
+        }
+        throw AnvilCommandFacadeError.invalidSteps
     }
 
     private func modelResource(id: String) async throws -> [String: Any] {
@@ -660,6 +775,97 @@ final class AnvilCommandFacade {
         ]
     }
 
+    private func generationSubmissionPayload(
+        request: GenerationRequest,
+        submitted: Bool,
+        dryRun: Bool
+    ) -> [String: Any] {
+        [
+            "submitted": submitted,
+            "dryRun": dryRun,
+            "request": generationRequestPayload(request),
+            "status": generationService.map { generationStatePayload($0.state) } ?? NSNull()
+        ]
+    }
+
+    private func generationRequestPayload(_ request: GenerationRequest) -> [String: Any] {
+        [
+            "prompt": request.text,
+            "lyrics": request.lyrics.isEmpty ? NSNull() : request.lyrics,
+            "duration": request.duration,
+            "seed": request.seed.map { $0 as Any } ?? NSNull(),
+            "method": request.method.rawValue,
+            "guidanceScale": request.guidanceScale,
+            "effectiveGuidanceScale": request.effectiveGuidanceScale,
+            "guidancePreset": request.guidancePreset.rawValue,
+            "cfgIntervalStart": request.cfgIntervalStart,
+            "cfgIntervalEnd": request.cfgIntervalEnd,
+            "precision": request.precision.rawValue,
+            "steps": request.stepsOverride.map { $0 as Any } ?? NSNull(),
+            "shift": request.shiftOverride.map { $0 as Any } ?? NSNull(),
+            "mode": request.resolvedMode.rawValue,
+            "pipeline": request.pipelineOverride.rawValue,
+            "referenceAudioPath": request.referenceAudioURL?.path(percentEncoded: false) ?? NSNull(),
+            "coverStrength": request.coverStrength
+        ]
+    }
+
+    private func generationResultPayload(_ result: GenerationResult) -> [String: Any] {
+        [
+            "historyEntryID": result.entry.id.uuidString,
+            "fileName": result.entry.fileName,
+            "audioFilePath": result.fileURL.path(percentEncoded: false),
+            "traceFileName": result.entry.traceFileName ?? NSNull(),
+            "prompt": result.entry.prompt,
+            "duration": result.entry.duration,
+            "seed": result.entry.seed,
+            "pipeline": result.entry.pipeline ?? NSNull(),
+            "modelID": result.entry.modelID ?? NSNull(),
+            "modelName": result.entry.modelName ?? NSNull(),
+            "hasWaveformPeaks": result.waveformPeaks != nil
+        ]
+    }
+
+    private func generationStatePayload(_ state: GenerationState) -> [String: Any] {
+        switch state {
+        case .idle:
+            return ["name": "idle"]
+        case .downloadingModel(let progress):
+            return ["name": "downloadingModel", "progress": progress]
+        case .loadingWeights(let progress):
+            return ["name": "loadingWeights", "progress": progress]
+        case .conditioning:
+            return ["name": "conditioning"]
+        case .tokenizingSource:
+            return ["name": "tokenizingSource"]
+        case .generating(let step, let totalSteps, let eta):
+            return ["name": "generating", "step": step, "totalSteps": totalSteps, "eta": eta]
+        case .decoding:
+            return ["name": "decoding"]
+        case .complete:
+            return ["name": "complete"]
+        case .error(let message):
+            return ["name": "error", "message": message]
+        case .cancelled:
+            return ["name": "cancelled"]
+        }
+    }
+
+    private func stateName(_ state: GenerationState) -> String {
+        switch state {
+        case .idle: return "idle"
+        case .downloadingModel: return "downloadingModel"
+        case .loadingWeights: return "loadingWeights"
+        case .conditioning: return "conditioning"
+        case .tokenizingSource: return "tokenizingSource"
+        case .generating: return "generating"
+        case .decoding: return "decoding"
+        case .complete: return "complete"
+        case .error: return "error"
+        case .cancelled: return "cancelled"
+        }
+    }
+
     private func persistAdapterSelection(_ selection: [AdapterSelection]) {
         let defaults = UserDefaults.standard
         if let primary = selection.first {
@@ -764,6 +970,20 @@ final class AnvilCommandFacade {
         return value
     }
 
+    private func requiredString(
+        _ key: String,
+        aliases: [String],
+        in arguments: [String: Any]
+    ) throws -> String {
+        for candidate in [key] + aliases {
+            let value = stringValue(arguments[candidate])?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !value.isEmpty {
+                return value
+            }
+        }
+        throw AnvilCommandFacadeError.missingRequiredArgument(key)
+    }
+
     private func requiredDuration(in arguments: [String: Any]) throws -> Double {
         guard let duration = doubleValue(arguments["duration"] ?? arguments["durationSeconds"]),
               duration > 0 else {
@@ -778,6 +998,62 @@ final class AnvilCommandFacade {
             return mode
         }
         return GenerationMode(fromClassification: rawValue)
+    }
+
+    private func pipelineChoice(from value: Any?) -> PipelineChoice? {
+        guard let rawValue = stringValue(value)?.trimmingCharacters(in: .whitespacesAndNewlines) else {
+            return nil
+        }
+        if let pipeline = PipelineChoice(rawValue: rawValue) {
+            return pipeline
+        }
+        switch rawValue.lowercased() {
+        case "music", "acestep", "ace-step", "ace_step":
+            return .aceStep
+        case "sfx", "soundfx", "sound_fx", "sound fx", "stableaudio", "stable-audio", "stable_audio":
+            return .stableAudio
+        default:
+            return nil
+        }
+    }
+
+    private func inferMethod(from value: Any?) -> InferMethod? {
+        guard let rawValue = stringValue(value)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() else {
+            return nil
+        }
+        return InferMethod(rawValue: rawValue)
+    }
+
+    private func precision(from value: Any?) -> Precision? {
+        guard let rawValue = stringValue(value)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() else {
+            return nil
+        }
+        return Precision(rawValue: rawValue)
+    }
+
+    private func guidancePreset(from value: Any?) -> GuidancePreset? {
+        guard let rawValue = stringValue(value)?.trimmingCharacters(in: .whitespacesAndNewlines) else {
+            return nil
+        }
+        if let preset = GuidancePreset(rawValue: rawValue) {
+            return preset
+        }
+        let compact = rawValue
+            .lowercased()
+            .replacingOccurrences(of: " ", with: "")
+            .replacingOccurrences(of: "-", with: "")
+        switch compact {
+        case "constant":
+            return .constant
+        case "lateemphasis", "late":
+            return .lateEmphasis
+        case "midtolate", "midlate":
+            return .midToLate
+        case "softlate", "soft":
+            return .softLate
+        default:
+            return nil
+        }
     }
 
     private func normalizedText(_ text: String) -> String {
@@ -833,9 +1109,13 @@ private enum AnvilCommandFacadeError: LocalizedError {
     case invalidAdapterStack
     case invalidBoolean(String)
     case invalidStrength
+    case invalidSeed
+    case invalidSteps
     case tooManyAdapters(Int)
     case missingRequiredArgument(String)
     case invalidDuration
+    case outputDirectoryUnavailable
+    case generationAlreadyActive(String)
     case confirmationRequired(String)
     case generationServiceUnavailable
     case encodingFailed
@@ -862,12 +1142,20 @@ private enum AnvilCommandFacadeError: LocalizedError {
             return "'\(key)' must be true or false."
         case .invalidStrength:
             return "Adapter strength must be a number from 0.0 to 1.0."
+        case .invalidSeed:
+            return "Seed must be an integer or 'random'."
+        case .invalidSteps:
+            return "Steps must be a positive integer or 'auto'."
         case .tooManyAdapters(let maxCount):
             return "Adapter stack can contain at most \(maxCount) adapters."
         case .missingRequiredArgument(let key):
             return "Missing required argument '\(key)'."
         case .invalidDuration:
             return "Provide a positive duration in seconds."
+        case .outputDirectoryUnavailable:
+            return "No output directory is selected."
+        case .generationAlreadyActive(let state):
+            return "Generation is already active (state: \(state))."
         case .confirmationRequired(let action):
             return "Refusing to run '\(action)' without confirm: true."
         case .generationServiceUnavailable:

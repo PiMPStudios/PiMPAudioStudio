@@ -71,7 +71,8 @@ with explicit safeguards.
 - [x] `anvil.enhance_prompt`
 - [x] `anvil.write_lyrics`
 - [x] `anvil.mark_preferred_take`
-- [ ] `anvil.generate`
+- [x] `anvil.generate`
+- [x] `anvil.generation_status`
 - [x] `anvil.apply_adapter`
 - [x] `anvil.release_memory` with required `confirm: true`
 
@@ -90,6 +91,12 @@ does not load model weights or start generation. It validates installed
 ACE-Step-compatible adapters, supports the existing three-adapter stack limit,
 persists the primary adapter, updates `GenerationService`, and notifies the
 Generate view so open UI state does not overwrite MCP state on the next run.
+
+Implementation note: `anvil.generate` submits work through the same
+`GenerationService.generate(request:)` path as the Generate button, but returns
+immediately instead of blocking on a full render. `anvil.generation_status`
+returns the current state and latest completed result; `dryRun: true` validates
+and echoes the resolved request without starting generation.
 
 Implementation note: `anvil.release_memory` is the first guarded cleanup
 action. It calls the same consolidated `GenerationService.unloadAllWeights()`
@@ -123,5 +130,8 @@ read-only phase.
 - [ ] `mark_preferred_take` updates trace/history review metadata and preserves
       existing notes when no note argument is provided.
 - [x] `apply_adapter` can clear adapter selection and refuses missing adapters.
+- [x] `generate` supports dry-run request validation without starting audio.
+- [ ] `generate` can submit a real request and `generation_status` follows it
+      to completion.
 - [x] `release_memory` refuses to run without `confirm: true`.
 - [ ] App quit stops the MCP server cleanly.

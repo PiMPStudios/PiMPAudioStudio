@@ -74,7 +74,8 @@ Add after read-only tools are stable.
 
 | Tool | Purpose | Guard |
 |---|---|---|
-| `anvil.generate` | Submit a generation request using the same path as the UI | Validate prompt/duration/model readiness |
+| `anvil.generate` | Submit a generation request using the same path as the UI | Validate prompt/duration/model readiness; implemented with `dryRun` |
+| `anvil.generation_status` | Poll current generation state and latest result | Read-only status; implemented |
 | `anvil.enhance_prompt` | Run the local/API prompt enhancer | Return-only; implemented |
 | `anvil.write_lyrics` | Run lyric generation for prompt + duration | Return-only; implemented |
 | `anvil.mark_preferred_take` | Save preferred flag and listening note into trace/history metadata | Existing trace required; implemented as review metadata only |
@@ -158,6 +159,9 @@ facade that wraps the same services the UI already uses.
   load tensors, mutate adapter files, or start generation; it should validate
   adapter existence/category and keep GUI state aligned when the Generate view
   is open.
+- `anvil.generate` should submit through `GenerationService` and return
+  immediately. Long renders should be observed through `anvil.generation_status`,
+  history entries, and trace resources rather than by holding the tool call open.
 - `anvil.release_memory` should remain a guarded cleanup action. It may cancel
   active generation, unload resident models, and flush MLX GPU cache, so it
   requires `confirm: true` and returns before/after memory counters instead of
