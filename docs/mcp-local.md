@@ -31,6 +31,12 @@ The local MCP endpoint exposes read tools:
 - `anvil.list_history`
 - `anvil.get_trace`
 - `anvil.compare_traces`
+- `anvil.enhance_prompt`
+- `anvil.write_lyrics`
+
+`anvil.enhance_prompt` and `anvil.write_lyrics` call the same local/API
+intelligence services used by the Generate view. They return text only and do
+not update the current prompt, lyric field, history, traces, models, or audio.
 
 It also exposes one controlled metadata write:
 
@@ -115,6 +121,44 @@ curl -s http://127.0.0.1:38765/mcp \
   }'
 ```
 
+Enhance a prompt:
+
+```bash
+curl -s http://127.0.0.1:38765/mcp \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "tools/call",
+    "params": {
+      "name": "anvil.enhance_prompt",
+      "arguments": {
+        "prompt": "slow dark guitar riff",
+        "mode": "music"
+      }
+    }
+  }'
+```
+
+Write lyrics:
+
+```bash
+curl -s http://127.0.0.1:38765/mcp \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "tools/call",
+    "params": {
+      "name": "anvil.write_lyrics",
+      "arguments": {
+        "prompt": "dark blues, raw guitar, slow tempo",
+        "duration": 90
+      }
+    }
+  }'
+```
+
 If token mode is enabled, add:
 
 ```bash
@@ -128,7 +172,7 @@ curl -s http://127.0.0.1:38765/mcp \
   -H 'Content-Type: application/json' \
   -d '{
     "jsonrpc": "2.0",
-    "id": 4,
+    "id": 6,
     "method": "tools/call",
     "params": {
       "name": "anvil.mark_preferred_take",
@@ -151,5 +195,7 @@ clear it.
 - Destructive and expensive actions are intentionally deferred.
 - `anvil.compare_traces` uses the same Model, Adapters, Sampling, Prompt &
   Lyrics, and Audio grouping as the Generation Analyzer compare view.
+- `anvil.enhance_prompt` and `anvil.write_lyrics` may load/use the configured
+  local LLM or API lyric backends, but their responses are return-only.
 - `anvil.mark_preferred_take` is intentionally scoped to trace/history review
   metadata only.

@@ -84,8 +84,51 @@ final class LyricWriterManager: ObservableObject {
         }
     }
 
+    func writeLyricsText(
+        prompt: String,
+        style: String,
+        duration: TimeInterval
+    ) async throws -> String {
+        guard let backend = backends[activeBackend] ?? backends["local"] else {
+            throw LyricWriterManagerError.noAvailableBackend
+        }
+
+        writeTask?.cancel()
+        isWriting = true
+        defer { isWriting = false }
+
+        let stream = backend.write(prompt: prompt, style: style, duration: duration)
+        var rawLyrics = ""
+        for await token in stream {
+            if Task.isCancelled {
+                throw CancellationError()
+            }
+            rawLyrics += token
+        }
+
+        let sanitized = LyricOutputSanitizer.sanitize(
+            rawLyrics,
+            targetDuration: duration
+        )
+        let finalLyrics = sanitized.isEmpty
+            ? rawLyrics.trimmingCharacters(in: .whitespacesAndNewlines)
+            : sanitized
+        return finalLyrics
+    }
+
     func cancel() {
         writeTask?.cancel()
         isWriting = false
+    }
+}
+
+enum LyricWriterManagerError: LocalizedError {
+    case noAvailableBackend
+
+    var errorDescription: String? {
+        switch self {
+        case .noAvailableBackend:
+            return "No lyric writer backend is available. Activate the local LLM or configure an API backend."
+        }
     }
 }

@@ -65,6 +65,8 @@ rpc '{
 echo "3. tools/list"
 rpc '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' > "$TMP_DIR/tools.json"
 grep -q '"anvil.list_history"' "$TMP_DIR/tools.json"
+grep -q '"anvil.enhance_prompt"' "$TMP_DIR/tools.json"
+grep -q '"anvil.write_lyrics"' "$TMP_DIR/tools.json"
 grep -q '"anvil.mark_preferred_take"' "$TMP_DIR/tools.json"
 
 echo "4. resources/list"

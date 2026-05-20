@@ -4,11 +4,20 @@ import AnvilCore
 @MainActor
 final class AnvilCommandFacade {
     private let registry: ModelRegistry
+    private let promptEnhancer: PromptEnhancer
+    private let lyricWriterManager: LyricWriterManager
     private var historyStore: HistoryStore
     private let dateFormatter = ISO8601DateFormatter()
 
-    init(registry: ModelRegistry, historyStore: HistoryStore) {
+    init(
+        registry: ModelRegistry,
+        historyStore: HistoryStore,
+        promptEnhancer: PromptEnhancer,
+        lyricWriterManager: LyricWriterManager
+    ) {
         self.registry = registry
+        self.promptEnhancer = promptEnhancer
+        self.lyricWriterManager = lyricWriterManager
         self.historyStore = historyStore
     }
 
@@ -261,6 +270,41 @@ final class AnvilCommandFacade {
         return reviewPayload(updated)
     }
 
+    func enhancePrompt(arguments: [String: Any]) async throws -> [String: Any] {
+        let prompt = try requiredString("prompt", in: arguments)
+        let mode = generationMode(from: arguments["mode"] ?? arguments["generationMode"]) ?? .music
+        let enhanced = await promptEnhancer.enhance(prompt: prompt, mode: mode)
+
+        return [
+            "prompt": prompt,
+            "enhancedPrompt": enhanced,
+            "mode": mode.rawValue,
+            "modeDisplayName": mode.displayName,
+            "isAvailable": promptEnhancer.isAvailable,
+            "changed": normalizedText(enhanced) != normalizedText(prompt)
+        ]
+    }
+
+    func writeLyrics(arguments: [String: Any]) async throws -> [String: Any] {
+        let prompt = try requiredString("prompt", in: arguments)
+        let style = stringValue(arguments["style"]) ?? ""
+        let duration = try requiredDuration(in: arguments)
+        let lyrics = try await lyricWriterManager.writeLyricsText(
+            prompt: prompt,
+            style: style,
+            duration: duration
+        )
+
+        return [
+            "prompt": prompt,
+            "style": style,
+            "duration": duration,
+            "backend": lyricWriterManager.activeBackend,
+            "lyrics": lyrics,
+            "lineCount": lyricLineCount(lyrics)
+        ]
+    }
+
     private func loadAdapters() async -> [LoRAAdapter] {
         await Task.detached(priority: .userInitiated) {
             AdapterRegistry.listAdapters()
@@ -510,6 +554,59 @@ final class AnvilCommandFacade {
         arguments.keys.contains(key)
     }
 
+    private func doubleValue(_ value: Any?) -> Double? {
+        switch value {
+        case let value as Double:
+            return value
+        case let value as Float:
+            return Double(value)
+        case let value as Int:
+            return Double(value)
+        case let value as NSNumber:
+            return value.doubleValue
+        case let value as String:
+            return Double(value.trimmingCharacters(in: .whitespacesAndNewlines))
+        default:
+            return nil
+        }
+    }
+
+    private func requiredString(_ key: String, in arguments: [String: Any]) throws -> String {
+        let value = stringValue(arguments[key])?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !value.isEmpty else {
+            throw AnvilCommandFacadeError.missingRequiredArgument(key)
+        }
+        return value
+    }
+
+    private func requiredDuration(in arguments: [String: Any]) throws -> Double {
+        guard let duration = doubleValue(arguments["duration"] ?? arguments["durationSeconds"]),
+              duration > 0 else {
+            throw AnvilCommandFacadeError.invalidDuration
+        }
+        return duration
+    }
+
+    private func generationMode(from value: Any?) -> GenerationMode? {
+        guard let rawValue = stringValue(value) else { return nil }
+        if let mode = GenerationMode(rawValue: rawValue) {
+            return mode
+        }
+        return GenerationMode(fromClassification: rawValue)
+    }
+
+    private func normalizedText(_ text: String) -> String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func lyricLineCount(_ lyrics: String) -> Int {
+        lyrics
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && !$0.hasPrefix("[") }
+            .count
+    }
+
     private func compact(_ text: String, limit: Int) -> String {
         let oneLine = text
             .replacingOccurrences(of: "\n", with: " ")
@@ -547,6 +644,8 @@ private enum AnvilCommandFacadeError: LocalizedError {
     case invalidResourceURI(String)
     case resourceNotFound(String)
     case invalidBoolean(String)
+    case missingRequiredArgument(String)
+    case invalidDuration
     case encodingFailed
 
     var errorDescription: String? {
@@ -563,6 +662,10 @@ private enum AnvilCommandFacadeError: LocalizedError {
             return "No Anvil resource matched '\(uri)'."
         case .invalidBoolean(let key):
             return "'\(key)' must be true or false."
+        case .missingRequiredArgument(let key):
+            return "Missing required argument '\(key)'."
+        case .invalidDuration:
+            return "Provide a positive duration in seconds."
         case .encodingFailed:
             return "Could not encode the trace as JSON."
         }

@@ -31,7 +31,9 @@ struct AnvilAppApp: App {
             sfxModelManager: sfxManager,
             registry: appState.registry,
             outputManager: outputManager,
-            llmManager: manager
+            llmManager: manager,
+            promptEnhancer: enhancer,
+            lyricWriterManager: lyricManager
         )
 
         _appState = StateObject(wrappedValue: appState)
@@ -181,7 +183,9 @@ final class AppServices: ObservableObject {
         sfxModelManager: SFXModelManager,
         registry: ModelRegistry,
         outputManager: OutputDirectoryManager,
-        llmManager: LLMModelManager
+        llmManager: LLMModelManager,
+        promptEnhancer: PromptEnhancer,
+        lyricWriterManager: LyricWriterManager
     ) {
         self.sfxModelManager = sfxModelManager
         self.registry = registry
@@ -229,7 +233,12 @@ final class AppServices: ObservableObject {
         let dir = outputManager.directory ?? FileManager.default.temporaryDirectory
         let store = HistoryStore(directory: dir)
         self.historyStore = store
-        let facade = AnvilCommandFacade(registry: registry, historyStore: store)
+        let facade = AnvilCommandFacade(
+            registry: registry,
+            historyStore: store,
+            promptEnhancer: promptEnhancer,
+            lyricWriterManager: lyricWriterManager
+        )
         self.commandFacade = facade
         self.mcpServer = AnvilMCPServer(facade: facade)
         self.generationService = Self.makeGenerationService(

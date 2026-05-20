@@ -212,6 +212,10 @@ final class AnvilMCPServer: ObservableObject {
                 structured = try facade.compareTraces(arguments: arguments)
             case "anvil.mark_preferred_take":
                 structured = try facade.markPreferredTake(arguments: arguments)
+            case "anvil.enhance_prompt":
+                structured = try await facade.enhancePrompt(arguments: arguments)
+            case "anvil.write_lyrics":
+                structured = try await facade.writeLyrics(arguments: arguments)
             default:
                 return .error(id: request.id, code: -32601, message: "Unknown Anvil tool: \(name)")
             }
@@ -776,6 +780,53 @@ private enum MCPToolCatalog {
                 "note": [
                     "type": "string",
                     "description": "Alias for listeningNote."
+                ]
+            ]
+        ),
+        tool(
+            name: "anvil.enhance_prompt",
+            title: "Enhance Prompt",
+            description: "Run the same prompt enhancer used by the Generate view and return the enhanced prompt without mutating app state.",
+            required: ["prompt"],
+            properties: [
+                "prompt": [
+                    "type": "string",
+                    "description": "Brief prompt or audio description to enhance."
+                ],
+                "mode": [
+                    "type": "string",
+                    "enum": ["music", "soundFX", "ambient"],
+                    "description": "Generation mode. Defaults to music."
+                ],
+                "generationMode": [
+                    "type": "string",
+                    "description": "Alias for mode."
+                ]
+            ]
+        ),
+        tool(
+            name: "anvil.write_lyrics",
+            title: "Write Lyrics",
+            description: "Generate cleaned, duration-aware lyrics using the same lyric writer and sanitizer as the Generate view.",
+            required: ["prompt", "duration"],
+            properties: [
+                "prompt": [
+                    "type": "string",
+                    "description": "Song prompt or creative direction."
+                ],
+                "style": [
+                    "type": "string",
+                    "description": "Optional extra style guidance."
+                ],
+                "duration": [
+                    "type": "number",
+                    "minimum": 1,
+                    "description": "Target song duration in seconds."
+                ],
+                "durationSeconds": [
+                    "type": "number",
+                    "minimum": 1,
+                    "description": "Alias for duration."
                 ]
             ]
         )

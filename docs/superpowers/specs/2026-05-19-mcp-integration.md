@@ -2,8 +2,9 @@
 
 > **Codex planning note (2026-05-19):** This locks in the agreed MCP shape for
 > Anvil. Phase 1 read-oriented localhost tools, Phase 2 read-only resources,
-> the localhost smoke script, and the first controlled review-metadata write
-> are now implemented; later phases remain planned.
+> the localhost smoke script, return-only prompt/lyric action tools, and the
+> first controlled review-metadata write are now implemented; later phases
+> remain planned.
 > The design intentionally treats MCP as a local
 > automation/control surface over existing app workflows, not as a dependency
 > inside the audio generation pipeline.
@@ -74,8 +75,8 @@ Add after read-only tools are stable.
 | Tool | Purpose | Guard |
 |---|---|---|
 | `anvil.generate` | Submit a generation request using the same path as the UI | Validate prompt/duration/model readiness |
-| `anvil.enhance_prompt` | Run the local/API prompt enhancer | No destructive effect |
-| `anvil.write_lyrics` | Run lyric generation for prompt + duration | No destructive effect |
+| `anvil.enhance_prompt` | Run the local/API prompt enhancer | Return-only; implemented |
+| `anvil.write_lyrics` | Run lyric generation for prompt + duration | Return-only; implemented |
 | `anvil.mark_preferred_take` | Save preferred flag and listening note into trace/history metadata | Existing trace required; implemented as review metadata only |
 | `anvil.apply_adapter` | Select/stack adapters for next generation | Validate adapter/base model compatibility |
 | `anvil.release_memory` | Run the existing release GPU memory path | Require `confirm: true` |
@@ -147,6 +148,9 @@ facade that wraps the same services the UI already uses.
   Settings. Do not require this for localhost-only workflows.
 - Trace compare output should reuse the same comparison grouping as the
   analyzer: Model, Adapters, Sampling, Prompt & Lyrics, Audio.
+- `anvil.enhance_prompt` and `anvil.write_lyrics` should reuse the same
+  service objects as the Generate view while returning text only; they should
+  not write into SwiftUI fields or generation history.
 - The first controlled write tool is `anvil.mark_preferred_take`; it must stay
   limited to `isPreferred` and `listeningNote` fields on existing trace/history
   records unless a later spec explicitly expands MCP write scope.

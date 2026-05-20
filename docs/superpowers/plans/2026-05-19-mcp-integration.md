@@ -68,12 +68,17 @@ paths.
 **Deliverable:** A local agent can run the same safe workflows the UI can run,
 with explicit safeguards.
 
-- [ ] `anvil.enhance_prompt`
-- [ ] `anvil.write_lyrics`
+- [x] `anvil.enhance_prompt`
+- [x] `anvil.write_lyrics`
 - [x] `anvil.mark_preferred_take`
 - [ ] `anvil.generate`
 - [ ] `anvil.apply_adapter`
 - [ ] `anvil.release_memory` with required `confirm: true`
+
+Implementation note: `anvil.enhance_prompt` and `anvil.write_lyrics` are
+return-only action tools. They reuse the same `PromptEnhancer` and
+`LyricWriterManager` objects as the Generate view, but they do not write into
+the UI prompt field, lyric field, history, trace sidecars, or generated audio.
 
 Implementation note: `anvil.mark_preferred_take` is the first controlled write
 surface. It is intentionally limited to review metadata already supported by
@@ -101,6 +106,9 @@ read-only phase.
 - [ ] When optional token mode is on, clients without the token are rejected.
 - [ ] `list_history` and `get_trace` agree with the GUI History/Analyzer.
 - [ ] `compare_traces` returns the same changed-field grouping as Analyzer.
+- [ ] `enhance_prompt` returns enhanced text without mutating the Generate form.
+- [ ] `write_lyrics` returns sanitized duration-aware lyrics without mutating
+      the Generate form.
 - [ ] `mark_preferred_take` updates trace/history review metadata and preserves
       existing notes when no note argument is provided.
 - [ ] `release_memory` refuses to run without `confirm: true`.
