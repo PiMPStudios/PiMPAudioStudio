@@ -58,6 +58,9 @@ struct GenerateView: View {
             applyPreset(preset)
             presetStore.presetToLoad = nil
         }
+        .onReceive(NotificationCenter.default.publisher(for: .mcpAdapterSelectionDidChange)) { notification in
+            applyMCPAdapterSelection(notification)
+        }
         .alert("Save as Preset", isPresented: $showingSavePreset) {
             TextField("Preset name", text: $presetName)
             Button("Cancel", role: .cancel) {}
@@ -624,6 +627,67 @@ struct GenerateView: View {
 
         let adapter = AdapterRegistry.listAdapters().first { $0.id == id }
         stackManager.setPrimary(adapter)
+    }
+
+    private func applyMCPAdapterSelection(_ notification: Notification) {
+        guard let payload = notification.userInfo?["adapters"] as? [[String: Any]] else {
+            return
+        }
+
+        let installed = AdapterRegistry.listAdapters()
+        stackManager.clearAll()
+
+        guard let first = payload.first,
+              let primaryID = adapterID(from: first),
+              let primary = installed.first(where: { $0.id == primaryID }) else {
+            selectedAdapterID = nil
+            persistedAdapterID = ""
+            stackManager.setPrimaryStrength(1.0)
+            persistedAdapterStrength = 1.0
+            generationService.selectedAdapterID = nil
+            generationService.adapterStack = []
+            return
+        }
+
+        let primaryStrength = adapterStrength(from: first)
+        selectedAdapterID = primary.id
+        persistedAdapterID = primary.id
+        stackManager.setPrimary(primary)
+        stackManager.setPrimaryStrength(primaryStrength)
+        persistedAdapterStrength = Double(stackManager.primaryStrength)
+
+        for entry in payload.dropFirst() {
+            guard let id = adapterID(from: entry),
+                  let adapter = installed.first(where: { $0.id == id }) else {
+                continue
+            }
+            stackManager.addToStack(adapter, strength: adapterStrength(from: entry))
+        }
+
+        generationService.selectedAdapterID = selectedAdapterID
+        generationService.adapterStack = stackManager.allStackedAdapters
+            .map { (id: $0.adapter.id, weight: $0.strength) }
+    }
+
+    private func adapterID(from payload: [String: Any]) -> String? {
+        payload["id"] as? String
+    }
+
+    private func adapterStrength(from payload: [String: Any]) -> Float {
+        if let value = payload["strength"] as? Float {
+            return value
+        }
+        if let value = payload["strength"] as? Double {
+            return Float(value)
+        }
+        if let value = payload["strength"] as? NSNumber {
+            return value.floatValue
+        }
+        if let value = payload["strength"] as? String,
+           let parsed = Float(value.trimmingCharacters(in: .whitespacesAndNewlines)) {
+            return parsed
+        }
+        return 1.0
     }
 
     private func applyXLAdapterRecipeIfNeeded(id: String?) {

@@ -72,7 +72,7 @@ with explicit safeguards.
 - [x] `anvil.write_lyrics`
 - [x] `anvil.mark_preferred_take`
 - [ ] `anvil.generate`
-- [ ] `anvil.apply_adapter`
+- [x] `anvil.apply_adapter`
 - [x] `anvil.release_memory` with required `confirm: true`
 
 Implementation note: `anvil.enhance_prompt` and `anvil.write_lyrics` are
@@ -84,6 +84,12 @@ Implementation note: `anvil.mark_preferred_take` is the first controlled write
 surface. It is intentionally limited to review metadata already supported by
 the Generation Analyzer: preferred flag plus optional listening note on an
 existing `.trace.json`, mirrored into `history.json`.
+
+Implementation note: `anvil.apply_adapter` changes adapter selection state but
+does not load model weights or start generation. It validates installed
+ACE-Step-compatible adapters, supports the existing three-adapter stack limit,
+persists the primary adapter, updates `GenerationService`, and notifies the
+Generate view so open UI state does not overwrite MCP state on the next run.
 
 Implementation note: `anvil.release_memory` is the first guarded cleanup
 action. It calls the same consolidated `GenerationService.unloadAllWeights()`
@@ -116,5 +122,6 @@ read-only phase.
       the Generate form.
 - [ ] `mark_preferred_take` updates trace/history review metadata and preserves
       existing notes when no note argument is provided.
+- [x] `apply_adapter` can clear adapter selection and refuses missing adapters.
 - [x] `release_memory` refuses to run without `confirm: true`.
 - [ ] App quit stops the MCP server cleanly.

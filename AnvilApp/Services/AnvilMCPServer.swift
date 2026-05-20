@@ -216,6 +216,8 @@ final class AnvilMCPServer: ObservableObject {
                 structured = try await facade.enhancePrompt(arguments: arguments)
             case "anvil.write_lyrics":
                 structured = try await facade.writeLyrics(arguments: arguments)
+            case "anvil.apply_adapter":
+                structured = try await facade.applyAdapter(arguments: arguments)
             case "anvil.release_memory":
                 structured = try await facade.releaseMemory(arguments: arguments)
             default:
@@ -829,6 +831,50 @@ private enum MCPToolCatalog {
                     "type": "number",
                     "minimum": 1,
                     "description": "Alias for duration."
+                ]
+            ]
+        ),
+        tool(
+            name: "anvil.apply_adapter",
+            title: "Apply Adapter",
+            description: "Select, stack, or clear ACE-Step LoRA adapters for the next generation. Updates the Generate view when it is open.",
+            properties: [
+                "id": [
+                    "type": "string",
+                    "description": "Adapter id or display name to apply as the primary adapter."
+                ],
+                "adapterID": [
+                    "type": "string",
+                    "description": "Alias for id."
+                ],
+                "name": [
+                    "type": "string",
+                    "description": "Alias for id."
+                ],
+                "strength": [
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "Primary adapter strength. Defaults to 1.0."
+                ],
+                "adapters": [
+                    "type": "array",
+                    "description": "Optional stack of adapter objects, each with id/name and optional strength.",
+                    "items": [
+                        "type": "object",
+                        "properties": [
+                            "id": ["type": "string"],
+                            "adapterID": ["type": "string"],
+                            "name": ["type": "string"],
+                            "strength": ["type": "number", "minimum": 0, "maximum": 1],
+                            "weight": ["type": "number", "minimum": 0, "maximum": 1],
+                            "scale": ["type": "number", "minimum": 0, "maximum": 1]
+                        ]
+                    ]
+                ],
+                "clear": [
+                    "type": "boolean",
+                    "description": "Clear all selected adapters when true."
                 ]
             ]
         ),

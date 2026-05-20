@@ -41,12 +41,18 @@ not update the current prompt, lyric field, history, traces, models, or audio.
 It also exposes one controlled metadata write:
 
 - `anvil.mark_preferred_take`
+- `anvil.apply_adapter`
 
 `anvil.mark_preferred_take` only updates review metadata on an existing trace:
 the preferred flag and optional listening note. It mirrors the same values into
 `history.json`, matching the Generation Analyzer's `Mark Preferred` / notes
 behavior. It does not modify audio files, models, adapters, tensors, or
 generation settings.
+
+`anvil.apply_adapter` selects, stacks, or clears ACE-Step LoRA adapters for the
+next generation. It validates that adapters are installed and ACE-Step
+compatible, updates the same generation-service state used by the UI, persists
+the primary adapter, and notifies the Generate view when it is open.
 
 It exposes one guarded cleanup action:
 
@@ -197,7 +203,7 @@ curl -s http://127.0.0.1:38765/mcp \
 Omit `listeningNote` to preserve the existing note. Pass an empty string to
 clear it.
 
-Release model memory:
+Apply one adapter:
 
 ```bash
 curl -s http://127.0.0.1:38765/mcp \
@@ -205,6 +211,64 @@ curl -s http://127.0.0.1:38765/mcp \
   -d '{
     "jsonrpc": "2.0",
     "id": 7,
+    "method": "tools/call",
+    "params": {
+      "name": "anvil.apply_adapter",
+      "arguments": {
+        "id": "<adapter-id-or-name>",
+        "strength": 0.75
+      }
+    }
+  }'
+```
+
+Apply an adapter stack:
+
+```bash
+curl -s http://127.0.0.1:38765/mcp \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 8,
+    "method": "tools/call",
+    "params": {
+      "name": "anvil.apply_adapter",
+      "arguments": {
+        "adapters": [
+          { "id": "<primary-adapter-id>", "strength": 0.8 },
+          { "id": "<second-adapter-id>", "strength": 0.4 }
+        ]
+      }
+    }
+  }'
+```
+
+Clear adapters:
+
+```bash
+curl -s http://127.0.0.1:38765/mcp \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 9,
+    "method": "tools/call",
+    "params": {
+      "name": "anvil.apply_adapter",
+      "arguments": {
+        "clear": true
+      }
+    }
+  }'
+```
+
+Release model memory:
+
+```bash
+curl -s http://127.0.0.1:38765/mcp \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 10,
     "method": "tools/call",
     "params": {
       "name": "anvil.release_memory",
@@ -226,6 +290,8 @@ curl -s http://127.0.0.1:38765/mcp \
   local LLM or API lyric backends, but their responses are return-only.
 - `anvil.mark_preferred_take` is intentionally scoped to trace/history review
   metadata only.
+- `anvil.apply_adapter` changes app adapter-selection state but does not start
+  generation, load model weights, or alter adapter files.
 - `anvil.release_memory` is intentionally guarded because it cancels active
   generation and unloads resident model state. The next generation or LLM tool
   call reloads what it needs.

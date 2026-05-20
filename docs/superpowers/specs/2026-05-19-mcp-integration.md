@@ -78,7 +78,7 @@ Add after read-only tools are stable.
 | `anvil.enhance_prompt` | Run the local/API prompt enhancer | Return-only; implemented |
 | `anvil.write_lyrics` | Run lyric generation for prompt + duration | Return-only; implemented |
 | `anvil.mark_preferred_take` | Save preferred flag and listening note into trace/history metadata | Existing trace required; implemented as review metadata only |
-| `anvil.apply_adapter` | Select/stack adapters for next generation | Validate adapter/base model compatibility |
+| `anvil.apply_adapter` | Select/stack adapters for next generation | Validates adapter/base model compatibility; implemented |
 | `anvil.release_memory` | Run the existing release GPU memory path | Requires `confirm: true`; implemented |
 
 ### Deferred Tools
@@ -154,6 +154,10 @@ facade that wraps the same services the UI already uses.
 - The first controlled write tool is `anvil.mark_preferred_take`; it must stay
   limited to `isPreferred` and `listeningNote` fields on existing trace/history
   records unless a later spec explicitly expands MCP write scope.
+- `anvil.apply_adapter` should update app selection state only. It should not
+  load tensors, mutate adapter files, or start generation; it should validate
+  adapter existence/category and keep GUI state aligned when the Generate view
+  is open.
 - `anvil.release_memory` should remain a guarded cleanup action. It may cancel
   active generation, unload resident models, and flush MLX GPU cache, so it
   requires `confirm: true` and returns before/after memory counters instead of

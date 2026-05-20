@@ -310,6 +310,28 @@ final class AnvilCommandFacade {
         ]
     }
 
+    func applyAdapter(arguments: [String: Any]) async throws -> [String: Any] {
+        guard let generationService else {
+            throw AnvilCommandFacadeError.generationServiceUnavailable
+        }
+
+        if boolValue(arguments["clear"] ?? arguments["none"]) == true {
+            generationService.selectedAdapterID = nil
+            generationService.adapterStack = []
+            persistAdapterSelection([])
+            notifyAdapterSelectionChanged([])
+            return adapterSelectionPayload([])
+        }
+
+        let installed = await loadAdapters()
+        let selection = try parseAdapterSelection(arguments, installed: installed)
+        generationService.selectedAdapterID = selection.first?.adapter.id
+        generationService.adapterStack = selection.map { (id: $0.adapter.id, weight: $0.strength) }
+        persistAdapterSelection(selection)
+        notifyAdapterSelectionChanged(selection)
+        return adapterSelectionPayload(selection)
+    }
+
     func releaseMemory(arguments: [String: Any]) async throws -> [String: Any] {
         guard boolValue(arguments["confirm"]) == true else {
             throw AnvilCommandFacadeError.confirmationRequired("release_memory")
@@ -326,6 +348,89 @@ final class AnvilCommandFacade {
         await Task.detached(priority: .userInitiated) {
             AdapterRegistry.listAdapters()
         }.value
+    }
+
+    private func parseAdapterSelection(
+        _ arguments: [String: Any],
+        installed: [LoRAAdapter]
+    ) throws -> [AdapterSelection] {
+        var selection: [AdapterSelection] = []
+
+        if let rawStack = arguments["adapters"] ?? arguments["adapterStack"] ?? arguments["stack"] {
+            let items: [[String: Any]]
+            if let typed = rawStack as? [[String: Any]] {
+                items = typed
+            } else if let rawItems = rawStack as? [Any] {
+                items = rawItems.compactMap { $0 as? [String: Any] }
+            } else {
+                throw AnvilCommandFacadeError.invalidAdapterStack
+            }
+
+            for item in items {
+                let identifier = stringValue(item["id"] ?? item["adapterID"] ?? item["name"])?
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                guard !identifier.isEmpty else {
+                    throw AnvilCommandFacadeError.missingRequiredArgument("id")
+                }
+                let adapter = try resolveAdapter(identifier, installed: installed)
+                let strength = try adapterStrength(item["strength"] ?? item["weight"] ?? item["scale"])
+                selection.append(AdapterSelection(adapter: adapter, strength: strength))
+            }
+        } else {
+            let identifier = stringValue(arguments["id"] ?? arguments["adapterID"] ?? arguments["name"])?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !identifier.isEmpty else {
+                throw AnvilCommandFacadeError.missingRequiredArgument("id")
+            }
+            let adapter = try resolveAdapter(identifier, installed: installed)
+            let strength = try adapterStrength(arguments["strength"] ?? arguments["weight"] ?? arguments["scale"])
+            selection.append(AdapterSelection(adapter: adapter, strength: strength))
+        }
+
+        var unique: [AdapterSelection] = []
+        var seen = Set<String>()
+        for entry in selection where seen.insert(entry.adapter.id).inserted {
+            unique.append(entry)
+        }
+
+        guard !unique.isEmpty else {
+            throw AnvilCommandFacadeError.missingRequiredArgument("id")
+        }
+        guard unique.count <= AdapterStackManager.maxStackSize else {
+            throw AnvilCommandFacadeError.tooManyAdapters(AdapterStackManager.maxStackSize)
+        }
+        for entry in unique where entry.adapter.baseModelCategory != .aceStepDiT {
+            throw AnvilCommandFacadeError.incompatibleAdapter(
+                entry.adapter.name,
+                entry.adapter.baseModelCategory.rawValue
+            )
+        }
+
+        return unique
+    }
+
+    private func resolveAdapter(_ identifier: String, installed: [LoRAAdapter]) throws -> LoRAAdapter {
+        let needle = identifier.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if let exactID = installed.first(where: { $0.id.lowercased() == needle }) {
+            return exactID
+        }
+        if let exactName = installed.first(where: { $0.name.lowercased() == needle }) {
+            return exactName
+        }
+        if let partial = installed.first(where: {
+            $0.id.lowercased().contains(needle) || $0.name.lowercased().contains(needle)
+        }) {
+            return partial
+        }
+        throw AnvilCommandFacadeError.adapterNotFound(identifier)
+    }
+
+    private func adapterStrength(_ value: Any?) throws -> Float {
+        guard let value else { return 1.0 }
+        guard let parsed = doubleValue(value), parsed >= 0.0, parsed <= 1.0 else {
+            throw AnvilCommandFacadeError.invalidStrength
+        }
+        return Float(parsed)
     }
 
     private func modelResource(id: String) async throws -> [String: Any] {
@@ -533,6 +638,49 @@ final class AnvilCommandFacade {
         ]
     }
 
+    private func adapterSelectionPayload(_ selection: [AdapterSelection]) -> [String: Any] {
+        [
+            "applied": true,
+            "cleared": selection.isEmpty,
+            "count": selection.count,
+            "primary": selection.first.map(adapterSelectionEntryPayload) ?? NSNull(),
+            "adapters": selection.map(adapterSelectionEntryPayload)
+        ]
+    }
+
+    private func adapterSelectionEntryPayload(_ entry: AdapterSelection) -> [String: Any] {
+        [
+            "id": entry.adapter.id,
+            "name": entry.adapter.name,
+            "strength": entry.strength,
+            "baseModelID": entry.adapter.baseModelID,
+            "baseModelCategory": entry.adapter.baseModelCategory.rawValue,
+            "rank": entry.adapter.config.rank,
+            "alpha": entry.adapter.config.alpha
+        ]
+    }
+
+    private func persistAdapterSelection(_ selection: [AdapterSelection]) {
+        let defaults = UserDefaults.standard
+        if let primary = selection.first {
+            defaults.set(primary.adapter.id, forKey: "selectedAdapterID")
+            defaults.set(Double(primary.strength), forKey: "selectedAdapterStrength")
+        } else {
+            defaults.removeObject(forKey: "selectedAdapterID")
+            defaults.set(1.0, forKey: "selectedAdapterStrength")
+        }
+    }
+
+    private func notifyAdapterSelectionChanged(_ selection: [AdapterSelection]) {
+        NotificationCenter.default.post(
+            name: .mcpAdapterSelectionDidChange,
+            object: nil,
+            userInfo: [
+                "adapters": selection.map(adapterSelectionEntryPayload)
+            ]
+        )
+    }
+
     private func rowPayload(_ row: TraceComparisonRow) -> [String: Any] {
         [
             "label": row.label,
@@ -680,7 +828,12 @@ private enum AnvilCommandFacadeError: LocalizedError {
     case historyEntryNotFound(String)
     case invalidResourceURI(String)
     case resourceNotFound(String)
+    case adapterNotFound(String)
+    case incompatibleAdapter(String, String)
+    case invalidAdapterStack
     case invalidBoolean(String)
+    case invalidStrength
+    case tooManyAdapters(Int)
     case missingRequiredArgument(String)
     case invalidDuration
     case confirmationRequired(String)
@@ -699,8 +852,18 @@ private enum AnvilCommandFacadeError: LocalizedError {
             return "Invalid Anvil resource URI: \(uri)."
         case .resourceNotFound(let uri):
             return "No Anvil resource matched '\(uri)'."
+        case .adapterNotFound(let identifier):
+            return "No LoRA adapter matched '\(identifier)'."
+        case .incompatibleAdapter(let name, let category):
+            return "'\(name)' is a \(category) adapter and cannot be applied to ACE-Step generation."
+        case .invalidAdapterStack:
+            return "'adapters' must be an array of adapter objects."
         case .invalidBoolean(let key):
             return "'\(key)' must be true or false."
+        case .invalidStrength:
+            return "Adapter strength must be a number from 0.0 to 1.0."
+        case .tooManyAdapters(let maxCount):
+            return "Adapter stack can contain at most \(maxCount) adapters."
         case .missingRequiredArgument(let key):
             return "Missing required argument '\(key)'."
         case .invalidDuration:
@@ -713,6 +876,11 @@ private enum AnvilCommandFacadeError: LocalizedError {
             return "Could not encode the trace as JSON."
         }
     }
+}
+
+private struct AdapterSelection {
+    let adapter: LoRAAdapter
+    let strength: Float
 }
 
 private struct AnvilResourceURI {
