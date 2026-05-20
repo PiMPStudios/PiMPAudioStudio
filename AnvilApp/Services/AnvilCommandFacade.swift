@@ -350,6 +350,7 @@ final class AnvilCommandFacade {
             throw AnvilCommandFacadeError.generationAlreadyActive(stateName(generationService.state))
         }
 
+        syncGenerationAdapterSelectionFromDefaultsIfNeeded(generationService)
         generationService.generate(request: request)
         return generationSubmissionPayload(request: request, submitted: true, dryRun: false)
     }
@@ -464,6 +465,31 @@ final class AnvilCommandFacade {
             throw AnvilCommandFacadeError.invalidStrength
         }
         return Float(parsed)
+    }
+
+    private func syncGenerationAdapterSelectionFromDefaultsIfNeeded(_ generationService: GenerationService) {
+        guard generationService.adapterStack.isEmpty else { return }
+
+        let defaults = UserDefaults.standard
+        let adapterID = defaults.string(forKey: "selectedAdapterID")?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !adapterID.isEmpty else {
+            generationService.selectedAdapterID = nil
+            generationService.adapterStack = []
+            return
+        }
+
+        let adapters = AdapterRegistry.listAdapters()
+        guard adapters.contains(where: { $0.id == adapterID }) else {
+            generationService.selectedAdapterID = nil
+            generationService.adapterStack = []
+            return
+        }
+
+        let rawStrength = doubleValue(defaults.object(forKey: "selectedAdapterStrength")) ?? 1.0
+        let strength = Float(min(max(rawStrength, 0.0), 1.0))
+        generationService.selectedAdapterID = adapterID
+        generationService.adapterStack = [(id: adapterID, weight: strength)]
     }
 
     private func generationRequest(_ arguments: [String: Any]) throws -> GenerationRequest {
