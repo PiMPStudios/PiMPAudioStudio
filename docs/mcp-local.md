@@ -24,13 +24,23 @@ Authorization: Bearer <token>
 
 ## Tools
 
-The local MCP endpoint exposes read-only tools:
+The local MCP endpoint exposes read tools:
 
 - `anvil.list_models`
 - `anvil.list_adapters`
 - `anvil.list_history`
 - `anvil.get_trace`
 - `anvil.compare_traces`
+
+It also exposes one controlled metadata write:
+
+- `anvil.mark_preferred_take`
+
+`anvil.mark_preferred_take` only updates review metadata on an existing trace:
+the preferred flag and optional listening note. It mirrors the same values into
+`history.json`, matching the Generation Analyzer's `Mark Preferred` / notes
+behavior. It does not modify audio files, models, adapters, tensors, or
+generation settings.
 
 ## Resources
 
@@ -111,6 +121,29 @@ If token mode is enabled, add:
 -H 'Authorization: Bearer <token>'
 ```
 
+Mark a take as preferred:
+
+```bash
+curl -s http://127.0.0.1:38765/mcp \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "tools/call",
+    "params": {
+      "name": "anvil.mark_preferred_take",
+      "arguments": {
+        "id": "<history-uuid-or-trace-filename>",
+        "isPreferred": true,
+        "listeningNote": "Best vocal take so far"
+      }
+    }
+  }'
+```
+
+Omit `listeningNote` to preserve the existing note. Pass an empty string to
+clear it.
+
 ## Notes
 
 - The server binds to `127.0.0.1` only.
@@ -118,3 +151,5 @@ If token mode is enabled, add:
 - Destructive and expensive actions are intentionally deferred.
 - `anvil.compare_traces` uses the same Model, Adapters, Sampling, Prompt &
   Lyrics, and Audio grouping as the Generation Analyzer compare view.
+- `anvil.mark_preferred_take` is intentionally scoped to trace/history review
+  metadata only.

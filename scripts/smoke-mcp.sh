@@ -63,12 +63,13 @@ rpc '{
 }' >/dev/null
 
 echo "3. tools/list"
-rpc '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
-  | grep -q '"anvil.list_history"'
+rpc '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' > "$TMP_DIR/tools.json"
+grep -q '"anvil.list_history"' "$TMP_DIR/tools.json"
+grep -q '"anvil.mark_preferred_take"' "$TMP_DIR/tools.json"
 
 echo "4. resources/list"
-rpc '{"jsonrpc":"2.0","id":3,"method":"resources/list"}' \
-  | grep -Eq '"anvil:(\\/\\/|//)history"'
+rpc '{"jsonrpc":"2.0","id":3,"method":"resources/list"}' > "$TMP_DIR/resources.json"
+grep -Eq '"anvil:(\\/\\/|//)history"' "$TMP_DIR/resources.json"
 
 echo "5. anvil.list_history"
 rpc '{
@@ -108,7 +109,8 @@ if [[ "${#TRACE_IDS[@]}" -ge 1 ]]; then
     \"id\": 6,
     \"method\": \"resources/read\",
     \"params\": { \"uri\": \"anvil://history/$FIRST_ID\" }
-  }" | grep -q '"contents"'
+  }" > "$TMP_DIR/history-resource.json"
+  grep -q '"contents"' "$TMP_DIR/history-resource.json"
 
   echo "8. resources/read anvil://trace/$FIRST_ID"
   rpc "{
@@ -116,7 +118,8 @@ if [[ "${#TRACE_IDS[@]}" -ge 1 ]]; then
     \"id\": 7,
     \"method\": \"resources/read\",
     \"params\": { \"uri\": \"anvil://trace/$FIRST_ID\" }
-  }" | grep -q '"contents"'
+  }" > "$TMP_DIR/trace-resource.json"
+  grep -q '"contents"' "$TMP_DIR/trace-resource.json"
 else
   echo "6-8. skipped trace checks; no traced history rows found"
 fi

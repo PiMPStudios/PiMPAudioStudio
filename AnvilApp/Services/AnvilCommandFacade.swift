@@ -230,6 +230,37 @@ final class AnvilCommandFacade {
         ]
     }
 
+    func markPreferredTake(arguments: [String: Any]) throws -> [String: Any] {
+        let trace = try resolveTrace(arguments: arguments)
+        let hasPreferredArgument = hasArgument("isPreferred", in: arguments)
+            || hasArgument("preferred", in: arguments)
+        let preferredValue = arguments["isPreferred"] ?? arguments["preferred"]
+        let isPreferred: Bool
+        if hasPreferredArgument {
+            guard let parsed = boolValue(preferredValue) else {
+                throw AnvilCommandFacadeError.invalidBoolean("isPreferred")
+            }
+            isPreferred = parsed
+        } else {
+            isPreferred = true
+        }
+
+        let note: String?
+        if hasArgument("listeningNote", in: arguments) || hasArgument("note", in: arguments) {
+            note = stringValue(arguments["listeningNote"] ?? arguments["note"])
+        } else {
+            note = trace.listeningNote
+        }
+
+        let updated = try historyStore.saveTraceReview(
+            traceFileName: trace.traceFileName,
+            listeningNote: note,
+            isPreferred: isPreferred
+        )
+
+        return reviewPayload(updated)
+    }
+
     private func loadAdapters() async -> [LoRAAdapter] {
         await Task.detached(priority: .userInitiated) {
             AdapterRegistry.listAdapters()
@@ -410,6 +441,17 @@ final class AnvilCommandFacade {
         ]
     }
 
+    private func reviewPayload(_ trace: GenerationTrace) -> [String: Any] {
+        [
+            "historyEntryID": trace.historyEntryID.uuidString,
+            "traceFileName": trace.traceFileName,
+            "audioFileName": trace.audioFileName,
+            "audioFilePath": historyStore.fileURL(forAudioFileName: trace.audioFileName).path(percentEncoded: false),
+            "isPreferred": trace.isPreferred ?? false,
+            "listeningNote": trace.listeningNote ?? NSNull()
+        ]
+    }
+
     private func rowPayload(_ row: TraceComparisonRow) -> [String: Any] {
         [
             "label": row.label,
@@ -431,6 +473,8 @@ final class AnvilCommandFacade {
 
     private func stringValue(_ value: Any?) -> String? {
         switch value {
+        case is NSNull:
+            return nil
         case let value as String:
             return value
         case let value as UUID:
@@ -440,6 +484,30 @@ final class AnvilCommandFacade {
         default:
             return nil
         }
+    }
+
+    private func boolValue(_ value: Any?) -> Bool? {
+        switch value {
+        case let value as Bool:
+            return value
+        case let value as NSNumber:
+            return value.boolValue
+        case let value as String:
+            switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            case "true", "yes", "1":
+                return true
+            case "false", "no", "0":
+                return false
+            default:
+                return nil
+            }
+        default:
+            return nil
+        }
+    }
+
+    private func hasArgument(_ key: String, in arguments: [String: Any]) -> Bool {
+        arguments.keys.contains(key)
     }
 
     private func compact(_ text: String, limit: Int) -> String {
@@ -478,6 +546,7 @@ private enum AnvilCommandFacadeError: LocalizedError {
     case historyEntryNotFound(String)
     case invalidResourceURI(String)
     case resourceNotFound(String)
+    case invalidBoolean(String)
     case encodingFailed
 
     var errorDescription: String? {
@@ -492,6 +561,8 @@ private enum AnvilCommandFacadeError: LocalizedError {
             return "Invalid Anvil resource URI: \(uri)."
         case .resourceNotFound(let uri):
             return "No Anvil resource matched '\(uri)'."
+        case .invalidBoolean(let key):
+            return "'\(key)' must be true or false."
         case .encodingFailed:
             return "Could not encode the trace as JSON."
         }

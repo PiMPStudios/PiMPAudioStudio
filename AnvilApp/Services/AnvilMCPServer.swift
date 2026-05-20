@@ -210,6 +210,8 @@ final class AnvilMCPServer: ObservableObject {
                 structured = try facade.getTrace(arguments: arguments)
             case "anvil.compare_traces":
                 structured = try facade.compareTraces(arguments: arguments)
+            case "anvil.mark_preferred_take":
+                structured = try facade.markPreferredTake(arguments: arguments)
             default:
                 return .error(id: request.id, code: -32601, message: "Unknown Anvil tool: \(name)")
             }
@@ -744,6 +746,36 @@ private enum MCPToolCatalog {
                 "right": [
                     "type": "string",
                     "description": "Right trace identifier: history UUID, trace filename, or audio filename."
+                ]
+            ]
+        ),
+        tool(
+            name: "anvil.mark_preferred_take",
+            title: "Mark Preferred Take",
+            description: "Save a preferred flag and optional listening note into an existing generation trace and mirrored history row.",
+            properties: [
+                "id": [
+                    "type": "string",
+                    "description": "History UUID, trace filename, or audio filename."
+                ],
+                "historyEntryID": ["type": "string"],
+                "traceFileName": ["type": "string"],
+                "audioFileName": ["type": "string"],
+                "isPreferred": [
+                    "type": "boolean",
+                    "description": "Whether the take should be marked preferred. Defaults to true."
+                ],
+                "preferred": [
+                    "type": "boolean",
+                    "description": "Alias for isPreferred."
+                ],
+                "listeningNote": [
+                    "type": "string",
+                    "description": "Optional listening note. Omit to keep the existing note; pass an empty string to clear it."
+                ],
+                "note": [
+                    "type": "string",
+                    "description": "Alias for listeningNote."
                 ]
             ]
         )
