@@ -332,6 +332,83 @@ final class AnvilCommandFacade {
         return adapterSelectionPayload(selection)
     }
 
+    func generateSong(arguments: [String: Any]) async throws -> [String: Any] {
+        let dryRun = boolValue(arguments["dryRun"] ?? arguments["validateOnly"]) == true
+        let originalPrompt = try requiredString("prompt", aliases: ["text"], in: arguments)
+        let mode = generationMode(from: arguments["mode"] ?? arguments["generationMode"]) ?? .music
+        let shouldEnhancePrompt = boolValue(
+            arguments["enhancePrompt"] ?? arguments["enhance"] ?? arguments["autoEnhance"]
+        ) == true
+        let shouldWriteLyrics = boolValue(
+            arguments["writeLyrics"] ?? arguments["generateLyrics"] ?? arguments["autoLyrics"]
+        ) == true
+
+        var workingArguments = arguments
+        var finalPrompt = originalPrompt
+        var enhancedPrompt: String?
+        if shouldEnhancePrompt {
+            let enhanced = await promptEnhancer.enhance(prompt: originalPrompt, mode: mode)
+            if !normalizedText(enhanced).isEmpty {
+                finalPrompt = enhanced
+                enhancedPrompt = enhanced
+            }
+        }
+        workingArguments["prompt"] = finalPrompt
+
+        let suppliedLyrics = stringValue(arguments["lyrics"])?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        var finalLyrics = suppliedLyrics
+        var lyricPayload: [String: Any]?
+        if suppliedLyrics.isEmpty && shouldWriteLyrics {
+            let duration = try orchestrationDuration(in: arguments)
+            let style = stringValue(arguments["lyricStyle"] ?? arguments["style"]) ?? ""
+            finalLyrics = try await lyricWriterManager.writeLyricsText(
+                prompt: finalPrompt,
+                style: style,
+                duration: duration
+            )
+            workingArguments["lyrics"] = finalLyrics
+            lyricPayload = [
+                "generated": true,
+                "backend": lyricWriterManager.activeBackend,
+                "style": style,
+                "duration": duration,
+                "lineCount": lyricLineCount(finalLyrics)
+            ]
+        } else {
+            lyricPayload = [
+                "generated": false,
+                "supplied": !suppliedLyrics.isEmpty,
+                "lineCount": lyricLineCount(finalLyrics)
+            ]
+        }
+
+        let adapterPayload: [String: Any]?
+        if let adapterArguments = orchestrationAdapterArguments(from: arguments) {
+            if dryRun {
+                adapterPayload = ["skipped": true, "reason": "dryRun"]
+            } else {
+                adapterPayload = try await applyAdapter(arguments: adapterArguments)
+            }
+        } else {
+            adapterPayload = nil
+        }
+
+        let submission = try generate(arguments: workingArguments)
+        return [
+            "submitted": submission["submitted"] ?? false,
+            "dryRun": submission["dryRun"] ?? dryRun,
+            "originalPrompt": originalPrompt,
+            "finalPrompt": finalPrompt,
+            "promptEnhanced": shouldEnhancePrompt,
+            "enhancedPrompt": enhancedPrompt ?? NSNull(),
+            "lyrics": finalLyrics.isEmpty ? NSNull() : finalLyrics,
+            "lyricWriting": lyricPayload ?? NSNull(),
+            "adapterSelection": adapterPayload ?? NSNull(),
+            "generation": submission
+        ]
+    }
+
     func generate(arguments: [String: Any]) throws -> [String: Any] {
         guard let generationService else {
             throw AnvilCommandFacadeError.generationServiceUnavailable
@@ -490,6 +567,37 @@ final class AnvilCommandFacade {
         let strength = Float(min(max(rawStrength, 0.0), 1.0))
         generationService.selectedAdapterID = adapterID
         generationService.adapterStack = [(id: adapterID, weight: strength)]
+    }
+
+    private func orchestrationAdapterArguments(from arguments: [String: Any]) -> [String: Any]? {
+        if boolValue(arguments["clearAdapter"] ?? arguments["clearAdapters"]) == true {
+            return ["clear": true]
+        }
+
+        if let adapters = arguments["adapters"] ?? arguments["adapterStack"] ?? arguments["stack"] {
+            return ["adapters": adapters]
+        }
+
+        guard let identifier = stringValue(
+            arguments["adapter"] ?? arguments["adapterID"] ?? arguments["lora"] ?? arguments["loraID"]
+        )?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !identifier.isEmpty else {
+            return nil
+        }
+
+        var adapterArguments: [String: Any] = ["id": identifier]
+        if let strength = arguments["strength"] ?? arguments["weight"] ?? arguments["scale"] {
+            adapterArguments["strength"] = strength
+        }
+        return adapterArguments
+    }
+
+    private func orchestrationDuration(in arguments: [String: Any]) throws -> Double {
+        let duration = doubleValue(arguments["duration"] ?? arguments["durationSeconds"]) ?? 30.0
+        guard duration > 0 else {
+            throw AnvilCommandFacadeError.invalidDuration
+        }
+        return duration
     }
 
     private func generationRequest(_ arguments: [String: Any]) throws -> GenerationRequest {

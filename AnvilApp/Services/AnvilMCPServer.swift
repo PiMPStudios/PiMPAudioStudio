@@ -218,6 +218,8 @@ final class AnvilMCPServer: ObservableObject {
                 structured = try await facade.writeLyrics(arguments: arguments)
             case "anvil.apply_adapter":
                 structured = try await facade.applyAdapter(arguments: arguments)
+            case "anvil.generate_song":
+                structured = try await facade.generateSong(arguments: arguments)
             case "anvil.generate":
                 structured = try facade.generate(arguments: arguments)
             case "anvil.generation_status":
@@ -879,6 +881,135 @@ private enum MCPToolCatalog {
                 "clear": [
                     "type": "boolean",
                     "description": "Clear all selected adapters when true."
+                ]
+            ]
+        ),
+        tool(
+            name: "anvil.generate_song",
+            title: "Generate Song",
+            description: "Orchestrate a song generation: optionally enhance the prompt, optionally write duration-aware lyrics, optionally apply adapters, then submit generation.",
+            required: ["prompt"],
+            properties: [
+                "prompt": [
+                    "type": "string",
+                    "description": "Prompt or creative direction."
+                ],
+                "text": [
+                    "type": "string",
+                    "description": "Alias for prompt."
+                ],
+                "enhancePrompt": [
+                    "type": "boolean",
+                    "description": "Run the prompt enhancer before generation. Defaults to false."
+                ],
+                "enhance": [
+                    "type": "boolean",
+                    "description": "Alias for enhancePrompt."
+                ],
+                "writeLyrics": [
+                    "type": "boolean",
+                    "description": "Write duration-aware lyrics when no lyrics are supplied. Defaults to false."
+                ],
+                "generateLyrics": [
+                    "type": "boolean",
+                    "description": "Alias for writeLyrics."
+                ],
+                "lyrics": [
+                    "type": "string",
+                    "description": "Optional lyrics. Supplied lyrics are used as-is and prevent automatic lyric writing."
+                ],
+                "style": [
+                    "type": "string",
+                    "description": "Optional lyric style guidance."
+                ],
+                "lyricStyle": [
+                    "type": "string",
+                    "description": "Alias for style."
+                ],
+                "adapter": [
+                    "type": "string",
+                    "description": "Optional adapter id or display name to apply before generation."
+                ],
+                "lora": [
+                    "type": "string",
+                    "description": "Alias for adapter."
+                ],
+                "adapterID": [
+                    "type": "string",
+                    "description": "Alias for adapter."
+                ],
+                "strength": [
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "Adapter strength when adapter/lora is supplied."
+                ],
+                "adapters": [
+                    "type": "array",
+                    "description": "Optional stack of adapter objects, each with id/name and optional strength.",
+                    "items": [
+                        "type": "object",
+                        "properties": [
+                            "id": ["type": "string"],
+                            "adapterID": ["type": "string"],
+                            "name": ["type": "string"],
+                            "strength": ["type": "number", "minimum": 0, "maximum": 1],
+                            "weight": ["type": "number", "minimum": 0, "maximum": 1],
+                            "scale": ["type": "number", "minimum": 0, "maximum": 1]
+                        ]
+                    ]
+                ],
+                "clearAdapter": [
+                    "type": "boolean",
+                    "description": "Clear selected adapters before generation."
+                ],
+                "duration": [
+                    "type": "number",
+                    "minimum": 1,
+                    "description": "Duration in seconds. Defaults to 30. Stable Audio requests are capped at 47 seconds."
+                ],
+                "seed": [
+                    "description": "Integer seed, 'random', empty, or omitted for random."
+                ],
+                "mode": [
+                    "type": "string",
+                    "enum": ["music", "soundFX", "ambient"],
+                    "description": "Resolved generation mode. Defaults to music."
+                ],
+                "pipeline": [
+                    "type": "string",
+                    "enum": ["auto", "aceStep", "stableAudio"],
+                    "description": "Pipeline override. Defaults to auto."
+                ],
+                "guidanceScale": [
+                    "type": "number",
+                    "description": "CFG guidance scale. Defaults to 7.5."
+                ],
+                "guidancePreset": [
+                    "type": "string",
+                    "enum": ["constant", "lateEmphasis", "midToLate", "softLate"],
+                    "description": "Guidance schedule preset. Defaults to softLate."
+                ],
+                "method": [
+                    "type": "string",
+                    "enum": ["ode", "sde"],
+                    "description": "Diffusion method. Defaults to ode."
+                ],
+                "precision": [
+                    "type": "string",
+                    "enum": ["float32", "float16"],
+                    "description": "Runtime precision. Defaults to float32."
+                ],
+                "steps": [
+                    "description": "Positive integer step override, 'auto', or omitted for auto."
+                ],
+                "shift": [
+                    "type": "number",
+                    "description": "ACE-Step shift override. Defaults to 3.0."
+                ],
+                "dryRun": [
+                    "type": "boolean",
+                    "description": "Resolve orchestration and validate the generation request without starting generation or applying adapters."
                 ]
             ]
         ),

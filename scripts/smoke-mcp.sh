@@ -69,15 +69,35 @@ grep -q '"anvil.enhance_prompt"' "$TMP_DIR/tools.json"
 grep -q '"anvil.write_lyrics"' "$TMP_DIR/tools.json"
 grep -q '"anvil.mark_preferred_take"' "$TMP_DIR/tools.json"
 grep -q '"anvil.apply_adapter"' "$TMP_DIR/tools.json"
+grep -q '"anvil.generate_song"' "$TMP_DIR/tools.json"
 grep -q '"anvil.generate"' "$TMP_DIR/tools.json"
 grep -q '"anvil.generation_status"' "$TMP_DIR/tools.json"
 grep -q '"anvil.release_memory"' "$TMP_DIR/tools.json"
 
-echo "4. resources/list"
+echo "4. anvil.generate_song dry-run"
+rpc '{
+  "jsonrpc": "2.0",
+  "id": 3,
+  "method": "tools/call",
+  "params": {
+    "name": "anvil.generate_song",
+    "arguments": {
+      "prompt": "mcp smoke dry run",
+      "duration": 5,
+      "seed": 42,
+      "pipeline": "aceStep",
+      "dryRun": true
+    }
+  }
+}' > "$TMP_DIR/generate-song-dry-run.json"
+grep -q '"dryRun" : true' "$TMP_DIR/generate-song-dry-run.json"
+grep -q '"submitted" : false' "$TMP_DIR/generate-song-dry-run.json"
+
+echo "5. resources/list"
 rpc '{"jsonrpc":"2.0","id":3,"method":"resources/list"}' > "$TMP_DIR/resources.json"
 grep -Eq '"anvil:(\\/\\/|//)history"' "$TMP_DIR/resources.json"
 
-echo "5. anvil.list_history"
+echo "6. anvil.list_history"
 rpc '{
   "jsonrpc": "2.0",
   "id": 4,
@@ -98,7 +118,7 @@ done < <(/usr/bin/python3 -c "$python_get_trace_ids" < "$TMP_DIR/history.json")
 if [[ "${#TRACE_IDS[@]}" -ge 1 ]]; then
   FIRST_ID="${TRACE_IDS[0]}"
 
-  echo "6. anvil.get_trace ($FIRST_ID)"
+  echo "7. anvil.get_trace ($FIRST_ID)"
   rpc "{
     \"jsonrpc\": \"2.0\",
     \"id\": 5,
@@ -109,7 +129,7 @@ if [[ "${#TRACE_IDS[@]}" -ge 1 ]]; then
     }
   }" >/dev/null
 
-  echo "7. resources/read anvil://history/$FIRST_ID"
+  echo "8. resources/read anvil://history/$FIRST_ID"
   rpc "{
     \"jsonrpc\": \"2.0\",
     \"id\": 6,
@@ -118,7 +138,7 @@ if [[ "${#TRACE_IDS[@]}" -ge 1 ]]; then
   }" > "$TMP_DIR/history-resource.json"
   grep -q '"contents"' "$TMP_DIR/history-resource.json"
 
-  echo "8. resources/read anvil://trace/$FIRST_ID"
+  echo "9. resources/read anvil://trace/$FIRST_ID"
   rpc "{
     \"jsonrpc\": \"2.0\",
     \"id\": 7,
@@ -127,14 +147,14 @@ if [[ "${#TRACE_IDS[@]}" -ge 1 ]]; then
   }" > "$TMP_DIR/trace-resource.json"
   grep -q '"contents"' "$TMP_DIR/trace-resource.json"
 else
-  echo "6-8. skipped trace checks; no traced history rows found"
+  echo "7-9. skipped trace checks; no traced history rows found"
 fi
 
 if [[ "${#TRACE_IDS[@]}" -ge 2 ]]; then
   FIRST_ID="${TRACE_IDS[0]}"
   SECOND_ID="${TRACE_IDS[1]}"
 
-  echo "9. anvil.compare_traces ($FIRST_ID vs $SECOND_ID)"
+  echo "10. anvil.compare_traces ($FIRST_ID vs $SECOND_ID)"
   rpc "{
     \"jsonrpc\": \"2.0\",
     \"id\": 8,
@@ -148,7 +168,7 @@ if [[ "${#TRACE_IDS[@]}" -ge 2 ]]; then
     }
   }" >/dev/null
 else
-  echo "9. skipped compare; fewer than two traced history rows found"
+  echo "10. skipped compare; fewer than two traced history rows found"
 fi
 
 echo "MCP smoke test passed."
