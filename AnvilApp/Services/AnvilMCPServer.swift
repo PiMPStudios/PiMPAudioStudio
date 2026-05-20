@@ -458,6 +458,10 @@ private final class MCPHTTPServer {
     }
 
     private func respond(to request: HTTPRequest) async -> HTTPResponse {
+        guard request.hasTrustedOrigin else {
+            return .jsonError(statusCode: 403, message: "Forbidden Origin")
+        }
+
         if request.method == "OPTIONS" {
             return .empty(statusCode: 204, statusText: "No Content")
         }
@@ -469,8 +473,20 @@ private final class MCPHTTPServer {
             ])
         }
 
+        if request.method == "GET", request.path == "/mcp" {
+            return .methodNotAllowed("Anvil MCP does not provide a server-sent event stream.")
+        }
+
+        if request.method == "DELETE", request.path == "/mcp" {
+            return .methodNotAllowed("Anvil MCP sessions are stateless.")
+        }
+
         guard request.method == "POST", request.path == "/mcp" else {
             return .jsonError(statusCode: 404, message: "MCP endpoint is /mcp")
+        }
+
+        guard request.hasSupportedProtocolVersion else {
+            return .jsonError(statusCode: 400, message: "Unsupported MCP protocol version")
         }
 
         let expectedToken = await tokenProvider()
@@ -550,7 +566,7 @@ private struct HTTPRequest {
         guard data.count >= bodyStart + contentLength else { return nil }
 
         self.method = parts[0]
-        self.path = parts[1]
+        self.path = parts[1].split(separator: "?", maxSplits: 1).first.map(String.init) ?? parts[1]
         self.headers = headers
         self.body = Data(data[bodyStart..<(bodyStart + contentLength)])
     }
@@ -560,6 +576,31 @@ private struct HTTPRequest {
         let prefix = "Bearer "
         guard authorization.hasPrefix(prefix) else { return nil }
         return String(authorization.dropFirst(prefix.count))
+    }
+
+    var hasSupportedProtocolVersion: Bool {
+        guard let version = headers["mcp-protocol-version"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !version.isEmpty else {
+            return true
+        }
+        switch version {
+        case "2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05":
+            return true
+        default:
+            return false
+        }
+    }
+
+    var hasTrustedOrigin: Bool {
+        guard let origin = headers["origin"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !origin.isEmpty else {
+            return true
+        }
+        guard let url = URL(string: origin),
+              let host = url.host?.lowercased() else {
+            return false
+        }
+        return host == "localhost" || host == "127.0.0.1" || host == "::1"
     }
 }
 
@@ -585,6 +626,10 @@ private struct HTTPResponse {
         jsonError(statusCode: 400, message: "Bad Request")
     }
 
+    static func methodNotAllowed(_ message: String) -> HTTPResponse {
+        json(["error": message], statusCode: 405, statusText: "Method Not Allowed")
+    }
+
     static func empty(statusCode: Int, statusText: String) -> HTTPResponse {
         response(statusCode: statusCode, statusText: statusText, body: Data(), contentType: "application/json")
     }
@@ -595,9 +640,11 @@ private struct HTTPResponse {
         Content-Type: \(contentType)\r
         Content-Length: \(body.count)\r
         Connection: close\r
+        MCP-Protocol-Version: 2025-06-18\r
         Access-Control-Allow-Origin: *\r
-        Access-Control-Allow-Headers: Content-Type, Authorization, Mcp-Method\r
-        Access-Control-Allow-Methods: POST, GET, OPTIONS\r
+        Access-Control-Allow-Headers: Accept, Content-Type, Authorization, Mcp-Method, MCP-Protocol-Version, Mcp-Session-Id, Last-Event-ID\r
+        Access-Control-Allow-Methods: POST, GET, DELETE, OPTIONS\r
+        Allow: POST, GET, DELETE, OPTIONS\r
         \r
 
         """
