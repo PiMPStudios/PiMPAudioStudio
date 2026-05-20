@@ -199,32 +199,32 @@ final class AnvilMCPServer: ObservableObject {
 
         do {
             let structured: Any
-            switch name {
-            case "anvil.list_models":
+            switch canonicalToolName(name) {
+            case "list_models":
                 structured = await facade.listModels()
-            case "anvil.list_adapters":
+            case "list_adapters":
                 structured = await facade.listAdapters()
-            case "anvil.list_history":
+            case "list_history":
                 structured = facade.listHistory(limit: intValue(arguments["limit"]) ?? 25)
-            case "anvil.get_trace":
+            case "get_trace":
                 structured = try facade.getTrace(arguments: arguments)
-            case "anvil.compare_traces":
+            case "compare_traces":
                 structured = try facade.compareTraces(arguments: arguments)
-            case "anvil.mark_preferred_take":
+            case "mark_preferred_take":
                 structured = try facade.markPreferredTake(arguments: arguments)
-            case "anvil.enhance_prompt":
+            case "enhance_prompt":
                 structured = try await facade.enhancePrompt(arguments: arguments)
-            case "anvil.write_lyrics":
+            case "write_lyrics":
                 structured = try await facade.writeLyrics(arguments: arguments)
-            case "anvil.apply_adapter":
+            case "apply_adapter":
                 structured = try await facade.applyAdapter(arguments: arguments)
-            case "anvil.generate_song":
+            case "generate_song":
                 structured = try await facade.generateSong(arguments: arguments)
-            case "anvil.generate":
+            case "generate":
                 structured = try facade.generate(arguments: arguments)
-            case "anvil.generation_status":
+            case "generation_status":
                 structured = try facade.generationStatus()
-            case "anvil.release_memory":
+            case "release_memory":
                 structured = try await facade.releaseMemory(arguments: arguments)
             default:
                 return .error(id: request.id, code: -32601, message: "Unknown Anvil tool: \(name)")
@@ -234,6 +234,16 @@ final class AnvilMCPServer: ObservableObject {
         } catch {
             return .result(id: request.id, value: MCPToolResult.failure(error.localizedDescription))
         }
+    }
+
+    private func canonicalToolName(_ name: String) -> String {
+        if name.hasPrefix("anvil.") {
+            return String(name.dropFirst("anvil.".count))
+        }
+        if name.hasPrefix("anvil_") {
+            return String(name.dropFirst("anvil_".count))
+        }
+        return name
     }
 
     private func intValue(_ value: Any?) -> Int? {
@@ -756,19 +766,19 @@ private enum MCPResourceResult {
 private enum MCPToolCatalog {
     static let tools: [[String: Any]] = [
         tool(
-            name: "anvil.list_models",
+            name: "list_models",
             title: "List Models",
             description: "Return Anvil model registry status, active models, readiness, and runtime support notes.",
             properties: [:]
         ),
         tool(
-            name: "anvil.list_adapters",
+            name: "list_adapters",
             title: "List Adapters",
             description: "Return installed LoRA adapters with base model, rank, provenance, and checkpoint status.",
             properties: [:]
         ),
         tool(
-            name: "anvil.list_history",
+            name: "list_history",
             title: "List History",
             description: "Return recent generation history rows with model, seed, prompt summary, and trace availability.",
             properties: [
@@ -781,7 +791,7 @@ private enum MCPToolCatalog {
             ]
         ),
         tool(
-            name: "anvil.get_trace",
+            name: "get_trace",
             title: "Get Trace",
             description: "Return a generation trace by history id, trace filename, or audio filename.",
             properties: [
@@ -795,7 +805,7 @@ private enum MCPToolCatalog {
             ]
         ),
         tool(
-            name: "anvil.compare_traces",
+            name: "compare_traces",
             title: "Compare Traces",
             description: "Return the same grouped changed-field diff used by the Generation Analyzer compare view.",
             required: ["left", "right"],
@@ -811,7 +821,7 @@ private enum MCPToolCatalog {
             ]
         ),
         tool(
-            name: "anvil.mark_preferred_take",
+            name: "mark_preferred_take",
             title: "Mark Preferred Take",
             description: "Save a preferred flag and optional listening note into an existing generation trace and mirrored history row.",
             properties: [
@@ -841,7 +851,7 @@ private enum MCPToolCatalog {
             ]
         ),
         tool(
-            name: "anvil.enhance_prompt",
+            name: "enhance_prompt",
             title: "Enhance Prompt",
             description: "Run the same prompt enhancer used by the Generate view and return the enhanced prompt without mutating app state.",
             required: ["prompt"],
@@ -862,7 +872,7 @@ private enum MCPToolCatalog {
             ]
         ),
         tool(
-            name: "anvil.write_lyrics",
+            name: "write_lyrics",
             title: "Write Lyrics",
             description: "Generate cleaned, duration-aware lyrics using the same lyric writer and sanitizer as the Generate view.",
             required: ["prompt", "duration"],
@@ -888,7 +898,7 @@ private enum MCPToolCatalog {
             ]
         ),
         tool(
-            name: "anvil.apply_adapter",
+            name: "apply_adapter",
             title: "Apply Adapter",
             description: "Select, stack, or clear ACE-Step LoRA adapters for the next generation. Updates the Generate view when it is open.",
             properties: [
@@ -932,7 +942,7 @@ private enum MCPToolCatalog {
             ]
         ),
         tool(
-            name: "anvil.generate_song",
+            name: "generate_song",
             title: "Generate Song",
             description: "Orchestrate a song generation: optionally enhance the prompt, optionally write duration-aware lyrics, optionally apply adapters, then submit generation.",
             required: ["prompt"],
@@ -1061,9 +1071,9 @@ private enum MCPToolCatalog {
             ]
         ),
         tool(
-            name: "anvil.generate",
+            name: "generate",
             title: "Generate Audio",
-            description: "Submit a generation request through the same path as the Generate view. Returns immediately; poll anvil.generation_status or history for completion.",
+            description: "Submit a generation request through the same path as the Generate view. Returns immediately; poll generation_status or history for completion.",
             required: ["prompt"],
             properties: [
                 "prompt": [
@@ -1139,13 +1149,13 @@ private enum MCPToolCatalog {
             ]
         ),
         tool(
-            name: "anvil.generation_status",
+            name: "generation_status",
             title: "Generation Status",
             description: "Return the current generation state and latest completed result metadata.",
             properties: [:]
         ),
         tool(
-            name: "anvil.release_memory",
+            name: "release_memory",
             title: "Release Memory",
             description: "Cancel active generation if needed, unload model weights, and flush MLX GPU cache. Requires confirm: true.",
             required: ["confirm"],

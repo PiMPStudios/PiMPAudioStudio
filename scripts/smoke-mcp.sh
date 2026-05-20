@@ -76,23 +76,23 @@ rpc '{
 
 echo "4. tools/list"
 rpc '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' > "$TMP_DIR/tools.json"
-grep -q '"anvil.list_history"' "$TMP_DIR/tools.json"
-grep -q '"anvil.enhance_prompt"' "$TMP_DIR/tools.json"
-grep -q '"anvil.write_lyrics"' "$TMP_DIR/tools.json"
-grep -q '"anvil.mark_preferred_take"' "$TMP_DIR/tools.json"
-grep -q '"anvil.apply_adapter"' "$TMP_DIR/tools.json"
-grep -q '"anvil.generate_song"' "$TMP_DIR/tools.json"
-grep -q '"anvil.generate"' "$TMP_DIR/tools.json"
-grep -q '"anvil.generation_status"' "$TMP_DIR/tools.json"
-grep -q '"anvil.release_memory"' "$TMP_DIR/tools.json"
+grep -q '"list_history"' "$TMP_DIR/tools.json"
+grep -q '"enhance_prompt"' "$TMP_DIR/tools.json"
+grep -q '"write_lyrics"' "$TMP_DIR/tools.json"
+grep -q '"mark_preferred_take"' "$TMP_DIR/tools.json"
+grep -q '"apply_adapter"' "$TMP_DIR/tools.json"
+grep -q '"generate_song"' "$TMP_DIR/tools.json"
+grep -q '"generate"' "$TMP_DIR/tools.json"
+grep -q '"generation_status"' "$TMP_DIR/tools.json"
+grep -q '"release_memory"' "$TMP_DIR/tools.json"
 
-echo "5. anvil.generate_song dry-run"
+echo "5. generate_song dry-run"
 rpc '{
   "jsonrpc": "2.0",
   "id": 3,
   "method": "tools/call",
   "params": {
-    "name": "anvil.generate_song",
+    "name": "generate_song",
     "arguments": {
       "prompt": "mcp smoke dry run",
       "duration": 5,
@@ -109,13 +109,13 @@ echo "6. resources/list"
 rpc '{"jsonrpc":"2.0","id":3,"method":"resources/list"}' > "$TMP_DIR/resources.json"
 grep -Eq '"anvil:(\\/\\/|//)history"' "$TMP_DIR/resources.json"
 
-echo "7. anvil.list_history"
+echo "7. list_history"
 rpc '{
   "jsonrpc": "2.0",
   "id": 4,
   "method": "tools/call",
   "params": {
-    "name": "anvil.list_history",
+    "name": "list_history",
     "arguments": { "limit": 10 }
   }
 }' > "$TMP_DIR/history.json"
@@ -130,13 +130,13 @@ done < <(/usr/bin/python3 -c "$python_get_trace_ids" < "$TMP_DIR/history.json")
 if [[ "${#TRACE_IDS[@]}" -ge 1 ]]; then
   FIRST_ID="${TRACE_IDS[0]}"
 
-  echo "8. anvil.get_trace ($FIRST_ID)"
+  echo "8. get_trace ($FIRST_ID)"
   rpc "{
     \"jsonrpc\": \"2.0\",
     \"id\": 5,
     \"method\": \"tools/call\",
     \"params\": {
-      \"name\": \"anvil.get_trace\",
+      \"name\": \"get_trace\",
       \"arguments\": { \"id\": \"$FIRST_ID\" }
     }
   }" >/dev/null
@@ -166,13 +166,13 @@ if [[ "${#TRACE_IDS[@]}" -ge 2 ]]; then
   FIRST_ID="${TRACE_IDS[0]}"
   SECOND_ID="${TRACE_IDS[1]}"
 
-  echo "11. anvil.compare_traces ($FIRST_ID vs $SECOND_ID)"
+  echo "11. compare_traces ($FIRST_ID vs $SECOND_ID)"
   rpc "{
     \"jsonrpc\": \"2.0\",
     \"id\": 8,
     \"method\": \"tools/call\",
     \"params\": {
-      \"name\": \"anvil.compare_traces\",
+      \"name\": \"compare_traces\",
       \"arguments\": {
         \"left\": \"$FIRST_ID\",
         \"right\": \"$SECOND_ID\"
@@ -182,5 +182,27 @@ if [[ "${#TRACE_IDS[@]}" -ge 2 ]]; then
 else
   echo "11. skipped compare; fewer than two traced history rows found"
 fi
+
+echo "12. legacy anvil.list_history alias"
+rpc '{
+  "jsonrpc": "2.0",
+  "id": 9,
+  "method": "tools/call",
+  "params": {
+    "name": "anvil.list_history",
+    "arguments": { "limit": 1 }
+  }
+}' >/dev/null
+
+echo "13. legacy anvil_list_history alias"
+rpc '{
+  "jsonrpc": "2.0",
+  "id": 10,
+  "method": "tools/call",
+  "params": {
+    "name": "anvil_list_history",
+    "arguments": { "limit": 1 }
+  }
+}' >/dev/null
 
 echo "MCP smoke test passed."

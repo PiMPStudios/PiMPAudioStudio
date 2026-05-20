@@ -99,18 +99,19 @@ struct MCPSettingsView: View {
 
     private var toolsSection: some View {
         Section("MCP Tools") {
-            toolRow("anvil.list_models", "Model registry, readiness, and active model state")
-            toolRow("anvil.list_adapters", "Installed LoRA adapters and checkpoint status")
-            toolRow("anvil.list_history", "Recent generation history rows")
-            toolRow("anvil.get_trace", "One generation trace sidecar")
-            toolRow("anvil.compare_traces", "Analyzer-style grouped trace diff")
-            toolRow("anvil.enhance_prompt", "Prompt enhancement")
-            toolRow("anvil.write_lyrics", "Duration-aware lyric writing")
-            toolRow("anvil.apply_adapter", "LoRA selection and strength")
-            toolRow("anvil.generate_song", "Enhance/write/apply/generate orchestration")
-            toolRow("anvil.generate", "Direct generation submission")
-            toolRow("anvil.generation_status", "Live generation status")
-            toolRow("anvil.release_memory", "Confirmed model unload and cache flush")
+            toolRow("list_models", "Model registry, readiness, and active model state")
+            toolRow("list_adapters", "Installed LoRA adapters and checkpoint status")
+            toolRow("list_history", "Recent generation history rows")
+            toolRow("get_trace", "One generation trace sidecar")
+            toolRow("compare_traces", "Analyzer-style grouped trace diff")
+            toolRow("mark_preferred_take", "Preferred flag and listening note updates")
+            toolRow("enhance_prompt", "Prompt enhancement")
+            toolRow("write_lyrics", "Duration-aware lyric writing")
+            toolRow("apply_adapter", "LoRA selection and strength")
+            toolRow("generate_song", "Enhance/write/apply/generate orchestration")
+            toolRow("generate", "Direct generation submission")
+            toolRow("generation_status", "Live generation status")
+            toolRow("release_memory", "Confirmed model unload and cache flush")
         }
     }
 
