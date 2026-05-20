@@ -7,6 +7,7 @@ final class AnvilCommandFacade {
     private let promptEnhancer: PromptEnhancer
     private let lyricWriterManager: LyricWriterManager
     private var historyStore: HistoryStore
+    private var generationService: GenerationService?
     private let dateFormatter = ISO8601DateFormatter()
 
     init(
@@ -23,6 +24,10 @@ final class AnvilCommandFacade {
 
     func configure(historyStore: HistoryStore) {
         self.historyStore = historyStore
+    }
+
+    func configure(generationService: GenerationService) {
+        self.generationService = generationService
     }
 
     func listModels() async -> [String: Any] {
@@ -305,6 +310,18 @@ final class AnvilCommandFacade {
         ]
     }
 
+    func releaseMemory(arguments: [String: Any]) async throws -> [String: Any] {
+        guard boolValue(arguments["confirm"]) == true else {
+            throw AnvilCommandFacadeError.confirmationRequired("release_memory")
+        }
+        guard let generationService else {
+            throw AnvilCommandFacadeError.generationServiceUnavailable
+        }
+
+        let summary = await generationService.unloadAllWeights()
+        return memoryReleasePayload(summary)
+    }
+
     private func loadAdapters() async -> [LoRAAdapter] {
         await Task.detached(priority: .userInitiated) {
             AdapterRegistry.listAdapters()
@@ -496,6 +513,26 @@ final class AnvilCommandFacade {
         ]
     }
 
+    private func memoryReleasePayload(_ summary: MemoryReleaseSummary) -> [String: Any] {
+        [
+            "released": true,
+            "before": [
+                "activeMemoryBytes": summary.beforeActiveMemory,
+                "cacheMemoryBytes": summary.beforeCacheMemory,
+                "peakMemoryBytes": summary.beforePeakMemory
+            ],
+            "after": [
+                "activeMemoryBytes": summary.afterActiveMemory,
+                "cacheMemoryBytes": summary.afterCacheMemory,
+                "peakMemoryBytes": summary.afterPeakMemory
+            ],
+            "delta": [
+                "releasedActiveMemoryBytes": summary.releasedActiveMemory,
+                "releasedCacheMemoryBytes": summary.releasedCacheMemory
+            ]
+        ]
+    }
+
     private func rowPayload(_ row: TraceComparisonRow) -> [String: Any] {
         [
             "label": row.label,
@@ -646,6 +683,8 @@ private enum AnvilCommandFacadeError: LocalizedError {
     case invalidBoolean(String)
     case missingRequiredArgument(String)
     case invalidDuration
+    case confirmationRequired(String)
+    case generationServiceUnavailable
     case encodingFailed
 
     var errorDescription: String? {
@@ -666,6 +705,10 @@ private enum AnvilCommandFacadeError: LocalizedError {
             return "Missing required argument '\(key)'."
         case .invalidDuration:
             return "Provide a positive duration in seconds."
+        case .confirmationRequired(let action):
+            return "Refusing to run '\(action)' without confirm: true."
+        case .generationServiceUnavailable:
+            return "Generation service is not ready yet."
         case .encodingFailed:
             return "Could not encode the trace as JSON."
         }

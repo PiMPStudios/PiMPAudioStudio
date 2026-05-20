@@ -241,7 +241,7 @@ final class AppServices: ObservableObject {
         )
         self.commandFacade = facade
         self.mcpServer = AnvilMCPServer(facade: facade)
-        self.generationService = Self.makeGenerationService(
+        let generationService = Self.makeGenerationService(
             vaeActor: vae,
             diffusionActor: diffusion,
             conditioningActor: conditioning,
@@ -253,6 +253,8 @@ final class AppServices: ObservableObject {
             trainingService: self.trainingService,
             traceMonitor: traceMonitor
         )
+        self.generationService = generationService
+        facade.configure(generationService: generationService)
     }
 
     /// Rebuilds `historyStore` and `generationService` when the output directory
@@ -270,7 +272,7 @@ final class AppServices: ObservableObject {
         let store = HistoryStore(directory: dir)
         self.historyStore = store
         commandFacade.configure(historyStore: store)
-        self.generationService = Self.makeGenerationService(
+        let generationService = Self.makeGenerationService(
             vaeActor: vaeActor,
             diffusionActor: diffusionActor,
             conditioningActor: conditioningActor,
@@ -282,6 +284,8 @@ final class AppServices: ObservableObject {
             trainingService: self.trainingService,
             traceMonitor: traceMonitor
         )
+        self.generationService = generationService
+        commandFacade.configure(generationService: generationService)
     }
 
     private static func makeGenerationService(

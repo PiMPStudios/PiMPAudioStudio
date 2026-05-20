@@ -15,6 +15,23 @@ struct GenerationResult: Sendable {
     let waveformPeaks: [Float]?
 }
 
+struct MemoryReleaseSummary: Sendable {
+    let beforeActiveMemory: Int
+    let beforeCacheMemory: Int
+    let beforePeakMemory: Int
+    let afterActiveMemory: Int
+    let afterCacheMemory: Int
+    let afterPeakMemory: Int
+
+    var releasedActiveMemory: Int {
+        max(0, beforeActiveMemory - afterActiveMemory)
+    }
+
+    var releasedCacheMemory: Int {
+        max(0, beforeCacheMemory - afterCacheMemory)
+    }
+}
+
 @MainActor
 final class GenerationService: ObservableObject {
     @Published var state: GenerationState = .idle
@@ -267,7 +284,7 @@ final class GenerationService: ObservableObject {
         )
     }
 
-    func unloadAllWeights() async {
+    func unloadAllWeights() async -> MemoryReleaseSummary {
         if let generationTask {
             generationTask.cancel()
             self.generationTask = nil
@@ -297,6 +314,15 @@ final class GenerationService: ObservableObject {
         let after = MLX.GPU.snapshot()
         memLogger.info("[unloadAllWeights] after  active=\(after.activeMemory) cache=\(after.cacheMemory) peak=\(after.peakMemory)")
         memLogger.info("[unloadAllWeights] delta active=-\(before.activeMemory - after.activeMemory) cache=-\(before.cacheMemory - after.cacheMemory)")
+
+        return MemoryReleaseSummary(
+            beforeActiveMemory: before.activeMemory,
+            beforeCacheMemory: before.cacheMemory,
+            beforePeakMemory: before.peakMemory,
+            afterActiveMemory: after.activeMemory,
+            afterCacheMemory: after.cacheMemory,
+            afterPeakMemory: after.peakMemory
+        )
     }
 
     private nonisolated static func flushMLXGPUAllocator() async {

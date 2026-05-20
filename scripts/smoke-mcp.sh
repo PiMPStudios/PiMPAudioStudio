@@ -68,6 +68,7 @@ grep -q '"anvil.list_history"' "$TMP_DIR/tools.json"
 grep -q '"anvil.enhance_prompt"' "$TMP_DIR/tools.json"
 grep -q '"anvil.write_lyrics"' "$TMP_DIR/tools.json"
 grep -q '"anvil.mark_preferred_take"' "$TMP_DIR/tools.json"
+grep -q '"anvil.release_memory"' "$TMP_DIR/tools.json"
 
 echo "4. resources/list"
 rpc '{"jsonrpc":"2.0","id":3,"method":"resources/list"}' > "$TMP_DIR/resources.json"

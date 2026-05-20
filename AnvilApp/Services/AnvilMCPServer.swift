@@ -216,6 +216,8 @@ final class AnvilMCPServer: ObservableObject {
                 structured = try await facade.enhancePrompt(arguments: arguments)
             case "anvil.write_lyrics":
                 structured = try await facade.writeLyrics(arguments: arguments)
+            case "anvil.release_memory":
+                structured = try await facade.releaseMemory(arguments: arguments)
             default:
                 return .error(id: request.id, code: -32601, message: "Unknown Anvil tool: \(name)")
             }
@@ -827,6 +829,18 @@ private enum MCPToolCatalog {
                     "type": "number",
                     "minimum": 1,
                     "description": "Alias for duration."
+                ]
+            ]
+        ),
+        tool(
+            name: "anvil.release_memory",
+            title: "Release Memory",
+            description: "Cancel active generation if needed, unload model weights, and flush MLX GPU cache. Requires confirm: true.",
+            required: ["confirm"],
+            properties: [
+                "confirm": [
+                    "type": "boolean",
+                    "description": "Must be true to release memory."
                 ]
             ]
         )

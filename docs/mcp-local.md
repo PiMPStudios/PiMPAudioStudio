@@ -48,6 +48,15 @@ the preferred flag and optional listening note. It mirrors the same values into
 behavior. It does not modify audio files, models, adapters, tensors, or
 generation settings.
 
+It exposes one guarded cleanup action:
+
+- `anvil.release_memory`
+
+`anvil.release_memory` runs the same release path as **Settings > Models >
+Release GPU Memory**: it cancels active generation if needed, unloads model
+weights, evicts the local LLM, and flushes the MLX GPU cache. It requires
+`confirm: true` and returns before/after memory counters.
+
 ## Resources
 
 The same data is also available as MCP resources:
@@ -188,6 +197,24 @@ curl -s http://127.0.0.1:38765/mcp \
 Omit `listeningNote` to preserve the existing note. Pass an empty string to
 clear it.
 
+Release model memory:
+
+```bash
+curl -s http://127.0.0.1:38765/mcp \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 7,
+    "method": "tools/call",
+    "params": {
+      "name": "anvil.release_memory",
+      "arguments": {
+        "confirm": true
+      }
+    }
+  }'
+```
+
 ## Notes
 
 - The server binds to `127.0.0.1` only.
@@ -199,3 +226,6 @@ clear it.
   local LLM or API lyric backends, but their responses are return-only.
 - `anvil.mark_preferred_take` is intentionally scoped to trace/history review
   metadata only.
+- `anvil.release_memory` is intentionally guarded because it cancels active
+  generation and unloads resident model state. The next generation or LLM tool
+  call reloads what it needs.

@@ -73,7 +73,7 @@ with explicit safeguards.
 - [x] `anvil.mark_preferred_take`
 - [ ] `anvil.generate`
 - [ ] `anvil.apply_adapter`
-- [ ] `anvil.release_memory` with required `confirm: true`
+- [x] `anvil.release_memory` with required `confirm: true`
 
 Implementation note: `anvil.enhance_prompt` and `anvil.write_lyrics` are
 return-only action tools. They reuse the same `PromptEnhancer` and
@@ -84,6 +84,11 @@ Implementation note: `anvil.mark_preferred_take` is the first controlled write
 surface. It is intentionally limited to review metadata already supported by
 the Generation Analyzer: preferred flag plus optional listening note on an
 existing `.trace.json`, mirrored into `history.json`.
+
+Implementation note: `anvil.release_memory` is the first guarded cleanup
+action. It calls the same consolidated `GenerationService.unloadAllWeights()`
+path as Settings, requires `confirm: true`, and returns before/after MLX active,
+cache, and peak memory counters so an MCP client can verify cleanup.
 
 ## Phase 4 — Deferred Heavy/Destructive Actions
 
@@ -111,5 +116,5 @@ read-only phase.
       the Generate form.
 - [ ] `mark_preferred_take` updates trace/history review metadata and preserves
       existing notes when no note argument is provided.
-- [ ] `release_memory` refuses to run without `confirm: true`.
+- [x] `release_memory` refuses to run without `confirm: true`.
 - [ ] App quit stops the MCP server cleanly.

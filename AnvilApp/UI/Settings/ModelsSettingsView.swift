@@ -233,7 +233,7 @@ struct ModelsSettingsView: View {
         guard !isReleasingMemory else { return }
         isReleasingMemory = true
         Task {
-            await generationService.unloadAllWeights()
+            _ = await generationService.unloadAllWeights()
             await MainActor.run {
                 isReleasingMemory = false
             }
