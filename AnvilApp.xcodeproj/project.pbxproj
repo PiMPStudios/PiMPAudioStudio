@@ -42,6 +42,7 @@
 		596591F8662368E4B2938614 /* AVAudioEngineDSP.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43C028BDB7B70C3A0433A831 /* AVAudioEngineDSP.swift */; };
 		5D474882556C3ECFB5ABBB05 /* AudioPlayerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A594BD4883E8061AEA451F27 /* AudioPlayerService.swift */; };
 		6296CD26AB7AC1711F7AA84A /* AdapterStackView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF9A603BF062A10905588D07 /* AdapterStackView.swift */; };
+		6507B60FF57B075B5AB2A81B /* ProviderAccessStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C19D86DC2C8F635DB0E2C2A4 /* ProviderAccessStoreTests.swift */; };
 		655E0446B4C9A5976DE85721 /* MCPSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 544B6CE97E7D9AC0ABDFE91D /* MCPSettingsView.swift */; };
 		65A8865EEC7DFF72F0979081 /* HuggingFaceImportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 823702D3D9DF8DCBBA0EE034 /* HuggingFaceImportSheet.swift */; };
 		66C0A1E3C6C2D18AA1D8CBA6 /* HistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48050CE43319304DFA74A007 /* HistoryStore.swift */; };
@@ -58,6 +59,7 @@
 		7E5DADAB54C35BFAE7BD357E /* AdapterPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86892F4AB6D7FD9C6D4DFF8E /* AdapterPicker.swift */; };
 		8159452FE0607707CFA3A628 /* DSPPaletteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C22F20118A466836344B2D08 /* DSPPaletteView.swift */; };
 		842730E7F4571DF4897A08AE /* GenerationParameters.swift in Sources */ = {isa = PBXBuildFile; fileRef = 127AA276961262D8DFCF37D6 /* GenerationParameters.swift */; };
+		8EA964E344DB8F5363EBCEB9 /* ProviderAccessStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC937EB07AD49BE1C4368F68 /* ProviderAccessStore.swift */; };
 		8F93F50EFE8E7BF41962638C /* AddModelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5374986729853ECF29EFF76 /* AddModelView.swift */; };
 		987D32242043555415D62524 /* SFXModelManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EC4A8B06E55930149BAC8ED /* SFXModelManager.swift */; };
 		9964ED5991FCA159B1F023D5 /* MCP in Frameworks */ = {isa = PBXBuildFile; productRef = 15228484378D1FE51FA9DE85 /* MCP */; };
@@ -171,6 +173,7 @@
 		9E46D5718C7768D91073FCEE /* AnvilAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AnvilAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		9F48405E290FB7817733FDD4 /* GenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationService.swift; sourceTree = "<group>"; };
 		A594BD4883E8061AEA451F27 /* AudioPlayerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayerService.swift; sourceTree = "<group>"; };
+		AC937EB07AD49BE1C4368F68 /* ProviderAccessStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderAccessStore.swift; sourceTree = "<group>"; };
 		ACDBE130986895721B31725F /* HistoryListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryListView.swift; sourceTree = "<group>"; };
 		AFD40C51FF29EFB9FBC96950 /* PresetsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetsView.swift; sourceTree = "<group>"; };
 		B08B25DB250FBA2C5AE512A6 /* BackgroundDownloadIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundDownloadIndicator.swift; sourceTree = "<group>"; };
@@ -178,6 +181,7 @@
 		B8D733ED07D2A51F14F5BA8A /* ReverbControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReverbControlView.swift; sourceTree = "<group>"; };
 		BA236B769F73F3B386B47BE9 /* GenerationRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationRequest.swift; sourceTree = "<group>"; };
 		BF551D645B08F52E213E05E2 /* EditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorView.swift; sourceTree = "<group>"; };
+		C19D86DC2C8F635DB0E2C2A4 /* ProviderAccessStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderAccessStoreTests.swift; sourceTree = "<group>"; };
 		C22F20118A466836344B2D08 /* DSPPaletteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DSPPaletteView.swift; sourceTree = "<group>"; };
 		C3DDAB9A75FD674131701713 /* TrainingManifest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingManifest.swift; sourceTree = "<group>"; };
 		C61D0DB6E1E91085513A8234 /* ClaudeLyricWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeLyricWriter.swift; sourceTree = "<group>"; };
@@ -274,6 +278,7 @@
 				17654E4D0E9713010A5AFBC2 /* PEFTKeyRemapper.swift */,
 				FD2CA362A1B0531F8B13B8DD /* PresetStore.swift */,
 				17140A0355CED442DB2B2EDE /* PromptEnhancer.swift */,
+				AC937EB07AD49BE1C4368F68 /* ProviderAccessStore.swift */,
 				CCFDE36CECAA5A75A45571D5 /* SFXGenerationService.swift */,
 				7EC4A8B06E55930149BAC8ED /* SFXModelManager.swift */,
 				C3DDAB9A75FD674131701713 /* TrainingManifest.swift */,
@@ -376,6 +381,7 @@
 			isa = PBXGroup;
 			children = (
 				FC923278BD1DFB05336E01E3 /* AppStateTests.swift */,
+				C19D86DC2C8F635DB0E2C2A4 /* ProviderAccessStoreTests.swift */,
 			);
 			path = AnvilAppTests;
 			sourceTree = "<group>";
@@ -599,6 +605,7 @@
 				66E9184590022F8F6F653BC1 /* PresetStore.swift in Sources */,
 				ACC46C8E03A2B746A4B88BB8 /* PresetsView.swift in Sources */,
 				24501B4A9D924AC672E9EA00 /* PromptEnhancer.swift in Sources */,
+				8EA964E344DB8F5363EBCEB9 /* ProviderAccessStore.swift in Sources */,
 				E112BB2C15BD04D59A6B0FA7 /* Resampler.swift in Sources */,
 				F14A826EBFBE8B00266D4BF5 /* ReverbControlView.swift in Sources */,
 				149D0F7AA4A61FF4806E28E0 /* SFXGenerationService.swift in Sources */,
@@ -621,6 +628,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B26EE3E5C89EA6E41E2AEC9F /* AppStateTests.swift in Sources */,
+				6507B60FF57B075B5AB2A81B /* ProviderAccessStoreTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

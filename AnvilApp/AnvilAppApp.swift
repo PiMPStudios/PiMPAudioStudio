@@ -9,6 +9,7 @@ struct AnvilAppApp: App {
     @StateObject private var playerService: AudioPlayerService
     @StateObject private var services: AppServices
     @StateObject private var apiKeyStore: APIKeyStore
+    @StateObject private var providerAccessStore: ProviderAccessStore
     @StateObject private var modelManager: LLMModelManager
     @StateObject private var intentRouter: IntentRouter
     @StateObject private var promptEnhancer: PromptEnhancer
@@ -20,6 +21,7 @@ struct AnvilAppApp: App {
 
     init() {
         let apiKeys = APIKeyStore()
+        let providerAccess = ProviderAccessStore()
         let appState = AppState(apiKeyStore: apiKeys)
         let outputManager = OutputDirectoryManager()
         let playerService = AudioPlayerService()
@@ -42,6 +44,7 @@ struct AnvilAppApp: App {
         _playerService = StateObject(wrappedValue: playerService)
         _services = StateObject(wrappedValue: services)
         _apiKeyStore = StateObject(wrappedValue: apiKeys)
+        _providerAccessStore = StateObject(wrappedValue: providerAccess)
         _modelManager = StateObject(wrappedValue: manager)
         _intentRouter = StateObject(wrappedValue: router)
         _promptEnhancer = StateObject(wrappedValue: enhancer)
@@ -58,6 +61,7 @@ struct AnvilAppApp: App {
                 .environmentObject(services.historyStore)
                 .environmentObject(services.generationService)
                 .environmentObject(apiKeyStore)
+                .environmentObject(providerAccessStore)
                 .environmentObject(modelManager)
                 .environmentObject(intentRouter)
                 .environmentObject(promptEnhancer)
@@ -128,6 +132,7 @@ struct AnvilAppApp: App {
                     .tabItem { Label("Intelligence", systemImage: "brain") }
                     .environmentObject(modelManager)
                     .environmentObject(apiKeyStore)
+                    .environmentObject(providerAccessStore)
                     .environmentObject(lyricWriterManager)
 
                 ModelsSettingsView()

@@ -1,0 +1,718 @@
+import Darwin
+import Foundation
+
+@MainActor
+final class ProviderAccessStore: ObservableObject {
+    @Published private(set) var statuses: [String: ProviderCLIStatus] = [:]
+    @Published private(set) var isRefreshing = false
+
+    private let definitions: [ProviderCLIDefinition]
+
+    init(definitions: [ProviderCLIDefinition] = ProviderCLIDefinition.all) {
+        self.definitions = definitions
+    }
+
+    func status(for providerID: String, displayName: String) -> ProviderCLIStatus {
+        statuses[providerID] ?? ProviderCLIStatus.notChecked(
+            providerID: providerID,
+            displayName: displayName
+        )
+    }
+
+    func refreshIfNeeded() async {
+        guard statuses.isEmpty else { return }
+        await refresh()
+    }
+
+    func refresh() async {
+        guard !isRefreshing else { return }
+        isRefreshing = true
+        defer { isRefreshing = false }
+
+        var nextStatuses = statuses
+        for definition in definitions {
+            let status = await ProviderCLIDetector.detect(definition: definition)
+            nextStatuses[definition.providerID] = status
+            statuses = nextStatuses
+        }
+    }
+
+    func test(providerID: String) async {
+        guard let definition = definitions.first(where: { $0.providerID == providerID }) else { return }
+
+        var current = statuses[providerID] ?? ProviderCLIStatus.notChecked(
+            providerID: definition.providerID,
+            displayName: definition.displayName
+        )
+        current.testState = .running
+        statuses[providerID] = current
+
+        let detected: ProviderCLIStatus
+        if current.command == nil || current.state == .notChecked {
+            detected = await ProviderCLIDetector.detect(definition: definition)
+            var running = detected
+            running.testState = .running
+            statuses[providerID] = running
+        } else {
+            detected = current
+        }
+
+        guard let command = detected.command else {
+            var missing = statuses[providerID] ?? detected
+            missing.testState = .failed("CLI not found")
+            statuses[providerID] = missing
+            return
+        }
+
+        let outcome = await ProviderCLIDetector.test(definition: definition, command: command)
+        var updated = statuses[providerID] ?? detected
+        updated.testState = outcome.success ? .passed(outcome.detail) : .failed(outcome.detail)
+        statuses[providerID] = updated
+    }
+}
+
+struct ProviderCLIStatus: Identifiable, Equatable {
+    var id: String { providerID }
+
+    let providerID: String
+    let displayName: String
+    let command: String?
+    let version: String?
+    var state: ProviderCLIState
+    var detail: String?
+    var lastChecked: Date?
+    var testState: ProviderCLITestState = .idle
+
+    var canTest: Bool {
+        command != nil && state != .missing
+    }
+
+    static func notChecked(providerID: String, displayName: String) -> ProviderCLIStatus {
+        ProviderCLIStatus(
+            providerID: providerID,
+            displayName: displayName,
+            command: nil,
+            version: nil,
+            state: .notChecked,
+            detail: nil,
+            lastChecked: nil
+        )
+    }
+}
+
+enum ProviderCLIState: Equatable {
+    case notChecked
+    case missing
+    case installed
+    case authenticated
+    case unauthenticated
+    case failed(String)
+}
+
+enum ProviderCLITestState: Equatable {
+    case idle
+    case running
+    case passed(String)
+    case failed(String)
+}
+
+struct ProviderCommandResult: Equatable {
+    let command: String
+    let arguments: [String]
+    let exitStatus: Int32
+    let stdout: String
+    let stderr: String
+
+    var combinedOutput: String {
+        [stdout, stderr]
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+    }
+
+    var cleanedOutput: String {
+        combinedOutput.providerAccessCleaned()
+    }
+}
+
+struct ProviderCLIProbe: Equatable {
+    let state: ProviderCLIState
+    let detail: String
+}
+
+struct ProviderCLITestOutcome: Equatable {
+    let success: Bool
+    let detail: String
+}
+
+struct ProviderCLIDefinition {
+    let providerID: String
+    let displayName: String
+    let commandCandidates: [String]
+    let versionArguments: [String]
+    let authProbeArguments: [String]?
+    let authParser: ((ProviderCommandResult) -> ProviderCLIProbe)?
+    let testArguments: [String]?
+    let testParser: ((ProviderCommandResult) -> ProviderCLITestOutcome)?
+
+    static let all: [ProviderCLIDefinition] = [
+        ProviderCLIDefinition(
+            providerID: "anthropic",
+            displayName: "Claude Code",
+            commandCandidates: ["claude"],
+            versionArguments: ["--version"],
+            authProbeArguments: ["auth", "status"],
+            authParser: ProviderCLIParsers.parseClaudeAuth,
+            testArguments: nil,
+            testParser: nil
+        ),
+        ProviderCLIDefinition(
+            providerID: "openai",
+            displayName: "OpenAI Codex",
+            commandCandidates: ["codex"],
+            versionArguments: ["--version"],
+            authProbeArguments: ["login", "status"],
+            authParser: ProviderCLIParsers.parseCodexAuth,
+            testArguments: nil,
+            testParser: nil
+        ),
+        ProviderCLIDefinition(
+            providerID: "google",
+            displayName: "Gemini CLI",
+            commandCandidates: ["gemini"],
+            versionArguments: ["--version"],
+            authProbeArguments: nil,
+            authParser: nil,
+            testArguments: [
+                "--prompt",
+                "Reply with OK only.",
+                "--output-format",
+                "json",
+                "--approval-mode",
+                "plan",
+            ],
+            testParser: ProviderCLIParsers.parseGeminiTest
+        ),
+        ProviderCLIDefinition(
+            providerID: "xai",
+            displayName: "Grok CLI",
+            commandCandidates: ["grok"],
+            versionArguments: ["--version"],
+            authProbeArguments: ["models"],
+            authParser: ProviderCLIParsers.parseGrokAuth,
+            testArguments: nil,
+            testParser: nil
+        ),
+        ProviderCLIDefinition(
+            providerID: "huggingface",
+            displayName: "Hugging Face CLI",
+            commandCandidates: ["hf", "huggingface-cli"],
+            versionArguments: ["--version"],
+            authProbeArguments: ["auth", "whoami"],
+            authParser: ProviderCLIParsers.parseHuggingFaceAuth,
+            testArguments: nil,
+            testParser: nil
+        ),
+    ]
+}
+
+enum ProviderCLIDetector {
+    static func detect(definition: ProviderCLIDefinition) async -> ProviderCLIStatus {
+        for command in definition.commandCandidates {
+            let versionResult: ProviderCommandResult
+            do {
+                versionResult = try await ProviderCommandRunner.run(
+                    command: command,
+                    arguments: definition.versionArguments,
+                    timeoutSeconds: 5
+                )
+            } catch {
+                return ProviderCLIStatus(
+                    providerID: definition.providerID,
+                    displayName: definition.displayName,
+                    command: command,
+                    version: nil,
+                    state: .failed(error.localizedDescription),
+                    detail: error.localizedDescription,
+                    lastChecked: Date()
+                )
+            }
+
+            guard versionResult.exitStatus == 0 else {
+                if ProviderCLIParsers.isCommandMissing(versionResult) {
+                    continue
+                }
+                let detail = ProviderCLIParsers.firstUsefulLine(versionResult.cleanedOutput)
+                    ?? "Version probe failed with exit code \(versionResult.exitStatus)"
+                return ProviderCLIStatus(
+                    providerID: definition.providerID,
+                    displayName: definition.displayName,
+                    command: command,
+                    version: nil,
+                    state: .failed(detail),
+                    detail: detail,
+                    lastChecked: Date()
+                )
+            }
+
+            let version = ProviderCLIParsers.firstUsefulLine(versionResult.cleanedOutput)
+            var state: ProviderCLIState = .installed
+            var detail: String? = "Installed"
+
+            if let arguments = definition.authProbeArguments,
+               let parser = definition.authParser {
+                do {
+                    let authResult = try await ProviderCommandRunner.run(
+                        command: command,
+                        arguments: arguments,
+                        timeoutSeconds: 10
+                    )
+                    let probe = parser(authResult)
+                    state = probe.state
+                    detail = probe.detail
+                } catch {
+                    state = .failed(error.localizedDescription)
+                    detail = error.localizedDescription
+                }
+            } else {
+                detail = "Installed; test required for sign-in check"
+            }
+
+            return ProviderCLIStatus(
+                providerID: definition.providerID,
+                displayName: definition.displayName,
+                command: command,
+                version: version,
+                state: state,
+                detail: detail,
+                lastChecked: Date()
+            )
+        }
+
+        return ProviderCLIStatus(
+            providerID: definition.providerID,
+            displayName: definition.displayName,
+            command: nil,
+            version: nil,
+            state: .missing,
+            detail: "CLI not found",
+            lastChecked: Date()
+        )
+    }
+
+    static func test(definition: ProviderCLIDefinition, command: String) async -> ProviderCLITestOutcome {
+        guard let arguments = definition.testArguments ?? definition.authProbeArguments else {
+            return ProviderCLITestOutcome(success: false, detail: "No test command configured")
+        }
+
+        do {
+            let result = try await ProviderCommandRunner.run(
+                command: command,
+                arguments: arguments,
+                timeoutSeconds: definition.testArguments == nil ? 10 : 30
+            )
+
+            if let parser = definition.testParser {
+                return parser(result)
+            }
+
+            if let authParser = definition.authParser {
+                return ProviderCLIParsers.testOutcome(from: authParser(result))
+            }
+
+            return ProviderCLIParsers.parseGenericTest(result)
+        } catch {
+            return ProviderCLITestOutcome(success: false, detail: error.localizedDescription)
+        }
+    }
+}
+
+enum ProviderCLIParsers {
+    static func parseClaudeAuth(_ result: ProviderCommandResult) -> ProviderCLIProbe {
+        if let data = result.stdout.data(using: .utf8),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            let loggedIn = json["loggedIn"] as? Bool ?? false
+            guard loggedIn else {
+                return ProviderCLIProbe(state: .unauthenticated, detail: "Not signed in")
+            }
+
+            var parts: [String] = []
+            if let method = json["authMethod"] as? String, !method.isEmpty {
+                parts.append("via \(method)")
+            }
+            if let subscription = json["subscriptionType"] as? String, !subscription.isEmpty {
+                parts.append(subscription)
+            }
+            if let email = json["email"] as? String, !email.isEmpty {
+                parts.append(email)
+            }
+
+            let detail = parts.isEmpty ? "Signed in" : "Signed in " + parts.joined(separator: " - ")
+            return ProviderCLIProbe(state: .authenticated, detail: detail)
+        }
+
+        guard result.exitStatus == 0 else {
+            return failedProbe(result, fallback: "Claude auth probe failed")
+        }
+
+        let output = result.cleanedOutput
+        if output.localizedCaseInsensitiveContains("logged in") {
+            return ProviderCLIProbe(state: .authenticated, detail: firstUsefulLine(output) ?? "Signed in")
+        }
+        return failedProbe(result, fallback: "Could not parse Claude auth status")
+    }
+
+    static func parseCodexAuth(_ result: ProviderCommandResult) -> ProviderCLIProbe {
+        let output = result.cleanedOutput
+        guard result.exitStatus == 0 else {
+            if output.localizedCaseInsensitiveContains("not logged in") {
+                return ProviderCLIProbe(state: .unauthenticated, detail: "Not signed in")
+            }
+            return failedProbe(result, fallback: "Codex auth probe failed")
+        }
+
+        if output.localizedCaseInsensitiveContains("logged in") {
+            return ProviderCLIProbe(state: .authenticated, detail: firstUsefulLine(output) ?? "Signed in")
+        }
+        return ProviderCLIProbe(state: .installed, detail: firstUsefulLine(output) ?? "Installed")
+    }
+
+    static func parseGrokAuth(_ result: ProviderCommandResult) -> ProviderCLIProbe {
+        let output = result.cleanedOutput
+        guard result.exitStatus == 0 else {
+            if output.localizedCaseInsensitiveContains("not logged in") {
+                return ProviderCLIProbe(state: .unauthenticated, detail: "Not signed in")
+            }
+            return failedProbe(result, fallback: "Grok auth probe failed")
+        }
+
+        if output.localizedCaseInsensitiveContains("logged in with grok.com") {
+            let defaultModel = output
+                .components(separatedBy: .newlines)
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .first { $0.localizedCaseInsensitiveContains("(default)") }
+                .map { $0.replacingOccurrences(of: "(default)", with: "").trimmingCharacters(in: .whitespacesAndNewlines) }
+
+            if let defaultModel, !defaultModel.isEmpty {
+                return ProviderCLIProbe(
+                    state: .authenticated,
+                    detail: "Signed in with grok.com - default \(defaultModel)"
+                )
+            }
+            return ProviderCLIProbe(state: .authenticated, detail: "Signed in with grok.com")
+        }
+
+        return ProviderCLIProbe(state: .installed, detail: firstUsefulLine(output) ?? "Installed")
+    }
+
+    static func parseHuggingFaceAuth(_ result: ProviderCommandResult) -> ProviderCLIProbe {
+        let output = result.cleanedOutput
+        guard result.exitStatus == 0 else {
+            if output.localizedCaseInsensitiveContains("not logged in") ||
+                output.localizedCaseInsensitiveContains("not authenticated") {
+                return ProviderCLIProbe(state: .unauthenticated, detail: "Not signed in")
+            }
+            return failedProbe(result, fallback: "Hugging Face auth probe failed")
+        }
+
+        if let userLine = output
+            .components(separatedBy: .newlines)
+            .map({ $0.trimmingCharacters(in: .whitespacesAndNewlines) })
+            .first(where: { $0.hasPrefix("user=") || $0.hasPrefix("user:") }) {
+            let user = userLine
+                .replacingOccurrences(of: "user=", with: "")
+                .replacingOccurrences(of: "user:", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return ProviderCLIProbe(state: .authenticated, detail: "Signed in as \(user)")
+        }
+
+        return ProviderCLIProbe(state: .authenticated, detail: firstUsefulLine(output) ?? "Signed in")
+    }
+
+    static func parseGeminiTest(_ result: ProviderCommandResult) -> ProviderCLITestOutcome {
+        guard result.exitStatus == 0 else {
+            return ProviderCLITestOutcome(
+                success: false,
+                detail: firstUsefulLine(result.cleanedOutput) ?? "Gemini test failed"
+            )
+        }
+
+        if let data = result.stdout.data(using: .utf8),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let response = json["response"] as? String {
+            return ProviderCLITestOutcome(
+                success: !response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                detail: "Received response: \(response.trimmingCharacters(in: .whitespacesAndNewlines))"
+            )
+        }
+
+        let output = result.cleanedOutput
+        return ProviderCLITestOutcome(
+            success: !output.isEmpty,
+            detail: firstUsefulLine(output) ?? "Gemini responded"
+        )
+    }
+
+    static func parseGenericTest(_ result: ProviderCommandResult) -> ProviderCLITestOutcome {
+        if result.exitStatus == 0 {
+            return ProviderCLITestOutcome(
+                success: true,
+                detail: firstUsefulLine(result.cleanedOutput) ?? "Test passed"
+            )
+        }
+        return ProviderCLITestOutcome(
+            success: false,
+            detail: firstUsefulLine(result.cleanedOutput) ?? "Test failed"
+        )
+    }
+
+    static func testOutcome(from probe: ProviderCLIProbe) -> ProviderCLITestOutcome {
+        switch probe.state {
+        case .authenticated:
+            return ProviderCLITestOutcome(success: true, detail: probe.detail)
+        case .installed:
+            return ProviderCLITestOutcome(success: true, detail: probe.detail)
+        case .unauthenticated:
+            return ProviderCLITestOutcome(success: false, detail: probe.detail)
+        case .failed(let message):
+            return ProviderCLITestOutcome(success: false, detail: message)
+        case .missing:
+            return ProviderCLITestOutcome(success: false, detail: "CLI not found")
+        case .notChecked:
+            return ProviderCLITestOutcome(success: false, detail: "Not checked")
+        }
+    }
+
+    static func isCommandMissing(_ result: ProviderCommandResult) -> Bool {
+        result.exitStatus == 127 ||
+            result.cleanedOutput.localizedCaseInsensitiveContains("no such file or directory")
+    }
+
+    static func firstUsefulLine(_ output: String) -> String? {
+        output
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty && !$0.hasPrefix("[WARN]") }
+    }
+
+    private static func failedProbe(_ result: ProviderCommandResult, fallback: String) -> ProviderCLIProbe {
+        let detail = firstUsefulLine(result.cleanedOutput) ?? fallback
+        return ProviderCLIProbe(state: .failed(detail), detail: detail)
+    }
+}
+
+enum ProviderCommandRunner {
+    private static let envURL = URL(fileURLWithPath: "/usr/bin/env")
+
+    private static var commandEnvironment: [String: String] {
+        var environment = ProcessInfo.processInfo.environment
+        let home = environment["HOME"] ?? NSHomeDirectory()
+        let user = environment["USER"] ?? NSUserName()
+        environment["PATH"] = "\(home)/.grok/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin"
+        environment["HOME"] = home
+        environment["USER"] = user
+        environment["LOGNAME"] = environment["LOGNAME"] ?? user
+        environment["SHELL"] = environment["SHELL"] ?? "/bin/zsh"
+        environment["TMPDIR"] = environment["TMPDIR"] ?? NSTemporaryDirectory()
+        environment["TERM"] = "dumb"
+        environment["NO_COLOR"] = "1"
+        environment["CLICOLOR"] = "0"
+        return environment
+    }
+
+    static func run(command: String, arguments: [String], timeoutSeconds: TimeInterval) async throws -> ProviderCommandResult {
+        let capture = ProviderCapturedProcess(
+            executableURL: envURL,
+            command: command,
+            arguments: arguments,
+            environment: commandEnvironment
+        )
+        return try await capture.run(timeoutSeconds: timeoutSeconds)
+    }
+}
+
+enum ProviderCommandError: LocalizedError {
+    case timedOut(String, TimeInterval)
+
+    var errorDescription: String? {
+        switch self {
+        case .timedOut(let command, let timeout):
+            return "\(command) timed out after \(Int(timeout)) seconds"
+        }
+    }
+}
+
+private final class ProviderCapturedProcess: @unchecked Sendable {
+    private let process = Process()
+    private let stdout = Pipe()
+    private let stderr = Pipe()
+    private let lock = NSLock()
+    private let command: String
+    private let arguments: [String]
+    private var stdoutData = Data()
+    private var stderrData = Data()
+    private var continuation: CheckedContinuation<ProviderCommandResult, Error>?
+    private var didResume = false
+    private var didCancel = false
+
+    init(executableURL: URL, command: String, arguments: [String], environment: [String: String]) {
+        self.command = command
+        self.arguments = arguments
+        process.executableURL = executableURL
+        process.arguments = [command] + arguments
+        process.environment = environment
+        process.standardOutput = stdout
+        process.standardError = stderr
+    }
+
+    func run(timeoutSeconds: TimeInterval) async throws -> ProviderCommandResult {
+        try await withThrowingTaskGroup(of: ProviderCommandResult.self) { group in
+            group.addTask {
+                try await self.runProcess()
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(timeoutSeconds * 1_000_000_000))
+                self.cancel()
+                throw ProviderCommandError.timedOut(self.command, timeoutSeconds)
+            }
+
+            guard let result = try await group.next() else {
+                throw CancellationError()
+            }
+            group.cancelAll()
+            return result
+        }
+    }
+
+    private func runProcess() async throws -> ProviderCommandResult {
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<ProviderCommandResult, Error>) in
+                start(continuation: continuation)
+            }
+        } onCancel: {
+            cancel()
+        }
+    }
+
+    private func start(continuation: CheckedContinuation<ProviderCommandResult, Error>) {
+        lock.lock()
+        if didCancel {
+            lock.unlock()
+            continuation.resume(throwing: CancellationError())
+            return
+        }
+        self.continuation = continuation
+        lock.unlock()
+
+        stdout.fileHandleForReading.readabilityHandler = { [weak self] handle in
+            self?.appendStdout(handle.availableData)
+        }
+        stderr.fileHandleForReading.readabilityHandler = { [weak self] handle in
+            self?.appendStderr(handle.availableData)
+        }
+        process.terminationHandler = { [weak self] process in
+            self?.finish(process: process)
+        }
+
+        do {
+            try process.run()
+        } catch {
+            finish(error: error)
+        }
+    }
+
+    private func appendStdout(_ data: Data) {
+        guard !data.isEmpty else { return }
+        lock.lock()
+        stdoutData.append(data)
+        lock.unlock()
+    }
+
+    private func appendStderr(_ data: Data) {
+        guard !data.isEmpty else { return }
+        lock.lock()
+        stderrData.append(data)
+        lock.unlock()
+    }
+
+    private func finish(process: Process) {
+        stdout.fileHandleForReading.readabilityHandler = nil
+        stderr.fileHandleForReading.readabilityHandler = nil
+        let remainingStdout = stdout.fileHandleForReading.readDataToEndOfFile()
+        let remainingStderr = stderr.fileHandleForReading.readDataToEndOfFile()
+
+        lock.lock()
+        stdoutData.append(remainingStdout)
+        stderrData.append(remainingStderr)
+        guard !didResume, let continuation else {
+            lock.unlock()
+            return
+        }
+        didResume = true
+        self.continuation = nil
+        let outData = stdoutData
+        let errData = stderrData
+        lock.unlock()
+
+        continuation.resume(returning: ProviderCommandResult(
+            command: command,
+            arguments: arguments,
+            exitStatus: process.terminationStatus,
+            stdout: String(data: outData, encoding: .utf8) ?? "",
+            stderr: String(data: errData, encoding: .utf8) ?? ""
+        ))
+    }
+
+    private func finish(error: Error) {
+        stdout.fileHandleForReading.readabilityHandler = nil
+        stderr.fileHandleForReading.readabilityHandler = nil
+
+        lock.lock()
+        guard !didResume, let continuation else {
+            lock.unlock()
+            return
+        }
+        didResume = true
+        self.continuation = nil
+        lock.unlock()
+
+        continuation.resume(throwing: error)
+    }
+
+    private func cancel() {
+        stdout.fileHandleForReading.readabilityHandler = nil
+        stderr.fileHandleForReading.readabilityHandler = nil
+
+        lock.lock()
+        didCancel = true
+        let continuation = didResume ? nil : self.continuation
+        if continuation != nil {
+            didResume = true
+            self.continuation = nil
+        }
+        lock.unlock()
+
+        if process.isRunning {
+            let pid = process.processIdentifier
+            process.terminate()
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 2.0) { [process] in
+                if process.isRunning {
+                    kill(pid, SIGKILL)
+                }
+            }
+        }
+
+        continuation?.resume(throwing: CancellationError())
+    }
+}
+
+private extension String {
+    func providerAccessCleaned() -> String {
+        replacingOccurrences(
+            of: "\u{001B}\\[[0-9;]*[A-Za-z]",
+            with: "",
+            options: .regularExpression
+        )
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}

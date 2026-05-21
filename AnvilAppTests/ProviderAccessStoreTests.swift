@@ -1,0 +1,100 @@
+import Testing
+@testable import AnvilApp
+
+@Test func providerCLIParsesClaudeSubscriptionAuth() {
+    let result = ProviderCommandResult(
+        command: "claude",
+        arguments: ["auth", "status"],
+        exitStatus: 0,
+        stdout: """
+        {"loggedIn":true,"authMethod":"claude.ai","apiProvider":"firstParty","email":"dahoodie@pimp.net","subscriptionType":"pro"}
+        """,
+        stderr: ""
+    )
+
+    let probe = ProviderCLIParsers.parseClaudeAuth(result)
+
+    #expect(probe.state == .authenticated)
+    #expect(probe.detail.contains("claude.ai"))
+    #expect(probe.detail.contains("pro"))
+}
+
+@Test func providerCLIParsesClaudeLoggedOutJson() {
+    let result = ProviderCommandResult(
+        command: "claude",
+        arguments: ["auth", "status"],
+        exitStatus: 1,
+        stdout: #"{"loggedIn":false,"authMethod":"none","apiProvider":"firstParty"}"#,
+        stderr: ""
+    )
+
+    let probe = ProviderCLIParsers.parseClaudeAuth(result)
+
+    #expect(probe.state == .unauthenticated)
+    #expect(probe.detail == "Not signed in")
+}
+
+@Test func providerCLIParsesCodexChatGPTAuth() {
+    let result = ProviderCommandResult(
+        command: "codex",
+        arguments: ["login", "status"],
+        exitStatus: 0,
+        stdout: "Logged in using ChatGPT\n",
+        stderr: ""
+    )
+
+    let probe = ProviderCLIParsers.parseCodexAuth(result)
+
+    #expect(probe.state == .authenticated)
+    #expect(probe.detail == "Logged in using ChatGPT")
+}
+
+@Test func providerCLIParsesGrokModelsWithWarnings() {
+    let result = ProviderCommandResult(
+        command: "grok",
+        arguments: ["models"],
+        exitStatus: 0,
+        stdout: """
+        You are logged in with grok.com.
+
+        grok-build (default)
+        """,
+        stderr: "[WARN] plugin unavailable\n"
+    )
+
+    let probe = ProviderCLIParsers.parseGrokAuth(result)
+
+    #expect(probe.state == .authenticated)
+    #expect(probe.detail.contains("grok.com"))
+    #expect(probe.detail.contains("grok-build"))
+}
+
+@Test func providerCLIParsesHuggingFaceWhoami() {
+    let result = ProviderCommandResult(
+        command: "hf",
+        arguments: ["auth", "whoami"],
+        exitStatus: 0,
+        stdout: "Logged in\n  user: DaRealDahoodie\n",
+        stderr: ""
+    )
+
+    let probe = ProviderCLIParsers.parseHuggingFaceAuth(result)
+
+    #expect(probe.state == .authenticated)
+    #expect(probe.detail == "Signed in as DaRealDahoodie")
+}
+
+@Test func providerCLIParsesGeminiJsonTestResponse() {
+    let result = ProviderCommandResult(
+        command: "gemini",
+        arguments: ["--prompt", "Reply with OK only.", "--output-format", "json"],
+        exitStatus: 0,
+        stdout: #"{"response":"OK"}"#,
+        stderr: ""
+    )
+
+    let outcome = ProviderCLIParsers.parseGeminiTest(result)
+
+    #expect(outcome.success)
+    #expect(outcome.detail == "Received response: OK")
+}

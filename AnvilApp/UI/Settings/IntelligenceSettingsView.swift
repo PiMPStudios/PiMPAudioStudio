@@ -3,6 +3,7 @@ import SwiftUI
 struct IntelligenceSettingsView: View {
     @EnvironmentObject private var modelManager: LLMModelManager
     @EnvironmentObject private var apiKeyStore: APIKeyStore
+    @EnvironmentObject private var providerAccessStore: ProviderAccessStore
     @EnvironmentObject private var lyricWriterManager: LyricWriterManager
 
     @State private var newAPIKeys: [String: String] = [:]
@@ -13,10 +14,14 @@ struct IntelligenceSettingsView: View {
         Form {
             modelSection
             lyricBackendSection
+            localCLIAccessSection
             apiKeysSection
         }
         .formStyle(.grouped)
         .frame(minWidth: 500, minHeight: 400)
+        .task {
+            await providerAccessStore.refreshIfNeeded()
+        }
     }
 
     private var modelSection: some View {
@@ -113,15 +118,83 @@ struct IntelligenceSettingsView: View {
 
             if lyricWriterManager.activeBackend != "local"
                 && !apiKeyStore.hasKey(for: lyricWriterManager.activeBackend) {
-                Label("API key required for this backend", systemImage: "exclamationmark.triangle")
+                Label("API key required by current lyric backend", systemImage: "exclamationmark.triangle")
                     .font(.caption)
                     .foregroundStyle(.orange)
             }
         }
     }
 
+    private var localCLIAccessSection: some View {
+        Section {
+            ForEach(APIKeyStore.providers, id: \.id) { provider in
+                let status = providerAccessStore.status(
+                    for: provider.id,
+                    displayName: provider.displayName
+                )
+
+                HStack(spacing: 12) {
+                    Image(systemName: statusIcon(for: status))
+                        .foregroundStyle(statusTint(for: status))
+                        .frame(width: 18)
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(provider.displayName)
+                            .font(.body)
+
+                        Text(statusTitle(for: status))
+                            .font(.caption)
+                            .foregroundStyle(statusTint(for: status))
+
+                        if let detail = statusDetail(for: status) {
+                            Text(detail)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
+                    }
+
+                    Spacer()
+
+                    if case .running = status.testState {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+
+                    Button {
+                        Task { await providerAccessStore.test(providerID: provider.id) }
+                    } label: {
+                        Image(systemName: "checkmark.seal")
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(!status.canTest || isTesting(status))
+                    .help("Test local CLI access")
+                }
+            }
+        } header: {
+            HStack {
+                Text("Local CLI Access")
+                Spacer()
+
+                if providerAccessStore.isRefreshing {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+
+                Button {
+                    Task { await providerAccessStore.refresh() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.borderless)
+                .disabled(providerAccessStore.isRefreshing)
+                .help("Refresh local CLI access")
+            }
+        }
+    }
+
     private var apiKeysSection: some View {
-        Section("API Keys") {
+        Section("API Keys (Optional)") {
             ForEach(APIKeyStore.providers, id: \.id) { provider in
                 HStack {
                     VStack(alignment: .leading) {
@@ -168,5 +241,113 @@ struct IntelligenceSettingsView: View {
                 }
             }
         }
+    }
+
+    private func statusTitle(for status: ProviderCLIStatus) -> String {
+        switch status.testState {
+        case .running:
+            return "Testing..."
+        case .passed:
+            return "Test passed"
+        case .failed:
+            return "Test failed"
+        case .idle:
+            break
+        }
+
+        switch status.state {
+        case .notChecked:
+            return "Not checked"
+        case .missing:
+            return "CLI not found"
+        case .installed:
+            return "Installed"
+        case .authenticated:
+            return "Signed in"
+        case .unauthenticated:
+            return "Sign-in needed"
+        case .failed:
+            return "Check failed"
+        }
+    }
+
+    private func statusDetail(for status: ProviderCLIStatus) -> String? {
+        switch status.testState {
+        case .passed(let detail), .failed(let detail):
+            return detail
+        case .running, .idle:
+            break
+        }
+
+        var details: [String] = []
+        if let command = status.command {
+            details.append(command)
+        }
+        if let version = status.version {
+            details.append(version)
+        }
+        if let detail = status.detail {
+            details.append(detail)
+        }
+        return details.isEmpty ? nil : details.joined(separator: " - ")
+    }
+
+    private func statusIcon(for status: ProviderCLIStatus) -> String {
+        switch status.testState {
+        case .running:
+            return "clock"
+        case .passed:
+            return "checkmark.circle.fill"
+        case .failed:
+            return "xmark.circle.fill"
+        case .idle:
+            break
+        }
+
+        switch status.state {
+        case .authenticated:
+            return "checkmark.circle.fill"
+        case .installed:
+            return "terminal"
+        case .unauthenticated:
+            return "person.crop.circle.badge.exclamationmark"
+        case .missing, .notChecked:
+            return "circle"
+        case .failed:
+            return "exclamationmark.triangle.fill"
+        }
+    }
+
+    private func statusTint(for status: ProviderCLIStatus) -> Color {
+        switch status.testState {
+        case .running:
+            return .blue
+        case .passed:
+            return .green
+        case .failed:
+            return .red
+        case .idle:
+            break
+        }
+
+        switch status.state {
+        case .authenticated:
+            return .green
+        case .installed:
+            return .blue
+        case .unauthenticated:
+            return .orange
+        case .failed:
+            return .red
+        case .missing, .notChecked:
+            return .secondary
+        }
+    }
+
+    private func isTesting(_ status: ProviderCLIStatus) -> Bool {
+        if case .running = status.testState {
+            return true
+        }
+        return false
     }
 }
