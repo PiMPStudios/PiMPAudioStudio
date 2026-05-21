@@ -59,6 +59,7 @@ The local MCP endpoint exposes read/status tools:
 - `editor_status`
 - `load_editor_audio`
 - `submit_editor_inpaint`
+- `render_editor_audio`
 - `list_operations`
 - `get_operation`
 - `cancel_operation`
@@ -84,13 +85,17 @@ loaded editor audio. Use `dryRun: true` to validate and echo the resolved
 request without touching audio. Actual runs require loaded editor audio and
 `confirm: true`, then return an `editor.inpaint` `operationID` for polling or
 cancellation.
+`render_editor_audio` writes the current editor buffer, or an optional selected
+time range, to a WAV/AIFF file. It defaults to an `MCPExports` folder beside
+the loaded source audio and returns an `editor.renderAudio` `operationID`.
 
 `list_operations`, `get_operation`, and `cancel_operation` expose the current
 operation layer for long-running work. Generation submissions return an
 `operationID`; editor audio loads return `editor.loadAudio` operations, and
-editor inpaint/repaint submissions return `editor.inpaint` operations. Clients
-can poll those ids for status/progress or cancel them through the same operation
-registry used by the app.
+editor inpaint/repaint submissions return `editor.inpaint` operations. Editor
+render submissions return `editor.renderAudio` operations. Clients can poll
+those ids for status/progress or cancel them through the same operation registry
+used by the app.
 
 Protocol progress is currently request-scoped: when a client includes
 `_meta.progressToken` on `tools/call`, Anvil emits start/completed/failed
@@ -111,6 +116,7 @@ It also exposes controlled app actions:
 - `generate`
 - `load_editor_audio`
 - `submit_editor_inpaint`
+- `render_editor_audio`
 
 `mark_preferred_take` only updates review metadata on an existing trace:
 the preferred flag and optional listening note. It mirrors the same values into
@@ -141,6 +147,14 @@ accepts `regionPrompt`, a selected time range (`selectionStart`/`selectionEnd`
 or a `selection` object), optional frequency band bounds, strength/guidance
 controls, pipeline choice, and seed. It is intentionally confirmation-gated
 because it mutates the shared editor buffer.
+
+`render_editor_audio` writes the current editor audio to disk. It accepts an
+optional selected time range, `format: "wav"` or `"aiff"`, `outputPath` or
+`outputDirectory`/`fileName`, and `overwrite: true` when replacing an existing
+file is intentional. `dryRun: true` resolves the output path without writing.
+For sandboxed app builds, prefer the default `MCPExports` path beside the
+loaded source audio or an app-accessible output directory; arbitrary paths can
+be rejected by macOS even when the shell can write there.
 
 It exposes one guarded cleanup action:
 

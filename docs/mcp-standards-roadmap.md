@@ -55,6 +55,9 @@ logic concerns, and they should not be reinvented piecemeal inside
   through the operation layer. Dry runs validate request shape without touching
   audio; actual runs require loaded editor audio and `confirm: true`, then
   report as `editor.inpaint`.
+- `render_editor_audio` exports the current editor buffer or selected time range
+  to a lossless local file through the same operation layer, reporting as
+  `editor.renderAudio`.
 - Operation state is exposed through `list_operations`, `get_operation`,
   `cancel_operation`, `generation_status.currentOperation`,
   `editor_status.currentOperation`, `anvil://editor`, `anvil://operations`,

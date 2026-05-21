@@ -11,6 +11,11 @@ final class AnvilCommandFacade {
     private var generationService: GenerationService?
     private var editorService: EditorService?
     private let dateFormatter = ISO8601DateFormatter()
+    private let renderFileDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd_HHmmss"
+        return formatter
+    }()
     private let maxOperationRecords = 50
     private var operationRecords: [String: MCPOperationRecord] = [:]
     private var operationOrder: [String] = []
@@ -44,6 +49,15 @@ final class AnvilCommandFacade {
         "encoding": (0.08, 0.10),
         "diffusion": (0.18, 0.70),
         "decoding": (0.88, 0.10),
+        "complete": (1.00, 0.00),
+        "error": (1.00, 0.00),
+        "cancelled": (1.00, 0.00)
+    ]
+    private let editorRenderProgressPlan: [String: (base: Double, span: Double)] = [
+        "queued": (0.00, 0.02),
+        "readingBuffer": (0.02, 0.18),
+        "preparingAudio": (0.20, 0.30),
+        "writingFile": (0.50, 0.45),
         "complete": (1.00, 0.00),
         "error": (1.00, 0.00),
         "cancelled": (1.00, 0.00)
@@ -634,6 +648,56 @@ final class AnvilCommandFacade {
 
         operationTasks[operation.id] = Task { [weak self] in
             await self?.runEditorInpaintOperation(id: operation.id, request: request)
+        }
+
+        return [
+            "submitted": true,
+            "dryRun": false,
+            "request": requestPayload,
+            "operationID": operation.id,
+            "operation": operationPayload(operation)
+        ]
+    }
+
+    func renderEditorAudio(arguments: [String: Any]) async throws -> [String: Any] {
+        let dryRun = boolValue(arguments["dryRun"] ?? arguments["validateOnly"]) == true
+        let loadedAudio = editorService?.loadedAudio
+        let request = try editorRenderRequest(arguments, loadedAudio: loadedAudio)
+        let requestPayload = editorRenderRequestPayload(request)
+
+        if dryRun {
+            return [
+                "submitted": false,
+                "dryRun": true,
+                "requiresLoadedAudio": true,
+                "request": requestPayload,
+                "operationID": NSNull(),
+                "operation": NSNull()
+            ]
+        }
+
+        guard let editorService, let coordinator = editorService.coordinator else {
+            throw AnvilCommandFacadeError.editorServiceUnavailable
+        }
+        guard await coordinator.hasLoadedAudio, editorService.loadedAudio != nil else {
+            throw AnvilCommandFacadeError.editorAudioNotLoaded
+        }
+        if FileManager.default.fileExists(atPath: request.outputURL.path(percentEncoded: false)),
+           !request.overwrite {
+            throw AnvilCommandFacadeError.editorRenderFileExists(
+                request.outputURL.path(percentEncoded: false)
+            )
+        }
+
+        let operation = registerOperation(
+            kind: "editor.renderAudio",
+            title: request.selection == nil ? "Render editor audio" : "Render editor selection",
+            request: requestPayload,
+            progress: editorRenderProgressPayload(stage: "queued", message: "Editor render accepted.")
+        )
+
+        operationTasks[operation.id] = Task { [weak self] in
+            await self?.runEditorRenderOperation(id: operation.id, request: request)
         }
 
         return [
@@ -1451,6 +1515,14 @@ final class AnvilCommandFacade {
         )
     }
 
+    private func editorRenderProgressPayload(stage: String, message: String) -> [String: Any] {
+        operationProgressPayload(
+            stage: stage,
+            message: message,
+            plan: editorRenderProgressPlan
+        )
+    }
+
     private func cancellationProgressPayload(for record: MCPOperationRecord) -> [String: Any] {
         if record.kind == "generation" {
             return generationOperationProgressPayload(.cancelled)
@@ -1460,6 +1532,9 @@ final class AnvilCommandFacade {
         }
         if record.kind == "editor.inpaint" {
             return editorInpaintProgressPayload(stage: "cancelled", message: "Editor inpaint cancelled.")
+        }
+        if record.kind == "editor.renderAudio" {
+            return editorRenderProgressPayload(stage: "cancelled", message: "Editor render cancelled.")
         }
         return [
             "stage": "cancelled",
@@ -1647,6 +1722,82 @@ final class AnvilCommandFacade {
         }
     }
 
+    private func runEditorRenderOperation(id: String, request: EditorRenderRequest) async {
+        defer { operationTasks[id] = nil }
+
+        do {
+            try Task.checkCancellation()
+            guard let editorService, let coordinator = editorService.coordinator else {
+                throw AnvilCommandFacadeError.editorServiceUnavailable
+            }
+            guard let loadedAudio = editorService.loadedAudio else {
+                throw AnvilCommandFacadeError.editorAudioNotLoaded
+            }
+
+            updateOperationProgress(
+                id: id,
+                progress: editorRenderProgressPayload(stage: "readingBuffer", message: "Reading editor audio buffer.")
+            )
+            guard let currentAudio = await coordinator.getCurrentAudio() else {
+                throw AnvilCommandFacadeError.editorAudioNotLoaded
+            }
+
+            try Task.checkCancellation()
+            updateOperationProgress(
+                id: id,
+                progress: editorRenderProgressPayload(stage: "preparingAudio", message: "Preparing rendered audio.")
+            )
+            let fullBuffer = AudioBufferConverter.fromMLXArray(
+                currentAudio,
+                sampleRate: loadedAudio.sampleRate
+            )
+            let renderedBuffer = try request.selection.map {
+                try croppedAudioBuffer(fullBuffer, selection: $0)
+            } ?? fullBuffer
+
+            try Task.checkCancellation()
+            updateOperationProgress(
+                id: id,
+                progress: editorRenderProgressPayload(stage: "writingFile", message: "Writing rendered audio file.")
+            )
+            try FileManager.default.createDirectory(
+                at: request.outputURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            do {
+                try writeAudioBuffer(renderedBuffer, to: request.outputURL)
+            } catch {
+                throw AnvilCommandFacadeError.editorRenderWriteFailed(
+                    request.outputURL.path(percentEncoded: false),
+                    error.localizedDescription
+                )
+            }
+
+            let result = editorRenderResultPayload(
+                request: request,
+                buffer: renderedBuffer,
+                sourceAudio: loadedAudio
+            )
+            completeOperation(
+                id: id,
+                progress: editorRenderProgressPayload(stage: "complete", message: "Editor render completed."),
+                result: result
+            )
+        } catch is CancellationError {
+            cancelOperationRecord(
+                id: id,
+                reason: "Editor render was cancelled.",
+                progress: editorRenderProgressPayload(stage: "cancelled", message: "Editor render cancelled.")
+            )
+        } catch {
+            failOperation(
+                id: id,
+                error: error.localizedDescription,
+                progress: editorRenderProgressPayload(stage: "error", message: error.localizedDescription)
+            )
+        }
+    }
+
     private func readAudioBuffer(from url: URL) async throws -> AudioBuffer {
         try await Task.detached(priority: .userInitiated) {
             let audioFile = try AVAudioFile(forReading: url)
@@ -1660,6 +1811,37 @@ final class AnvilCommandFacade {
             try audioFile.read(into: pcmBuffer)
             return AudioBufferConverter.fromPCMBuffer(pcmBuffer)
         }.value
+    }
+
+    private func writeAudioBuffer(_ buffer: AudioBuffer, to url: URL) throws {
+        let pcmBuffer = try AudioBufferConverter.toPCMBuffer(buffer)
+        let outputFile = try AVAudioFile(forWriting: url, settings: pcmBuffer.format.settings)
+        try outputFile.write(from: pcmBuffer)
+    }
+
+    private func croppedAudioBuffer(
+        _ buffer: AudioBuffer,
+        selection: InpaintSelection
+    ) throws -> AudioBuffer {
+        try validateEditorSelection(selection, loadedAudio: nil)
+
+        let startFrame = max(0, Int((selection.startTime * Double(buffer.sampleRate)).rounded(.down)))
+        let endFrame = min(
+            buffer.frameCount,
+            Int((selection.endTime * Double(buffer.sampleRate)).rounded(.up))
+        )
+        guard endFrame > startFrame else {
+            throw AnvilCommandFacadeError.invalidEditorSelection
+        }
+
+        let bytesPerFrame = MemoryLayout<Int16>.size * buffer.channels
+        let startByte = startFrame * bytesPerFrame
+        let endByte = endFrame * bytesPerFrame
+        return AudioBuffer(
+            data: Data(buffer.data[startByte..<endByte]),
+            sampleRate: buffer.sampleRate,
+            channels: buffer.channels
+        )
     }
 
     private func registerOperation(
@@ -1874,6 +2056,33 @@ final class AnvilCommandFacade {
         ]
     }
 
+    private func editorRenderRequestPayload(_ request: EditorRenderRequest) -> [String: Any] {
+        [
+            "format": request.format.rawValue,
+            "outputPath": request.outputURL.path(percentEncoded: false),
+            "overwrite": request.overwrite,
+            "selection": request.selection.map { editorSelectionPayload($0) as Any } ?? NSNull()
+        ]
+    }
+
+    private func editorRenderResultPayload(
+        request: EditorRenderRequest,
+        buffer: AudioBuffer,
+        sourceAudio: EditorLoadedAudio
+    ) -> [String: Any] {
+        [
+            "fileName": request.outputURL.lastPathComponent,
+            "path": request.outputURL.path(percentEncoded: false),
+            "format": request.format.rawValue,
+            "duration": buffer.duration,
+            "sampleRate": buffer.sampleRate,
+            "channels": buffer.channels,
+            "frameCount": buffer.frameCount,
+            "selection": request.selection.map { editorSelectionPayload($0) as Any } ?? NSNull(),
+            "sourceLoadedAudio": editorLoadedAudioPayload(sourceAudio)
+        ]
+    }
+
     private func editorSelectionPayload(_ selection: InpaintSelection) -> [String: Any] {
         [
             "startTime": selection.startTime,
@@ -1916,6 +2125,120 @@ final class AnvilCommandFacade {
             pipeline: pipeline,
             seed: try seedValue(arguments["seed"])
         )
+    }
+
+    private func editorRenderRequest(
+        _ arguments: [String: Any],
+        loadedAudio: EditorLoadedAudio?
+    ) throws -> EditorRenderRequest {
+        let format = try editorRenderFormat(from: arguments["format"] ?? arguments["fileFormat"])
+        let selection = try editorRenderSelection(from: arguments, loadedAudio: loadedAudio)
+        let outputURL = try editorRenderOutputURL(
+            arguments,
+            loadedAudio: loadedAudio,
+            format: format
+        )
+        return EditorRenderRequest(
+            format: format,
+            outputURL: outputURL,
+            selection: selection,
+            overwrite: boolValue(arguments["overwrite"]) == true
+        )
+    }
+
+    private func editorRenderSelection(
+        from arguments: [String: Any],
+        loadedAudio: EditorLoadedAudio?
+    ) throws -> InpaintSelection? {
+        let selectionArguments = arguments["selection"] as? [String: Any]
+        let startValue = editorSelectionValue(
+            ["selectionStart", "startTime", "start"],
+            arguments: arguments,
+            selectionArguments: selectionArguments
+        )
+        let endValue = editorSelectionValue(
+            ["selectionEnd", "endTime", "end"],
+            arguments: arguments,
+            selectionArguments: selectionArguments
+        )
+        guard startValue != nil || endValue != nil else { return nil }
+        guard let startTime = doubleValue(startValue),
+              let endTime = doubleValue(endValue) else {
+            throw AnvilCommandFacadeError.invalidEditorSelection
+        }
+        let selection = InpaintSelection(startTime: startTime, endTime: endTime)
+        try validateEditorSelection(selection, loadedAudio: loadedAudio)
+        return selection
+    }
+
+    private func editorRenderOutputURL(
+        _ arguments: [String: Any],
+        loadedAudio: EditorLoadedAudio?,
+        format: EditorRenderFormat
+    ) throws -> URL {
+        if let rawPath = stringValue(arguments["outputPath"] ?? arguments["path"])?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !rawPath.isEmpty {
+            return urlWithRenderExtension(localFileURL(from: rawPath), format: format)
+        }
+
+        let directory: URL
+        if let rawDirectory = stringValue(arguments["outputDirectory"] ?? arguments["directory"])?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !rawDirectory.isEmpty {
+            directory = localFileURL(from: rawDirectory)
+        } else if let sourcePath = loadedAudio?.path {
+            directory = URL(fileURLWithPath: sourcePath)
+                .deletingLastPathComponent()
+                .appending(path: "MCPExports")
+        } else {
+            directory = FileManager.default.temporaryDirectory.appending(path: "AnvilMCPExports")
+        }
+
+        let fileName = stringValue(arguments["fileName"])?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedName = fileName?.isEmpty == false
+            ? fileName!
+            : defaultEditorRenderFileName(loadedAudio: loadedAudio, format: format)
+        return urlWithRenderExtension(directory.appending(path: resolvedName), format: format)
+    }
+
+    private func defaultEditorRenderFileName(
+        loadedAudio: EditorLoadedAudio?,
+        format: EditorRenderFormat
+    ) -> String {
+        let sourceBase = loadedAudio
+            .map { ($0.fileName as NSString).deletingPathExtension }
+            .flatMap { $0.isEmpty ? nil : $0 } ?? "editor-audio"
+        let timestamp = renderFileDateFormatter.string(from: Date())
+        return "\(sanitizedFileStem(sourceBase))-mcp-render-\(timestamp).\(format.fileExtension)"
+    }
+
+    private func sanitizedFileStem(_ value: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_ "))
+        let sanitized = value.unicodeScalars.map { scalar in
+            allowed.contains(scalar) ? Character(scalar) : "-"
+        }
+        let stem = String(sanitized).trimmingCharacters(in: .whitespacesAndNewlines)
+        return stem.isEmpty ? "editor-audio" : stem
+    }
+
+    private func urlWithRenderExtension(_ url: URL, format: EditorRenderFormat) -> URL {
+        let ext = url.pathExtension.lowercased()
+        guard ext != format.fileExtension else { return url }
+        guard ext.isEmpty else { return url.deletingPathExtension().appendingPathExtension(format.fileExtension) }
+        return url.appendingPathExtension(format.fileExtension)
+    }
+
+    private func editorRenderFormat(from value: Any?) throws -> EditorRenderFormat {
+        guard let rawValue = stringValue(value)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !rawValue.isEmpty else {
+            return .wav
+        }
+        guard let format = EditorRenderFormat(rawValue: rawValue.lowercased()) else {
+            throw AnvilCommandFacadeError.invalidRenderFormat(rawValue)
+        }
+        return format
     }
 
     private func optionalEditorOriginalPrompt(
@@ -2157,10 +2480,11 @@ final class AnvilCommandFacade {
                 "description": "Apply bounded DSP edits with explicit confirmation for destructive actions."
             ],
             [
-                "id": "renderSelection",
-                "operationKind": "editor.renderSelection",
-                "status": "planned",
-                "description": "Bounce a selected region or full editor buffer to an output file."
+                "id": "renderAudio",
+                "tool": "render_editor_audio",
+                "operationKind": "editor.renderAudio",
+                "status": "implemented",
+                "description": "Bounce a selected region or full editor buffer to a lossless output file."
             ]
         ]
     }
@@ -2457,6 +2781,9 @@ private enum AnvilCommandFacadeError: LocalizedError {
     case invalidInpaintPreset(String)
     case invalidPipeline(String)
     case editorInpaintDidNotComplete
+    case invalidRenderFormat(String)
+    case editorRenderFileExists(String)
+    case editorRenderWriteFailed(String, String)
     case operationNotFound(String)
     case encodingFailed
 
@@ -2522,6 +2849,12 @@ private enum AnvilCommandFacadeError: LocalizedError {
             return "Unsupported pipeline '\(value)'. Use 'auto', 'aceStep', or 'stableAudio'."
         case .editorInpaintDidNotComplete:
             return "Editor inpaint ended before reporting completion."
+        case .invalidRenderFormat(let value):
+            return "Unsupported editor render format '\(value)'. Use 'wav' or 'aiff'."
+        case .editorRenderFileExists(let path):
+            return "Editor render output already exists at '\(path)'. Pass overwrite: true or choose another path."
+        case .editorRenderWriteFailed(let path, let reason):
+            return "Could not write editor render output to '\(path)': \(reason)"
         case .operationNotFound(let id):
             return "No MCP operation matched '\(id)'."
         case .encodingFailed:
@@ -2541,6 +2874,25 @@ private struct EditorAudioLoadSource {
     let fileName: String
     let historyEntryID: String?
     let originalPrompt: String?
+}
+
+private struct EditorRenderRequest {
+    let format: EditorRenderFormat
+    let outputURL: URL
+    let selection: InpaintSelection?
+    let overwrite: Bool
+}
+
+private enum EditorRenderFormat: String {
+    case wav
+    case aiff
+
+    var fileExtension: String {
+        switch self {
+        case .wav: return "wav"
+        case .aiff: return "aiff"
+        }
+    }
 }
 
 private enum MCPOperationStatus: String {

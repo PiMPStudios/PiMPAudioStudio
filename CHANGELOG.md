@@ -43,6 +43,11 @@ All notable changes to AnvilApp are documented here.
   supports dry-run validation, selected time ranges, optional frequency bands,
   strength/guidance/pipeline controls, seeded runs, `editor.inpaint` operation
   polling, cancellation, and `editor_status.lastEdit` metadata after completion.
+- **MCP editor render export** — the local MCP endpoint now exposes
+  `render_editor_audio` for exporting the current editor buffer or selected time
+  range to WAV/AIFF. It resolves a default `MCPExports` path, refuses accidental
+  overwrites, returns `editor.renderAudio` operations, and reports output file
+  metadata on completion.
 - **MCP Streamable HTTP sessions** — the local MCP bridge now uses the Swift
   SDK's `StatefulHTTPServerTransport`. `initialize` returns `MCP-Session-Id`,
   POST requests may return SSE, `GET /mcp` opens the standalone server stream,

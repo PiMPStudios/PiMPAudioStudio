@@ -432,6 +432,8 @@ private final class AnvilMCPSDKBridge {
             return try facade.loadEditorAudio(arguments: arguments)
         case "submit_editor_inpaint":
             return try await facade.submitEditorInpaint(arguments: arguments)
+        case "render_editor_audio":
+            return try await facade.renderEditorAudio(arguments: arguments)
         case "list_operations":
             return facade.listOperations(arguments: arguments)
         case "get_operation":
@@ -1697,6 +1699,90 @@ private enum MCPToolCatalog {
             ]
         ),
         tool(
+            name: "render_editor_audio",
+            title: "Render Editor Audio",
+            description: "Render the loaded editor buffer or a selected time range to a WAV/AIFF file as a background operation. Use dryRun to resolve the output path without writing.",
+            properties: [
+                "format": [
+                    "type": "string",
+                    "enum": ["wav", "aiff"],
+                    "description": "Lossless output format. Defaults to wav."
+                ],
+                "fileFormat": [
+                    "type": "string",
+                    "enum": ["wav", "aiff"],
+                    "description": "Alias for format."
+                ],
+                "outputPath": [
+                    "type": "string",
+                    "description": "Optional output file path. The extension is normalized to the requested format. Sandboxed builds may reject arbitrary paths."
+                ],
+                "path": [
+                    "type": "string",
+                    "description": "Alias for outputPath."
+                ],
+                "outputDirectory": [
+                    "type": "string",
+                    "description": "Optional output directory. Defaults to MCPExports beside the loaded source audio."
+                ],
+                "directory": [
+                    "type": "string",
+                    "description": "Alias for outputDirectory."
+                ],
+                "fileName": [
+                    "type": "string",
+                    "description": "Optional file name when outputDirectory is used."
+                ],
+                "selection": [
+                    "type": "object",
+                    "additionalProperties": false,
+                    "description": "Optional selected time range to render. Omit to render the full editor buffer.",
+                    "properties": [
+                        "startTime": ["type": "number"],
+                        "endTime": ["type": "number"],
+                        "start": ["type": "number"],
+                        "end": ["type": "number"]
+                    ]
+                ],
+                "selectionStart": [
+                    "type": "number",
+                    "description": "Optional selected region start time in seconds."
+                ],
+                "selectionEnd": [
+                    "type": "number",
+                    "description": "Optional selected region end time in seconds."
+                ],
+                "startTime": [
+                    "type": "number",
+                    "description": "Alias for selectionStart."
+                ],
+                "endTime": [
+                    "type": "number",
+                    "description": "Alias for selectionEnd."
+                ],
+                "start": [
+                    "type": "number",
+                    "description": "Alias for selectionStart."
+                ],
+                "end": [
+                    "type": "number",
+                    "description": "Alias for selectionEnd."
+                ],
+                "overwrite": [
+                    "type": "boolean",
+                    "description": "Allow replacing an existing output file. Defaults to false."
+                ],
+                "dryRun": [
+                    "type": "boolean",
+                    "description": "Validate and echo the resolved render request without writing a file."
+                ],
+                "validateOnly": [
+                    "type": "boolean",
+                    "description": "Alias for dryRun."
+                ]
+            ]
+        ),
+        tool(
             name: "list_operations",
             title: "List Operations",
             description: "Return recent MCP-observable operations with status, progress, result, error, and cancellation metadata.",
@@ -1716,7 +1802,7 @@ private enum MCPToolCatalog {
             properties: [
                 "id": [
                     "type": "string",
-                    "description": "Operation id returned by generate, generate_song, load_editor_audio, submit_editor_inpaint, list_operations, editor_status, or generation_status."
+                    "description": "Operation id returned by generate, generate_song, load_editor_audio, submit_editor_inpaint, render_editor_audio, list_operations, editor_status, or generation_status."
                 ],
                 "operationID": [
                     "type": "string",
@@ -1735,7 +1821,7 @@ private enum MCPToolCatalog {
             properties: [
                 "id": [
                     "type": "string",
-                    "description": "Operation id returned by generate, generate_song, load_editor_audio, submit_editor_inpaint, list_operations, editor_status, or generation_status."
+                    "description": "Operation id returned by generate, generate_song, load_editor_audio, submit_editor_inpaint, render_editor_audio, list_operations, editor_status, or generation_status."
                 ],
                 "operationID": [
                     "type": "string",
