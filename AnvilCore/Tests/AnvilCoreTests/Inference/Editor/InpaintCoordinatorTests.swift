@@ -64,8 +64,7 @@ struct InpaintCoordinatorTests {
         let coordinator = makeCoordinator()
         let sampleRate = 44100
         let numSamples = sampleRate * 4  // 4 seconds
-        // Shape [1, numSamples] — mono audio
-        let samples = MLXArray.zeros([1, numSamples])
+        let samples = MLXArray.zeros([1, numSamples, 2])
         let result = try await coordinator.loadAudio(samples: samples, sampleRate: sampleRate)
         #expect(result.sampleRate == sampleRate)
         #expect(abs(result.duration - 4.0) < 0.001)
@@ -74,7 +73,7 @@ struct InpaintCoordinatorTests {
     @Test("loadAudio sets hasLoadedAudio to true")
     func loadAudioSetsHasLoadedAudio() async throws {
         let coordinator = makeCoordinator()
-        let samples = MLXArray.zeros([1, 44100])
+        let samples = MLXArray.zeros([1, 44100, 2])
         _ = try await coordinator.loadAudio(samples: samples, sampleRate: 44100)
         let hasLoaded = await coordinator.hasLoadedAudio
         #expect(hasLoaded == true)
@@ -83,7 +82,7 @@ struct InpaintCoordinatorTests {
     @Test("loadAudio makes getCurrentAudio return non-nil")
     func loadAudioStoresAudio() async throws {
         let coordinator = makeCoordinator()
-        let samples = MLXArray.zeros([1, 44100])
+        let samples = MLXArray.zeros([1, 44100, 2])
         _ = try await coordinator.loadAudio(samples: samples, sampleRate: 44100)
         let audio = await coordinator.getCurrentAudio()
         #expect(audio != nil)
@@ -94,7 +93,7 @@ struct InpaintCoordinatorTests {
     @Test("canUndo is false and canRedo is false right after loadAudio (single snapshot)")
     func undoRedoAfterLoad() async throws {
         let coordinator = makeCoordinator()
-        let samples = MLXArray.zeros([1, 44100])
+        let samples = MLXArray.zeros([1, 44100, 2])
         _ = try await coordinator.loadAudio(samples: samples, sampleRate: 44100)
         let canUndo = await coordinator.canUndo
         let canRedo = await coordinator.canRedo
@@ -105,7 +104,7 @@ struct InpaintCoordinatorTests {
     @Test("recentEdits has one entry after loadAudio")
     func recentEditsAfterLoad() async throws {
         let coordinator = makeCoordinator()
-        let samples = MLXArray.zeros([1, 44100])
+        let samples = MLXArray.zeros([1, 44100, 2])
         _ = try await coordinator.loadAudio(samples: samples, sampleRate: 44100)
         let edits = await coordinator.recentEdits
         #expect(edits.count == 1)
@@ -117,7 +116,7 @@ struct InpaintCoordinatorTests {
     @Test("loadAudio returns a non-zero latentFrames value")
     func loadAudioLatentFrames() async throws {
         let coordinator = makeCoordinator()
-        let samples = MLXArray.zeros([1, 44100 * 2])  // 2 seconds
+        let samples = MLXArray.zeros([1, 44100 * 2, 2])  // 2 seconds
         let result = try await coordinator.loadAudio(samples: samples, sampleRate: 44100)
         #expect(result.latentFrames > 0)
     }

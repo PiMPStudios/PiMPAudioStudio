@@ -83,40 +83,40 @@ struct WeightConverterTests {
         let keys = result.map { $0.0 }
         #expect(keys.contains("encoder.conv1.weight"))
         #expect(keys.contains("encoder.conv1.bias"))
-        #expect(keys.contains("encoder.block.0.res_unit1.snake1.alpha"))
+        #expect(keys.contains("encoder.blocks.0.resUnit1.snake1.alpha"))
         #expect(!keys.contains("encoder.conv1.weight_g"))
         #expect(!keys.contains("encoder.conv1.weight_v"))
 
-        let fusedWeight = result.first(where: { $0.0 == "encoder.conv1.weight" })!.1
+        let fusedWeight = try #require(result.first(where: { $0.0 == "encoder.conv1.weight" })?.1)
         #expect(fusedWeight.shape == [128, 7, 2])
 
-        let alpha = result.first(where: { $0.0 == "encoder.block.0.res_unit1.snake1.alpha" })!.1
+        let alpha = try #require(result.first(where: { $0.0 == "encoder.blocks.0.resUnit1.snake1.alpha" })?.1)
         #expect(alpha.shape == [128])
     }
 
     @Test("WeightConverter converts DiT state dict")
     func convertDiTStateDict() async throws {
         let stateDict: [(String, MLXArray)] = [
-            ("proj_in.1.weight", MLXArray.ones([2048, 192, 2])),
-            ("proj_in.1.bias", MLXArray.zeros([2048])),
-            ("proj_out.1.weight", MLXArray.ones([2048, 64, 2])),
-            ("proj_out.1.bias", MLXArray.zeros([64])),
-            ("layers.0.self_attn.q_proj.weight", MLXArray.ones([2048, 2048])),
-            ("rotary_emb.inv_freq", MLXArray.ones([64])),
+            ("decoder.proj_in.1.weight", MLXArray.ones([2048, 192, 2])),
+            ("decoder.proj_in.1.bias", MLXArray.zeros([2048])),
+            ("decoder.proj_out.1.weight", MLXArray.ones([2048, 64, 2])),
+            ("decoder.proj_out.1.bias", MLXArray.zeros([64])),
+            ("decoder.layers.0.self_attn.q_proj.weight", MLXArray.ones([2048, 2048])),
+            ("decoder.rotary_emb.inv_freq", MLXArray.ones([64])),
         ]
         let converter = WeightConverter()
         let result = try await converter.convertDiTWeights(stateDict: stateDict)
 
         let keys = result.map { $0.0 }
-        #expect(keys.contains("proj_in.weight"))
-        #expect(keys.contains("proj_out.weight"))
-        #expect(keys.contains("layers.0.self_attn.q_proj.weight"))
-        #expect(!keys.contains("rotary_emb.inv_freq"))
+        #expect(keys.contains("projIn.weight"))
+        #expect(keys.contains("projOut.weight"))
+        #expect(keys.contains("layers.0.selfAttn.qProj.weight"))
+        #expect(!keys.contains("rotaryEmb.invFreq"))
 
-        let projIn = result.first(where: { $0.0 == "proj_in.weight" })!.1
+        let projIn = try #require(result.first(where: { $0.0 == "projIn.weight" })?.1)
         #expect(projIn.shape == [2048, 2, 192])
 
-        let projOut = result.first(where: { $0.0 == "proj_out.weight" })!.1
+        let projOut = try #require(result.first(where: { $0.0 == "projOut.weight" })?.1)
         #expect(projOut.shape == [64, 2, 2048])
     }
 }

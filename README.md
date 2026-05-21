@@ -119,7 +119,11 @@ AnvilApp/                 App source
   Services/               Business logic and orchestration
   DSP/                    Signal processing implementations
   Models/                 App-level data types
+Spikes/
+  MCPServerSDKSpike/      Isolated Swift MCP SDK server transport spike
 docs/
+  mcp-local.md              Local MCP endpoint usage and curl smoke examples
+  mcp-standards-roadmap.md  Standards-first MCP + Swift 6 migration direction
   superpowers/specs/      Design specifications per phase
   superpowers/plans/      Implementation plans per phase
 CHANGELOG.md              Detailed changelog with road map
@@ -146,7 +150,7 @@ CHANGELOG.md              Detailed changelog with road map
 | 10a | ✅ | LoRA Fine-Tuning — trainer, injector, adapter picker |
 | 10b | ✅ | Advanced LoRA — scheduler, checkpoints, merge, export |
 | 10c | ✅ | Community Sharing + Multi-Adapter Stacking |
-| 11 | Planned | Local MCP — localhost-only agent control surface for models, history, traces, compare, and safe app actions |
+| 11 | In Progress | Local MCP — localhost-only agent control surface for models, history, traces, compare, safe app actions, and standards-first SDK hardening |
 
 ---
 

@@ -25,22 +25,25 @@ struct LLMActorTests {
         }
     }
 
-    @Test("classify returns empty string when model not loaded")
+    @Test("classify returns unavailable message when lazy load fails")
     func testClassifyWithoutLoad() async {
         let path = FileManager.default.temporaryDirectory.appending(path: "fake-model")
         let actor = LLMActor(modelPath: path)
         let result = await actor.classify(systemPrompt: "Classify this.", userPrompt: "test")
-        #expect(result == "")
+        #expect(result.contains("Lyric writer unavailable"))
+        #expect(result.contains("Model directory not found"))
     }
 
-    @Test("generate returns empty stream when model not loaded")
+    @Test("generate returns unavailable token when lazy load fails")
     func testGenerateWithoutLoad() async {
         let path = FileManager.default.temporaryDirectory.appending(path: "fake-model")
         let actor = LLMActor(modelPath: path)
         let stream = await actor.generate(systemPrompt: "Write.", userPrompt: "test")
         var tokens: [String] = []
         for await token in stream { tokens.append(token) }
-        #expect(tokens.isEmpty)
+        #expect(tokens.count == 1)
+        #expect(tokens[0].contains("Lyric writer unavailable"))
+        #expect(tokens[0].contains("Model directory not found"))
     }
 
     @Test("KV cache tracks per-layer sequence length")

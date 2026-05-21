@@ -58,12 +58,30 @@ public actor ConditioningActor {
         timbreEncoder: TimbreEncoder,
         tokenizerURL: URL
     ) throws {
+        try self.init(
+            vae: vae,
+            qwen3: qwen3,
+            conditionEncoder: conditionEncoder,
+            lyricEncoder: lyricEncoder,
+            timbreEncoder: timbreEncoder,
+            tokenizer: AnvilTokenizer(configURL: tokenizerURL)
+        )
+    }
+
+    private init(
+        vae: VAEActor,
+        qwen3: Qwen3Model,
+        conditionEncoder: ConditionEncoder,
+        lyricEncoder: LyricEncoder,
+        timbreEncoder: TimbreEncoder,
+        tokenizer: AnvilTokenizer
+    ) {
         self.vae = vae
         self.qwen3 = qwen3
         self.conditionEncoder = conditionEncoder
         self.lyricEncoder = lyricEncoder
         self.timbreEncoder = timbreEncoder
-        self.tokenizer = try AnvilTokenizer(configURL: tokenizerURL)
+        self.tokenizer = tokenizer
     }
 
     /// Wrap a user caption with the upstream SFT_GEN_PROMPT template. Mirrors
@@ -506,17 +524,13 @@ extension ConditioningActor {
     /// inference calls will succeed structurally but produce random outputs
     /// until `updateTokenizer(from:)` is called after model download.
     public static func stub() throws -> ConditioningActor {
-        let tokenizer = try AnvilTokenizer.forTesting()
-        let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("AnvilTokenizerForTesting", isDirectory: true)
-        let tokenizerURL = dir.appendingPathComponent("tokenizer.json")
-        return try ConditioningActor(
+        return ConditioningActor(
             vae: VAEActor(),
             qwen3: Qwen3Model(),
             conditionEncoder: ConditionEncoder(),
             lyricEncoder: LyricEncoder(),
             timbreEncoder: TimbreEncoder(),
-            tokenizerURL: tokenizerURL
+            tokenizer: try AnvilTokenizer.forTesting()
         )
     }
 }

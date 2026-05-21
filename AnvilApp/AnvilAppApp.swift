@@ -239,6 +239,7 @@ final class AppServices: ObservableObject {
             promptEnhancer: promptEnhancer,
             lyricWriterManager: lyricWriterManager
         )
+        facade.configure(editorService: editorSvc)
         self.commandFacade = facade
         self.mcpServer = AnvilMCPServer(facade: facade)
         let generationService = Self.makeGenerationService(

@@ -7,6 +7,7 @@ struct DiffusionActorTests {
     private func makeSmallDiT() -> DiTActor {
         let decoder = DiTDecoder(
             hiddenSize: 256,
+            encoderHiddenSize: 256,
             intermediateSize: 512,
             numHiddenLayers: 2,
             numAttentionHeads: 4,

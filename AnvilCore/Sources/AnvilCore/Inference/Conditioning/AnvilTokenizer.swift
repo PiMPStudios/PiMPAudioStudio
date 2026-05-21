@@ -7,13 +7,20 @@ import Tokenizers
 ///
 /// Loads a tokenizer from a local `tokenizer.json` file and provides
 /// `encodeText` and `encodeLyrics` convenience methods that return
-/// padded `MLXArray` tensors shaped `[1, maxLength]`.
+/// `MLXArray` tensors shaped `[1, tokenCount]`, capped by `maxLength`.
 public struct AnvilTokenizer: Sendable {
     // Box the protocol existential so the struct stays Sendable without
     // requiring the upstream type to declare conformance itself.
     private final class Box: @unchecked Sendable {
-        let tokenizer: any Tokenizer
-        init(_ tokenizer: any Tokenizer) { self.tokenizer = tokenizer }
+        let encode: (String) -> [Int]
+
+        init(_ tokenizer: any Tokenizer) {
+            self.encode = { text in tokenizer.encode(text: text) }
+        }
+
+        init(encode: @escaping (String) -> [Int]) {
+            self.encode = encode
+        }
     }
 
     private let box: Box
@@ -62,6 +69,10 @@ public struct AnvilTokenizer: Sendable {
         self.box = Box(tokenizer)
     }
 
+    private init(testEncoder: @escaping (String) -> [Int]) {
+        self.box = Box(encode: testEncoder)
+    }
+
     // MARK: - Encode
 
     /// Encode text for conditioning inputs (e.g. prompt, genre tags).
@@ -69,7 +80,7 @@ public struct AnvilTokenizer: Sendable {
     /// - Parameters:
     ///   - text: The text to encode.
     ///   - maxLength: Sequence length of the returned arrays. Default `256`.
-    /// - Returns: A tuple `(ids, mask)` of `Int32 MLXArray` shaped `[1, maxLength]`.
+    /// - Returns: A tuple `(ids, mask)` of `Int32 MLXArray` shaped `[1, tokenCount]`.
     public func encodeText(
         _ text: String,
         maxLength: Int = 256
@@ -82,7 +93,7 @@ public struct AnvilTokenizer: Sendable {
     /// - Parameters:
     ///   - lyrics: The lyrics string to encode.
     ///   - maxLength: Sequence length of the returned arrays. Default `2048`.
-    /// - Returns: A tuple `(ids, mask)` of `Int32 MLXArray` shaped `[1, maxLength]`.
+    /// - Returns: A tuple `(ids, mask)` of `Int32 MLXArray` shaped `[1, tokenCount]`.
     public func encodeLyrics(
         _ lyrics: String,
         maxLength: Int = 2048
@@ -94,26 +105,21 @@ public struct AnvilTokenizer: Sendable {
 
     /// Create a minimal functional tokenizer suitable for unit tests.
     ///
-    /// Writes a compact BPE `tokenizer.json` to a temporary directory and
-    /// loads it. The vocabulary contains every printable ASCII character so
-    /// the test strings used by `AnvilTokenizerTests` all produce real tokens.
-    /// No external checkpoint files are required.
+    /// Uses an in-memory scalar encoder so structural tests do not depend on
+    /// swift-transformers BPE edge cases or external checkpoint files.
     public static func forTesting() throws -> AnvilTokenizer {
-        let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("AnvilTokenizerForTesting", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-
-        let tokenizerURL = dir.appendingPathComponent("tokenizer.json")
-        let json = Self.minimalTokenizerJSON()
-        try json.write(to: tokenizerURL, atomically: true, encoding: .utf8)
-
-        return try AnvilTokenizer(configURL: tokenizerURL)
+        AnvilTokenizer { text in
+            text.unicodeScalars.compactMap { scalar in
+                guard !CharacterSet.whitespacesAndNewlines.contains(scalar) else { return nil }
+                return Int(scalar.value % 10_000) + 1
+            }
+        }
     }
 
     // MARK: - Private Helpers
 
     private func encode(_ text: String, maxLength: Int) -> (ids: MLXArray, mask: MLXArray) {
-        var tokenIds = box.tokenizer.encode(text: text)
+        var tokenIds = box.encode(text)
 
         // Truncate if the text encodes to more tokens than maxLength.
         // (maxLength is now a truncation CAP, not a pad-to length — matches
@@ -150,56 +156,4 @@ public struct AnvilTokenizer: Sendable {
         return Config(dict)
     }
 
-    /// Returns the JSON string for a minimal valid BPE tokenizer.
-    ///
-    /// The vocabulary maps every printable ASCII character (and space) to a
-    /// unique integer ID starting at 1. Unknown characters fall back through
-    /// `hexaEncode` in BPETokenizer, which is fine for testing purposes.
-    private static func minimalTokenizerJSON() -> String {
-        // Build a vocab covering printable ASCII (0x20–0x7E) + common chars.
-        // IDs start at 1; 0 is reserved as the padding token.
-        var vocab: [String: Int] = [:]
-        var nextID = 1
-        for codePoint in 32...126 {
-            let char = String(UnicodeScalar(codePoint)!)
-            vocab[char] = nextID
-            nextID += 1
-        }
-
-        let vocabEntries = vocab
-            .sorted { $0.value < $1.value }
-            .map { pair -> String in
-                let escaped = pair.key
-                    .replacingOccurrences(of: "\\", with: "\\\\")
-                    .replacingOccurrences(of: "\"", with: "\\\"")
-                return "      \"\(escaped)\": \(pair.value)"
-            }
-            .joined(separator: ",\n")
-
-        return """
-        {
-          "version": "1.0",
-          "truncation": null,
-          "padding": null,
-          "added_tokens": [],
-          "normalizer": null,
-          "pre_tokenizer": null,
-          "post_processor": null,
-          "decoder": null,
-          "model": {
-            "type": "BPE",
-            "dropout": null,
-            "unk_token": null,
-            "continuing_subword_prefix": null,
-            "end_of_word_suffix": null,
-            "fuse_unk": false,
-            "byte_fallback": false,
-            "vocab": {
-        \(vocabEntries)
-            },
-            "merges": []
-          }
-        }
-        """
-    }
 }

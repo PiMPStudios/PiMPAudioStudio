@@ -93,6 +93,7 @@ final class GenerationService: ObservableObject {
 
     func generate(request: GenerationRequest) {
         generationTask?.cancel()
+        state = .conditioning
 
         // [weak self] breaks the retain cycle where generationTask retains self, which retains generationTask.
         // SwiftUI holds GenerationService strongly for the view's lifetime, so self being nil is rare

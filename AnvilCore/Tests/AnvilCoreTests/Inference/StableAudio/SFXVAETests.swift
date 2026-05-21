@@ -6,7 +6,7 @@ import MLXRandom
 
 @Suite("SFX VAE")
 struct SFXVAETests {
-    let config = SFXVAEConfig(latentDim: 64, outputChannels: 2, sampleRate: 44100, upsampleRatios: [8, 8, 4, 2])
+    let config = SFXVAEConfig(latentDim: 64, outputChannels: 2, sampleRate: 44100, upsampleRatios: [8, 8, 4, 4, 2])
 
     @Test("Decode produces audio from latents")
     func decodeShape() {
@@ -15,7 +15,7 @@ struct SFXVAETests {
         let audio = model.decode(latents: latents)
         #expect(audio.shape[0] == 1)
         #expect(audio.shape[2] == 2) // stereo
-        #expect(audio.shape[1] == 16 * 8 * 8 * 4 * 2) // upsampled
+        #expect(audio.shape[1] == 16 * 8 * 8 * 4 * 4 * 2) // upsampled
     }
 
     @Test("Actor decode returns correct shape after loading weights")
@@ -93,9 +93,9 @@ struct SFXVAETests {
             // snake1
             w.append(("\(p).snake1.alpha", MLXArray.zeros([inDim])))
             w.append(("\(p).snake1.beta", MLXArray.zeros([inDim])))
-            // convT1: ConvTransposed1d(inDim, outDim, k=2*stride) — [inC, k, outC] in MLX
+            // convT1: ConvTransposed1d(inDim, outDim, k=2*stride) — [outC, k, inC] in MLX
             let kernelSize = 2 * stride
-            w.append(("\(p).convT1.weight", MLXRandom.normal([inDim, kernelSize, outDim])))
+            w.append(("\(p).convT1.weight", MLXRandom.normal([outDim, kernelSize, inDim])))
             w.append(("\(p).convT1.bias", MLXArray.zeros([outDim])))
             // 3 residual units operating on outDim
             appendResUnit(prefix: "\(p).resUnit1", dim: outDim)

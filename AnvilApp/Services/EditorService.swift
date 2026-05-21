@@ -5,6 +5,7 @@ import AnvilCore
 @MainActor
 class EditorService: ObservableObject {
     @Published var coordinator: InpaintCoordinator?
+    @Published private(set) var loadedAudio: EditorLoadedAudio?
 
     private var sfxPipelineSubscription: AnyCancellable?
 
@@ -32,4 +33,20 @@ class EditorService: ObservableObject {
                 }
         }
     }
+
+    func recordLoadedAudio(_ audio: EditorLoadedAudio) {
+        loadedAudio = audio
+    }
+}
+
+struct EditorLoadedAudio: Equatable {
+    let fileName: String
+    let path: String
+    let duration: TimeInterval
+    let sampleRate: Int
+    let channels: Int
+    let frameCount: Int
+    let latentFrames: Int
+    let originalPrompt: String?
+    let loadedAt: Date
 }

@@ -20,11 +20,53 @@ All notable changes to AnvilApp are documented here.
 - **Primary LoRA strength control** — the Generate view now exposes the selected LoRA adapter's strength, routes the primary adapter through the same weighted stack path as additional adapters, persists the value in saved presets, and records the actual weight in history/trace sidecars. This makes XL PEFT adapter A/B tests line up with the `lora_scale` knob used by the Python ACE-Step path.
 - **Local MCP server foundation** — Settings now includes an MCP tab that can start/stop a localhost-only endpoint at `http://127.0.0.1:38765/mcp`, optionally require a bearer token, and expose read-only tools for models, adapters, history, trace lookup, and Analyzer-style trace comparison.
 - **MCP resources and smoke testing** — the local MCP endpoint now supports `resources/list` and `resources/read` for `anvil://models`, `anvil://model/{id}`, `anvil://adapters`, `anvil://adapter/{id}`, `anvil://history`, `anvil://history/{id}`, `anvil://trace/{id}`, and `anvil://audio/{id}` metadata. A new `scripts/smoke-mcp.sh` script checks health, initialization, tool discovery, history, trace reads, resource reads, and compare calls against a running local app.
-- **MCP prompt and lyric helpers** — the local MCP endpoint now exposes return-only `anvil.enhance_prompt` and `anvil.write_lyrics` tools backed by the same prompt enhancer, lyric writer, and lyric sanitizer used by the Generate view. These tools return text for agent workflows without mutating the current prompt field, lyric field, history, traces, models, or audio.
-- **MCP preferred-take review writes** — the local MCP endpoint now exposes `anvil.mark_preferred_take`, scoped to the same preferred flag and listening note metadata used by the Generation Analyzer. It requires an existing trace sidecar and mirrors review changes into `history.json`; audio, models, adapters, tensors, and generation settings remain untouched.
-- **MCP adapter selection** — the local MCP endpoint now exposes `anvil.apply_adapter` for selecting, stacking, or clearing ACE-Step LoRA adapters. The tool validates adapter existence/category, updates the generation service, persists the primary adapter selection, and notifies the Generate view when it is open so MCP and GUI state stay aligned.
-- **MCP generation submission** — the local MCP endpoint now exposes `anvil.generate` plus `anvil.generation_status`. Generation requests reuse the same `GenerationService` path as the Generate button, return immediately for polling via status/history/analyzer traces, and support a `dryRun` mode for validating resolved request settings without starting a render.
-- **MCP guarded memory release** — the local MCP endpoint now exposes `anvil.release_memory`, which runs the same consolidated model-unload and MLX GPU-cache flush path as Settings. The tool requires `confirm: true` and returns before/after active, cache, and peak memory counters for agent-visible cleanup checks.
+- **MCP prompt and lyric helpers** — the local MCP endpoint now exposes return-only `enhance_prompt` and `write_lyrics` tools backed by the same prompt enhancer, lyric writer, and lyric sanitizer used by the Generate view. These tools return text for agent workflows without mutating the current prompt field, lyric field, history, traces, models, or audio.
+- **MCP preferred-take review writes** — the local MCP endpoint now exposes `mark_preferred_take`, scoped to the same preferred flag and listening note metadata used by the Generation Analyzer. It requires an existing trace sidecar and mirrors review changes into `history.json`; audio, models, adapters, tensors, and generation settings remain untouched.
+- **MCP adapter selection** — the local MCP endpoint now exposes `apply_adapter` for selecting, stacking, or clearing ACE-Step LoRA adapters. The tool validates adapter existence/category, updates the generation service, persists the primary adapter selection, and notifies the Generate view when it is open so MCP and GUI state stay aligned.
+- **MCP generation submission** — the local MCP endpoint now exposes `generate_song`, `generate`, and `generation_status`. Generation requests reuse the same `GenerationService` path as the Generate button, return immediately for polling via status/history/analyzer traces, and support a `dryRun` mode for validating resolved request settings without starting a render.
+- **MCP operation tracking and cancellation** — MCP-submitted generation now
+  returns an `operationID` and is visible through `list_operations`,
+  `get_operation`, `generation_status.currentOperation`, `anvil://operations`,
+  and `anvil://operation/{id}`. `cancel_operation` cancels the matching active
+  generation through the same cancellation path as the app UI, giving richer
+  editor workflows a standards-shaped operation contract before protocol-level
+  progress streams are enabled.
+- **MCP editor operation bridge** — `editor_status` now exposes editor
+  readiness, loaded audio metadata, supported editor actions, and the active
+  editor operation. `load_editor_audio` registers a background
+  `editor.loadAudio` operation, loads a local audio file into the shared editor
+  coordinator, encodes editable latents, and reports through the same
+  `list_operations` / `get_operation` / `cancel_operation` contract as
+  generation.
+- **MCP Streamable HTTP sessions** — the local MCP bridge now uses the Swift
+  SDK's `StatefulHTTPServerTransport`. `initialize` returns `MCP-Session-Id`,
+  POST requests may return SSE, `GET /mcp` opens the standalone server stream,
+  and `DELETE /mcp` terminates and resets the embedded SDK session. Tool calls
+  with `_meta.progressToken` emit request-scoped `notifications/progress`.
+- **MCP normalized operation progress** — pollable generation operation records
+  now expose `progress` / `total` as whole-operation completion values, with
+  `stageProgress` / `stageTotal` preserving stage-local counters when available.
+- **MCP guarded memory release** — the local MCP endpoint now exposes `release_memory`, which runs the same consolidated model-unload and MLX GPU-cache flush path as Settings. The tool requires `confirm: true` and returns before/after active, cache, and peak memory counters for agent-visible cleanup checks.
+- **MCP standards roadmap** — added `docs/mcp-standards-roadmap.md` to lock in the standards-first direction: preserve `AnvilCommandFacade` as the app boundary, prefer the official Swift MCP SDK for transport/lifecycle/schema handling where practical, stage Swift 6/concurrency migration instead of flipping the whole app at once, and plan richer workstation resources, prompts, progress, and cancellation support.
+- **Serial AnvilCore test baseline** — added `scripts/test-anvilcore-serial.sh` to enumerate AnvilCore test suites and run each suite filter in its own `swift test` invocation while the raw whole-suite runner still trips MLX under all-at-once scheduling.
+- **Swift MCP SDK spike package** — added `Spikes/MCPServerSDKSpike`, an isolated Swift 6 package that resolves `modelcontextprotocol/swift-sdk`, exposes `list_history` plus `anvil://history`, and verifies SDK client discovery plus stateless HTTP handling for the same JSON-RPC method shape used by the MCP smoke script.
+
+### Changed
+
+- **MCP docs now treat snake_case tool names as primary** — `docs/mcp-local.md` and the MCP spec/plan now document `list_history`, `generate_song`, `generation_status`, and related plain names as the public catalog while noting that legacy `anvil.` / `anvil_` aliases remain callable for compatibility.
+- **MCP progress/cancellation design is staged** — the standards roadmap now
+  separates today's pollable operation records and request-scoped progress
+  notifications from the later background-operation task/progress mapping. MCP
+  task support remains deferred until the Swift SDK exposes task capabilities.
+- **Phase 0 MCP hardening status is documented** — the MCP standards roadmap now records the cleaned-up package-test baseline, the current strict-concurrency warning inventory, and the remaining raw `swift test --package-path AnvilCore` MLX runner limitation.
+- **MCP SDK replacement direction is now concrete** — the standards plan records
+  the completed move to the SDK's stateful Streamable HTTP transport while
+  keeping `AnvilCommandFacade` and the localhost listener boundary intact.
+- **Local MCP dispatch is now SDK-backed** — `AnvilMCPServer` keeps the existing
+  localhost socket listener, token gate, and `AnvilCommandFacade` boundary, but
+  tool/resource registration, lifecycle handling, structured tool results,
+  JSON-RPC dispatch, and stateful HTTP/SSE response shaping now run through the
+  official Swift MCP SDK.
 
 ### Fixed
 
@@ -33,6 +75,7 @@ All notable changes to AnvilApp are documented here.
 - **Local PEFT adapter imports are normalized into Anvil's registry** — importing a local `adapter_config.json` + `adapter_model.safetensors` directory now reuses the same PEFT config parsing, key remapping, base-model resolution, and registry-save path as HuggingFace adapter imports.
 - **Trace compare defaults to the useful differences** — the compare table is now grouped into Model, Adapters, Sampling, Prompt/Lyrics, and Audio sections, hides unchanged rows by default, and includes a `Show unchanged` toggle for full audits.
 - **Trace decoding is more tolerant of older sidecars** — trace JSON now has explicit schema versioning and defaults for optional review/event metadata, so older successful traces keep loading while new traces can carry review notes, preferred state, and event snapshots.
+- **Stale AnvilCore fixtures are aligned with current contracts** — tests now match the capped tokenizer mask behavior, current ConditioningActor stubs, v1.5 VAE stride, DiT encoder hidden size/cache requirements, Stable Audio module paths and transposed-conv weight layouts, editor stereo audio loading, and LLM lazy-load failure messages.
 
 ---
 

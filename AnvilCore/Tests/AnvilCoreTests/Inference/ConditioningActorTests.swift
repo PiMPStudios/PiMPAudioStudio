@@ -25,7 +25,7 @@ struct ConditioningActorTests {
     @Test("ConditioningActor encode with reference audio")
     func encodeWithReference() async throws {
         let actor = try ConditioningActor.stub()
-        let refAudio = MLXArray.zeros([1, 800, 64])
+        let refAudio = MLXArray.zeros([1, 4096, 2])
         let result = try await actor.encode(
             text: "A pop song",
             lyrics: "Hey hey hey",
@@ -38,8 +38,8 @@ struct ConditioningActorTests {
         #expect(result.contextLatents.shape[2] == 128)
     }
 
-    @Test("ConditioningActor contextLatents uses zeros for text-only")
-    func contextLatentsZerosPath() async throws {
+    @Test("ConditioningActor contextLatents uses silence source and full mask for text-only")
+    func contextLatentsTextOnlyPath() async throws {
         let actor = try ConditioningActor.stub()
         let result = try await actor.encode(
             text: "Test",
@@ -48,8 +48,14 @@ struct ConditioningActorTests {
             duration: 5.0,
             precision: .float32
         )
-        let sum = MLX.sum(MLX.abs(result.contextLatents))
-        eval(sum)
-        #expect(sum.item(Float.self) == 0.0)
+        let sourceLatents = result.contextLatents[0..., 0..., 0..<64]
+        let chunkMask = result.contextLatents[0..., 0..., 64..<128]
+        let sourceSum = MLX.sum(MLX.abs(sourceLatents))
+        let maskMin = chunkMask.min()
+        let maskMax = chunkMask.max()
+        eval(sourceSum, maskMin, maskMax)
+        #expect(sourceSum.item(Float.self) == 0.0)
+        #expect(maskMin.item(Float.self) == ConditioningActor.fullGenerationChunkMaskValue)
+        #expect(maskMax.item(Float.self) == ConditioningActor.fullGenerationChunkMaskValue)
     }
 }

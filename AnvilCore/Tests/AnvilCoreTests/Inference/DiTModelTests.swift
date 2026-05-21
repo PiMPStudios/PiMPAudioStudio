@@ -8,6 +8,7 @@ struct DiTModelTests {
     func forwardPassShape() {
         let decoder = DiTDecoder(
             hiddenSize: 256,
+            encoderHiddenSize: 256,
             intermediateSize: 512,
             numHiddenLayers: 2,
             numAttentionHeads: 4,
@@ -46,6 +47,7 @@ struct DiTModelTests {
     func forwardWithCache() {
         let decoder = DiTDecoder(
             hiddenSize: 256,
+            encoderHiddenSize: 256,
             intermediateSize: 512,
             numHiddenLayers: 2,
             numAttentionHeads: 4,
@@ -87,6 +89,7 @@ struct DiTModelTests {
     func oddSequenceLength() {
         let decoder = DiTDecoder(
             hiddenSize: 256,
+            encoderHiddenSize: 256,
             intermediateSize: 512,
             numHiddenLayers: 2,
             numAttentionHeads: 4,
@@ -125,6 +128,7 @@ struct DiTModelTests {
     func actorStep() async throws {
         let decoder = DiTDecoder(
             hiddenSize: 256,
+            encoderHiddenSize: 256,
             intermediateSize: 512,
             numHiddenLayers: 2,
             numAttentionHeads: 4,
@@ -144,6 +148,7 @@ struct DiTModelTests {
         let noisyLatents = MLXArray.zeros([1, 20, 64])
         let encoderStates = MLXArray.zeros([1, 50, 256])
         let contextLatents = MLXArray.zeros([1, 20, 128])
+        let inputCache = CrossAttentionCache()
 
         let (output, cache) = try await actor.step(
             noisyLatents: noisyLatents,
@@ -152,7 +157,7 @@ struct DiTModelTests {
             encoderStates: encoderStates,
             contextLatents: contextLatents,
             encoderAttentionMask: nil,
-            cache: nil,
+            cache: inputCache,
             useCache: true
         )
         #expect(output.shape == [1, 20, 64])

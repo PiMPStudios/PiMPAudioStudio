@@ -1,5 +1,6 @@
 import Foundation
 import Darwin
+import MCP
 import OSLog
 
 enum AnvilMCPServerState: Equatable {
@@ -37,6 +38,8 @@ final class AnvilMCPServer: ObservableObject {
     private let logger = Logger(subsystem: "com.pimp.AnvilApp", category: "MCP")
     private let facade: AnvilCommandFacade
     private var httpServer: MCPHTTPServer?
+    private var sdkBridge: AnvilMCPSDKBridge?
+    private var startupTask: Task<Void, Never>?
 
     var endpoint: String {
         "http://127.0.0.1:\(Self.defaultPort)/mcp"
@@ -62,7 +65,11 @@ final class AnvilMCPServer: ObservableObject {
     }
 
     deinit {
+        startupTask?.cancel()
         httpServer?.stop()
+        if let sdkBridge {
+            Task { await sdkBridge.stop() }
+        }
     }
 
     func setEnabled(_ enabled: Bool) {
@@ -86,153 +93,353 @@ final class AnvilMCPServer: ObservableObject {
     }
 
     func stop() {
+        startupTask?.cancel()
+        startupTask = nil
         httpServer?.stop()
         httpServer = nil
+        if let sdkBridge {
+            Task { await sdkBridge.stop() }
+        }
+        sdkBridge = nil
         state = .stopped
     }
 
     private func start() {
-        guard httpServer == nil else {
+        guard httpServer == nil, startupTask == nil else {
             state = .running(endpoint: endpoint)
             return
         }
 
         state = .starting
-        do {
-            let server = try MCPHTTPServer(
-                port: Self.defaultPort,
-                tokenProvider: { [weak self] in
-                    guard let self, self.isTokenRequired else { return nil }
-                    return self.token
-                },
-                onReady: { [weak self] in
-                    self?.state = .running(endpoint: self?.endpoint ?? "")
-                },
-                onFailed: { [weak self] error in
-                    guard let self else { return }
-                    self.logger.error("MCP listener failed: \(error.localizedDescription, privacy: .public)")
-                    self.httpServer = nil
-                    self.state = .failed(error.localizedDescription)
-                    self.isEnabled = false
-                    UserDefaults.standard.set(false, forKey: Self.enabledKey)
-                },
-                handler: { [weak self] request in
-                    guard let self else {
-                        return MCPJSONRPCResponse.error(id: request.id, code: -32603, message: "MCP server is shutting down")
-                    }
-                    return await self.handle(request)
-                }
+        startupTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+
+            let bridge = AnvilMCPSDKBridge(
+                facade: self.facade,
+                version: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1.0"
             )
-            try server.start()
-            httpServer = server
-        } catch {
-            logger.error("Failed to start MCP server: \(error.localizedDescription, privacy: .public)")
-            state = .failed(error.localizedDescription)
-            isEnabled = false
-            UserDefaults.standard.set(false, forKey: Self.enabledKey)
-        }
-    }
+            var startedServer: MCPHTTPServer?
 
-    private func handle(_ request: MCPJSONRPCRequest) async -> MCPJSONRPCResponse {
-        switch request.method {
-        case "initialize":
-            return .result(id: request.id, value: [
-                "protocolVersion": request.protocolVersion ?? "2025-06-18",
-                "capabilities": [
-                    "tools": [
-                        "listChanged": false
-                    ],
-                    "resources": [
-                        "listChanged": false,
-                        "subscribe": false
-                    ]
-                ],
-                "serverInfo": [
-                    "name": "Anvil",
-                    "version": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1.0"
-                ]
-            ])
+            do {
+                try Task.checkCancellation()
+                try await bridge.start()
+                try Task.checkCancellation()
 
-        case "ping":
-            return .result(id: request.id, value: [:])
+                let server = try MCPHTTPServer(
+                    port: Self.defaultPort,
+                    tokenProvider: { [weak self] in
+                        guard let self, self.isTokenRequired else { return nil }
+                        return self.token
+                    },
+                    onReady: { [weak self] in
+                        self?.state = .running(endpoint: self?.endpoint ?? "")
+                    },
+                    onFailed: { [weak self] error in
+                        self?.failStartup(error)
+                    },
+                    handler: { sdkRequest in
+                        await bridge.handle(sdkRequest)
+                    }
+                )
+                try server.start()
+                startedServer = server
+                try Task.checkCancellation()
 
-        case "tools/list":
-            return .result(id: request.id, value: ["tools": MCPToolCatalog.tools])
-
-        case "tools/call":
-            return await callTool(request)
-
-        case "resources/list":
-            return .result(id: request.id, value: [
-                "resources": await facade.listResources()
-            ])
-
-        case "resources/read":
-            return await readResource(request)
-
-        default:
-            return .error(id: request.id, code: -32601, message: "Unknown MCP method: \(request.method)")
-        }
-    }
-
-    private func readResource(_ request: MCPJSONRPCRequest) async -> MCPJSONRPCResponse {
-        guard let uri = request.params?["uri"] as? String, !uri.isEmpty else {
-            return .error(id: request.id, code: -32602, message: "resources/read requires a resource uri")
-        }
-
-        do {
-            let payload = try await facade.readResource(uri: uri)
-            return .result(id: request.id, value: MCPResourceResult.success(uri: uri, payload: payload))
-        } catch {
-            return .error(id: request.id, code: -32602, message: error.localizedDescription)
-        }
-    }
-
-    private func callTool(_ request: MCPJSONRPCRequest) async -> MCPJSONRPCResponse {
-        guard let params = request.params,
-              let name = params["name"] as? String ?? params["tool_name"] as? String else {
-            return .error(id: request.id, code: -32602, message: "tools/call requires a tool name")
-        }
-        let arguments = params["arguments"] as? [String: Any]
-            ?? params["tool_args"] as? [String: Any]
-            ?? [:]
-
-        do {
-            let structured: Any
-            switch canonicalToolName(name) {
-            case "list_models":
-                structured = await facade.listModels()
-            case "list_adapters":
-                structured = await facade.listAdapters()
-            case "list_history":
-                structured = facade.listHistory(limit: intValue(arguments["limit"]) ?? 25)
-            case "get_trace":
-                structured = try facade.getTrace(arguments: arguments)
-            case "compare_traces":
-                structured = try facade.compareTraces(arguments: arguments)
-            case "mark_preferred_take":
-                structured = try facade.markPreferredTake(arguments: arguments)
-            case "enhance_prompt":
-                structured = try await facade.enhancePrompt(arguments: arguments)
-            case "write_lyrics":
-                structured = try await facade.writeLyrics(arguments: arguments)
-            case "apply_adapter":
-                structured = try await facade.applyAdapter(arguments: arguments)
-            case "generate_song":
-                structured = try await facade.generateSong(arguments: arguments)
-            case "generate":
-                structured = try facade.generate(arguments: arguments)
-            case "generation_status":
-                structured = try facade.generationStatus()
-            case "release_memory":
-                structured = try await facade.releaseMemory(arguments: arguments)
-            default:
-                return .error(id: request.id, code: -32601, message: "Unknown Anvil tool: \(name)")
+                self.sdkBridge = bridge
+                self.httpServer = server
+                self.startupTask = nil
+            } catch is CancellationError {
+                startedServer?.stop()
+                await bridge.stop()
+                self.startupTask = nil
+            } catch {
+                startedServer?.stop()
+                await bridge.stop()
+                self.startupTask = nil
+                self.failStartup(error)
             }
+        }
+    }
 
-            return .result(id: request.id, value: MCPToolResult.success(structured))
+    private func failStartup(_ error: Error) {
+        logger.error("MCP server failed: \(error.localizedDescription, privacy: .public)")
+        httpServer?.stop()
+        httpServer = nil
+        if let sdkBridge {
+            Task { await sdkBridge.stop() }
+        }
+        sdkBridge = nil
+        state = .failed(error.localizedDescription)
+        isEnabled = false
+        UserDefaults.standard.set(false, forKey: Self.enabledKey)
+    }
+
+    private static func generateToken() -> String {
+        UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+    }
+}
+
+@MainActor
+private final class AnvilMCPSDKBridge {
+    private let facade: AnvilCommandFacade
+    private let version: String
+    private var server: Server
+    private var transport: StatefulHTTPServerTransport
+    private var isStarted = false
+    private var hasActiveSession = false
+
+    init(facade: AnvilCommandFacade, version: String) {
+        self.facade = facade
+        self.version = version
+        let components = Self.makeServer(version: version)
+        self.server = components.server
+        self.transport = components.transport
+    }
+
+    private static func makeServer(version: String) -> (server: Server, transport: StatefulHTTPServerTransport) {
+        let server = Server(
+            name: "Anvil",
+            version: version,
+            capabilities: .init(
+                resources: .init(subscribe: false, listChanged: false),
+                tools: .init(listChanged: false)
+            )
+        )
+        return (server, StatefulHTTPServerTransport())
+    }
+
+    func start() async throws {
+        guard !isStarted else { return }
+        await registerHandlers()
+        try await server.start(transport: transport)
+        isStarted = true
+    }
+
+    func stop() async {
+        guard isStarted else { return }
+        await server.stop()
+        isStarted = false
+        hasActiveSession = false
+    }
+
+    func handle(_ request: MCP.HTTPRequest) async -> MCP.HTTPResponse {
+        let response = await transport.handleRequest(request)
+
+        if isInitializeRequest(request), response.statusCode == 200 {
+            hasActiveSession = true
+        } else if request.method.uppercased() == "DELETE", (200..<300).contains(response.statusCode) {
+            hasActiveSession = false
+            _ = await resetSessionTransport()
+        }
+
+        return response
+    }
+
+    private func resetSessionTransport() async -> MCP.HTTPResponse? {
+        if isStarted {
+            await server.stop()
+            isStarted = false
+        }
+
+        let components = Self.makeServer(version: version)
+        server = components.server
+        transport = components.transport
+        hasActiveSession = false
+
+        do {
+            await registerHandlers()
+            try await server.start(transport: transport)
+            isStarted = true
+            return nil
         } catch {
-            return .result(id: request.id, value: MCPToolResult.failure(error.localizedDescription))
+            return .error(statusCode: 500, .internalError("Failed to reset MCP session transport: \(error.localizedDescription)"))
+        }
+    }
+
+    private func isInitializeRequest(_ request: MCP.HTTPRequest) -> Bool {
+        guard request.method.uppercased() == "POST",
+              let body = request.body,
+              let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
+              let method = json["method"] as? String else {
+            return false
+        }
+        return method == "initialize"
+    }
+
+    private func registerHandlers() async {
+        await server.withMethodHandler(ListTools.self) { _ in
+            .init(tools: MCPToolCatalog.sdkTools)
+        }
+
+        await server.withMethodHandler(CallTool.self) { [weak self] params in
+            guard let self else {
+                return .init(
+                    content: [.text(text: "MCP server is shutting down", annotations: nil, _meta: nil)],
+                    isError: true
+                )
+            }
+            return await self.callTool(params)
+        }
+
+        await server.withMethodHandler(ListResources.self) { [weak self] _ in
+            guard let self else {
+                return .init(resources: [], nextCursor: nil)
+            }
+            let resources = await self.facade.listResources()
+            return .init(resources: resources.compactMap(MCPResourceCatalog.sdkResource), nextCursor: nil)
+        }
+
+        await server.withMethodHandler(ReadResource.self) { [weak self] params in
+            guard let self else {
+                throw MCPError.internalError("MCP server is shutting down")
+            }
+            return try await self.readResource(params)
+        }
+    }
+
+    private func callTool(_ params: CallTool.Parameters) async -> CallTool.Result {
+        let arguments = MCPValueConverter.dictionary(from: params.arguments)
+        let toolName = canonicalToolName(params.name)
+        let progressToken = params._meta?.progressToken
+
+        await sendProgress(
+            progressToken,
+            progress: 0,
+            total: 1,
+            message: "Starting \(toolName)"
+        )
+
+        do {
+            let structured = try await executeTool(
+                name: toolName,
+                arguments: arguments
+            )
+            let structuredContent: Value? = try MCPValueConverter.value(from: structured)
+            if let operationID = backgroundOperationID(from: structured) {
+                await sendProgress(
+                    progressToken,
+                    progress: 1,
+                    total: 1,
+                    message: "Submitted \(toolName) as \(operationID); poll the operation for background progress."
+                )
+            } else {
+                await sendProgress(
+                    progressToken,
+                    progress: 1,
+                    total: 1,
+                    message: "Completed \(toolName)"
+                )
+            }
+            return .init(
+                content: [.text(text: MCPJSON.prettyJSON(structured), annotations: nil, _meta: nil)],
+                structuredContent: structuredContent,
+                isError: false
+            )
+        } catch {
+            await sendProgress(
+                progressToken,
+                progress: 1,
+                total: 1,
+                message: "Failed \(toolName): \(error.localizedDescription)"
+            )
+            return .init(
+                content: [.text(text: error.localizedDescription, annotations: nil, _meta: nil)],
+                isError: true
+            )
+        }
+    }
+
+    private func sendProgress(
+        _ progressToken: ProgressToken?,
+        progress: Double,
+        total: Double?,
+        message: String
+    ) async {
+        guard let progressToken else { return }
+        let notification = Message<ProgressNotification>(
+            method: ProgressNotification.name,
+            params: .init(
+                progressToken: progressToken,
+                progress: progress,
+                total: total,
+                message: message
+            )
+        )
+        try? await server.notify(notification)
+    }
+
+    private func backgroundOperationID(from structured: Any) -> String? {
+        guard let payload = structured as? [String: Any] else { return nil }
+        if let operationID = nonEmptyString(payload["operationID"]) {
+            return operationID
+        }
+        if let generation = payload["generation"] as? [String: Any],
+           let operationID = nonEmptyString(generation["operationID"]) {
+            return operationID
+        }
+        return nil
+    }
+
+    private func nonEmptyString(_ value: Any?) -> String? {
+        let string = stringValue(value)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return string.isEmpty ? nil : string
+    }
+
+    private func readResource(_ params: ReadResource.Parameters) async throws -> ReadResource.Result {
+        do {
+            let payload = try await facade.readResource(uri: params.uri)
+            return .init(contents: [
+                .text(
+                    MCPJSON.prettyJSON(payload),
+                    uri: params.uri,
+                    mimeType: "application/json"
+                )
+            ])
+        } catch {
+            throw MCPError.invalidParams(error.localizedDescription)
+        }
+    }
+
+    private func executeTool(name: String, arguments: [String: Any]) async throws -> Any {
+        switch name {
+        case "list_models":
+            return await facade.listModels()
+        case "list_adapters":
+            return await facade.listAdapters()
+        case "list_history":
+            return facade.listHistory(limit: intValue(arguments["limit"]) ?? 25)
+        case "get_trace":
+            return try facade.getTrace(arguments: arguments)
+        case "compare_traces":
+            return try facade.compareTraces(arguments: arguments)
+        case "mark_preferred_take":
+            return try facade.markPreferredTake(arguments: arguments)
+        case "enhance_prompt":
+            return try await facade.enhancePrompt(arguments: arguments)
+        case "write_lyrics":
+            return try await facade.writeLyrics(arguments: arguments)
+        case "apply_adapter":
+            return try await facade.applyAdapter(arguments: arguments)
+        case "generate_song":
+            return try await facade.generateSong(arguments: arguments)
+        case "generate":
+            return try facade.generate(arguments: arguments)
+        case "generation_status":
+            return try facade.generationStatus()
+        case "editor_status":
+            return try await facade.editorStatus()
+        case "load_editor_audio":
+            return try facade.loadEditorAudio(arguments: arguments)
+        case "list_operations":
+            return facade.listOperations(arguments: arguments)
+        case "get_operation":
+            return try facade.getOperation(arguments: arguments)
+        case "cancel_operation":
+            return try facade.cancelOperation(arguments: arguments)
+        case "release_memory":
+            return try await facade.releaseMemory(arguments: arguments)
+        default:
+            throw MCPError.methodNotFound("Unknown Anvil tool: \(name)")
         }
     }
 
@@ -259,8 +466,114 @@ final class AnvilMCPServer: ObservableObject {
         }
     }
 
-    private static func generateToken() -> String {
-        UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+    private func stringValue(_ value: Any?) -> String? {
+        switch value {
+        case _ as NSNull:
+            return nil
+        case let value as String:
+            return value
+        case let value as CustomStringConvertible:
+            return value.description
+        default:
+            return nil
+        }
+    }
+}
+
+private enum MCPValueConverter {
+    static func dictionary(from values: [String: Value]?) -> [String: Any] {
+        values?.mapValues(anyValue) ?? [:]
+    }
+
+    static func value(from any: Any) throws -> Value {
+        switch any {
+        case _ as NSNull:
+            return .null
+        case let value as Bool:
+            return .bool(value)
+        case let value as Int:
+            return .int(value)
+        case let value as Int64:
+            return .int(Int(value))
+        case let value as Double:
+            return .double(value)
+        case let value as Float:
+            return .double(Double(value))
+        case let value as String:
+            return .string(value)
+        case let value as NSNumber:
+            return numberValue(value)
+        case let value as [Any]:
+            return .array(try value.map(Self.value))
+        case let value as [String: Any]:
+            return .object(try value.mapValues(Self.value))
+        default:
+            return .string(String(describing: any))
+        }
+    }
+
+    private static func anyValue(_ value: Value) -> Any {
+        switch value {
+        case .null:
+            return NSNull()
+        case .bool(let bool):
+            return bool
+        case .int(let int):
+            return int
+        case .double(let double):
+            return double
+        case .string(let string):
+            return string
+        case .data(_, let data):
+            return data.base64EncodedString()
+        case .array(let array):
+            return array.map(anyValue)
+        case .object(let object):
+            return object.mapValues(anyValue)
+        }
+    }
+
+    private static func numberValue(_ value: NSNumber) -> Value {
+        if CFGetTypeID(value) == CFBooleanGetTypeID() {
+            return .bool(value.boolValue)
+        }
+
+        let double = value.doubleValue
+        if double.rounded() == double {
+            return .int(value.intValue)
+        }
+        return .double(double)
+    }
+}
+
+private enum MCPJSON {
+    static func prettyJSON(_ object: Any) -> String {
+        guard JSONSerialization.isValidJSONObject(object),
+              let data = try? JSONSerialization.data(
+                withJSONObject: object,
+                options: [.prettyPrinted, .sortedKeys]
+              ),
+              let text = String(data: data, encoding: .utf8) else {
+            return String(describing: object)
+        }
+        return text
+    }
+}
+
+private enum MCPResourceCatalog {
+    static func sdkResource(_ definition: [String: Any]) -> Resource? {
+        guard let name = definition["name"] as? String,
+              let uri = definition["uri"] as? String else {
+            return nil
+        }
+
+        return Resource(
+            name: name,
+            uri: uri,
+            title: definition["title"] as? String,
+            description: definition["description"] as? String,
+            mimeType: definition["mimeType"] as? String ?? "application/json"
+        )
     }
 }
 
@@ -269,7 +582,7 @@ private final class MCPHTTPServer {
     private let tokenProvider: @MainActor () -> String?
     private let onReady: @MainActor () -> Void
     private let onFailed: @MainActor (Error) -> Void
-    private let handler: @MainActor (MCPJSONRPCRequest) async -> MCPJSONRPCResponse
+    private let handler: @MainActor (MCP.HTTPRequest) async -> MCP.HTTPResponse
     private let acceptQueue = DispatchQueue(label: "com.pimp.AnvilApp.mcp.http.accept")
     private let clientQueue = DispatchQueue(label: "com.pimp.AnvilApp.mcp.http.client", attributes: .concurrent)
     private let stateLock = NSLock()
@@ -282,7 +595,7 @@ private final class MCPHTTPServer {
         tokenProvider: @escaping @MainActor () -> String?,
         onReady: @escaping @MainActor () -> Void,
         onFailed: @escaping @MainActor (Error) -> Void,
-        handler: @escaping @MainActor (MCPJSONRPCRequest) async -> MCPJSONRPCResponse
+        handler: @escaping @MainActor (MCP.HTTPRequest) async -> MCP.HTTPResponse
     ) throws {
         self.port = port
         self.tokenProvider = tokenProvider
@@ -437,10 +750,10 @@ private final class MCPHTTPServer {
 
             if byteCount > 0 {
                 buffer.append(contentsOf: chunk.prefix(byteCount))
-                if let request = HTTPRequest(data: buffer) {
+                if let request = RawHTTPRequest(data: buffer) {
                     Task {
                         let response = await self.respond(to: request)
-                        self.send(response, on: client)
+                        await self.send(response, on: client)
                         self.closeClient(client)
                     }
                     return
@@ -454,8 +767,7 @@ private final class MCPHTTPServer {
             }
 
             if errno == EAGAIN || errno == EWOULDBLOCK {
-                send(.badRequest(), on: client)
-                closeClient(client)
+                sendAndClose(.badRequest(), on: client)
                 return
             }
 
@@ -463,11 +775,10 @@ private final class MCPHTTPServer {
             return
         }
 
-        send(.badRequest(), on: client)
-        closeClient(client)
+        sendAndClose(.badRequest(), on: client)
     }
 
-    private func respond(to request: HTTPRequest) async -> HTTPResponse {
+    private func respond(to request: RawHTTPRequest) async -> RawHTTPResponse {
         guard request.hasTrustedOrigin else {
             return .jsonError(statusCode: 403, message: "Forbidden Origin")
         }
@@ -483,20 +794,8 @@ private final class MCPHTTPServer {
             ])
         }
 
-        if request.method == "GET", request.path == "/mcp" {
-            return .methodNotAllowed("Anvil MCP does not provide a server-sent event stream.")
-        }
-
-        if request.method == "DELETE", request.path == "/mcp" {
-            return .methodNotAllowed("Anvil MCP sessions are stateless.")
-        }
-
-        guard request.method == "POST", request.path == "/mcp" else {
+        guard request.path == "/mcp" else {
             return .jsonError(statusCode: 404, message: "MCP endpoint is /mcp")
-        }
-
-        guard request.hasSupportedProtocolVersion else {
-            return .jsonError(statusCode: 400, message: "Unsupported MCP protocol version")
         }
 
         let expectedToken = await tokenProvider()
@@ -507,28 +806,45 @@ private final class MCPHTTPServer {
             }
         }
 
-        guard let rpc = MCPJSONRPCRequest(body: request.body) else {
-            return .json(MCPJSONRPCResponse.error(id: nil, code: -32700, message: "Parse error").object)
-        }
-
-        if rpc.id == nil {
-            return .empty(statusCode: 202, statusText: "Accepted")
-        }
-
-        let response = await handler(rpc)
-        return .json(response.object)
+        let sdkResponse = await handler(request.sdkRequest)
+        return .sdk(sdkResponse)
     }
 
-    private func send(_ response: HTTPResponse, on client: Int32) {
-        response.data.withUnsafeBytes { pointer in
-            guard var address = pointer.baseAddress, pointer.count > 0 else { return }
+    private func send(_ response: RawHTTPResponse, on client: Int32) async {
+        switch response {
+        case .fixed(let data):
+            _ = sendData(data, on: client)
+        case .stream(let header, let stream):
+            guard sendData(header, on: client) else { return }
+            do {
+                for try await chunk in stream {
+                    guard sendData(chunk, on: client) else { return }
+                }
+            } catch {
+                return
+            }
+        }
+    }
+
+    private func sendAndClose(_ response: RawHTTPResponse, on client: Int32) {
+        Task {
+            await self.send(response, on: client)
+            self.closeClient(client)
+        }
+    }
+
+    private func sendData(_ data: Data, on client: Int32) -> Bool {
+        if data.isEmpty { return true }
+        return data.withUnsafeBytes { pointer in
+            guard var address = pointer.baseAddress, pointer.count > 0 else { return true }
             var remaining = pointer.count
             while remaining > 0 {
                 let sent = Darwin.send(client, address, remaining, 0)
-                guard sent > 0 else { return }
+                guard sent > 0 else { return false }
                 remaining -= sent
                 address += sent
             }
+            return true
         }
     }
 
@@ -546,7 +862,7 @@ private struct MCPHTTPServerError: LocalizedError {
     }
 }
 
-private struct HTTPRequest {
+private struct RawHTTPRequest {
     let method: String
     let path: String
     let headers: [String: String]
@@ -588,19 +904,6 @@ private struct HTTPRequest {
         return String(authorization.dropFirst(prefix.count))
     }
 
-    var hasSupportedProtocolVersion: Bool {
-        guard let version = headers["mcp-protocol-version"]?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !version.isEmpty else {
-            return true
-        }
-        switch version {
-        case "2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05":
-            return true
-        default:
-            return false
-        }
-    }
-
     var hasTrustedOrigin: Bool {
         guard let origin = headers["origin"]?.trimmingCharacters(in: .whitespacesAndNewlines),
               !origin.isEmpty else {
@@ -612,12 +915,22 @@ private struct HTTPRequest {
         }
         return host == "localhost" || host == "127.0.0.1" || host == "::1"
     }
+
+    var sdkRequest: MCP.HTTPRequest {
+        MCP.HTTPRequest(
+            method: method,
+            headers: headers,
+            body: body,
+            path: path
+        )
+    }
 }
 
-private struct HTTPResponse {
-    let data: Data
+private enum RawHTTPResponse {
+    case fixed(Data)
+    case stream(header: Data, body: AsyncThrowingStream<Data, Error>)
 
-    static func json(_ object: Any, statusCode: Int = 200, statusText: String = "OK") -> HTTPResponse {
+    static func json(_ object: Any, statusCode: Int = 200, statusText: String = "OK") -> RawHTTPResponse {
         let body: Data
         if JSONSerialization.isValidJSONObject(object),
            let encoded = try? JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys]) {
@@ -628,142 +941,132 @@ private struct HTTPResponse {
         return response(statusCode: statusCode, statusText: statusText, body: body, contentType: "application/json")
     }
 
-    static func jsonError(statusCode: Int, message: String) -> HTTPResponse {
+    static func jsonError(statusCode: Int, message: String) -> RawHTTPResponse {
         json(["error": message], statusCode: statusCode, statusText: message)
     }
 
-    static func badRequest() -> HTTPResponse {
+    static func badRequest() -> RawHTTPResponse {
         jsonError(statusCode: 400, message: "Bad Request")
     }
 
-    static func methodNotAllowed(_ message: String) -> HTTPResponse {
-        json(["error": message], statusCode: 405, statusText: "Method Not Allowed")
-    }
-
-    static func empty(statusCode: Int, statusText: String) -> HTTPResponse {
+    static func empty(statusCode: Int, statusText: String) -> RawHTTPResponse {
         response(statusCode: statusCode, statusText: statusText, body: Data(), contentType: "application/json")
     }
 
-    private static func response(statusCode: Int, statusText: String, body: Data, contentType: String) -> HTTPResponse {
-        let headers = """
-        HTTP/1.1 \(statusCode) \(statusText)\r
-        Content-Type: \(contentType)\r
-        Content-Length: \(body.count)\r
-        Connection: close\r
-        MCP-Protocol-Version: 2025-06-18\r
-        Access-Control-Allow-Origin: *\r
-        Access-Control-Allow-Headers: Accept, Content-Type, Authorization, Mcp-Method, MCP-Protocol-Version, Mcp-Session-Id, Last-Event-ID\r
-        Access-Control-Allow-Methods: POST, GET, DELETE, OPTIONS\r
-        Allow: POST, GET, DELETE, OPTIONS\r
-        \r
+    static func sdk(_ response: MCP.HTTPResponse) -> RawHTTPResponse {
+        if case .stream(let stream, let headers) = response {
+            let contentType = headers[MCP.HTTPHeaderName.contentType] ?? "text/event-stream"
+            return self.stream(
+                statusCode: response.statusCode,
+                statusText: statusText(for: response.statusCode),
+                contentType: contentType,
+                body: stream,
+                extraHeaders: headers
+            )
+        }
 
-        """
-        var data = Data(headers.utf8)
+        let body = response.bodyData ?? Data()
+        let contentType = response.headers[MCP.HTTPHeaderName.contentType] ?? "application/json"
+        return self.response(
+            statusCode: response.statusCode,
+            statusText: statusText(for: response.statusCode),
+            body: body,
+            contentType: contentType,
+            extraHeaders: response.headers
+        )
+    }
+
+    private static func stream(
+        statusCode: Int,
+        statusText: String,
+        contentType: String,
+        body: AsyncThrowingStream<Data, Error>,
+        extraHeaders: [String: String] = [:]
+    ) -> RawHTTPResponse {
+        let headers = responseHeaders(
+            contentType: contentType,
+            contentLength: nil,
+            connection: "keep-alive",
+            extraHeaders: extraHeaders
+        )
+        return .stream(header: headerData(statusCode: statusCode, statusText: statusText, headers: headers), body: body)
+    }
+
+    private static func response(
+        statusCode: Int,
+        statusText: String,
+        body: Data,
+        contentType: String,
+        extraHeaders: [String: String] = [:]
+    ) -> RawHTTPResponse {
+        let headers = responseHeaders(
+            contentType: contentType,
+            contentLength: "\(body.count)",
+            connection: "close",
+            extraHeaders: extraHeaders
+        )
+        var data = headerData(statusCode: statusCode, statusText: statusText, headers: headers)
         data.append(body)
-        return HTTPResponse(data: data)
-    }
-}
-
-private struct MCPJSONRPCRequest {
-    let id: Any?
-    let method: String
-    let params: [String: Any]?
-    let protocolVersion: String?
-
-    init?(body: Data) {
-        guard let object = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
-              let method = object["method"] as? String else {
-            return nil
-        }
-        self.id = object["id"]
-        self.method = method
-        self.params = object["params"] as? [String: Any]
-        self.protocolVersion = (object["params"] as? [String: Any])?["protocolVersion"] as? String
-    }
-}
-
-private struct MCPJSONRPCResponse {
-    let object: [String: Any]
-
-    static func result(id: Any?, value: Any) -> MCPJSONRPCResponse {
-        MCPJSONRPCResponse(object: [
-            "jsonrpc": "2.0",
-            "id": id ?? NSNull(),
-            "result": value
-        ])
+        return .fixed(data)
     }
 
-    static func error(id: Any?, code: Int, message: String) -> MCPJSONRPCResponse {
-        MCPJSONRPCResponse(object: [
-            "jsonrpc": "2.0",
-            "id": id ?? NSNull(),
-            "error": [
-                "code": code,
-                "message": message
-            ]
-        ])
-    }
-}
-
-private enum MCPToolResult {
-    static func success(_ structured: Any) -> [String: Any] {
-        [
-            "content": [
-                [
-                    "type": "text",
-                    "text": prettyJSON(structured)
-                ]
-            ],
-            "structuredContent": structured
+    private static func responseHeaders(
+        contentType: String,
+        contentLength: String?,
+        connection: String,
+        extraHeaders: [String: String]
+    ) -> [String: String] {
+        var headers = [
+            "Content-Type": contentType,
+            "Connection": connection,
+            "MCP-Protocol-Version": "2025-06-18",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "Accept, Content-Type, Authorization, Mcp-Method, MCP-Protocol-Version, MCP-Session-Id, Last-Event-ID",
+            "Access-Control-Allow-Methods": "POST, GET, DELETE, OPTIONS",
+            "Allow": "POST, GET, DELETE, OPTIONS"
         ]
-    }
-
-    static func failure(_ message: String) -> [String: Any] {
-        [
-            "isError": true,
-            "content": [
-                [
-                    "type": "text",
-                    "text": message
-                ]
-            ]
-        ]
-    }
-
-    private static func prettyJSON(_ object: Any) -> String {
-        guard JSONSerialization.isValidJSONObject(object),
-              let data = try? JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys]),
-              let text = String(data: data, encoding: .utf8) else {
-            return String(describing: object)
+        if let contentLength {
+            headers["Content-Length"] = contentLength
         }
-        return text
-    }
-}
-
-private enum MCPResourceResult {
-    static func success(uri: String, payload: Any) -> [String: Any] {
-        [
-            "contents": [
-                [
-                    "uri": uri,
-                    "mimeType": "application/json",
-                    "text": prettyJSON(payload)
-                ]
-            ]
-        ]
-    }
-
-    private static func prettyJSON(_ object: Any) -> String {
-        guard JSONSerialization.isValidJSONObject(object),
-              let data = try? JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys]),
-              let text = String(data: data, encoding: .utf8) else {
-            return String(describing: object)
+        headers.merge(extraHeaders) { _, sdkValue in sdkValue }
+        if contentLength == nil {
+            headers.removeValue(forKey: "Content-Length")
         }
-        return text
+        return headers
+    }
+
+    private static func headerData(statusCode: Int, statusText: String, headers: [String: String]) -> Data {
+        let headerLines = headers
+            .sorted { $0.key < $1.key }
+            .map { "\($0.key): \($0.value)" }
+            .joined(separator: "\r\n")
+        return Data("HTTP/1.1 \(statusCode) \(statusText)\r\n\(headerLines)\r\n\r\n".utf8)
+    }
+
+    private static func statusText(for statusCode: Int) -> String {
+        switch statusCode {
+        case 200: "OK"
+        case 202: "Accepted"
+        case 204: "No Content"
+        case 400: "Bad Request"
+        case 401: "Unauthorized"
+        case 403: "Forbidden"
+        case 404: "Not Found"
+        case 405: "Method Not Allowed"
+        case 406: "Not Acceptable"
+        case 415: "Unsupported Media Type"
+        case 421: "Misdirected Request"
+        case 500: "Internal Server Error"
+        default: "HTTP \(statusCode)"
+        }
     }
 }
 
 private enum MCPToolCatalog {
+    static var sdkTools: [Tool] {
+        tools.compactMap(sdkTool)
+    }
+
     static let tools: [[String: Any]] = [
         tool(
             name: "list_models",
@@ -1151,8 +1454,105 @@ private enum MCPToolCatalog {
         tool(
             name: "generation_status",
             title: "Generation Status",
-            description: "Return the current generation state and latest completed result metadata.",
+            description: "Return the current generation state, latest completed result metadata, and current MCP operation when present.",
             properties: [:]
+        ),
+        tool(
+            name: "editor_status",
+            title: "Editor Status",
+            description: "Return editor readiness, loaded audio metadata, supported editor actions, and the active editor operation when present.",
+            properties: [:]
+        ),
+        tool(
+            name: "load_editor_audio",
+            title: "Load Editor Audio",
+            description: "Load a local audio file into the editor coordinator as a background operation. Returns an operationID for polling.",
+            required: ["path"],
+            properties: [
+                "path": [
+                    "type": "string",
+                    "description": "Local audio file path to load into the editor."
+                ],
+                "audioPath": [
+                    "type": "string",
+                    "description": "Alias for path."
+                ],
+                "filePath": [
+                    "type": "string",
+                    "description": "Alias for path."
+                ],
+                "originalPrompt": [
+                    "type": "string",
+                    "description": "Optional source prompt/context associated with the audio."
+                ],
+                "prompt": [
+                    "type": "string",
+                    "description": "Alias for originalPrompt."
+                ],
+                "dryRun": [
+                    "type": "boolean",
+                    "description": "Validate the local file path and echo the resolved request without loading audio."
+                ],
+                "validateOnly": [
+                    "type": "boolean",
+                    "description": "Alias for dryRun."
+                ]
+            ]
+        ),
+        tool(
+            name: "list_operations",
+            title: "List Operations",
+            description: "Return recent MCP-observable operations with status, progress, result, error, and cancellation metadata.",
+            properties: [
+                "limit": [
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 50,
+                    "description": "Maximum number of operation records to return. Defaults to 20."
+                ]
+            ]
+        ),
+        tool(
+            name: "get_operation",
+            title: "Get Operation",
+            description: "Return one MCP-observable operation by id.",
+            properties: [
+                "id": [
+                    "type": "string",
+                    "description": "Operation id returned by generate, generate_song, load_editor_audio, list_operations, editor_status, or generation_status."
+                ],
+                "operationID": [
+                    "type": "string",
+                    "description": "Alias for id."
+                ],
+                "operationId": [
+                    "type": "string",
+                    "description": "Alias for id."
+                ]
+            ]
+        ),
+        tool(
+            name: "cancel_operation",
+            title: "Cancel Operation",
+            description: "Cancel a running MCP-observable operation by id. Generation and editor background operations use the same operation registry.",
+            properties: [
+                "id": [
+                    "type": "string",
+                    "description": "Operation id returned by generate, generate_song, load_editor_audio, list_operations, editor_status, or generation_status."
+                ],
+                "operationID": [
+                    "type": "string",
+                    "description": "Alias for id."
+                ],
+                "operationId": [
+                    "type": "string",
+                    "description": "Alias for id."
+                ],
+                "reason": [
+                    "type": "string",
+                    "description": "Optional human-readable cancellation reason."
+                ]
+            ]
         ),
         tool(
             name: "release_memory",
@@ -1186,5 +1586,21 @@ private enum MCPToolCatalog {
                 "properties": properties
             ]
         ]
+    }
+
+    private static func sdkTool(_ definition: [String: Any]) -> Tool? {
+        guard let name = definition["name"] as? String,
+              let description = definition["description"] as? String else {
+            return nil
+        }
+
+        let inputSchema = (try? MCPValueConverter.value(from: definition["inputSchema"] ?? [:]))
+            ?? .object([:])
+        return Tool(
+            name: name,
+            title: definition["title"] as? String,
+            description: description,
+            inputSchema: inputSchema
+        )
     }
 }

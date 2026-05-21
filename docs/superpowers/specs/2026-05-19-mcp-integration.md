@@ -8,6 +8,10 @@
 > The design intentionally treats MCP as a local
 > automation/control surface over existing app workflows, not as a dependency
 > inside the audio generation pipeline.
+>
+> **Standards update (2026-05-20):** Anvil should move toward an SDK-backed or
+> spec-conformant MCP layer as the local control surface grows into richer
+> editing/workstation workflows. See `docs/mcp-standards-roadmap.md`.
 
 ## Goal
 
@@ -40,19 +44,36 @@ The MCP server is a local command/control surface for Anvil.
 
 ## Security Model
 
-| Concern | v1 Decision |
-|---|---|
-| Default exposure | Disabled |
-| Network bind | Localhost only |
-| Auth token | Optional for localhost |
-| Remote/LAN access | Out of scope |
-| Expensive actions | Require explicit arguments, e.g. `confirm: true` |
-| Destructive actions | Require explicit arguments, e.g. `confirm: true` |
-| Raw model/tensor access | Out of scope |
+- Default exposure: disabled.
+- Network bind: localhost only.
+- Auth token: optional for localhost.
+- Remote/LAN access: out of scope.
+- Expensive actions: require explicit arguments, for example `confirm: true`.
+- Destructive actions: require explicit arguments, for example `confirm: true`.
+- Raw model/tensor access: out of scope.
 
 The server should be safe for same-machine agent workflows without making local
 setup annoying. If Anvil ever supports remote access, the security model must be
 revisited before that feature ships.
+
+## Standards Alignment
+
+The app-specific boundary is `AnvilCommandFacade`: it owns validation,
+generation/editor/model access, trace comparison, and JSON-safe DTOs. The MCP
+layer should own protocol concerns such as lifecycle, tool/resource/prompt
+schemas, transport behavior, cancellation, progress, and future session/auth
+features.
+
+The preferred direction has moved to the official Swift MCP SDK. The app keeps
+its localhost listener, Settings controls, optional token gate, and
+`AnvilCommandFacade` boundary, while the SDK owns lifecycle, tool/resource
+dispatch, structured tool output, JSON-RPC dispatch, stateful Streamable HTTP
+sessions, and SSE response shape.
+
+Public tool names should stay plain snake_case to match the sibling Anvil MCP
+surface and the current live catalog. Legacy aliases with `anvil.` and
+`anvil_` prefixes may remain callable for compatibility, but docs should treat
+snake_case as primary.
 
 ## v1 Capabilities
 
@@ -60,37 +81,61 @@ revisited before that feature ships.
 
 Ship these first because they are low-risk and immediately useful.
 
-| Tool | Purpose |
-|---|---|
-| `anvil.list_models` | Return model registry status, active models, readiness, runtime support notes |
-| `anvil.list_adapters` | Return local/community adapters, base model, rank, source, status |
-| `anvil.list_history` | Return recent generation entries with model, seed, prompt summary, trace availability |
-| `anvil.get_trace` | Return one trace sidecar by history id, trace filename, or audio filename |
-| `anvil.compare_traces` | Return the same structured diff shown in the analyzer compare view |
+- `list_models`: return model registry status, active models, readiness, and
+  runtime support notes.
+- `list_adapters`: return local/community adapters, base model, rank, source,
+  and status.
+- `list_history`: return recent generation entries with model, seed, prompt
+  summary, and trace availability.
+- `get_trace`: return one trace sidecar by history id, trace filename, or audio
+  filename.
+- `compare_traces`: return the same structured diff shown in the analyzer
+  compare view.
 
 ### Controlled Action Tools
 
 Add after read-only tools are stable.
 
-| Tool | Purpose | Guard |
-|---|---|---|
-| `anvil.generate` | Submit a generation request using the same path as the UI | Validate prompt/duration/model readiness; implemented with `dryRun` |
-| `anvil.generation_status` | Poll current generation state and latest result | Read-only status; implemented |
-| `anvil.enhance_prompt` | Run the local/API prompt enhancer | Return-only; implemented |
-| `anvil.write_lyrics` | Run lyric generation for prompt + duration | Return-only; implemented |
-| `anvil.mark_preferred_take` | Save preferred flag and listening note into trace/history metadata | Existing trace required; implemented as review metadata only |
-| `anvil.apply_adapter` | Select/stack adapters for next generation | Validates adapter/base model compatibility; implemented |
-| `anvil.release_memory` | Run the existing release GPU memory path | Requires `confirm: true`; implemented |
+- `generate_song`: optionally enhance prompt, write lyrics, apply adapters, then
+  submit generation. Guard: validate prompt/duration/model readiness;
+  implemented with `dryRun`.
+- `generate`: submit a generation request using the same path as the UI.
+  Guard: validate prompt/duration/model readiness; implemented with `dryRun`.
+- `generation_status`: poll current generation state, current operation, and
+  latest result. Guard: read-only status; implemented.
+- `editor_status`: poll editor readiness, loaded audio metadata, supported
+  editor action descriptors, and the active editor operation. Guard: read-only
+  status; implemented.
+- `load_editor_audio`: load a local audio file into the shared editor
+  coordinator. Guard: validates local path, returns an operation id, and does
+  not apply edits; implemented.
+- `list_operations`: list recent MCP-observable operations. Guard: read-only
+  operation state; implemented.
+- `get_operation`: read one operation by id. Guard: read-only operation state;
+  implemented.
+- `cancel_operation`: cancel a running operation by id. Guard: scoped to active
+  generation and background editor-load operations; implemented.
+- `enhance_prompt`: run the local/API prompt enhancer. Guard: return-only;
+  implemented.
+- `write_lyrics`: run lyric generation for prompt and duration. Guard:
+  return-only; implemented.
+- `mark_preferred_take`: save preferred flag and listening note into
+  trace/history metadata. Guard: existing trace required; implemented as review
+  metadata only.
+- `apply_adapter`: select or stack adapters for next generation. Guard:
+  validates adapter/base model compatibility; implemented.
+- `release_memory`: run the existing release GPU memory path. Guard: requires
+  `confirm: true`; implemented.
 
 ### Deferred Tools
 
 These are useful, but should not be in the first pass.
 
-- `anvil.train_lora_from_history`
-- `anvil.resume_lora_training`
-- `anvil.delete_history_entry`
-- `anvil.delete_model`
-- `anvil.set_active_model`
+- `train_lora_from_history`
+- `resume_lora_training`
+- `delete_history_entry`
+- `delete_model`
+- `set_active_model`
 - Raw audio export over MCP
 - Raw tensor/debug internals
 
@@ -99,14 +144,12 @@ These are useful, but should not be in the first pass.
 After the tool layer is stable, expose structured resources so clients can
 browse artifacts directly.
 
-| Resource | Meaning |
-|---|---|
-| `anvil://models` | Active and available models |
-| `anvil://adapters` | Adapter registry |
-| `anvil://history` | Recent history index |
-| `anvil://history/{id}` | One history entry |
-| `anvil://trace/{id}` | One generation trace |
-| `anvil://audio/{id}` | Metadata and file path for generated audio |
+- `anvil://models`: active and available models.
+- `anvil://adapters`: adapter registry.
+- `anvil://history`: recent history index.
+- `anvil://history/{id}`: one history entry.
+- `anvil://trace/{id}`: one generation trace.
+- `anvil://audio/{id}`: metadata and file path for generated audio.
 
 Resource responses should reference local file paths where appropriate instead
 of streaming large audio blobs by default.
@@ -149,20 +192,43 @@ facade that wraps the same services the UI already uses.
   Settings. Do not require this for localhost-only workflows.
 - Trace compare output should reuse the same comparison grouping as the
   analyzer: Model, Adapters, Sampling, Prompt & Lyrics, Audio.
-- `anvil.enhance_prompt` and `anvil.write_lyrics` should reuse the same
+- `enhance_prompt` and `write_lyrics` should reuse the same
   service objects as the Generate view while returning text only; they should
   not write into SwiftUI fields or generation history.
-- The first controlled write tool is `anvil.mark_preferred_take`; it must stay
+- The first controlled write tool is `mark_preferred_take`; it must stay
   limited to `isPreferred` and `listeningNote` fields on existing trace/history
   records unless a later spec explicitly expands MCP write scope.
-- `anvil.apply_adapter` should update app selection state only. It should not
+- `apply_adapter` should update app selection state only. It should not
   load tensors, mutate adapter files, or start generation; it should validate
   adapter existence/category and keep GUI state aligned when the Generate view
   is open.
-- `anvil.generate` should submit through `GenerationService` and return
-  immediately. Long renders should be observed through `anvil.generation_status`,
+- `generate_song` may orchestrate prompt enhancement, lyric writing, adapter
+  selection, and generation submission, but `dryRun` must not mutate state.
+- `generate` should submit through `GenerationService` and return immediately.
+  Long renders should be observed through `generation_status`,
   history entries, and trace resources rather than by holding the tool call open.
-- `anvil.release_memory` should remain a guarded cleanup action. It may cancel
+- MCP-submitted long-running work should register an operation id before the
+  tool returns. Operation payloads should include status, progress, result/error,
+  and cancellation metadata. `progress` / `total` should describe normalized
+  whole-operation completion; stage-local counters can be exposed as
+  `stageProgress` / `stageTotal`.
+- Editor-owned work follows the same operation contract. The first implemented
+  editor operation is `editor.loadAudio`; future inpaint, DSP, and render tools
+  should extend that shape and require explicit confirmation where they mutate
+  audio destructively.
+- `tools/call` requests may include `_meta.progressToken`. When a token is
+  supplied and the client keeps `GET /mcp` open, Anvil emits request-scoped
+  `notifications/progress` for start/completion/failure. These notifications
+  are not a replacement for polling a submitted background operation id because
+  MCP keeps a progress token valid after the original response only for
+  task-augmented requests.
+- Full background-operation protocol progress should wait for MCP task support
+  in the Swift SDK, then map Anvil operation ids onto `tasks/*` without
+  removing the current pollable operation tools.
+- `cancel_operation` should only cancel the matching active operation. It must
+  not become a broad "stop everything" button unless a future version adds an
+  explicit guarded bulk-cancel action.
+- `release_memory` should remain a guarded cleanup action. It may cancel
   active generation, unload resident models, and flush MLX GPU cache, so it
   requires `confirm: true` and returns before/after memory counters instead of
   running silently.

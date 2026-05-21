@@ -1,4 +1,5 @@
 import Foundation
+import AVFoundation
 import AnvilCore
 
 @MainActor
@@ -8,7 +9,35 @@ final class AnvilCommandFacade {
     private let lyricWriterManager: LyricWriterManager
     private var historyStore: HistoryStore
     private var generationService: GenerationService?
+    private var editorService: EditorService?
     private let dateFormatter = ISO8601DateFormatter()
+    private let maxOperationRecords = 50
+    private var operationRecords: [String: MCPOperationRecord] = [:]
+    private var operationOrder: [String] = []
+    private var operationTasks: [String: Task<Void, Never>] = [:]
+    private var activeGenerationOperationID: String?
+    private let generationProgressPlan: [String: (base: Double, span: Double)] = [
+        "queued": (0.00, 0.02),
+        "idle": (0.00, 0.02),
+        "downloadingModel": (0.02, 0.13),
+        "loadingWeights": (0.15, 0.20),
+        "conditioning": (0.35, 0.05),
+        "tokenizingSource": (0.40, 0.05),
+        "generating": (0.45, 0.40),
+        "decoding": (0.85, 0.10),
+        "complete": (1.00, 0.00),
+        "error": (1.00, 0.00),
+        "cancelled": (1.00, 0.00)
+    ]
+    private let editorLoadProgressPlan: [String: (base: Double, span: Double)] = [
+        "queued": (0.00, 0.02),
+        "readingFile": (0.02, 0.18),
+        "preparingAudio": (0.20, 0.15),
+        "encodingLatents": (0.35, 0.60),
+        "complete": (1.00, 0.00),
+        "error": (1.00, 0.00),
+        "cancelled": (1.00, 0.00)
+    ]
 
     init(
         registry: ModelRegistry,
@@ -28,6 +57,10 @@ final class AnvilCommandFacade {
 
     func configure(generationService: GenerationService) {
         self.generationService = generationService
+    }
+
+    func configure(editorService: EditorService) {
+        self.editorService = editorService
     }
 
     func listModels() async -> [String: Any] {
@@ -119,6 +152,18 @@ final class AnvilCommandFacade {
                 name: "history",
                 title: "Recent Generation History",
                 description: "Recent generation rows with model, seed, prompt, audio path, and trace availability."
+            ),
+            resource(
+                uri: "anvil://editor",
+                name: "editor",
+                title: "Editor Status",
+                description: "Current editor readiness, loaded audio metadata, supported actions, and active editor operation."
+            ),
+            resource(
+                uri: "anvil://operations",
+                name: "operations",
+                title: "MCP Operations",
+                description: "Recent MCP-observable operations with progress, status, result, and cancellation metadata."
             )
         ]
 
@@ -167,6 +212,16 @@ final class AnvilCommandFacade {
             ))
         }
 
+        refreshGenerationOperation()
+        for operation in operationSnapshot(limit: maxOperationRecords) {
+            resources.append(resource(
+                uri: resourceURI(kind: "operation", identifier: operation.id),
+                name: operation.id,
+                title: operation.title,
+                description: "\(operation.kind) operation is \(operation.status.rawValue)."
+            ))
+        }
+
         return resources
     }
 
@@ -206,6 +261,15 @@ final class AnvilCommandFacade {
                 throw AnvilCommandFacadeError.invalidResourceURI(uri)
             }
             return try audioResource(identifier: identifier)
+        case "editor":
+            return try await editorStatus()
+        case "operations":
+            return listOperations(arguments: ["limit": maxOperationRecords])
+        case "operation":
+            guard let identifier = parsed.identifier else {
+                throw AnvilCommandFacadeError.invalidResourceURI(uri)
+            }
+            return try getOperation(arguments: ["id": identifier])
         default:
             throw AnvilCommandFacadeError.resourceNotFound(uri)
         }
@@ -428,8 +492,15 @@ final class AnvilCommandFacade {
         }
 
         syncGenerationAdapterSelectionFromDefaultsIfNeeded(generationService)
+        let operation = registerGenerationOperation(request: request)
         generationService.generate(request: request)
-        return generationSubmissionPayload(request: request, submitted: true, dryRun: false)
+        refreshGenerationOperation()
+        return generationSubmissionPayload(
+            request: request,
+            submitted: true,
+            dryRun: false,
+            operationID: operation.id
+        )
     }
 
     func generationStatus() throws -> [String: Any] {
@@ -437,9 +508,141 @@ final class AnvilCommandFacade {
             throw AnvilCommandFacadeError.generationServiceUnavailable
         }
 
+        refreshGenerationOperation()
         return [
             "state": generationStatePayload(generationService.state),
-            "currentResult": generationService.currentResult.map(generationResultPayload) ?? NSNull()
+            "currentResult": generationService.currentResult.map(generationResultPayload) ?? NSNull(),
+            "currentOperation": currentOperationPayload() ?? NSNull()
+        ]
+    }
+
+    func editorStatus() async throws -> [String: Any] {
+        guard let editorService else {
+            throw AnvilCommandFacadeError.editorServiceUnavailable
+        }
+
+        let coordinator = editorService.coordinator
+        let loadedAudio = editorService.loadedAudio
+        let hasLoadedAudio = await coordinator?.hasLoadedAudio ?? false
+        let canUndo = await coordinator?.canUndo ?? false
+        let canRedo = await coordinator?.canRedo ?? false
+
+        return [
+            "ready": coordinator != nil,
+            "hasLoadedAudio": hasLoadedAudio,
+            "loadedAudio": loadedAudio.map(editorLoadedAudioPayload) ?? NSNull(),
+            "canUndo": canUndo,
+            "canRedo": canRedo,
+            "currentOperation": currentOperationPayload(kindPrefix: "editor.") ?? NSNull(),
+            "supportedActions": editorActionsPayload()
+        ]
+    }
+
+    func loadEditorAudio(arguments: [String: Any]) throws -> [String: Any] {
+        guard editorService?.coordinator != nil else {
+            throw AnvilCommandFacadeError.editorServiceUnavailable
+        }
+
+        let rawPath = try requiredString("path", aliases: ["audioPath", "filePath"], in: arguments)
+        let url = localFileURL(from: rawPath)
+        try validateReadableFile(url)
+
+        let originalPrompt = stringValue(arguments["originalPrompt"] ?? arguments["prompt"])?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let request = editorAudioLoadRequestPayload(url: url, originalPrompt: originalPrompt)
+        let dryRun = boolValue(arguments["dryRun"] ?? arguments["validateOnly"]) == true
+        if dryRun {
+            return [
+                "submitted": false,
+                "dryRun": true,
+                "request": request,
+                "operationID": NSNull(),
+                "operation": NSNull()
+            ]
+        }
+
+        let operation = registerOperation(
+            kind: "editor.loadAudio",
+            title: "Load editor audio",
+            request: request,
+            progress: editorLoadProgressPayload(stage: "queued", message: "Editor audio load accepted.")
+        )
+
+        operationTasks[operation.id] = Task { [weak self] in
+            await self?.runEditorAudioLoadOperation(
+                id: operation.id,
+                url: url,
+                originalPrompt: originalPrompt
+            )
+        }
+
+        return [
+            "submitted": true,
+            "dryRun": false,
+            "request": request,
+            "operationID": operation.id,
+            "operation": operationPayload(operation)
+        ]
+    }
+
+    func listOperations(arguments: [String: Any]) -> [String: Any] {
+        refreshGenerationOperation()
+        let requestedLimit = doubleValue(arguments["limit"]).map { Int($0) } ?? 20
+        let cappedLimit = max(1, min(requestedLimit, maxOperationRecords))
+        let operations = operationSnapshot(limit: cappedLimit).map(operationPayload)
+        return [
+            "count": operations.count,
+            "currentOperationID": activeGenerationOperationID.map { $0 as Any } ?? NSNull(),
+            "activeOperationIDs": activeOperationIDsPayload(),
+            "operations": operations
+        ]
+    }
+
+    func getOperation(arguments: [String: Any]) throws -> [String: Any] {
+        refreshGenerationOperation()
+        let id = try operationID(from: arguments)
+        guard let record = operationRecords[id] else {
+            throw AnvilCommandFacadeError.operationNotFound(id)
+        }
+        return operationPayload(record)
+    }
+
+    func cancelOperation(arguments: [String: Any]) throws -> [String: Any] {
+        refreshGenerationOperation()
+        let id = try operationID(from: arguments)
+        guard var record = operationRecords[id] else {
+            throw AnvilCommandFacadeError.operationNotFound(id)
+        }
+
+        let reason = stringValue(arguments["reason"])?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let canCancel = isOperationCancelable(record)
+        guard canCancel else {
+            return [
+                "cancelled": false,
+                "reason": "operationNotActive",
+                "operation": operationPayload(record)
+            ]
+        }
+
+        if record.kind == "generation", id == activeGenerationOperationID {
+            generationService?.cancel()
+            activeGenerationOperationID = nil
+        }
+        operationTasks[id]?.cancel()
+        operationTasks[id] = nil
+
+        record.status = .cancelled
+        record.updatedAt = Date()
+        record.cancellationReason = reason?.isEmpty == false
+            ? reason
+            : "Cancelled through MCP cancel_operation."
+        record.progress = cancellationProgressPayload(for: record)
+        operationRecords[id] = record
+
+        return [
+            "cancelled": true,
+            "operation": operationPayload(record)
         ]
     }
 
@@ -912,13 +1115,18 @@ final class AnvilCommandFacade {
     private func generationSubmissionPayload(
         request: GenerationRequest,
         submitted: Bool,
-        dryRun: Bool
+        dryRun: Bool,
+        operationID: String? = nil
     ) -> [String: Any] {
         [
             "submitted": submitted,
             "dryRun": dryRun,
             "request": generationRequestPayload(request),
-            "status": generationService.map { generationStatePayload($0.state) } ?? NSNull()
+            "status": generationService.map { generationStatePayload($0.state) } ?? NSNull(),
+            "operationID": operationID.map { $0 as Any } ?? NSNull(),
+            "operation": operationID
+                .flatMap { operationRecords[$0].map(operationPayload) }
+                .map { $0 as Any } ?? NSNull()
         ]
     }
 
@@ -982,6 +1190,502 @@ final class AnvilCommandFacade {
             return ["name": "error", "message": message]
         case .cancelled:
             return ["name": "cancelled"]
+        }
+    }
+
+    private func registerGenerationOperation(request: GenerationRequest) -> MCPOperationRecord {
+        let record = registerOperation(
+            kind: "generation",
+            title: "Generate audio",
+            request: generationRequestPayload(request),
+            progress: [
+                "stage": "queued",
+                "progress": 0.0,
+                "total": 1.0,
+                "message": "Generation request accepted."
+            ]
+        )
+
+        activeGenerationOperationID = record.id
+        return record
+    }
+
+    private func refreshGenerationOperation() {
+        guard let id = activeGenerationOperationID,
+              var record = operationRecords[id],
+              let generationService else {
+            return
+        }
+
+        let state = generationService.state
+        record.updatedAt = Date()
+        record.progress = generationOperationProgressPayload(state)
+
+        switch state {
+        case .complete:
+            record.status = .succeeded
+            record.result = generationService.currentResult.map(generationResultPayload)
+            activeGenerationOperationID = nil
+        case .error(let message):
+            record.status = .failed
+            record.error = message
+            activeGenerationOperationID = nil
+        case .cancelled:
+            record.status = .cancelled
+            if record.cancellationReason == nil {
+                record.cancellationReason = "Generation was cancelled."
+            }
+            activeGenerationOperationID = nil
+        case .idle:
+            record.status = .running
+            record.progress = [
+                "stage": "queued",
+                "progress": 0.0,
+                "total": 1.0,
+                "message": "Generation request is queued."
+            ]
+        default:
+            record.status = .running
+        }
+
+        operationRecords[id] = record
+    }
+
+    private func generationOperationProgressPayload(_ state: GenerationState) -> [String: Any] {
+        switch state {
+        case .idle:
+            return generationOperationProgressPayload(
+                stage: "idle",
+                message: "Generation service is idle."
+            )
+        case .downloadingModel(let progress):
+            return generationOperationProgressPayload(
+                stage: "downloadingModel",
+                message: "Downloading model weights.",
+                stageProgress: Double(progress),
+                stageTotal: 1.0
+            )
+        case .loadingWeights(let progress):
+            return generationOperationProgressPayload(
+                stage: "loadingWeights",
+                message: "Loading model weights.",
+                stageProgress: Double(progress),
+                stageTotal: 1.0
+            )
+        case .conditioning:
+            return generationOperationProgressPayload(
+                stage: "conditioning",
+                message: "Preparing prompt conditioning."
+            )
+        case .tokenizingSource:
+            return generationOperationProgressPayload(
+                stage: "tokenizingSource",
+                message: "Tokenizing reference audio."
+            )
+        case .generating(let step, let totalSteps, let eta):
+            var payload = generationOperationProgressPayload(
+                stage: "generating",
+                message: "Generating audio.",
+                stageProgress: Double(step),
+                stageTotal: Double(totalSteps)
+            )
+            payload["eta"] = eta
+            return payload
+        case .decoding:
+            return generationOperationProgressPayload(
+                stage: "decoding",
+                message: "Decoding audio."
+            )
+        case .complete:
+            return generationOperationProgressPayload(
+                stage: "complete",
+                message: "Generation completed."
+            )
+        case .error(let message):
+            return generationOperationProgressPayload(
+                stage: "error",
+                message: message
+            )
+        case .cancelled:
+            return generationOperationProgressPayload(
+                stage: "cancelled",
+                message: "Generation cancelled."
+            )
+        }
+    }
+
+    private func generationOperationProgressPayload(
+        stage: String,
+        message: String,
+        stageProgress: Double? = nil,
+        stageTotal: Double? = nil
+    ) -> [String: Any] {
+        operationProgressPayload(
+            stage: stage,
+            message: message,
+            plan: generationProgressPlan,
+            stageProgress: stageProgress,
+            stageTotal: stageTotal
+        )
+    }
+
+    private func editorLoadProgressPayload(stage: String, message: String) -> [String: Any] {
+        operationProgressPayload(
+            stage: stage,
+            message: message,
+            plan: editorLoadProgressPlan
+        )
+    }
+
+    private func cancellationProgressPayload(for record: MCPOperationRecord) -> [String: Any] {
+        if record.kind == "generation" {
+            return generationOperationProgressPayload(.cancelled)
+        }
+        if record.kind == "editor.loadAudio" {
+            return editorLoadProgressPayload(stage: "cancelled", message: "Editor audio load cancelled.")
+        }
+        return [
+            "stage": "cancelled",
+            "progress": 1.0,
+            "total": 1.0,
+            "message": "Operation cancelled."
+        ]
+    }
+
+    private func operationProgressPayload(
+        stage: String,
+        message: String,
+        plan: [String: (base: Double, span: Double)],
+        stageProgress: Double? = nil,
+        stageTotal: Double? = nil
+    ) -> [String: Any] {
+        let plan = plan[stage] ?? (base: 0.0, span: 0.0)
+        let stageRatio: Double
+        if let stageProgress, let stageTotal, stageTotal > 0 {
+            stageRatio = min(max(stageProgress / stageTotal, 0), 1)
+        } else {
+            stageRatio = plan.span > 0 ? 0.0 : 1.0
+        }
+
+        let progress = min(max(plan.base + (plan.span * stageRatio), 0), 1)
+        var payload: [String: Any] = [
+            "stage": stage,
+            "progress": progress,
+            "total": 1.0,
+            "message": message
+        ]
+
+        if let stageProgress {
+            payload["stageProgress"] = stageProgress
+        }
+        if let stageTotal {
+            payload["stageTotal"] = stageTotal
+        }
+        return payload
+    }
+
+    private func runEditorAudioLoadOperation(
+        id: String,
+        url: URL,
+        originalPrompt: String?
+    ) async {
+        defer { operationTasks[id] = nil }
+
+        do {
+            try Task.checkCancellation()
+            updateOperationProgress(
+                id: id,
+                progress: editorLoadProgressPayload(stage: "readingFile", message: "Reading audio file.")
+            )
+            let buffer = try await readAudioBuffer(from: url)
+
+            try Task.checkCancellation()
+            updateOperationProgress(
+                id: id,
+                progress: editorLoadProgressPayload(stage: "preparingAudio", message: "Preparing editor audio buffer.")
+            )
+            let samples = AudioBufferConverter.toMLXArray(buffer)
+
+            try Task.checkCancellation()
+            guard let editorService, let coordinator = editorService.coordinator else {
+                throw AnvilCommandFacadeError.editorServiceUnavailable
+            }
+
+            updateOperationProgress(
+                id: id,
+                progress: editorLoadProgressPayload(stage: "encodingLatents", message: "Encoding editor latents.")
+            )
+            let loadResult = try await coordinator.loadAudio(
+                samples: samples,
+                sampleRate: buffer.sampleRate,
+                precision: .float32
+            )
+
+            try Task.checkCancellation()
+            let loadedAudio = EditorLoadedAudio(
+                fileName: url.lastPathComponent,
+                path: url.path(percentEncoded: false),
+                duration: loadResult.duration,
+                sampleRate: loadResult.sampleRate,
+                channels: buffer.channels,
+                frameCount: buffer.frameCount,
+                latentFrames: loadResult.latentFrames,
+                originalPrompt: originalPrompt,
+                loadedAt: Date()
+            )
+            editorService.recordLoadedAudio(loadedAudio)
+            completeOperation(
+                id: id,
+                progress: editorLoadProgressPayload(stage: "complete", message: "Editor audio loaded."),
+                result: [
+                    "loadedAudio": editorLoadedAudioPayload(loadedAudio)
+                ]
+            )
+        } catch is CancellationError {
+            cancelOperationRecord(
+                id: id,
+                reason: "Editor audio load was cancelled.",
+                progress: editorLoadProgressPayload(stage: "cancelled", message: "Editor audio load cancelled.")
+            )
+        } catch {
+            failOperation(
+                id: id,
+                error: error.localizedDescription,
+                progress: editorLoadProgressPayload(stage: "error", message: error.localizedDescription)
+            )
+        }
+    }
+
+    private func readAudioBuffer(from url: URL) async throws -> AudioBuffer {
+        try await Task.detached(priority: .userInitiated) {
+            let audioFile = try AVAudioFile(forReading: url)
+            let frameCount = AVAudioFrameCount(audioFile.length)
+            guard let pcmBuffer = AVAudioPCMBuffer(
+                pcmFormat: audioFile.processingFormat,
+                frameCapacity: frameCount
+            ) else {
+                throw AudioBufferConverter.ConversionError.bufferCreationFailed
+            }
+            try audioFile.read(into: pcmBuffer)
+            return AudioBufferConverter.fromPCMBuffer(pcmBuffer)
+        }.value
+    }
+
+    private func registerOperation(
+        kind: String,
+        title: String,
+        request: [String: Any],
+        progress: [String: Any]?
+    ) -> MCPOperationRecord {
+        let now = Date()
+        let id = "op_\(UUID().uuidString.lowercased())"
+        let record = MCPOperationRecord(
+            id: id,
+            kind: kind,
+            title: title,
+            createdAt: now,
+            updatedAt: now,
+            status: .running,
+            request: request,
+            progress: progress,
+            result: nil,
+            error: nil,
+            cancellationReason: nil
+        )
+
+        operationRecords[id] = record
+        operationOrder.insert(id, at: 0)
+        trimOperationRecords()
+        return record
+    }
+
+    private func updateOperationProgress(id: String, progress: [String: Any]) {
+        guard var record = operationRecords[id], !record.status.isTerminal else { return }
+        record.updatedAt = Date()
+        record.progress = progress
+        operationRecords[id] = record
+    }
+
+    private func completeOperation(
+        id: String,
+        progress: [String: Any],
+        result: [String: Any]
+    ) {
+        guard var record = operationRecords[id], !record.status.isTerminal else { return }
+        record.updatedAt = Date()
+        record.status = .succeeded
+        record.progress = progress
+        record.result = result
+        operationRecords[id] = record
+    }
+
+    private func failOperation(id: String, error: String, progress: [String: Any]) {
+        guard var record = operationRecords[id], !record.status.isTerminal else { return }
+        record.updatedAt = Date()
+        record.status = .failed
+        record.progress = progress
+        record.error = error
+        operationRecords[id] = record
+    }
+
+    private func cancelOperationRecord(id: String, reason: String, progress: [String: Any]) {
+        guard var record = operationRecords[id], !record.status.isTerminal else { return }
+        record.updatedAt = Date()
+        record.status = .cancelled
+        record.progress = progress
+        record.cancellationReason = reason
+        operationRecords[id] = record
+    }
+
+    private func operationSnapshot(limit: Int) -> [MCPOperationRecord] {
+        operationOrder
+            .prefix(limit)
+            .compactMap { operationRecords[$0] }
+    }
+
+    private func operationPayload(_ record: MCPOperationRecord) -> [String: Any] {
+        [
+            "id": record.id,
+            "kind": record.kind,
+            "title": record.title,
+            "status": record.status.rawValue,
+            "createdAt": dateFormatter.string(from: record.createdAt),
+            "updatedAt": dateFormatter.string(from: record.updatedAt),
+            "cancelable": isOperationCancelable(record),
+            "request": record.request,
+            "progress": record.progress.map { $0 as Any } ?? NSNull(),
+            "result": record.result.map { $0 as Any } ?? NSNull(),
+            "error": record.error.map { $0 as Any } ?? NSNull(),
+            "cancellationReason": record.cancellationReason.map { $0 as Any } ?? NSNull()
+        ]
+    }
+
+    private func currentOperationPayload() -> Any? {
+        if let id = activeGenerationOperationID,
+           let record = operationRecords[id] {
+            return operationPayload(record)
+        }
+        guard let latest = operationSnapshot(limit: 1).first else {
+            return nil
+        }
+        return operationPayload(latest)
+    }
+
+    private func currentOperationPayload(kindPrefix: String) -> Any? {
+        operationOrder
+            .compactMap { operationRecords[$0] }
+            .first { $0.kind.hasPrefix(kindPrefix) && !$0.status.isTerminal }
+            .map(operationPayload)
+    }
+
+    private func activeOperationIDsPayload() -> [String: String] {
+        var ids: [String: String] = [:]
+        if let activeGenerationOperationID {
+            ids["generation"] = activeGenerationOperationID
+        }
+        for id in operationTasks.keys.sorted() {
+            guard let record = operationRecords[id], !record.status.isTerminal else { continue }
+            ids[record.kind] = id
+        }
+        return ids
+    }
+
+    private func isOperationCancelable(_ record: MCPOperationRecord) -> Bool {
+        if record.status.isTerminal {
+            return false
+        }
+        if record.kind == "generation", record.id == activeGenerationOperationID {
+            return true
+        }
+        return operationTasks[record.id] != nil
+    }
+
+    private func operationID(from arguments: [String: Any]) throws -> String {
+        let id = stringValue(arguments["id"] ?? arguments["operationID"] ?? arguments["operationId"])?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !id.isEmpty else {
+            throw AnvilCommandFacadeError.missingRequiredArgument("id")
+        }
+        return id
+    }
+
+    private func trimOperationRecords() {
+        guard operationOrder.count > maxOperationRecords else { return }
+        let staleIDs = operationOrder.dropFirst(maxOperationRecords)
+        operationOrder = Array(operationOrder.prefix(maxOperationRecords))
+        for id in staleIDs {
+            operationRecords[id] = nil
+            operationTasks[id]?.cancel()
+            operationTasks[id] = nil
+        }
+    }
+
+    private func editorAudioLoadRequestPayload(
+        url: URL,
+        originalPrompt: String?
+    ) -> [String: Any] {
+        [
+            "path": url.path(percentEncoded: false),
+            "fileName": url.lastPathComponent,
+            "originalPrompt": originalPrompt.map { $0 as Any } ?? NSNull()
+        ]
+    }
+
+    private func editorLoadedAudioPayload(_ audio: EditorLoadedAudio) -> [String: Any] {
+        [
+            "fileName": audio.fileName,
+            "path": audio.path,
+            "duration": audio.duration,
+            "sampleRate": audio.sampleRate,
+            "channels": audio.channels,
+            "frameCount": audio.frameCount,
+            "latentFrames": audio.latentFrames,
+            "originalPrompt": audio.originalPrompt.map { $0 as Any } ?? NSNull(),
+            "loadedAt": dateFormatter.string(from: audio.loadedAt)
+        ]
+    }
+
+    private func editorActionsPayload() -> [[String: Any]] {
+        [
+            [
+                "id": "loadAudio",
+                "tool": "load_editor_audio",
+                "operationKind": "editor.loadAudio",
+                "status": "implemented",
+                "description": "Load a local audio file into the editor coordinator and encode editable latents."
+            ],
+            [
+                "id": "inpaint",
+                "operationKind": "editor.inpaint",
+                "status": "planned",
+                "description": "Regenerate a selected region once editor mutation safeguards are in place."
+            ],
+            [
+                "id": "applyEffectChain",
+                "operationKind": "editor.applyEffectChain",
+                "status": "planned",
+                "description": "Apply bounded DSP edits with explicit confirmation for destructive actions."
+            ],
+            [
+                "id": "renderSelection",
+                "operationKind": "editor.renderSelection",
+                "status": "planned",
+                "description": "Bounce a selected region or full editor buffer to an output file."
+            ]
+        ]
+    }
+
+    private func localFileURL(from rawPath: String) -> URL {
+        let expanded = (rawPath as NSString).expandingTildeInPath
+        return URL(fileURLWithPath: expanded)
+    }
+
+    private func validateReadableFile(_ url: URL) throws {
+        let path = url.path(percentEncoded: false)
+        var isDirectory = ObjCBool(false)
+        let exists = FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory)
+        guard exists, !isDirectory.boolValue else {
+            throw AnvilCommandFacadeError.editorAudioFileNotFound(path)
         }
     }
 
@@ -1252,6 +1956,9 @@ private enum AnvilCommandFacadeError: LocalizedError {
     case generationAlreadyActive(String)
     case confirmationRequired(String)
     case generationServiceUnavailable
+    case editorServiceUnavailable
+    case editorAudioFileNotFound(String)
+    case operationNotFound(String)
     case encodingFailed
 
     var errorDescription: String? {
@@ -1294,6 +2001,12 @@ private enum AnvilCommandFacadeError: LocalizedError {
             return "Refusing to run '\(action)' without confirm: true."
         case .generationServiceUnavailable:
             return "Generation service is not ready yet."
+        case .editorServiceUnavailable:
+            return "Editor service is not ready yet."
+        case .editorAudioFileNotFound(let path):
+            return "No readable editor audio file exists at '\(path)'."
+        case .operationNotFound(let id):
+            return "No MCP operation matched '\(id)'."
         case .encodingFailed:
             return "Could not encode the trace as JSON."
         }
@@ -1303,6 +2016,36 @@ private enum AnvilCommandFacadeError: LocalizedError {
 private struct AdapterSelection {
     let adapter: LoRAAdapter
     let strength: Float
+}
+
+private enum MCPOperationStatus: String {
+    case running
+    case succeeded
+    case failed
+    case cancelled
+
+    var isTerminal: Bool {
+        switch self {
+        case .running:
+            return false
+        case .succeeded, .failed, .cancelled:
+            return true
+        }
+    }
+}
+
+private struct MCPOperationRecord {
+    let id: String
+    let kind: String
+    let title: String
+    let createdAt: Date
+    var updatedAt: Date
+    var status: MCPOperationStatus
+    var request: [String: Any]
+    var progress: [String: Any]?
+    var result: [String: Any]?
+    var error: String?
+    var cancellationReason: String?
 }
 
 private struct AnvilResourceURI {

@@ -60,6 +60,7 @@
 		842730E7F4571DF4897A08AE /* GenerationParameters.swift in Sources */ = {isa = PBXBuildFile; fileRef = 127AA276961262D8DFCF37D6 /* GenerationParameters.swift */; };
 		8F93F50EFE8E7BF41962638C /* AddModelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5374986729853ECF29EFF76 /* AddModelView.swift */; };
 		987D32242043555415D62524 /* SFXModelManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EC4A8B06E55930149BAC8ED /* SFXModelManager.swift */; };
+		9964ED5991FCA159B1F023D5 /* MCP in Frameworks */ = {isa = PBXBuildFile; productRef = 15228484378D1FE51FA9DE85 /* MCP */; };
 		9A7A055DC9656DAA5DF882B8 /* HistoryListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACDBE130986895721B31725F /* HistoryListView.swift */; };
 		9C244BDC817C2D74FD59F5AC /* AnvilCommandFacade.swift in Sources */ = {isa = PBXBuildFile; fileRef = 042E257C28E49A42245142DD /* AnvilCommandFacade.swift */; };
 		A449AF199835468C36A25060 /* DSPProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF5771DD0C0A4C5B33796024 /* DSPProcessor.swift */; };
@@ -210,6 +211,7 @@
 				C7C3DB52C2251429C55B8EAF /* AnvilCore in Frameworks */,
 				7CF15CDBA58712A5E478135C /* MLX in Frameworks */,
 				450C29261184285B5166718D /* MLXNN in Frameworks */,
+				9964ED5991FCA159B1F023D5 /* MCP in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -479,6 +481,7 @@
 				E3CDBF8443FB369FB268D4A5 /* AnvilCore */,
 				4FF57444ACF886882B1431DD /* MLX */,
 				93289BF161E75D15C0045628 /* MLXNN */,
+				15228484378D1FE51FA9DE85 /* MCP */,
 			);
 			productName = AnvilApp;
 			productReference = 9AA36FD1A3879D2885265598 /* AnvilApp.app */;
@@ -506,6 +509,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				26857DE904DE401EC01BD63E /* XCRemoteSwiftPackageReference "mlx-swift" */,
+				847940B8D65C981FEA0D2ABB /* XCRemoteSwiftPackageReference "swift-sdk" */,
 				F2C7F486E0E090BF3DFF5462 /* XCLocalSwiftPackageReference "AnvilCore" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -884,9 +888,22 @@
 				minimumVersion = 0.21.0;
 			};
 		};
+		847940B8D65C981FEA0D2ABB /* XCRemoteSwiftPackageReference "swift-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/modelcontextprotocol/swift-sdk.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.12.1;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		15228484378D1FE51FA9DE85 /* MCP */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 847940B8D65C981FEA0D2ABB /* XCRemoteSwiftPackageReference "swift-sdk" */;
+			productName = MCP;
+		};
 		4FF57444ACF886882B1431DD /* MLX */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 26857DE904DE401EC01BD63E /* XCRemoteSwiftPackageReference "mlx-swift" */;

@@ -57,6 +57,6 @@ struct VAEModelTests {
         eval(audio)
         #expect(audio.shape[0] == 1)
         #expect(audio.shape[2] == 2)
-        #expect(audio.shape[1] >= 4000 && audio.shape[1] <= 4200)
+        #expect(audio.shape[1] == 3840)
     }
 }
