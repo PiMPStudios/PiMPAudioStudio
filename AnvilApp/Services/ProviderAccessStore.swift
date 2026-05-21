@@ -64,9 +64,20 @@ final class ProviderAccessStore: ObservableObject {
             return
         }
 
+        if case .blocked(let detail) = detected.state {
+            var blocked = statuses[providerID] ?? detected
+            blocked.testState = .blocked(detail)
+            statuses[providerID] = blocked
+            return
+        }
+
         let outcome = await ProviderCLIDetector.test(definition: definition, command: command)
         var updated = statuses[providerID] ?? detected
-        updated.testState = outcome.success ? .passed(outcome.detail) : .failed(outcome.detail)
+        if outcome.isBlocked {
+            updated.testState = .blocked(outcome.detail)
+        } else {
+            updated.testState = outcome.success ? .passed(outcome.detail) : .failed(outcome.detail)
+        }
         statuses[providerID] = updated
     }
 }
@@ -84,7 +95,7 @@ struct ProviderCLIStatus: Identifiable, Equatable {
     var testState: ProviderCLITestState = .idle
 
     var canTest: Bool {
-        command != nil && state != .missing
+        command != nil && state != .missing && !state.isBlocked
     }
 
     static func notChecked(providerID: String, displayName: String) -> ProviderCLIStatus {
@@ -106,13 +117,22 @@ enum ProviderCLIState: Equatable {
     case installed
     case authenticated
     case unauthenticated
+    case blocked(String)
     case failed(String)
+
+    var isBlocked: Bool {
+        if case .blocked = self {
+            return true
+        }
+        return false
+    }
 }
 
 enum ProviderCLITestState: Equatable {
     case idle
     case running
     case passed(String)
+    case blocked(String)
     case failed(String)
 }
 
@@ -143,6 +163,13 @@ struct ProviderCLIProbe: Equatable {
 struct ProviderCLITestOutcome: Equatable {
     let success: Bool
     let detail: String
+    let isBlocked: Bool
+
+    init(success: Bool, detail: String, isBlocked: Bool = false) {
+        self.success = success
+        self.detail = detail
+        self.isBlocked = isBlocked
+    }
 }
 
 struct ProviderCLIDefinition {
@@ -227,6 +254,17 @@ enum ProviderCLIDetector {
                     timeoutSeconds: 5
                 )
             } catch {
+                if let detail = ProviderCLIParsers.sandboxPermissionDetail(error) {
+                    return ProviderCLIStatus(
+                        providerID: definition.providerID,
+                        displayName: definition.displayName,
+                        command: command,
+                        version: nil,
+                        state: .blocked(detail),
+                        detail: detail,
+                        lastChecked: Date()
+                    )
+                }
                 return ProviderCLIStatus(
                     providerID: definition.providerID,
                     displayName: definition.displayName,
@@ -241,6 +279,17 @@ enum ProviderCLIDetector {
             guard versionResult.exitStatus == 0 else {
                 if ProviderCLIParsers.isCommandMissing(versionResult) {
                     continue
+                }
+                if let detail = ProviderCLIParsers.sandboxPermissionDetail(versionResult) {
+                    return ProviderCLIStatus(
+                        providerID: definition.providerID,
+                        displayName: definition.displayName,
+                        command: command,
+                        version: nil,
+                        state: .blocked(detail),
+                        detail: detail,
+                        lastChecked: Date()
+                    )
                 }
                 let detail = ProviderCLIParsers.firstUsefulLine(versionResult.cleanedOutput)
                     ?? "Version probe failed with exit code \(versionResult.exitStatus)"
@@ -271,8 +320,13 @@ enum ProviderCLIDetector {
                     state = probe.state
                     detail = probe.detail
                 } catch {
-                    state = .failed(error.localizedDescription)
-                    detail = error.localizedDescription
+                    if let blockedDetail = ProviderCLIParsers.sandboxPermissionDetail(error) {
+                        state = .blocked(blockedDetail)
+                        detail = blockedDetail
+                    } else {
+                        state = .failed(error.localizedDescription)
+                        detail = error.localizedDescription
+                    }
                 }
             } else {
                 detail = "Installed; test required for sign-in check"
@@ -312,6 +366,11 @@ enum ProviderCLIDetector {
                 timeoutSeconds: definition.testArguments == nil ? 10 : 30
             )
 
+            if result.exitStatus != 0,
+               let detail = ProviderCLIParsers.sandboxPermissionDetail(result) {
+                return ProviderCLITestOutcome(success: false, detail: detail, isBlocked: true)
+            }
+
             if let parser = definition.testParser {
                 return parser(result)
             }
@@ -322,6 +381,9 @@ enum ProviderCLIDetector {
 
             return ProviderCLIParsers.parseGenericTest(result)
         } catch {
+            if let detail = ProviderCLIParsers.sandboxPermissionDetail(error) {
+                return ProviderCLITestOutcome(success: false, detail: detail, isBlocked: true)
+            }
             return ProviderCLITestOutcome(success: false, detail: error.localizedDescription)
         }
     }
@@ -359,7 +421,10 @@ enum ProviderCLIParsers {
         if output.localizedCaseInsensitiveContains("logged in") {
             return ProviderCLIProbe(state: .authenticated, detail: firstUsefulLine(output) ?? "Signed in")
         }
-        return failedProbe(result, fallback: "Could not parse Claude auth status")
+        return ProviderCLIProbe(
+            state: .installed,
+            detail: firstUsefulLine(output) ?? "Installed; auth status unavailable"
+        )
     }
 
     static func parseCodexAuth(_ result: ProviderCommandResult) -> ProviderCLIProbe {
@@ -474,6 +539,8 @@ enum ProviderCLIParsers {
             return ProviderCLITestOutcome(success: true, detail: probe.detail)
         case .unauthenticated:
             return ProviderCLITestOutcome(success: false, detail: probe.detail)
+        case .blocked:
+            return ProviderCLITestOutcome(success: false, detail: probe.detail, isBlocked: true)
         case .failed(let message):
             return ProviderCLITestOutcome(success: false, detail: message)
         case .missing:
@@ -488,6 +555,26 @@ enum ProviderCLIParsers {
             result.cleanedOutput.localizedCaseInsensitiveContains("no such file or directory")
     }
 
+    static func sandboxPermissionDetail(_ result: ProviderCommandResult) -> String? {
+        sandboxPermissionDetail(from: result.cleanedOutput)
+    }
+
+    static func sandboxPermissionDetail(_ error: Error) -> String? {
+        sandboxPermissionDetail(from: error.localizedDescription)
+    }
+
+    static func sandboxPermissionDetail(from output: String) -> String? {
+        let lines = output
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        guard let line = lines.first(where: isSandboxPermissionLine) else {
+            return nil
+        }
+        return "Sandbox blocked CLI access: \(line)"
+    }
+
     static func firstUsefulLine(_ output: String) -> String? {
         output
             .components(separatedBy: .newlines)
@@ -496,8 +583,17 @@ enum ProviderCLIParsers {
     }
 
     private static func failedProbe(_ result: ProviderCommandResult, fallback: String) -> ProviderCLIProbe {
+        if let detail = sandboxPermissionDetail(result) {
+            return ProviderCLIProbe(state: .blocked(detail), detail: detail)
+        }
         let detail = firstUsefulLine(result.cleanedOutput) ?? fallback
         return ProviderCLIProbe(state: .failed(detail), detail: detail)
+    }
+
+    private static func isSandboxPermissionLine(_ line: String) -> Bool {
+        let lowercased = line.lowercased()
+        return lowercased.contains("operation not permitted") ||
+            lowercased.contains("eperm")
     }
 }
 
@@ -506,7 +602,7 @@ enum ProviderCommandRunner {
 
     static func commandEnvironment(from baseEnvironment: [String: String] = ProcessInfo.processInfo.environment) -> [String: String] {
         var environment = baseEnvironment
-        let home = ProviderCLIPaths.realUserHomeDirectory(environment: environment)
+        let home = ProviderCLIPaths.processHomeDirectory(environment: environment)
         let user = environment["USER"] ?? NSUserName()
         environment["PATH"] = ProviderCLIPaths.executableSearchPath(environment: environment)
         environment["HOME"] = home
@@ -543,6 +639,14 @@ enum ProviderCLIPaths {
         "/sbin",
     ]
 
+    static func processHomeDirectory(environment: [String: String] = ProcessInfo.processInfo.environment) -> String {
+        if let home = environment["HOME"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !home.isEmpty {
+            return home
+        }
+        return NSHomeDirectory()
+    }
+
     static func realUserHomeDirectory(environment: [String: String] = ProcessInfo.processInfo.environment) -> String {
         let environmentHome = environment["HOME"]?.trimmingCharacters(in: .whitespacesAndNewlines)
         let user = environment["USER"]?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -571,19 +675,24 @@ enum ProviderCLIPaths {
     }
 
     static func executableSearchPath(environment: [String: String] = ProcessInfo.processInfo.environment) -> String {
-        let rawHome = environment["HOME"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let processHome = processHomeDirectory(environment: environment)
         let userHome = realUserHomeDirectory(environment: environment)
         var directories = [
-            "\(userHome)/.grok/bin",
-            "\(userHome)/.local/bin",
+            "\(processHome)/.grok/bin",
+            "\(processHome)/.local/bin",
         ]
 
-        if let rawHome, !rawHome.isEmpty, rawHome != userHome {
-            directories.append("\(rawHome)/.grok/bin")
-            directories.append("\(rawHome)/.local/bin")
+        directories.append(contentsOf: standardBinaryDirectories)
+
+        if let existingPath = environment["PATH"], !existingPath.isEmpty {
+            directories.append(contentsOf: existingPath.split(separator: ":").map(String.init))
         }
 
-        directories.append(contentsOf: standardBinaryDirectories)
+        if userHome != processHome {
+            directories.append("\(userHome)/.grok/bin")
+            directories.append("\(userHome)/.local/bin")
+        }
+
         return unique(directories).joined(separator: ":")
     }
 

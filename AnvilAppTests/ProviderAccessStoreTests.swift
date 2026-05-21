@@ -99,15 +99,45 @@ import Testing
     #expect(outcome.detail == "Received response: OK")
 }
 
-@Test func providerCLIEnvironmentUsesAccountHomeWhenAppHomeIsSandboxContainer() {
+@Test func providerCLIEnvironmentPreservesSandboxHomeWithAccountPathFallback() {
     let environment = ProviderCommandRunner.commandEnvironment(from: [
         "HOME": "/Users/testuser/Library/Containers/net.pimp.anvil.AnvilApp/Data",
         "USER": "testuser",
+        "PATH": "/usr/bin:/bin",
     ])
 
-    #expect(environment["HOME"] == "/Users/testuser")
+    #expect(environment["HOME"] == "/Users/testuser/Library/Containers/net.pimp.anvil.AnvilApp/Data")
 
     let pathDirectories = environment["PATH"]?.split(separator: ":").map(String.init) ?? []
-    #expect(pathDirectories.first == "/Users/testuser/.grok/bin")
+    #expect(pathDirectories.first == "/Users/testuser/Library/Containers/net.pimp.anvil.AnvilApp/Data/.grok/bin")
     #expect(pathDirectories.contains("/Users/testuser/Library/Containers/net.pimp.anvil.AnvilApp/Data/.grok/bin"))
+    #expect(pathDirectories.contains("/Users/testuser/.grok/bin"))
+
+    let homebrewIndex = pathDirectories.firstIndex(of: "/opt/homebrew/bin")
+    let accountGrokIndex = pathDirectories.firstIndex(of: "/Users/testuser/.grok/bin")
+    guard let homebrewIndex, let accountGrokIndex else {
+        #expect(Bool(false))
+        return
+    }
+    #expect(homebrewIndex < accountGrokIndex)
+}
+
+@Test func providerCLIClassifiesSandboxPermissionAsBlocked() {
+    let result = ProviderCommandResult(
+        command: "grok",
+        arguments: ["models"],
+        exitStatus: 126,
+        stdout: "",
+        stderr: "env: grok: Operation not permitted\n"
+    )
+
+    let probe = ProviderCLIParsers.parseGrokAuth(result)
+
+    guard case .blocked(let detail) = probe.state else {
+        #expect(Bool(false))
+        return
+    }
+
+    #expect(detail.contains("Sandbox blocked CLI access"))
+    #expect(detail.contains("Operation not permitted"))
 }

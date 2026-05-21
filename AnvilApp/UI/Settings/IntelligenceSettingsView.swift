@@ -249,6 +249,8 @@ struct IntelligenceSettingsView: View {
             return "Testing..."
         case .passed:
             return "Test passed"
+        case .blocked:
+            return "Test blocked"
         case .failed:
             return "Test failed"
         case .idle:
@@ -266,6 +268,8 @@ struct IntelligenceSettingsView: View {
             return "Signed in"
         case .unauthenticated:
             return "Sign-in needed"
+        case .blocked:
+            return "Sandbox access needed"
         case .failed:
             return "Check failed"
         }
@@ -273,7 +277,7 @@ struct IntelligenceSettingsView: View {
 
     private func statusDetail(for status: ProviderCLIStatus) -> String? {
         switch status.testState {
-        case .passed(let detail), .failed(let detail):
+        case .passed(let detail), .blocked(let detail), .failed(let detail):
             return detail
         case .running, .idle:
             break
@@ -298,6 +302,8 @@ struct IntelligenceSettingsView: View {
             return "clock"
         case .passed:
             return "checkmark.circle.fill"
+        case .blocked:
+            return "lock.fill"
         case .failed:
             return "xmark.circle.fill"
         case .idle:
@@ -311,6 +317,8 @@ struct IntelligenceSettingsView: View {
             return "terminal"
         case .unauthenticated:
             return "person.crop.circle.badge.exclamationmark"
+        case .blocked:
+            return "lock.fill"
         case .missing, .notChecked:
             return "circle"
         case .failed:
@@ -324,6 +332,8 @@ struct IntelligenceSettingsView: View {
             return .blue
         case .passed:
             return .green
+        case .blocked:
+            return .orange
         case .failed:
             return .red
         case .idle:
@@ -336,6 +346,8 @@ struct IntelligenceSettingsView: View {
         case .installed:
             return .blue
         case .unauthenticated:
+            return .orange
+        case .blocked:
             return .orange
         case .failed:
             return .red
