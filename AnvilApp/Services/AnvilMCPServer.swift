@@ -188,6 +188,13 @@ private final class AnvilMCPSDKBridge {
     private var isStarted = false
     private var hasActiveSession = false
     private var clientSupportsFormElicitation = false
+    private var clientSupportsRoots = false
+    private var clientRootsListChanged = false
+    private var clientRoots: [Root] = []
+    private var clientRootsRefreshTask: Task<Void, Never>?
+    private var isRefreshingClientRoots = false
+    private var clientRootsRefreshedAt: Date?
+    private var clientRootsLastError: String?
 
     init(facade: AnvilCommandFacade, version: String) {
         self.facade = facade
@@ -224,7 +231,7 @@ private final class AnvilMCPSDKBridge {
         guard isStarted else { return }
         await server.stop()
         isStarted = false
-        hasActiveSession = false
+        resetClientSessionState()
     }
 
     func handle(_ request: MCP.HTTPRequest) async -> MCP.HTTPResponse {
@@ -234,7 +241,7 @@ private final class AnvilMCPSDKBridge {
             hasActiveSession = true
         } else if request.method.uppercased() == "DELETE", (200..<300).contains(response.statusCode) {
             hasActiveSession = false
-            clientSupportsFormElicitation = false
+            resetClientSessionState()
             _ = await resetSessionTransport()
         }
 
@@ -250,8 +257,7 @@ private final class AnvilMCPSDKBridge {
         let components = Self.makeServer(version: version)
         server = components.server
         transport = components.transport
-        hasActiveSession = false
-        clientSupportsFormElicitation = false
+        resetClientSessionState()
 
         do {
             await registerHandlers()
@@ -267,6 +273,65 @@ private final class AnvilMCPSDKBridge {
 
     private func recordClientCapabilities(_ capabilities: Client.Capabilities) {
         clientSupportsFormElicitation = capabilities.elicitation?.form != nil
+        clientSupportsRoots = capabilities.roots != nil
+        clientRootsListChanged = capabilities.roots?.listChanged == true
+        clientRoots = []
+        clientRootsRefreshedAt = nil
+        clientRootsLastError = nil
+
+        if clientSupportsRoots {
+            scheduleClientRootsRefresh(reason: "initialize")
+        }
+    }
+
+    private func resetClientSessionState() {
+        hasActiveSession = false
+        clientSupportsFormElicitation = false
+        clientSupportsRoots = false
+        clientRootsListChanged = false
+        clientRoots = []
+        clientRootsRefreshedAt = nil
+        clientRootsLastError = nil
+        isRefreshingClientRoots = false
+        clientRootsRefreshTask?.cancel()
+        clientRootsRefreshTask = nil
+    }
+
+    private func scheduleClientRootsRefresh(reason: String) {
+        clientRootsRefreshTask?.cancel()
+        clientRootsRefreshTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(100))
+            guard let self, !Task.isCancelled else { return }
+            await self.refreshClientRoots(reason: reason)
+        }
+    }
+
+    private func refreshClientRoots(reason: String) async {
+        guard clientSupportsRoots else {
+            clientRoots = []
+            clientRootsLastError = nil
+            clientRootsRefreshedAt = nil
+            return
+        }
+
+        isRefreshingClientRoots = true
+        defer {
+            isRefreshingClientRoots = false
+            clientRootsRefreshTask = nil
+        }
+
+        do {
+            let roots = try await server.listRoots()
+            guard !Task.isCancelled else { return }
+            clientRoots = roots
+            clientRootsLastError = nil
+            clientRootsRefreshedAt = Date()
+        } catch {
+            guard !Task.isCancelled else { return }
+            clientRoots = []
+            clientRootsLastError = "\(reason): \(error.localizedDescription)"
+            clientRootsRefreshedAt = Date()
+        }
     }
 
     private func isInitializeRequest(_ request: MCP.HTTPRequest) -> Bool {
@@ -313,7 +378,8 @@ private final class AnvilMCPSDKBridge {
             guard let self else {
                 return .init(resources: [], nextCursor: nil)
             }
-            let resources = await self.facade.listResources()
+            var resources = await self.facade.listResources()
+            resources.append(MCPResourceCatalog.clientRootsResourceDefinition)
             return .init(resources: resources.compactMap(MCPResourceCatalog.sdkResource), nextCursor: nil)
         }
 
@@ -326,6 +392,10 @@ private final class AnvilMCPSDKBridge {
                 throw MCPError.internalError("MCP server is shutting down")
             }
             return try await self.readResource(params)
+        }
+
+        await server.onNotification(RootsListChangedNotification.self) { [weak self] _ in
+            await self?.scheduleClientRootsRefresh(reason: RootsListChangedNotification.name)
         }
     }
 
@@ -525,13 +595,28 @@ private final class AnvilMCPSDKBridge {
     }
 
     private func outputDirectoryCompletionValues() async -> [String] {
-        guard let payload = try? await facade.readResource(uri: "anvil://clip/current"),
-              let path = nonEmptyString(payload["path"]) else {
-            return []
+        var values = clientRootPathCompletionValues()
+
+        if let payload = try? await facade.readResource(uri: "anvil://clip/current"),
+           let path = nonEmptyString(payload["path"]) {
+            let directory = URL(fileURLWithPath: path).deletingLastPathComponent()
+            values.append(directory.appendingPathComponent("MCPExports").path(percentEncoded: false))
         }
 
-        let directory = URL(fileURLWithPath: path).deletingLastPathComponent()
-        return [directory.appendingPathComponent("MCPExports").path(percentEncoded: false)]
+        return values
+    }
+
+    private func clientRootPathCompletionValues() -> [String] {
+        clientRoots.compactMap { root in
+            filePath(fromRootURI: root.uri)
+        }
+    }
+
+    private func filePath(fromRootURI rootURI: String) -> String? {
+        guard let url = URL(string: rootURI), url.isFileURL else {
+            return nil
+        }
+        return url.path(percentEncoded: false)
     }
 
     private func stringFields(_ payload: [String: Any], keys: [String]) -> [String] {
@@ -637,6 +722,17 @@ private final class AnvilMCPSDKBridge {
     }
 
     private func readResource(_ params: ReadResource.Parameters) async throws -> ReadResource.Result {
+        if params.uri == MCPResourceCatalog.clientRootsURI {
+            let payload = clientRootsResourcePayload()
+            return .init(contents: [
+                .text(
+                    MCPJSON.prettyJSON(payload),
+                    uri: params.uri,
+                    mimeType: "application/json"
+                )
+            ])
+        }
+
         do {
             let payload = try await facade.readResource(uri: params.uri)
             return .init(contents: [
@@ -649,6 +745,39 @@ private final class AnvilMCPSDKBridge {
         } catch {
             throw MCPError.invalidParams(error.localizedDescription)
         }
+    }
+
+    private func clientRootsResourcePayload() -> [String: Any] {
+        [
+            "kind": "clientRoots",
+            "supported": clientSupportsRoots,
+            "listChangedNotifications": clientRootsListChanged,
+            "refreshInFlight": isRefreshingClientRoots,
+            "refreshedAt": clientRootsRefreshedAt.map { ISO8601DateFormatter().string(from: $0) } ?? NSNull(),
+            "lastError": clientRootsLastError ?? NSNull(),
+            "count": clientRoots.count,
+            "roots": clientRoots.map(clientRootPayload),
+            "policy": [
+                "advisory": true,
+                "historyAudioPreferred": true,
+                "defaultRenderLocation": "MCPExports beside the loaded source audio when no output path is provided.",
+                "note": "MCP client roots describe client-approved filesystem boundaries. They do not bypass macOS sandboxing or grant Anvil new file permissions."
+            ]
+        ]
+    }
+
+    private func clientRootPayload(_ root: Root) -> [String: Any] {
+        var payload: [String: Any] = [
+            "uri": root.uri,
+            "isFileURL": filePath(fromRootURI: root.uri) != nil
+        ]
+        if let name = root.name {
+            payload["name"] = name
+        }
+        if let path = filePath(fromRootURI: root.uri) {
+            payload["path"] = path
+        }
+        return payload
     }
 
     private func executeTool(name: String, arguments: [String: Any]) async throws -> Any {
@@ -1180,6 +1309,15 @@ private enum MCPPromptCatalog {
 }
 
 private enum MCPResourceCatalog {
+    static let clientRootsURI = "anvil://client-roots"
+    static let clientRootsResourceDefinition: [String: Any] = [
+        "uri": clientRootsURI,
+        "name": "client-roots",
+        "title": "MCP Client Roots",
+        "description": "Client-advertised filesystem roots and Anvil's local path access policy.",
+        "mimeType": "application/json"
+    ]
+
     static let templates: [Resource.Template] = [
         template(
             uriTemplate: "anvil://model/{id}",
@@ -2128,7 +2266,7 @@ private enum MCPToolCatalog {
                 ],
                 "referenceAudioPath": [
                     "type": "string",
-                    "description": "Optional local audio path for cover-song generation."
+                    "description": "Optional local audio path for cover-song generation. If the client advertises MCP roots, prefer a file under anvil://client-roots."
                 ],
                 "coverStrength": [
                     "type": "number",
@@ -2157,7 +2295,7 @@ private enum MCPToolCatalog {
         tool(
             name: "load_editor_audio",
             title: "Load Editor Audio",
-            description: "Load a history audio id or readable local audio path into the editor coordinator as a background operation. Returns an operationID for polling.",
+            description: "Load a history audio id or readable local audio path into the editor coordinator as a background operation. Returns an operationID for polling. Prefer history/audio ids; when using paths, prefer files under advertised MCP client roots.",
             properties: [
                 "id": [
                     "type": "string",
@@ -2181,7 +2319,7 @@ private enum MCPToolCatalog {
                 ],
                 "path": [
                     "type": "string",
-                    "description": "Readable local audio file path. History/audio ids are preferred because sandboxed app builds may not read arbitrary paths."
+                    "description": "Readable local audio file path. History/audio ids are preferred; if MCP client roots are advertised, choose a file under anvil://client-roots. Sandboxed builds may still reject arbitrary paths."
                 ],
                 "audioPath": [
                     "type": "string",
@@ -2619,7 +2757,7 @@ private enum MCPToolCatalog {
                 ],
                 "outputPath": [
                     "type": "string",
-                    "description": "Optional output file path. The extension is normalized to the requested format. Sandboxed builds may reject arbitrary paths."
+                    "description": "Optional output file path. The extension is normalized to the requested format. Prefer the default MCPExports path or a path under advertised MCP client roots; sandboxed builds may reject arbitrary paths."
                 ],
                 "path": [
                     "type": "string",
@@ -2627,7 +2765,7 @@ private enum MCPToolCatalog {
                 ],
                 "outputDirectory": [
                     "type": "string",
-                    "description": "Optional output directory. Defaults to MCPExports beside the loaded source audio."
+                    "description": "Optional output directory. Defaults to MCPExports beside the loaded source audio. If MCP client roots are advertised, prefer a directory under anvil://client-roots."
                 ],
                 "directory": [
                     "type": "string",

@@ -63,6 +63,11 @@ All notable changes to AnvilApp are documented here.
   advertises parameterized resource templates and SDK `completion/complete`
   suggestions for workflow prompt arguments, take/history ids, current region
   times, presets, workflows, and recent operation ids.
+- **MCP client roots policy** — the SDK bridge now tracks MCP client roots when
+  the initialized client advertises them, refreshes on
+  `notifications/roots/list_changed`, exposes `anvil://client-roots`, and uses
+  root paths as low-risk output-directory completion suggestions while keeping
+  history/audio ids as the preferred editor-loading path.
 - **MCP Streamable HTTP sessions** — the local MCP bridge now uses the Swift
   SDK's `StatefulHTTPServerTransport`. `initialize` returns `MCP-Session-Id`,
   POST requests may return SSE, `GET /mcp` opens the standalone server stream,

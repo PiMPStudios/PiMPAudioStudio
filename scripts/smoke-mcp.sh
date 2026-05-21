@@ -280,6 +280,24 @@ if completion.get("total", 0) < 1:
     sys.exit("completion response did not report a positive total")
 '
 
+python_check_client_roots_unsupported='
+import json
+import sys
+
+data = json.load(sys.stdin)
+contents = data.get("result", {}).get("contents", [])
+text = "\n".join(block.get("text", "") for block in contents)
+payload = json.loads(text)
+if payload.get("kind") != "clientRoots":
+    sys.exit("client-roots resource did not return kind=clientRoots")
+if payload.get("supported") is not False:
+    sys.exit("smoke client should not advertise MCP roots")
+if payload.get("count") != 0:
+    sys.exit("client-roots resource returned roots for a roots-less client")
+if payload.get("policy", {}).get("historyAudioPreferred") is not True:
+    sys.exit("client-roots policy did not prefer history/audio ids")
+'
+
 echo "MCP endpoint: $ENDPOINT"
 
 echo "1. /health"
@@ -443,6 +461,16 @@ grep_uri "anvil://presets" "$TMP_DIR/resources.json"
 grep_uri "anvil://workflows" "$TMP_DIR/resources.json"
 grep_uri "anvil://editor" "$TMP_DIR/resources.json"
 grep_uri "anvil://operations" "$TMP_DIR/resources.json"
+grep_uri "anvil://client-roots" "$TMP_DIR/resources.json"
+
+echo "10a. resources/read anvil://client-roots"
+rpc '{
+  "jsonrpc": "2.0",
+  "id": 90,
+  "method": "resources/read",
+  "params": { "uri": "anvil://client-roots" }
+}' 90 > "$TMP_DIR/client-roots.json"
+/usr/bin/python3 -c "$python_check_client_roots_unsupported" < "$TMP_DIR/client-roots.json"
 
 echo "11. prompts/list"
 rpc '{"jsonrpc":"2.0","id":10,"method":"prompts/list"}' 10 > "$TMP_DIR/prompts.json"

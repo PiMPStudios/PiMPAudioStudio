@@ -75,6 +75,10 @@ logic concerns, and they should not be reinvented piecemeal inside
 - Resource templates are now advertised through `resources/templates/list` for
   model, adapter, history, take, trace, audio, preset, workflow, and operation
   URI patterns.
+- Client roots are tracked through the Swift SDK roots primitives when a client
+  advertises the roots capability. Anvil exposes the current roots and local
+  path policy as `anvil://client-roots`; roots guide safe path choices but do
+  not bypass macOS sandbox permissions.
 - The SDK-backed server advertises workflow prompts through `prompts/list` and
   `prompts/get`: `improve_chorus`, `create_mix_variants`,
   `clean_up_region`, `prepare_stems_for_review`, and
@@ -304,6 +308,8 @@ Anvil's JSON-safe facade payloads and SDK `Value` objects.
 - [x] Add prompts for common editing/generation workflows.
 - [x] Add project, track, clip, region, take, and preset resources.
 - [x] Add resource templates and completions for workflow prompt/resource ids.
+- [x] Track MCP client roots and expose the path-access policy through
+      `anvil://client-roots`.
 - Map background generation/editor operation progress onto MCP task-augmented
   requests once the Swift SDK supports task capabilities, without breaking the
   pollable operation contract.

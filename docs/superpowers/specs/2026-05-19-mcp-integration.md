@@ -174,9 +174,17 @@ browse artifacts directly.
 - `anvil://workflow/{id}`: one workflow prompt definition with template text.
 - `anvil://trace/{id}`: one generation trace.
 - `anvil://audio/{id}`: metadata and file path for generated audio.
+- `anvil://client-roots`: initialized client roots and local path-access
+  policy.
 
 Resource responses should reference local file paths where appropriate instead
 of streaming large audio blobs by default.
+
+Client roots should be discovered through the MCP roots primitive when the
+initialized client advertises it. Roots are advisory path boundaries from the
+client and should guide path suggestions only; Anvil must still respect the
+app's actual macOS file permissions and should continue to prefer history/audio
+ids for editor loading.
 
 Resource templates should be exposed through `resources/templates/list` for
 parameterized ids:
@@ -211,6 +219,8 @@ The server should advertise MCP completions and handle `completion/complete`
 for common workflow prompt arguments and resource-template ids. Completion
 values should stay low-risk and reference existing local metadata such as
 history/take ids, current region times, presets, workflows, and operation ids.
+When client roots are available, path-oriented completions may include root
+paths as suggestions.
 
 ## Architecture
 

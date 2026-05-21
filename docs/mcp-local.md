@@ -218,9 +218,18 @@ The same data is also available as MCP resources:
 - `anvil://editor`
 - `anvil://operations`
 - `anvil://operation/{id}`
+- `anvil://client-roots`
 
 Audio resources return local file metadata and paths only. They do not stream
 audio bytes over MCP.
+
+`anvil://client-roots` reports whether the initialized MCP client advertised
+the MCP roots capability, the latest roots returned by `roots/list`, and
+Anvil's local path policy. Roots are advisory filesystem boundaries from the
+client; they do not bypass macOS sandboxing or grant Anvil new file
+permissions. For editor loading, history/audio ids are still preferred. For
+renders, the default `MCPExports` folder beside the loaded source audio remains
+the safest path unless the user intentionally chooses a client-advertised root.
 
 `anvil://project/current` is the top-level local workstation snapshot. It links
 the current editor track, clip, current/last region, recent takes, presets,
@@ -270,7 +279,9 @@ Anvil advertises MCP completions through `completion/complete`. Completions
 cover workflow prompt arguments such as `takeID`, `regionStart`, `regionEnd`,
 `variantCount`, `duration`, `direction`, `issue`, and `outputDirectory`, plus
 resource-template ids for models, adapters, history/takes/traces/audio,
-presets, workflows, and operations.
+presets, workflows, and operations. When a client advertises roots and returns
+file roots through `roots/list`, `outputDirectory` completion can also suggest
+those root paths.
 
 ## Smoke Test
 

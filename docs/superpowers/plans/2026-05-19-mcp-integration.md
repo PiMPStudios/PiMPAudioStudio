@@ -181,6 +181,12 @@ resource-template ids. `completion/complete` suggests take/history ids, current
 region times, common editor issue/direction values, preset/workflow ids, and
 recent operation ids from the existing local metadata surface.
 
+Implementation note: MCP client roots are now tracked through the Swift SDK
+roots primitive when the initialized client advertises roots. The bridge exposes
+`anvil://client-roots` with the current root list and path-access policy, and
+path completions can suggest root paths while still preferring history/audio ids
+for editor loads.
+
 ## Phase 4 — Standards Hardening
 
 **Deliverable:** Decide whether the official Swift MCP SDK can replace the
@@ -260,4 +266,6 @@ read-only phase.
       elicitation approval.
 - [x] `resources/templates/list` and `completion/complete` are SDK-backed and
       covered by the localhost smoke script.
+- [x] `anvil://client-roots` exposes client-advertised roots and the local path
+      policy.
 - [ ] App quit stops the MCP server cleanly.
