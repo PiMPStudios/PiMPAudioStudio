@@ -58,6 +58,7 @@ The local MCP endpoint exposes read/status tools:
 - `generation_status`
 - `editor_status`
 - `load_editor_audio`
+- `submit_editor_inpaint`
 - `list_operations`
 - `get_operation`
 - `cancel_operation`
@@ -78,12 +79,18 @@ path, into the shared editor coordinator as a background operation. It returns
 an `operationID` for polling or cancellation before future inpaint/DSP/render
 tools mutate the editor buffer. History/audio ids are preferred because
 sandboxed app builds may not have permission to read arbitrary paths.
+`submit_editor_inpaint` submits a selected-region editor mutation against the
+loaded editor audio. Use `dryRun: true` to validate and echo the resolved
+request without touching audio. Actual runs require loaded editor audio and
+`confirm: true`, then return an `editor.inpaint` `operationID` for polling or
+cancellation.
 
 `list_operations`, `get_operation`, and `cancel_operation` expose the current
 operation layer for long-running work. Generation submissions return an
-`operationID`; editor audio loads now return `editor.loadAudio` operations.
-Clients can poll those ids for status/progress or cancel them through the same
-operation registry used by the app.
+`operationID`; editor audio loads return `editor.loadAudio` operations, and
+editor inpaint/repaint submissions return `editor.inpaint` operations. Clients
+can poll those ids for status/progress or cancel them through the same operation
+registry used by the app.
 
 Protocol progress is currently request-scoped: when a client includes
 `_meta.progressToken` on `tools/call`, Anvil emits start/completed/failed
@@ -103,6 +110,7 @@ It also exposes controlled app actions:
 - `generate_song`
 - `generate`
 - `load_editor_audio`
+- `submit_editor_inpaint`
 
 `mark_preferred_take` only updates review metadata on an existing trace:
 the preferred flag and optional listening note. It mirrors the same values into
@@ -127,6 +135,12 @@ render.
 `load_editor_audio` submits a background editor load. It validates the source
 up front, returns an `operationID`, and only updates the editor's loaded-audio
 state after the coordinator has encoded editable latents.
+
+`submit_editor_inpaint` submits a confirmed editor inpaint/repaint action. It
+accepts `regionPrompt`, a selected time range (`selectionStart`/`selectionEnd`
+or a `selection` object), optional frequency band bounds, strength/guidance
+controls, pipeline choice, and seed. It is intentionally confirmation-gated
+because it mutates the shared editor buffer.
 
 It exposes one guarded cleanup action:
 

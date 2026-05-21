@@ -6,6 +6,7 @@ import AnvilCore
 class EditorService: ObservableObject {
     @Published var coordinator: InpaintCoordinator?
     @Published private(set) var loadedAudio: EditorLoadedAudio?
+    @Published private(set) var lastEdit: EditorEditSummary?
 
     private var sfxPipelineSubscription: AnyCancellable?
 
@@ -36,6 +37,11 @@ class EditorService: ObservableObject {
 
     func recordLoadedAudio(_ audio: EditorLoadedAudio) {
         loadedAudio = audio
+        lastEdit = nil
+    }
+
+    func recordCompletedEdit(_ edit: EditorEditSummary) {
+        lastEdit = edit
     }
 }
 
@@ -51,4 +57,19 @@ struct EditorLoadedAudio: Equatable {
     let latentFrames: Int
     let originalPrompt: String?
     let loadedAt: Date
+}
+
+struct EditorEditSummary: Equatable {
+    let mode: String
+    let regionPrompt: String
+    let originalPrompt: String?
+    let pipeline: String
+    let selectionStart: TimeInterval
+    let selectionEnd: TimeInterval
+    let lowCutHz: Float?
+    let highCutHz: Float?
+    let strength: Float
+    let guidanceScale: Float
+    let seed: Int?
+    let completedAt: Date
 }

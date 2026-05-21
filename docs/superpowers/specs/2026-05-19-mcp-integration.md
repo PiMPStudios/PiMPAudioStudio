@@ -109,6 +109,9 @@ Add after read-only tools are stable.
 - `load_editor_audio`: load a history/audio id or readable local audio path
   into the shared editor coordinator. Guard: validates the source, returns an
   operation id, and does not apply edits; implemented.
+- `submit_editor_inpaint`: submit an inpaint/repaint request against the loaded
+  editor audio. Guard: requires `confirm: true` for mutation, supports
+  `dryRun`, returns an operation id; implemented.
 - `list_operations`: list recent MCP-observable operations. Guard: read-only
   operation state; implemented.
 - `get_operation`: read one operation by id. Guard: read-only operation state;
@@ -212,8 +215,8 @@ facade that wraps the same services the UI already uses.
   and cancellation metadata. `progress` / `total` should describe normalized
   whole-operation completion; stage-local counters can be exposed as
   `stageProgress` / `stageTotal`.
-- Editor-owned work follows the same operation contract. The first implemented
-  editor operation is `editor.loadAudio`; future inpaint, DSP, and render tools
+- Editor-owned work follows the same operation contract. Implemented editor
+  operations are `editor.loadAudio` and `editor.inpaint`; DSP and render tools
   should extend that shape and require explicit confirmation where they mutate
   audio destructively.
 - `tools/call` requests may include `_meta.progressToken`. When a token is

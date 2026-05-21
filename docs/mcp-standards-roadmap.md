@@ -51,6 +51,10 @@ logic concerns, and they should not be reinvented piecemeal inside
   pollable operation layer. It loads a history/audio id or readable local path
   into the editor coordinator, encodes editable latents, and reports as
   `editor.loadAudio`.
+- `submit_editor_inpaint` submits confirmed editor inpaint/repaint mutations
+  through the operation layer. Dry runs validate request shape without touching
+  audio; actual runs require loaded editor audio and `confirm: true`, then
+  report as `editor.inpaint`.
 - Operation state is exposed through `list_operations`, `get_operation`,
   `cancel_operation`, `generation_status.currentOperation`,
   `editor_status.currentOperation`, `anvil://editor`, `anvil://operations`,

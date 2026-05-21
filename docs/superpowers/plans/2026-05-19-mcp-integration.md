@@ -85,6 +85,7 @@ with explicit safeguards.
 - [x] `generation_status`
 - [x] `editor_status`
 - [x] `load_editor_audio`
+- [x] `submit_editor_inpaint`
 - [x] `list_operations`
 - [x] `get_operation`
 - [x] `cancel_operation`
@@ -128,10 +129,12 @@ Operation progress is now normalized across the full generation lifecycle:
 
 Implementation note: `editor_status` exposes the shared editor coordinator
 readiness, loaded audio metadata, supported editor action descriptors, and any
-active editor operation. `load_editor_audio` is the first editor-owned
-background operation; it validates a history/audio id or readable local path,
-registers `editor.loadAudio`, loads the file into the shared editor
-coordinator, and records loaded-audio metadata when latent encoding completes.
+active editor operation. `load_editor_audio` validates a history/audio id or
+readable local path, registers `editor.loadAudio`, loads the file into the
+shared editor coordinator, and records loaded-audio metadata when latent
+encoding completes. `submit_editor_inpaint` extends the same operation shape to
+confirmed selected-region editor mutations, with `dryRun` validation and
+`editor.inpaint` polling/cancellation.
 
 Implementation note: `release_memory` is the first guarded cleanup
 action. It calls the same consolidated `GenerationService.unloadAllWeights()`
@@ -209,7 +212,7 @@ read-only phase.
 - [x] `GET /mcp` opens a stateful SSE stream and receives request-scoped
       `notifications/progress` when `_meta.progressToken` is supplied.
 - [x] Pollable operation payloads expose normalized whole-operation progress.
-- [x] `editor_status` and `load_editor_audio` expose the first editor operation
-      without adding destructive edit tools yet.
+- [x] `editor_status`, `load_editor_audio`, and `submit_editor_inpaint` expose
+      editor operations with confirmation on the destructive edit path.
 - [x] `release_memory` refuses to run without `confirm: true`.
 - [ ] App quit stops the MCP server cleanly.

@@ -38,6 +38,16 @@ final class AnvilCommandFacade {
         "error": (1.00, 0.00),
         "cancelled": (1.00, 0.00)
     ]
+    private let editorInpaintProgressPlan: [String: (base: Double, span: Double)] = [
+        "queued": (0.00, 0.02),
+        "buildingMask": (0.02, 0.06),
+        "encoding": (0.08, 0.10),
+        "diffusion": (0.18, 0.70),
+        "decoding": (0.88, 0.10),
+        "complete": (1.00, 0.00),
+        "error": (1.00, 0.00),
+        "cancelled": (1.00, 0.00)
+    ]
 
     init(
         registry: ModelRegistry,
@@ -531,6 +541,7 @@ final class AnvilCommandFacade {
             "ready": coordinator != nil,
             "hasLoadedAudio": hasLoadedAudio,
             "loadedAudio": loadedAudio.map(editorLoadedAudioPayload) ?? NSNull(),
+            "lastEdit": editorService.lastEdit.map(editorEditSummaryPayload) ?? NSNull(),
             "canUndo": canUndo,
             "canRedo": canRedo,
             "currentOperation": currentOperationPayload(kindPrefix: "editor.") ?? NSNull(),
@@ -580,6 +591,55 @@ final class AnvilCommandFacade {
             "submitted": true,
             "dryRun": false,
             "request": request,
+            "operationID": operation.id,
+            "operation": operationPayload(operation)
+        ]
+    }
+
+    func submitEditorInpaint(arguments: [String: Any]) async throws -> [String: Any] {
+        let dryRun = boolValue(arguments["dryRun"] ?? arguments["validateOnly"]) == true
+        let loadedAudio = editorService?.loadedAudio
+        let request = try editorInpaintRequest(arguments, loadedAudio: loadedAudio)
+        let requestPayload = editorInpaintRequestPayload(request)
+
+        if dryRun {
+            return [
+                "submitted": false,
+                "dryRun": true,
+                "requiresLoadedAudio": true,
+                "requiresConfirmation": true,
+                "request": requestPayload,
+                "operationID": NSNull(),
+                "operation": NSNull()
+            ]
+        }
+
+        guard boolValue(arguments["confirm"]) == true else {
+            throw AnvilCommandFacadeError.confirmationRequired("submit_editor_inpaint")
+        }
+        guard let editorService, let coordinator = editorService.coordinator else {
+            throw AnvilCommandFacadeError.editorServiceUnavailable
+        }
+        guard await coordinator.hasLoadedAudio else {
+            throw AnvilCommandFacadeError.editorAudioNotLoaded
+        }
+        try validateEditorSelection(request.selection, loadedAudio: editorService.loadedAudio)
+
+        let operation = registerOperation(
+            kind: "editor.inpaint",
+            title: request.editMode == .repaint ? "Repaint editor audio" : "Inpaint editor audio",
+            request: requestPayload,
+            progress: editorInpaintProgressPayload(stage: "queued", message: "Editor inpaint accepted.")
+        )
+
+        operationTasks[operation.id] = Task { [weak self] in
+            await self?.runEditorInpaintOperation(id: operation.id, request: request)
+        }
+
+        return [
+            "submitted": true,
+            "dryRun": false,
+            "request": requestPayload,
             "operationID": operation.id,
             "operation": operationPayload(operation)
         ]
@@ -1337,12 +1397,69 @@ final class AnvilCommandFacade {
         )
     }
 
+    private func editorInpaintProgressPayload(_ progress: InpaintProgress) -> [String: Any] {
+        switch progress {
+        case .buildingMask:
+            return editorInpaintProgressPayload(
+                stage: "buildingMask",
+                message: "Building editor inpaint mask."
+            )
+        case .encoding:
+            return editorInpaintProgressPayload(
+                stage: "encoding",
+                message: "Preparing editor latents for regeneration."
+            )
+        case .diffusion(let diffusionProgress):
+            var payload = editorInpaintProgressPayload(
+                stage: "diffusion",
+                message: "Regenerating selected editor audio.",
+                stageProgress: Double(diffusionProgress.currentStep),
+                stageTotal: Double(diffusionProgress.totalSteps)
+            )
+            payload["elapsedTime"] = diffusionProgress.elapsedTime
+            return payload
+        case .decoding:
+            return editorInpaintProgressPayload(
+                stage: "decoding",
+                message: "Decoding edited audio."
+            )
+        case .complete:
+            return editorInpaintProgressPayload(
+                stage: "complete",
+                message: "Editor inpaint completed."
+            )
+        case .failed(let message):
+            return editorInpaintProgressPayload(
+                stage: "error",
+                message: message
+            )
+        }
+    }
+
+    private func editorInpaintProgressPayload(
+        stage: String,
+        message: String,
+        stageProgress: Double? = nil,
+        stageTotal: Double? = nil
+    ) -> [String: Any] {
+        operationProgressPayload(
+            stage: stage,
+            message: message,
+            plan: editorInpaintProgressPlan,
+            stageProgress: stageProgress,
+            stageTotal: stageTotal
+        )
+    }
+
     private func cancellationProgressPayload(for record: MCPOperationRecord) -> [String: Any] {
         if record.kind == "generation" {
             return generationOperationProgressPayload(.cancelled)
         }
         if record.kind == "editor.loadAudio" {
             return editorLoadProgressPayload(stage: "cancelled", message: "Editor audio load cancelled.")
+        }
+        if record.kind == "editor.inpaint" {
+            return editorInpaintProgressPayload(stage: "cancelled", message: "Editor inpaint cancelled.")
         }
         return [
             "stage": "cancelled",
@@ -1454,6 +1571,78 @@ final class AnvilCommandFacade {
                 id: id,
                 error: error.localizedDescription,
                 progress: editorLoadProgressPayload(stage: "error", message: error.localizedDescription)
+            )
+        }
+    }
+
+    private func runEditorInpaintOperation(id: String, request: InpaintRequest) async {
+        defer { operationTasks[id] = nil }
+
+        do {
+            try Task.checkCancellation()
+            guard let editorService, let coordinator = editorService.coordinator else {
+                throw AnvilCommandFacadeError.editorServiceUnavailable
+            }
+
+            var completed = false
+            for await progress in await coordinator.edit(request: request) {
+                try Task.checkCancellation()
+                updateOperationProgress(id: id, progress: editorInpaintProgressPayload(progress))
+
+                switch progress {
+                case .complete:
+                    completed = true
+                    let summary = EditorEditSummary(
+                        mode: request.editMode.rawValue,
+                        regionPrompt: request.regionPrompt,
+                        originalPrompt: request.originalPrompt,
+                        pipeline: request.pipeline.rawValue,
+                        selectionStart: request.selection.startTime,
+                        selectionEnd: request.selection.endTime,
+                        lowCutHz: request.selection.frequencyBand?.lowCutHz,
+                        highCutHz: request.selection.frequencyBand?.highCutHz,
+                        strength: request.strength,
+                        guidanceScale: request.guidanceScale,
+                        seed: request.seed,
+                        completedAt: Date()
+                    )
+                    editorService.recordCompletedEdit(summary)
+                    completeOperation(
+                        id: id,
+                        progress: editorInpaintProgressPayload(progress),
+                        result: [
+                            "edit": editorEditSummaryPayload(summary),
+                            "canUndo": await coordinator.canUndo,
+                            "canRedo": await coordinator.canRedo
+                        ]
+                    )
+                    return
+                case .failed(let message):
+                    failOperation(
+                        id: id,
+                        error: message,
+                        progress: editorInpaintProgressPayload(progress)
+                    )
+                    return
+                default:
+                    break
+                }
+            }
+
+            if !completed {
+                throw AnvilCommandFacadeError.editorInpaintDidNotComplete
+            }
+        } catch is CancellationError {
+            cancelOperationRecord(
+                id: id,
+                reason: "Editor inpaint was cancelled.",
+                progress: editorInpaintProgressPayload(stage: "cancelled", message: "Editor inpaint cancelled.")
+            )
+        } catch {
+            failOperation(
+                id: id,
+                error: error.localizedDescription,
+                progress: editorInpaintProgressPayload(stage: "error", message: error.localizedDescription)
             )
         }
     }
@@ -1651,6 +1840,270 @@ final class AnvilCommandFacade {
         ]
     }
 
+    private func editorEditSummaryPayload(_ edit: EditorEditSummary) -> [String: Any] {
+        [
+            "mode": edit.mode,
+            "regionPrompt": edit.regionPrompt,
+            "originalPrompt": edit.originalPrompt.map { $0 as Any } ?? NSNull(),
+            "pipeline": edit.pipeline,
+            "selection": [
+                "startTime": edit.selectionStart,
+                "endTime": edit.selectionEnd,
+                "frequencyBand": editorFrequencyBandPayload(
+                    lowCutHz: edit.lowCutHz,
+                    highCutHz: edit.highCutHz
+                )
+            ],
+            "strength": edit.strength,
+            "guidanceScale": edit.guidanceScale,
+            "seed": edit.seed.map { $0 as Any } ?? NSNull(),
+            "completedAt": dateFormatter.string(from: edit.completedAt)
+        ]
+    }
+
+    private func editorInpaintRequestPayload(_ request: InpaintRequest) -> [String: Any] {
+        [
+            "mode": request.editMode.rawValue,
+            "regionPrompt": request.regionPrompt,
+            "originalPrompt": request.originalPrompt.map { $0 as Any } ?? NSNull(),
+            "pipeline": request.pipeline.rawValue,
+            "selection": editorSelectionPayload(request.selection),
+            "strength": request.strength,
+            "guidanceScale": request.guidanceScale,
+            "seed": request.seed.map { $0 as Any } ?? NSNull()
+        ]
+    }
+
+    private func editorSelectionPayload(_ selection: InpaintSelection) -> [String: Any] {
+        [
+            "startTime": selection.startTime,
+            "endTime": selection.endTime,
+            "frequencyBand": selection.frequencyBand.map { editorFrequencyBandPayload($0) as Any } ?? NSNull()
+        ]
+    }
+
+    private func editorFrequencyBandPayload(_ band: FrequencyBand) -> Any {
+        editorFrequencyBandPayload(lowCutHz: band.lowCutHz, highCutHz: band.highCutHz)
+    }
+
+    private func editorFrequencyBandPayload(lowCutHz: Float?, highCutHz: Float?) -> Any {
+        guard let lowCutHz, let highCutHz else { return NSNull() }
+        return [
+            "lowCutHz": lowCutHz,
+            "highCutHz": highCutHz
+        ]
+    }
+
+    private func editorInpaintRequest(
+        _ arguments: [String: Any],
+        loadedAudio: EditorLoadedAudio?
+    ) throws -> InpaintRequest {
+        let editMode = try editorEditMode(from: arguments["mode"] ?? arguments["editMode"])
+        let regionPrompt = try requiredString("regionPrompt", aliases: ["prompt"], in: arguments)
+        let originalPrompt = optionalEditorOriginalPrompt(arguments, loadedAudio: loadedAudio)
+        let selection = try editorSelection(from: arguments, editMode: editMode, loadedAudio: loadedAudio)
+        let strength = try editorInpaintStrength(from: arguments)
+        let guidanceScale = try editorInpaintGuidanceScale(from: arguments)
+        let pipeline = try editorPipelineChoice(from: arguments)
+
+        return InpaintRequest(
+            editMode: editMode,
+            selection: selection,
+            regionPrompt: regionPrompt,
+            originalPrompt: originalPrompt,
+            strength: strength,
+            guidanceScale: guidanceScale,
+            pipeline: pipeline,
+            seed: try seedValue(arguments["seed"])
+        )
+    }
+
+    private func optionalEditorOriginalPrompt(
+        _ arguments: [String: Any],
+        loadedAudio: EditorLoadedAudio?
+    ) -> String? {
+        let prompt = stringValue(arguments["originalPrompt"] ?? arguments["sourcePrompt"])?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let prompt, !prompt.isEmpty {
+            return prompt
+        }
+        return loadedAudio?.originalPrompt
+    }
+
+    private func editorEditMode(from value: Any?) throws -> EditMode {
+        guard let rawValue = stringValue(value)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !rawValue.isEmpty else {
+            return .inpaint
+        }
+        if let mode = EditMode(rawValue: rawValue.lowercased()) {
+            return mode
+        }
+        throw AnvilCommandFacadeError.invalidEditMode(rawValue)
+    }
+
+    private func editorSelection(
+        from arguments: [String: Any],
+        editMode: EditMode,
+        loadedAudio: EditorLoadedAudio?
+    ) throws -> InpaintSelection {
+        let selectionArguments = arguments["selection"] as? [String: Any]
+        let startValue = editorSelectionValue(
+            ["selectionStart", "startTime", "start"],
+            arguments: arguments,
+            selectionArguments: selectionArguments
+        )
+        let endValue = editorSelectionValue(
+            ["selectionEnd", "endTime", "end"],
+            arguments: arguments,
+            selectionArguments: selectionArguments
+        )
+
+        let startTime: Double
+        let endTime: Double
+        if startValue != nil || endValue != nil {
+            guard let parsedStart = doubleValue(startValue),
+                  let parsedEnd = doubleValue(endValue) else {
+                throw AnvilCommandFacadeError.invalidEditorSelection
+            }
+            startTime = parsedStart
+            endTime = parsedEnd
+        } else if editMode == .repaint, let duration = loadedAudio?.duration {
+            startTime = 0
+            endTime = duration
+        } else {
+            throw AnvilCommandFacadeError.missingRequiredArgument("selectionStart")
+        }
+
+        let selection = InpaintSelection(
+            startTime: startTime,
+            endTime: endTime,
+            frequencyBand: try editorFrequencyBand(
+                from: arguments,
+                selectionArguments: selectionArguments
+            )
+        )
+        try validateEditorSelection(selection, loadedAudio: loadedAudio)
+        return selection
+    }
+
+    private func editorSelectionValue(
+        _ keys: [String],
+        arguments: [String: Any],
+        selectionArguments: [String: Any]?
+    ) -> Any? {
+        for key in keys {
+            if let value = arguments[key], !(value is NSNull) {
+                return value
+            }
+            if let value = selectionArguments?[key], !(value is NSNull) {
+                return value
+            }
+        }
+        return nil
+    }
+
+    private func editorFrequencyBand(
+        from arguments: [String: Any],
+        selectionArguments: [String: Any]?
+    ) throws -> FrequencyBand? {
+        let bandArguments = arguments["frequencyBand"] as? [String: Any]
+            ?? selectionArguments?["frequencyBand"] as? [String: Any]
+        let lowValue = editorFrequencyValue(
+            ["lowCutHz", "lowHz", "low"],
+            arguments: arguments,
+            bandArguments: bandArguments
+        )
+        let highValue = editorFrequencyValue(
+            ["highCutHz", "highHz", "high"],
+            arguments: arguments,
+            bandArguments: bandArguments
+        )
+
+        guard lowValue != nil || highValue != nil else { return nil }
+        guard let low = doubleValue(lowValue),
+              let high = doubleValue(highValue),
+              low >= 0,
+              high > low,
+              high <= 24_000 else {
+            throw AnvilCommandFacadeError.invalidFrequencyBand
+        }
+        return FrequencyBand(lowCutHz: Float(low), highCutHz: Float(high))
+    }
+
+    private func editorFrequencyValue(
+        _ keys: [String],
+        arguments: [String: Any],
+        bandArguments: [String: Any]?
+    ) -> Any? {
+        for key in keys {
+            if let value = arguments[key], !(value is NSNull) {
+                return value
+            }
+            if let value = bandArguments?[key], !(value is NSNull) {
+                return value
+            }
+        }
+        return nil
+    }
+
+    private func validateEditorSelection(
+        _ selection: InpaintSelection,
+        loadedAudio: EditorLoadedAudio?
+    ) throws {
+        guard selection.startTime >= 0, selection.endTime > selection.startTime else {
+            throw AnvilCommandFacadeError.invalidEditorSelection
+        }
+        if let duration = loadedAudio?.duration,
+           selection.endTime > duration + 0.001 {
+            throw AnvilCommandFacadeError.invalidEditorSelection
+        }
+    }
+
+    private func editorInpaintStrength(from arguments: [String: Any]) throws -> Float {
+        let preset = try editorInpaintPreset(from: arguments)
+        let defaultStrength = preset?.strength ?? 0.6
+        let rawValue = arguments["strength"] ?? arguments["denoiseStrength"] ?? arguments["editStrength"]
+        guard let rawValue, !(rawValue is NSNull) else { return defaultStrength }
+        guard let value = doubleValue(rawValue), value >= 0.0, value <= 1.0 else {
+            throw AnvilCommandFacadeError.invalidEditorStrength
+        }
+        return Float(value)
+    }
+
+    private func editorInpaintGuidanceScale(from arguments: [String: Any]) throws -> Float {
+        let preset = try editorInpaintPreset(from: arguments)
+        let defaultGuidance = preset?.guidanceScale ?? 7.0
+        let rawValue = arguments["guidanceScale"] ?? arguments["guidance"]
+        guard let rawValue, !(rawValue is NSNull) else { return defaultGuidance }
+        guard let value = doubleValue(rawValue), value > 0 else {
+            throw AnvilCommandFacadeError.invalidGuidanceScale
+        }
+        return Float(value)
+    }
+
+    private func editorInpaintPreset(from arguments: [String: Any]) throws -> InpaintPreset? {
+        guard let rawValue = stringValue(arguments["preset"])?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !rawValue.isEmpty else {
+            return nil
+        }
+        guard let preset = InpaintPreset(rawValue: rawValue.lowercased()) else {
+            throw AnvilCommandFacadeError.invalidInpaintPreset(rawValue)
+        }
+        return preset
+    }
+
+    private func editorPipelineChoice(from arguments: [String: Any]) throws -> PipelineChoice {
+        let rawValue = arguments["pipeline"] ?? arguments["pipelineOverride"]
+        guard let rawValue, !(rawValue is NSNull) else {
+            return .auto
+        }
+        guard let pipeline = pipelineChoice(from: rawValue) else {
+            throw AnvilCommandFacadeError.invalidPipeline(stringValue(rawValue) ?? "\(rawValue)")
+        }
+        return pipeline
+    }
+
     private func editorAudioLoadSource(from arguments: [String: Any]) throws -> EditorAudioLoadSource {
         let id = stringValue(
             arguments["historyID"]
@@ -1692,9 +2145,10 @@ final class AnvilCommandFacade {
             ],
             [
                 "id": "inpaint",
+                "tool": "submit_editor_inpaint",
                 "operationKind": "editor.inpaint",
-                "status": "planned",
-                "description": "Regenerate a selected region once editor mutation safeguards are in place."
+                "status": "implemented",
+                "description": "Regenerate a selected region with explicit confirmation and pollable progress."
             ],
             [
                 "id": "applyEffectChain",
@@ -1993,7 +2447,16 @@ private enum AnvilCommandFacadeError: LocalizedError {
     case confirmationRequired(String)
     case generationServiceUnavailable
     case editorServiceUnavailable
+    case editorAudioNotLoaded
     case editorAudioFileNotFound(String)
+    case invalidEditMode(String)
+    case invalidEditorSelection
+    case invalidFrequencyBand
+    case invalidEditorStrength
+    case invalidGuidanceScale
+    case invalidInpaintPreset(String)
+    case invalidPipeline(String)
+    case editorInpaintDidNotComplete
     case operationNotFound(String)
     case encodingFailed
 
@@ -2039,8 +2502,26 @@ private enum AnvilCommandFacadeError: LocalizedError {
             return "Generation service is not ready yet."
         case .editorServiceUnavailable:
             return "Editor service is not ready yet."
+        case .editorAudioNotLoaded:
+            return "Load audio into the editor before submitting an edit."
         case .editorAudioFileNotFound(let path):
             return "No readable editor audio file exists at '\(path)'."
+        case .invalidEditMode(let value):
+            return "Unsupported editor edit mode '\(value)'. Use 'inpaint' or 'repaint'."
+        case .invalidEditorSelection:
+            return "Editor selection must have startTime >= 0, endTime > startTime, and fit within the loaded audio duration when audio is loaded."
+        case .invalidFrequencyBand:
+            return "Frequency band must provide lowCutHz >= 0, highCutHz > lowCutHz, and highCutHz <= 24000."
+        case .invalidEditorStrength:
+            return "Editor edit strength must be a number from 0.0 to 1.0."
+        case .invalidGuidanceScale:
+            return "Guidance scale must be a positive number."
+        case .invalidInpaintPreset(let value):
+            return "Unsupported inpaint preset '\(value)'. Use 'subtle', 'moderate', or 'full'."
+        case .invalidPipeline(let value):
+            return "Unsupported pipeline '\(value)'. Use 'auto', 'aceStep', or 'stableAudio'."
+        case .editorInpaintDidNotComplete:
+            return "Editor inpaint ended before reporting completion."
         case .operationNotFound(let id):
             return "No MCP operation matched '\(id)'."
         case .encodingFailed:

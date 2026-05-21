@@ -31,7 +31,9 @@ public actor InpaintCoordinator {
     /// T5 tokenizer for SAO conditioning.
     private var sfxTokenizer: AnvilTokenizer?
 
-    public var hasLoadedAudio: Bool { currentLatents != nil }
+    public var hasLoadedAudio: Bool {
+        currentLatents != nil || sfxCurrentLatents != nil || currentAudio != nil
+    }
     public var canUndo: Bool { historyManager.canUndo }
     public var canRedo: Bool { historyManager.canRedo }
     public var recentEdits: [EditSnapshot] { historyManager.recentEdits }
@@ -119,13 +121,19 @@ public actor InpaintCoordinator {
 
     public func edit(request: InpaintRequest) -> AsyncStream<InpaintProgress> {
         AsyncStream { continuation in
-            Task {
+            let task = Task {
                 do {
                     try await self.runEdit(request: request, continuation: continuation)
+                } catch is CancellationError {
+                    continuation.yield(.failed("Edit cancelled"))
+                    continuation.finish()
                 } catch {
                     continuation.yield(.failed(error.localizedDescription))
                     continuation.finish()
                 }
+            }
+            continuation.onTermination = { @Sendable _ in
+                task.cancel()
             }
         }
     }
@@ -152,6 +160,7 @@ public actor InpaintCoordinator {
         request: InpaintRequest,
         continuation: AsyncStream<InpaintProgress>.Continuation
     ) async throws {
+        try Task.checkCancellation()
         guard currentLatents != nil || currentAudio != nil else {
             continuation.yield(.failed("No audio loaded"))
             continuation.finish()
@@ -159,6 +168,7 @@ public actor InpaintCoordinator {
         }
 
         continuation.yield(.buildingMask)
+        try Task.checkCancellation()
 
         // ── Resolve pipeline-specific latents ────────────────────────────────
         // ACE-Step uses 48 kHz latents (stride 1920); SAO uses 44.1 kHz latents
@@ -187,6 +197,7 @@ public actor InpaintCoordinator {
                     continuation.finish()
                     return
                 }
+                try Task.checkCancellation()
                 let sfxLat = try await sfxVAE.encodeMean(audio: audio)
                 sfxCurrentLatents = sfxLat
                 sfxLatentFrames   = sfxLat.shape[1]
@@ -224,6 +235,7 @@ public actor InpaintCoordinator {
         )
 
         continuation.yield(.encoding)
+        try Task.checkCancellation()
 
         // ── Diffusion ─────────────────────────────────────────────────────────
         let denoised: MLXArray
@@ -251,6 +263,15 @@ public actor InpaintCoordinator {
                 precision: .float32
             )
 
+            let diffProgressStream = await diffActor.makeProgressStream()
+            let diffRelayTask = Task {
+                for await progress in diffProgressStream {
+                    continuation.yield(.diffusion(progress))
+                }
+            }
+            defer { diffRelayTask.cancel() }
+
+            try Task.checkCancellation()
             let result = try await diffActor.inpaint(
                 startLatents: noisedLatents,
                 schedule: schedule,
@@ -300,6 +321,17 @@ public actor InpaintCoordinator {
                 sigmaMax: schedule.first ?? 1.0
             )
 
+            let sfxProgressStream = await sfxDiff.makeProgressStream()
+            let sfxRelayTask = Task {
+                for await progress in sfxProgressStream {
+                    if case .diffusion(let diffusionProgress) = progress {
+                        continuation.yield(.diffusion(diffusionProgress))
+                    }
+                }
+            }
+            defer { sfxRelayTask.cancel() }
+
+            try Task.checkCancellation()
             let sfxResult = try await sfxDiff.inpaint(
                 startLatents: noisedLatents,
                 schedule: schedule,
@@ -319,6 +351,7 @@ public actor InpaintCoordinator {
         )
 
         continuation.yield(.decoding)
+        try Task.checkCancellation()
 
         let audio: MLXArray
         switch request.pipeline {

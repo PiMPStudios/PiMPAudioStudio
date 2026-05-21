@@ -430,6 +430,8 @@ private final class AnvilMCPSDKBridge {
             return try await facade.editorStatus()
         case "load_editor_audio":
             return try facade.loadEditorAudio(arguments: arguments)
+        case "submit_editor_inpaint":
+            return try await facade.submitEditorInpaint(arguments: arguments)
         case "list_operations":
             return facade.listOperations(arguments: arguments)
         case "get_operation":
@@ -1519,6 +1521,182 @@ private enum MCPToolCatalog {
             ]
         ),
         tool(
+            name: "submit_editor_inpaint",
+            title: "Submit Editor Inpaint",
+            description: "Submit a confirmed editor inpaint/repaint request against the loaded editor audio as a background operation. Use dryRun to validate without mutating audio.",
+            properties: [
+                "mode": [
+                    "type": "string",
+                    "enum": ["inpaint", "repaint"],
+                    "description": "Editor edit mode. Defaults to inpaint."
+                ],
+                "editMode": [
+                    "type": "string",
+                    "enum": ["inpaint", "repaint"],
+                    "description": "Alias for mode."
+                ],
+                "regionPrompt": [
+                    "type": "string",
+                    "description": "Prompt describing the replacement content for the selected region."
+                ],
+                "prompt": [
+                    "type": "string",
+                    "description": "Alias for regionPrompt."
+                ],
+                "originalPrompt": [
+                    "type": "string",
+                    "description": "Optional source/full-track context prompt. Defaults to loaded audio context when available."
+                ],
+                "sourcePrompt": [
+                    "type": "string",
+                    "description": "Alias for originalPrompt."
+                ],
+                "selection": [
+                    "type": "object",
+                    "additionalProperties": false,
+                    "description": "Selected time range and optional frequency band.",
+                    "properties": [
+                        "startTime": ["type": "number"],
+                        "endTime": ["type": "number"],
+                        "start": ["type": "number"],
+                        "end": ["type": "number"],
+                        "frequencyBand": [
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": [
+                                "lowCutHz": ["type": "number"],
+                                "highCutHz": ["type": "number"],
+                                "lowHz": ["type": "number"],
+                                "highHz": ["type": "number"],
+                                "low": ["type": "number"],
+                                "high": ["type": "number"]
+                            ]
+                        ]
+                    ]
+                ],
+                "selectionStart": [
+                    "type": "number",
+                    "description": "Selected region start time in seconds."
+                ],
+                "selectionEnd": [
+                    "type": "number",
+                    "description": "Selected region end time in seconds."
+                ],
+                "startTime": [
+                    "type": "number",
+                    "description": "Alias for selectionStart."
+                ],
+                "endTime": [
+                    "type": "number",
+                    "description": "Alias for selectionEnd."
+                ],
+                "start": [
+                    "type": "number",
+                    "description": "Alias for selectionStart."
+                ],
+                "end": [
+                    "type": "number",
+                    "description": "Alias for selectionEnd."
+                ],
+                "frequencyBand": [
+                    "type": "object",
+                    "additionalProperties": false,
+                    "description": "Optional frequency-limited edit band in Hz.",
+                    "properties": [
+                        "lowCutHz": ["type": "number"],
+                        "highCutHz": ["type": "number"],
+                        "lowHz": ["type": "number"],
+                        "highHz": ["type": "number"],
+                        "low": ["type": "number"],
+                        "high": ["type": "number"]
+                    ]
+                ],
+                "lowCutHz": [
+                    "type": "number",
+                    "description": "Optional low frequency bound in Hz."
+                ],
+                "highCutHz": [
+                    "type": "number",
+                    "description": "Optional high frequency bound in Hz."
+                ],
+                "lowHz": [
+                    "type": "number",
+                    "description": "Alias for lowCutHz."
+                ],
+                "highHz": [
+                    "type": "number",
+                    "description": "Alias for highCutHz."
+                ],
+                "low": [
+                    "type": "number",
+                    "description": "Alias for lowCutHz."
+                ],
+                "high": [
+                    "type": "number",
+                    "description": "Alias for highCutHz."
+                ],
+                "preset": [
+                    "type": "string",
+                    "enum": ["subtle", "moderate", "full"],
+                    "description": "Optional strength/guidance preset."
+                ],
+                "strength": [
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "Denoising strength from 0.0 to 1.0. Defaults to 0.6."
+                ],
+                "denoiseStrength": [
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "Alias for strength."
+                ],
+                "editStrength": [
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "Alias for strength."
+                ],
+                "guidanceScale": [
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "description": "Positive classifier-free guidance scale. Defaults to 7.0."
+                ],
+                "guidance": [
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "description": "Alias for guidanceScale."
+                ],
+                "pipeline": [
+                    "type": "string",
+                    "enum": ["auto", "aceStep", "stableAudio"],
+                    "description": "Generation pipeline to use for the edit. Defaults to auto."
+                ],
+                "pipelineOverride": [
+                    "type": "string",
+                    "enum": ["auto", "aceStep", "stableAudio"],
+                    "description": "Alias for pipeline."
+                ],
+                "seed": [
+                    "type": ["integer", "string", "null"],
+                    "description": "Optional deterministic seed, or 'random'."
+                ],
+                "confirm": [
+                    "type": "boolean",
+                    "description": "Must be true for an actual editor mutation."
+                ],
+                "dryRun": [
+                    "type": "boolean",
+                    "description": "Validate and echo the resolved request without mutating editor audio."
+                ],
+                "validateOnly": [
+                    "type": "boolean",
+                    "description": "Alias for dryRun."
+                ]
+            ]
+        ),
+        tool(
             name: "list_operations",
             title: "List Operations",
             description: "Return recent MCP-observable operations with status, progress, result, error, and cancellation metadata.",
@@ -1538,7 +1716,7 @@ private enum MCPToolCatalog {
             properties: [
                 "id": [
                     "type": "string",
-                    "description": "Operation id returned by generate, generate_song, load_editor_audio, list_operations, editor_status, or generation_status."
+                    "description": "Operation id returned by generate, generate_song, load_editor_audio, submit_editor_inpaint, list_operations, editor_status, or generation_status."
                 ],
                 "operationID": [
                     "type": "string",
@@ -1557,7 +1735,7 @@ private enum MCPToolCatalog {
             properties: [
                 "id": [
                     "type": "string",
-                    "description": "Operation id returned by generate, generate_song, load_editor_audio, list_operations, editor_status, or generation_status."
+                    "description": "Operation id returned by generate, generate_song, load_editor_audio, submit_editor_inpaint, list_operations, editor_status, or generation_status."
                 ],
                 "operationID": [
                     "type": "string",

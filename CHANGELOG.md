@@ -38,6 +38,11 @@ All notable changes to AnvilApp are documented here.
   into the shared editor coordinator, encodes editable latents, and reports
   through the same `list_operations` / `get_operation` / `cancel_operation`
   contract as generation.
+- **MCP editor inpaint submission** — the local MCP endpoint now exposes
+  `submit_editor_inpaint` for confirmed editor inpaint/repaint mutations. It
+  supports dry-run validation, selected time ranges, optional frequency bands,
+  strength/guidance/pipeline controls, seeded runs, `editor.inpaint` operation
+  polling, cancellation, and `editor_status.lastEdit` metadata after completion.
 - **MCP Streamable HTTP sessions** — the local MCP bridge now uses the Swift
   SDK's `StatefulHTTPServerTransport`. `initialize` returns `MCP-Session-Id`,
   POST requests may return SSE, `GET /mcp` opens the standalone server stream,
