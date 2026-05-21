@@ -268,4 +268,4 @@ read-only phase.
       covered by the localhost smoke script.
 - [x] `anvil://client-roots` exposes client-advertised roots and the local path
       policy.
-- [ ] App quit stops the MCP server cleanly.
+- [x] App quit stops the MCP server cleanly.

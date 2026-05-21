@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import AnvilCore
 
 @main
@@ -103,6 +104,11 @@ struct AnvilAppApp: App {
                 }
                 .onChange(of: apiKeyStore.availableProviders) { _, _ in
                     lyricWriterManager.refreshAPIBackends()
+                }
+                .onReceive(NotificationCenter.default.publisher(
+                    for: NSApplication.willTerminateNotification
+                )) { _ in
+                    services.prepareForTermination()
                 }
         }
         .windowStyle(.titleBar)
@@ -287,6 +293,10 @@ final class AppServices: ObservableObject {
         )
         self.generationService = generationService
         commandFacade.configure(generationService: generationService)
+    }
+
+    func prepareForTermination() {
+        mcpServer.stop()
     }
 
     private static func makeGenerationService(

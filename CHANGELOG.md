@@ -68,6 +68,8 @@ All notable changes to AnvilApp are documented here.
   `notifications/roots/list_changed`, exposes `anvil://client-roots`, and uses
   root paths as low-risk output-directory completion suggestions while keeping
   history/audio ids as the preferred editor-loading path.
+- **MCP quit cleanup** — app termination now explicitly stops the local MCP
+  server so the localhost listener is closed during normal macOS quit.
 - **MCP Streamable HTTP sessions** — the local MCP bridge now uses the Swift
   SDK's `StatefulHTTPServerTransport`. `initialize` returns `MCP-Session-Id`,
   POST requests may return SSE, `GET /mcp` opens the standalone server stream,

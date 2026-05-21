@@ -95,6 +95,9 @@ logic concerns, and they should not be reinvented piecemeal inside
   standalone SSE stream, and `DELETE /mcp` terminates the session. Anvil resets
   the embedded SDK transport after a successful `DELETE` so local clients can
   initialize again without restarting the app.
+- Normal macOS app termination now explicitly stops the local MCP server so the
+  localhost listener is closed during quit rather than relying only on object
+  teardown.
 - Request-scoped progress notifications are supported when clients include
   `_meta.progressToken` and keep `GET /mcp` open. Background app operations are
   still exposed through pollable operation records because MCP progress tokens
