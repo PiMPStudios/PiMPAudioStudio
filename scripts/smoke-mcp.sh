@@ -126,6 +126,13 @@ health() {
   fi
 }
 
+grep_uri() {
+  local uri="$1"
+  local file="$2"
+  local escaped="${uri//\//\\/}"
+  grep -Fq "\"$uri\"" "$file" || grep -Fq "\"$escaped\"" "$file"
+}
+
 python_get_trace_ids='
 import json
 import sys
@@ -377,20 +384,50 @@ grep -q '"operations"' "$TMP_DIR/operations.json"
 
 echo "10. resources/list"
 rpc '{"jsonrpc":"2.0","id":9,"method":"resources/list"}' 9 > "$TMP_DIR/resources.json"
-grep -Eq '"anvil:(\\/\\/|//)history"' "$TMP_DIR/resources.json"
-grep -Eq '"anvil:(\\/\\/|//)editor"' "$TMP_DIR/resources.json"
-grep -Eq '"anvil:(\\/\\/|//)operations"' "$TMP_DIR/resources.json"
+grep_uri "anvil://history" "$TMP_DIR/resources.json"
+grep_uri "anvil://project/current" "$TMP_DIR/resources.json"
+grep_uri "anvil://track/current" "$TMP_DIR/resources.json"
+grep_uri "anvil://clip/current" "$TMP_DIR/resources.json"
+grep_uri "anvil://region/current-selection" "$TMP_DIR/resources.json"
+grep_uri "anvil://takes" "$TMP_DIR/resources.json"
+grep_uri "anvil://presets" "$TMP_DIR/resources.json"
+grep_uri "anvil://workflows" "$TMP_DIR/resources.json"
+grep_uri "anvil://editor" "$TMP_DIR/resources.json"
+grep_uri "anvil://operations" "$TMP_DIR/resources.json"
 
-echo "11. list_history"
+echo "11. prompts/list"
+rpc '{"jsonrpc":"2.0","id":10,"method":"prompts/list"}' 10 > "$TMP_DIR/prompts.json"
+grep -q '"improve_chorus"' "$TMP_DIR/prompts.json"
+grep -q '"clean_up_region"' "$TMP_DIR/prompts.json"
+grep -q '"production_ready_prompt"' "$TMP_DIR/prompts.json"
+
+echo "12. prompts/get clean_up_region"
 rpc '{
   "jsonrpc": "2.0",
-  "id": 10,
+  "id": 11,
+  "method": "prompts/get",
+  "params": {
+    "name": "clean_up_region",
+    "arguments": {
+      "regionStart": "0",
+      "regionEnd": "1",
+      "issue": "remove a click"
+    }
+  }
+}' 11 > "$TMP_DIR/prompt-clean-up-region.json"
+grep -q 'apply_editor_effect_chain' "$TMP_DIR/prompt-clean-up-region.json"
+grep -q 'submit_editor_inpaint' "$TMP_DIR/prompt-clean-up-region.json"
+
+echo "13. list_history"
+rpc '{
+  "jsonrpc": "2.0",
+  "id": 12,
   "method": "tools/call",
   "params": {
     "name": "list_history",
     "arguments": { "limit": 10 }
   }
-}' 10 > "$TMP_DIR/history.json"
+}' 12 > "$TMP_DIR/history.json"
 
 TRACE_IDS=()
 while IFS= read -r trace_id; do
@@ -401,7 +438,7 @@ done < <(/usr/bin/python3 -c "$python_get_trace_ids" < "$TMP_DIR/history.json")
 
 AUDIO_REF="$(/usr/bin/python3 -c "$python_get_audio_ref" < "$TMP_DIR/history.json")"
 if [[ -n "$AUDIO_REF" ]]; then
-  echo "12. load_editor_audio dry-run"
+  echo "14. load_editor_audio dry-run"
   /usr/bin/python3 - "$AUDIO_REF" > "$TMP_DIR/load-editor-audio-request.json" <<'PY'
 import json
 import sys
@@ -409,7 +446,7 @@ import sys
 ref = json.loads(sys.argv[1])
 print(json.dumps({
     "jsonrpc": "2.0",
-    "id": 11,
+    "id": 13,
     "method": "tools/call",
     "params": {
         "name": "load_editor_audio",
@@ -420,55 +457,55 @@ print(json.dumps({
     }
 }))
 PY
-  rpc "$(cat "$TMP_DIR/load-editor-audio-request.json")" 11 > "$TMP_DIR/load-editor-audio-dry-run.json"
+  rpc "$(cat "$TMP_DIR/load-editor-audio-request.json")" 13 > "$TMP_DIR/load-editor-audio-dry-run.json"
   grep -q '"dryRun"' "$TMP_DIR/load-editor-audio-dry-run.json"
 else
-  echo "12. skipped load_editor_audio dry-run; no existing history audio file found"
+  echo "14. skipped load_editor_audio dry-run; no existing history audio file found"
 fi
 
 if [[ "${#TRACE_IDS[@]}" -ge 1 ]]; then
   FIRST_ID="${TRACE_IDS[0]}"
 
-  echo "13. get_trace ($FIRST_ID)"
+  echo "15. get_trace ($FIRST_ID)"
   rpc "{
     \"jsonrpc\": \"2.0\",
-    \"id\": 12,
+    \"id\": 14,
     \"method\": \"tools/call\",
     \"params\": {
       \"name\": \"get_trace\",
       \"arguments\": { \"id\": \"$FIRST_ID\" }
     }
-  }" 12 >/dev/null
+  }" 14 >/dev/null
 
-  echo "14. resources/read anvil://history/$FIRST_ID"
+  echo "16. resources/read anvil://history/$FIRST_ID"
   rpc "{
     \"jsonrpc\": \"2.0\",
-    \"id\": 13,
+    \"id\": 15,
     \"method\": \"resources/read\",
     \"params\": { \"uri\": \"anvil://history/$FIRST_ID\" }
-  }" 13 > "$TMP_DIR/history-resource.json"
+  }" 15 > "$TMP_DIR/history-resource.json"
   grep -q '"contents"' "$TMP_DIR/history-resource.json"
 
-  echo "15. resources/read anvil://trace/$FIRST_ID"
+  echo "17. resources/read anvil://trace/$FIRST_ID"
   rpc "{
     \"jsonrpc\": \"2.0\",
-    \"id\": 14,
+    \"id\": 16,
     \"method\": \"resources/read\",
     \"params\": { \"uri\": \"anvil://trace/$FIRST_ID\" }
-  }" 14 > "$TMP_DIR/trace-resource.json"
+  }" 16 > "$TMP_DIR/trace-resource.json"
   grep -q '"contents"' "$TMP_DIR/trace-resource.json"
 else
-  echo "13-15. skipped trace checks; no traced history rows found"
+  echo "15-17. skipped trace checks; no traced history rows found"
 fi
 
 if [[ "${#TRACE_IDS[@]}" -ge 2 ]]; then
   FIRST_ID="${TRACE_IDS[0]}"
   SECOND_ID="${TRACE_IDS[1]}"
 
-  echo "16. compare_traces ($FIRST_ID vs $SECOND_ID)"
+  echo "18. compare_traces ($FIRST_ID vs $SECOND_ID)"
   rpc "{
     \"jsonrpc\": \"2.0\",
-    \"id\": 15,
+    \"id\": 17,
     \"method\": \"tools/call\",
     \"params\": {
       \"name\": \"compare_traces\",
@@ -477,34 +514,34 @@ if [[ "${#TRACE_IDS[@]}" -ge 2 ]]; then
         \"right\": \"$SECOND_ID\"
       }
     }
-  }" 15 >/dev/null
+  }" 17 >/dev/null
 else
-  echo "16. skipped compare; fewer than two traced history rows found"
+  echo "18. skipped compare; fewer than two traced history rows found"
 fi
 
-echo "17. legacy anvil.list_history alias"
+echo "19. legacy anvil.list_history alias"
 rpc '{
   "jsonrpc": "2.0",
-  "id": 16,
+  "id": 18,
   "method": "tools/call",
   "params": {
     "name": "anvil.list_history",
     "arguments": { "limit": 1 }
   }
-}' 16 >/dev/null
+}' 18 >/dev/null
 
-echo "18. legacy anvil_list_history alias"
+echo "20. legacy anvil_list_history alias"
 rpc '{
   "jsonrpc": "2.0",
-  "id": 17,
+  "id": 19,
   "method": "tools/call",
   "params": {
     "name": "anvil_list_history",
     "arguments": { "limit": 1 }
   }
-}' 17 >/dev/null
+}' 19 >/dev/null
 
-echo "19. GET /mcp stream + progress notification"
+echo "21. GET /mcp stream + progress notification"
 STREAM_CURL_ARGS=(
   -sS
   --no-buffer
@@ -529,14 +566,14 @@ set -e
 
 rpc '{
   "jsonrpc": "2.0",
-  "id": 18,
+  "id": 20,
   "method": "tools/call",
   "params": {
     "_meta": { "progressToken": "anvil-smoke-progress" },
     "name": "generation_status",
     "arguments": {}
   }
-}' 18 >/dev/null
+}' 20 >/dev/null
 
 set +e
 wait "$STREAM_PID"

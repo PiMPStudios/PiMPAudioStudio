@@ -53,6 +53,12 @@ All notable changes to AnvilApp are documented here.
   range to WAV/AIFF. It resolves a default `MCPExports` path, refuses accidental
   overwrites, returns `editor.renderAudio` operations, and reports output file
   metadata on completion.
+- **MCP workstation resources and prompts** — the local MCP endpoint now exposes
+  standards-shaped workstation resources for the current project, track, clip,
+  region, takes, presets, and workflow prompt definitions. It also advertises
+  SDK `prompts/list` / `prompts/get` workflow prompts for chorus improvement,
+  mix variants, region cleanup, review exports, and production-ready generation
+  prompts.
 - **MCP Streamable HTTP sessions** — the local MCP bridge now uses the Swift
   SDK's `StatefulHTTPServerTransport`. `initialize` returns `MCP-Session-Id`,
   POST requests may return SSE, `GET /mcp` opens the standalone server stream,

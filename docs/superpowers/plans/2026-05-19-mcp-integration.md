@@ -70,6 +70,16 @@ paths.
 - [x] Add `anvil://trace/{id}`.
 - [x] Add `anvil://audio/{id}` metadata with local file path, not streamed audio
       by default.
+- [x] Add `anvil://project/current`.
+- [x] Add `anvil://track/current`.
+- [x] Add `anvil://clip/current`.
+- [x] Add `anvil://region/current-selection`.
+- [x] Add `anvil://takes`.
+- [x] Add `anvil://take/{id}`.
+- [x] Add `anvil://presets`.
+- [x] Add `anvil://preset/{id}`.
+- [x] Add `anvil://workflows`.
+- [x] Add `anvil://workflow/{id}`.
 
 ## Phase 3 — Controlled Local Actions
 
@@ -147,6 +157,13 @@ action. It calls the same consolidated `GenerationService.unloadAllWeights()`
 path as Settings, requires `confirm: true`, and returns before/after MLX active,
 cache, and peak memory counters so an MCP client can verify cleanup.
 
+Implementation note: common editing/generation workflows are now exposed through
+MCP prompts instead of broad generic tools. Initial prompt names are
+`improve_chorus`, `create_mix_variants`, `clean_up_region`,
+`prepare_stems_for_review`, and `production_ready_prompt`; matching
+`anvil://workflow/{id}` resources document their arguments, related resources,
+and tool dependencies.
+
 ## Phase 4 — Standards Hardening
 
 **Deliverable:** Decide whether the official Swift MCP SDK can replace the
@@ -217,6 +234,7 @@ read-only phase.
       refuses non-running operation ids without cancelling unrelated work.
 - [x] `GET /mcp` opens a stateful SSE stream and receives request-scoped
       `notifications/progress` when `_meta.progressToken` is supplied.
+- [x] `prompts/list` and `prompts/get` expose the workflow prompt catalog.
 - [x] Pollable operation payloads expose normalized whole-operation progress.
 - [x] `editor_status`, `load_editor_audio`, `submit_editor_inpaint`, and
       `apply_editor_effect_chain`, and `render_editor_audio` expose editor

@@ -157,11 +157,38 @@ browse artifacts directly.
 - `anvil://adapters`: adapter registry.
 - `anvil://history`: recent history index.
 - `anvil://history/{id}`: one history entry.
+- `anvil://project/current`: current local workstation/session snapshot.
+- `anvil://track/current`: current editor track and loaded audio summary.
+- `anvil://clip/current`: loaded editor audio as a clip-like resource.
+- `anvil://region/current-selection`: current or most recently persisted editor
+  selection metadata.
+- `anvil://takes`: recent generated takes with links to history/audio/trace.
+- `anvil://take/{id}`: workstation take view for a history row.
+- `anvil://presets`: saved generation presets plus built-in guidance/editor/DSP
+  preset catalogs.
+- `anvil://preset/{id}`: one saved generation preset.
+- `anvil://workflows`: reusable workflow prompt catalog.
+- `anvil://workflow/{id}`: one workflow prompt definition with template text.
 - `anvil://trace/{id}`: one generation trace.
 - `anvil://audio/{id}`: metadata and file path for generated audio.
 
 Resource responses should reference local file paths where appropriate instead
 of streaming large audio blobs by default.
+
+## Prompt Shape
+
+Reusable workflow prompts should be exposed through MCP `prompts/list` and
+`prompts/get`, not as generic tools. Initial prompt names:
+
+- `improve_chorus`
+- `create_mix_variants`
+- `clean_up_region`
+- `prepare_stems_for_review`
+- `production_ready_prompt`
+
+Each prompt should point clients at the relevant Anvil resources and tools, and
+should preserve the existing safety rules: dry-run validation before mutations
+and `confirm: true` for editor edits that change audio.
 
 ## Architecture
 

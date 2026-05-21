@@ -188,6 +188,48 @@ final class AnvilCommandFacade {
                 description: "Recent generation rows with model, seed, prompt, audio path, and trace availability."
             ),
             resource(
+                uri: resourceURI(kind: "project", identifier: "current"),
+                name: "current",
+                title: "Current Anvil Project",
+                description: "Current local workstation project/session with editor, take, and operation links."
+            ),
+            resource(
+                uri: resourceURI(kind: "track", identifier: "current"),
+                name: "current",
+                title: "Current Editor Track",
+                description: "Current editor audio track and loaded clip summary."
+            ),
+            resource(
+                uri: resourceURI(kind: "clip", identifier: "current"),
+                name: "current",
+                title: "Current Editor Clip",
+                description: "Loaded editor audio as a clip-like resource."
+            ),
+            resource(
+                uri: resourceURI(kind: "region", identifier: "current-selection"),
+                name: "current-selection",
+                title: "Current Editor Region",
+                description: "Current or most recently requested editor selection/region metadata."
+            ),
+            resource(
+                uri: "anvil://takes",
+                name: "takes",
+                title: "Recent Takes",
+                description: "Recent generated takes with links to history, audio, and trace resources."
+            ),
+            resource(
+                uri: "anvil://presets",
+                name: "presets",
+                title: "Generation and Editor Presets",
+                description: "Saved generation presets plus built-in editor/guidance preset catalogs."
+            ),
+            resource(
+                uri: "anvil://workflows",
+                name: "workflows",
+                title: "Anvil Workflow Prompts",
+                description: "Reusable agent workflow prompt templates for generation, editing, and review."
+            ),
+            resource(
                 uri: "anvil://editor",
                 name: "editor",
                 title: "Editor Status",
@@ -229,6 +271,13 @@ final class AnvilCommandFacade {
                 description: "Generation history entry for \(entry.fileName)."
             ))
 
+            resources.append(resource(
+                uri: resourceURI(kind: "take", identifier: entry.id.uuidString),
+                name: entry.id.uuidString,
+                title: "Take: \(compact(entry.prompt, limit: 70))",
+                description: "Workstation take view for \(entry.fileName)."
+            ))
+
             if historyStore.traceURL(for: entry) != nil {
                 resources.append(resource(
                     uri: resourceURI(kind: "trace", identifier: entry.id.uuidString),
@@ -243,6 +292,24 @@ final class AnvilCommandFacade {
                 name: entry.fileName,
                 title: "Audio: \(compact(entry.prompt, limit: 70))",
                 description: "Local audio file metadata and path. Audio bytes are not streamed."
+            ))
+        }
+
+        for preset in loadGenerationPresets() {
+            resources.append(resource(
+                uri: resourceURI(kind: "preset", identifier: preset.id.uuidString),
+                name: preset.id.uuidString,
+                title: preset.name,
+                description: "Saved generation preset."
+            ))
+        }
+
+        for workflow in workflowPromptDefinitions {
+            resources.append(resource(
+                uri: resourceURI(kind: "workflow", identifier: workflow.id),
+                name: workflow.id,
+                title: workflow.title,
+                description: workflow.description
             ))
         }
 
@@ -285,6 +352,39 @@ final class AnvilCommandFacade {
             }
             let entry = try resolveHistoryEntry(identifier)
             return historySummary(entry)
+        case "project":
+            try validateResourceIdentifier(parsed.identifier, expected: "current", uri: uri)
+            return try await projectResource()
+        case "track":
+            try validateResourceIdentifier(parsed.identifier, expected: "current", uri: uri)
+            return await currentTrackResource()
+        case "clip":
+            try validateResourceIdentifier(parsed.identifier, expected: "current", uri: uri)
+            return await currentClipResource()
+        case "region":
+            try validateResourceIdentifier(parsed.identifier, expected: "current-selection", uri: uri)
+            return await currentRegionResource()
+        case "takes":
+            return takesResource(limit: 200)
+        case "take":
+            guard let identifier = parsed.identifier else {
+                throw AnvilCommandFacadeError.invalidResourceURI(uri)
+            }
+            return try takeResource(identifier: identifier)
+        case "presets":
+            return presetsResource()
+        case "preset":
+            guard let identifier = parsed.identifier else {
+                throw AnvilCommandFacadeError.invalidResourceURI(uri)
+            }
+            return try presetResource(identifier: identifier)
+        case "workflows":
+            return workflowsResource()
+        case "workflow":
+            guard let identifier = parsed.identifier else {
+                throw AnvilCommandFacadeError.invalidResourceURI(uri)
+            }
+            return try workflowResource(identifier: identifier)
         case "trace":
             guard let identifier = parsed.identifier else {
                 throw AnvilCommandFacadeError.invalidResourceURI(uri)
@@ -1141,6 +1241,371 @@ final class AnvilCommandFacade {
             "hasTrace": historyStore.traceURL(for: entry) != nil,
             "isPreferred": entry.isPreferred ?? false,
             "listeningNote": entry.listeningNote ?? NSNull()
+        ]
+    }
+
+    private func validateResourceIdentifier(_ identifier: String?, expected: String, uri: String) throws {
+        guard identifier == expected else {
+            throw AnvilCommandFacadeError.invalidResourceURI(uri)
+        }
+    }
+
+    private func projectResource() async throws -> [String: Any] {
+        refreshGenerationOperation()
+
+        let editorPayload: Any
+        do {
+            editorPayload = try await editorStatus()
+        } catch {
+            editorPayload = [
+                "ready": false,
+                "error": error.localizedDescription
+            ]
+        }
+
+        return [
+            "id": "current",
+            "kind": "project",
+            "name": "Anvil Local Workstation",
+            "scope": "local",
+            "resourceURI": resourceURI(kind: "project", identifier: "current"),
+            "resources": [
+                "models": "anvil://models",
+                "adapters": "anvil://adapters",
+                "history": "anvil://history",
+                "takes": "anvil://takes",
+                "track": resourceURI(kind: "track", identifier: "current"),
+                "clip": resourceURI(kind: "clip", identifier: "current"),
+                "region": resourceURI(kind: "region", identifier: "current-selection"),
+                "presets": "anvil://presets",
+                "workflows": "anvil://workflows",
+                "editor": "anvil://editor",
+                "operations": "anvil://operations"
+            ],
+            "counts": [
+                "history": historyStore.entries.count,
+                "takes": historyStore.entries.count,
+                "presets": loadGenerationPresets().count,
+                "workflows": workflowPromptDefinitions.count,
+                "operations": operationSnapshot(limit: maxOperationRecords).count
+            ],
+            "editor": editorPayload,
+            "operations": listOperations(arguments: ["limit": 10])
+        ]
+    }
+
+    private func currentTrackResource() async -> [String: Any] {
+        let loadedAudio = editorService?.loadedAudio
+        let hasLoadedAudio = await editorService?.coordinator?.hasLoadedAudio ?? false
+
+        return [
+            "id": "current",
+            "kind": "track",
+            "projectURI": resourceURI(kind: "project", identifier: "current"),
+            "clipURI": resourceURI(kind: "clip", identifier: "current"),
+            "loaded": hasLoadedAudio,
+            "duration": loadedAudio?.duration ?? NSNull(),
+            "sampleRate": loadedAudio?.sampleRate ?? NSNull(),
+            "channels": loadedAudio?.channels ?? NSNull(),
+            "sourceLoadedAudio": loadedAudio.map(editorLoadedAudioPayload) ?? NSNull()
+        ]
+    }
+
+    private func currentClipResource() async -> [String: Any] {
+        let loadedAudio = editorService?.loadedAudio
+        let hasLoadedAudio = await editorService?.coordinator?.hasLoadedAudio ?? false
+        let historyID = loadedAudio?.historyEntryID
+
+        return [
+            "id": "current",
+            "kind": "clip",
+            "projectURI": resourceURI(kind: "project", identifier: "current"),
+            "trackURI": resourceURI(kind: "track", identifier: "current"),
+            "loaded": hasLoadedAudio,
+            "startTime": loadedAudio == nil ? NSNull() : 0,
+            "endTime": loadedAudio?.duration ?? NSNull(),
+            "duration": loadedAudio?.duration ?? NSNull(),
+            "fileName": loadedAudio?.fileName ?? NSNull(),
+            "path": loadedAudio?.path ?? NSNull(),
+            "historyResourceURI": historyID.map { resourceURI(kind: "history", identifier: $0) as Any } ?? NSNull(),
+            "takeResourceURI": historyID.map { resourceURI(kind: "take", identifier: $0) as Any } ?? NSNull(),
+            "audioResourceURI": historyID.map { resourceURI(kind: "audio", identifier: $0) as Any } ?? NSNull(),
+            "sourceLoadedAudio": loadedAudio.map(editorLoadedAudioPayload) ?? NSNull()
+        ]
+    }
+
+    private func currentRegionResource() async -> [String: Any] {
+        let loadedAudio = editorService?.loadedAudio
+        let hasLoadedAudio = await editorService?.coordinator?.hasLoadedAudio ?? false
+        let lastEdit = editorService?.lastEdit
+        let selection: Any
+
+        if let startTime = lastEdit?.selectionStart,
+           let endTime = lastEdit?.selectionEnd {
+            selection = [
+                "startTime": startTime,
+                "endTime": endTime,
+                "duration": endTime - startTime,
+                "frequencyBand": editorFrequencyBandPayload(
+                    lowCutHz: lastEdit?.lowCutHz,
+                    highCutHz: lastEdit?.highCutHz
+                )
+            ]
+        } else {
+            selection = NSNull()
+        }
+
+        return [
+            "id": "current-selection",
+            "kind": "region",
+            "projectURI": resourceURI(kind: "project", identifier: "current"),
+            "trackURI": resourceURI(kind: "track", identifier: "current"),
+            "clipURI": resourceURI(kind: "clip", identifier: "current"),
+            "loaded": hasLoadedAudio,
+            "clipDuration": loadedAudio?.duration ?? NSNull(),
+            "selection": selection,
+            "lastEdit": lastEdit.map(editorEditSummaryPayload) ?? NSNull(),
+            "note": "SwiftUI drag selection is still local view state; this reports the most recent persisted editor edit selection."
+        ]
+    }
+
+    private func takesResource(limit: Int) -> [String: Any] {
+        let cappedLimit = max(1, min(limit, 200))
+        let rows = historyStore.entries.prefix(cappedLimit).map(takeSummary)
+        return [
+            "kind": "takeCollection",
+            "count": rows.count,
+            "totalCount": historyStore.entries.count,
+            "takes": Array(rows)
+        ]
+    }
+
+    private func takeResource(identifier: String) throws -> [String: Any] {
+        let entry = try resolveHistoryEntry(identifier)
+        let traceURI: Any = historyStore.traceURL(for: entry) == nil
+            ? NSNull()
+            : resourceURI(kind: "trace", identifier: entry.id.uuidString)
+
+        return [
+            "id": entry.id.uuidString,
+            "kind": "take",
+            "summary": takeSummary(entry),
+            "history": historySummary(entry),
+            "audio": try audioResource(identifier: entry.id.uuidString),
+            "adapters": (entry.adapters ?? []).map(historyAdapterPayload),
+            "resources": [
+                "history": resourceURI(kind: "history", identifier: entry.id.uuidString),
+                "take": resourceURI(kind: "take", identifier: entry.id.uuidString),
+                "audio": resourceURI(kind: "audio", identifier: entry.id.uuidString),
+                "trace": traceURI
+            ]
+        ]
+    }
+
+    private func presetsResource() -> [String: Any] {
+        let savedPresets = loadGenerationPresets()
+        return [
+            "kind": "presetCollection",
+            "count": savedPresets.count,
+            "savedGenerationPresets": savedPresets.map(generationPresetPayload),
+            "generationModes": GenerationMode.allCases.map { mode in
+                [
+                    "id": mode.rawValue,
+                    "displayName": mode.displayName
+                ]
+            },
+            "pipelines": PipelineChoice.allCases.map { pipeline in
+                [
+                    "id": pipeline.rawValue,
+                    "displayName": pipeline.displayName
+                ]
+            },
+            "methods": [
+                ["id": InferMethod.ode.rawValue],
+                ["id": InferMethod.sde.rawValue]
+            ],
+            "precisions": Precision.allCases.map { ["id": $0.rawValue] },
+            "guidancePresets": GuidancePreset.allCases.map(guidancePresetPayload),
+            "inpaintPresets": InpaintPreset.allCases.map(inpaintPresetPayload),
+            "reverbPresets": ReverbPreset.allCases.map(reverbPresetPayload),
+            "dspEffects": DSPEffect.allCases.map(dspEffectPayload)
+        ]
+    }
+
+    private func presetResource(identifier: String) throws -> [String: Any] {
+        let normalized = identifier.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard let preset = loadGenerationPresets().first(where: {
+            $0.id.uuidString.lowercased() == normalized || $0.name.lowercased() == normalized
+        }) else {
+            throw AnvilCommandFacadeError.resourceNotFound(resourceURI(kind: "preset", identifier: identifier))
+        }
+        return generationPresetPayload(preset)
+    }
+
+    private func workflowsResource() -> [String: Any] {
+        [
+            "kind": "workflowCollection",
+            "count": workflowPromptDefinitions.count,
+            "workflows": workflowPromptDefinitions.map(workflowPromptPayload)
+        ]
+    }
+
+    private func workflowResource(identifier: String) throws -> [String: Any] {
+        guard let workflow = workflowPromptDefinitions.first(where: { $0.id == identifier }) else {
+            throw AnvilCommandFacadeError.resourceNotFound(resourceURI(kind: "workflow", identifier: identifier))
+        }
+        var payload = workflowPromptPayload(workflow)
+        payload["template"] = workflow.template
+        return payload
+    }
+
+    private func takeSummary(_ entry: HistoryEntry) -> [String: Any] {
+        [
+            "id": entry.id.uuidString,
+            "kind": "take",
+            "createdAt": dateFormatter.string(from: entry.createdAt),
+            "promptSummary": compact(entry.prompt, limit: 160),
+            "duration": entry.duration,
+            "seed": entry.seed,
+            "pipeline": entry.pipeline ?? NSNull(),
+            "modelID": entry.modelID ?? NSNull(),
+            "modelName": entry.modelName ?? NSNull(),
+            "fileName": entry.fileName,
+            "isPreferred": entry.isPreferred ?? false,
+            "listeningNote": entry.listeningNote ?? NSNull(),
+            "historyResourceURI": resourceURI(kind: "history", identifier: entry.id.uuidString),
+            "takeResourceURI": resourceURI(kind: "take", identifier: entry.id.uuidString),
+            "audioResourceURI": resourceURI(kind: "audio", identifier: entry.id.uuidString),
+            "traceResourceURI": historyStore.traceURL(for: entry) == nil
+                ? NSNull()
+                : resourceURI(kind: "trace", identifier: entry.id.uuidString)
+        ]
+    }
+
+    private func historyAdapterPayload(_ adapter: HistoryAdapterSnapshot) -> [String: Any] {
+        [
+            "id": adapter.id,
+            "name": adapter.name ?? NSNull(),
+            "weight": adapter.weight,
+            "source": adapter.source ?? NSNull(),
+            "rank": adapter.rank ?? NSNull(),
+            "baseModelID": adapter.baseModelID ?? NSNull()
+        ]
+    }
+
+    private func loadGenerationPresets() -> [GenerationPreset] {
+        let directory = PresetStore.presetsDirectory
+        guard let files = try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: nil,
+            options: .skipsHiddenFiles
+        ) else {
+            return []
+        }
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return files
+            .filter { $0.pathExtension == "json" }
+            .compactMap { try? Data(contentsOf: $0) }
+            .compactMap { try? decoder.decode(GenerationPreset.self, from: $0) }
+            .sorted { $0.createdAt > $1.createdAt }
+    }
+
+    private func generationPresetPayload(_ preset: GenerationPreset) -> [String: Any] {
+        [
+            "id": preset.id.uuidString,
+            "kind": "generationPreset",
+            "name": preset.name,
+            "createdAt": dateFormatter.string(from: preset.createdAt),
+            "prompt": preset.prompt,
+            "promptSummary": compact(preset.prompt, limit: 160),
+            "lyricsPresent": !preset.lyrics.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            "mode": preset.mode?.rawValue ?? NSNull(),
+            "modeDisplayName": preset.mode?.displayName ?? NSNull(),
+            "duration": preset.duration,
+            "seedText": preset.seedText,
+            "guidanceScale": preset.guidanceScale,
+            "guidancePreset": guidancePresetPayload(preset.guidancePreset),
+            "pipelineOverride": preset.pipelineOverride.rawValue,
+            "pipelineDisplayName": preset.pipelineOverride.displayName,
+            "method": preset.method.rawValue,
+            "precision": preset.precision.rawValue,
+            "stepsOverride": preset.stepsOverride,
+            "shiftOverride": preset.shiftOverride,
+            "adapterID": preset.adapterID ?? NSNull(),
+            "adapterStrength": preset.adapterStrength,
+            "coverStrength": preset.coverStrength,
+            "resourceURI": resourceURI(kind: "preset", identifier: preset.id.uuidString)
+        ]
+    }
+
+    private func guidancePresetPayload(_ preset: GuidancePreset) -> [String: Any] {
+        let interval = preset.cfgInterval
+        return [
+            "id": preset.rawValue,
+            "displayName": preset.displayName,
+            "detail": preset.detail,
+            "cfgInterval": [
+                "start": interval.start,
+                "end": interval.end
+            ],
+            "guidanceScaleOverride": preset.guidanceScaleOverride ?? NSNull()
+        ]
+    }
+
+    private func inpaintPresetPayload(_ preset: InpaintPreset) -> [String: Any] {
+        [
+            "id": preset.rawValue,
+            "displayName": preset.rawValue.capitalized,
+            "strength": preset.strength,
+            "guidanceScale": preset.guidanceScale
+        ]
+    }
+
+    private func reverbPresetPayload(_ preset: ReverbPreset) -> [String: Any] {
+        let parameters = preset.parameters
+        return [
+            "id": preset.rawValue,
+            "displayName": preset.displayName,
+            "parameters": [
+                "decayTime": parameters.decayTime,
+                "wetDryMix": parameters.wetDryMix,
+                "preDelay": parameters.preDelay,
+                "damping": parameters.damping
+            ]
+        ]
+    }
+
+    private func dspEffectPayload(_ effect: DSPEffect) -> [String: Any] {
+        [
+            "id": effect.rawValue,
+            "displayName": effect.displayName,
+            "requiresSelection": effect.requiresSelection,
+            "requiresParameters": effect.requiresParameters,
+            "isTransform": effect.isTransform,
+            "operationKind": "editor.applyEffectChain",
+            "tool": "apply_editor_effect_chain"
+        ]
+    }
+
+    private func workflowPromptPayload(_ workflow: WorkflowPromptDefinition) -> [String: Any] {
+        [
+            "id": workflow.id,
+            "kind": "workflowPrompt",
+            "title": workflow.title,
+            "description": workflow.description,
+            "promptName": workflow.promptName,
+            "arguments": workflow.arguments.map { argument in
+                [
+                    "name": argument.name,
+                    "description": argument.description,
+                    "required": argument.required
+                ]
+            },
+            "resources": workflow.resources,
+            "tools": workflow.tools,
+            "resourceURI": resourceURI(kind: "workflow", identifier: workflow.id)
         ]
     }
 
@@ -3646,6 +4111,236 @@ private struct MCPOperationRecord {
     var error: String?
     var cancellationReason: String?
 }
+
+private struct WorkflowPromptArgument {
+    let name: String
+    let description: String
+    let required: Bool
+}
+
+private struct WorkflowPromptDefinition {
+    let id: String
+    let title: String
+    let description: String
+    let promptName: String
+    let arguments: [WorkflowPromptArgument]
+    let resources: [String]
+    let tools: [String]
+    let template: String
+}
+
+private let workflowPromptDefinitions: [WorkflowPromptDefinition] = [
+    WorkflowPromptDefinition(
+        id: "improve_chorus",
+        title: "Improve Chorus",
+        description: "Plan and safely execute a chorus-focused rewrite or polish pass.",
+        promptName: "improve_chorus",
+        arguments: [
+            WorkflowPromptArgument(
+                name: "takeID",
+                description: "Optional take/history id to load before editing.",
+                required: false
+            ),
+            WorkflowPromptArgument(
+                name: "regionStart",
+                description: "Optional chorus region start time in seconds.",
+                required: false
+            ),
+            WorkflowPromptArgument(
+                name: "regionEnd",
+                description: "Optional chorus region end time in seconds.",
+                required: false
+            ),
+            WorkflowPromptArgument(
+                name: "direction",
+                description: "Creative direction for the improved chorus.",
+                required: false
+            )
+        ],
+        resources: [
+            "anvil://takes",
+            "anvil://track/current",
+            "anvil://clip/current",
+            "anvil://region/current-selection",
+            "anvil://presets"
+        ],
+        tools: [
+            "load_editor_audio",
+            "submit_editor_inpaint",
+            "apply_editor_effect_chain",
+            "render_editor_audio",
+            "get_operation"
+        ],
+        template: """
+        Improve the chorus while preserving the best material around it.
+        Inspect current takes, the loaded clip, the current/last region, and presets first.
+        If a takeID is provided, load it with load_editor_audio and poll the operation before editing.
+        Validate edits with dryRun before any mutation; require explicit confirm for inpaint or DSP changes.
+        Use direction as the creative target, or infer a conservative chorus polish if direction is blank.
+        """
+    ),
+    WorkflowPromptDefinition(
+        id: "create_mix_variants",
+        title: "Create Mix Variants",
+        description: "Prepare alternate rendered mix treatments from the current take or editor buffer.",
+        promptName: "create_mix_variants",
+        arguments: [
+            WorkflowPromptArgument(
+                name: "takeID",
+                description: "Optional take/history id to load before creating variants.",
+                required: false
+            ),
+            WorkflowPromptArgument(
+                name: "variantCount",
+                description: "Requested number of variants. Defaults to three.",
+                required: false
+            ),
+            WorkflowPromptArgument(
+                name: "direction",
+                description: "Mix direction such as brighter, wider, tighter, or more ambient.",
+                required: false
+            )
+        ],
+        resources: [
+            "anvil://takes",
+            "anvil://track/current",
+            "anvil://clip/current",
+            "anvil://presets"
+        ],
+        tools: [
+            "load_editor_audio",
+            "apply_editor_effect_chain",
+            "render_editor_audio",
+            "mark_preferred_take",
+            "get_operation"
+        ],
+        template: """
+        Create mix variants from the loaded editor audio or the supplied takeID.
+        Prefer reversible, bounded DSP chains and validate each chain with dryRun before applying.
+        Render each variant with render_editor_audio and keep filenames descriptive.
+        Do not mark a preferred take unless the user explicitly asks.
+        """
+    ),
+    WorkflowPromptDefinition(
+        id: "clean_up_region",
+        title: "Clean Up Region",
+        description: "Clean or replace a bounded region while preserving surrounding audio.",
+        promptName: "clean_up_region",
+        arguments: [
+            WorkflowPromptArgument(
+                name: "takeID",
+                description: "Optional take/history id to load before editing.",
+                required: false
+            ),
+            WorkflowPromptArgument(
+                name: "regionStart",
+                description: "Region start time in seconds.",
+                required: true
+            ),
+            WorkflowPromptArgument(
+                name: "regionEnd",
+                description: "Region end time in seconds.",
+                required: true
+            ),
+            WorkflowPromptArgument(
+                name: "issue",
+                description: "Problem to solve, such as click, weak vocal, or muddy transient.",
+                required: false
+            )
+        ],
+        resources: [
+            "anvil://track/current",
+            "anvil://clip/current",
+            "anvil://region/current-selection",
+            "anvil://presets"
+        ],
+        tools: [
+            "load_editor_audio",
+            "submit_editor_inpaint",
+            "apply_editor_effect_chain",
+            "render_editor_audio",
+            "get_operation"
+        ],
+        template: """
+        Clean the specified region only.
+        Use regionStart and regionEnd as the selection boundaries, and keep every mutation bounded to that range unless the user says otherwise.
+        Prefer DSP for mechanical cleanup and submit_editor_inpaint for musical replacement.
+        Always run dryRun first, then require confirm: true before applying an editor mutation.
+        """
+    ),
+    WorkflowPromptDefinition(
+        id: "prepare_stems_for_review",
+        title: "Prepare Stems for Review",
+        description: "Render review-ready audio files from the current workstation state.",
+        promptName: "prepare_stems_for_review",
+        arguments: [
+            WorkflowPromptArgument(
+                name: "takeID",
+                description: "Optional take/history id to load before rendering.",
+                required: false
+            ),
+            WorkflowPromptArgument(
+                name: "outputDirectory",
+                description: "Optional directory for rendered review exports.",
+                required: false
+            )
+        ],
+        resources: [
+            "anvil://takes",
+            "anvil://track/current",
+            "anvil://clip/current",
+            "anvil://operations"
+        ],
+        tools: [
+            "load_editor_audio",
+            "render_editor_audio",
+            "mark_preferred_take",
+            "get_operation"
+        ],
+        template: """
+        Prepare review-ready renders from the current clip or the supplied takeID.
+        Use render_editor_audio with lossless output and a clear file name.
+        Poll operations until renders complete and summarize paths for review.
+        Do not delete or overwrite existing files unless overwrite is explicitly requested.
+        """
+    ),
+    WorkflowPromptDefinition(
+        id: "production_ready_prompt",
+        title: "Production Ready Prompt",
+        description: "Turn a rough music or SFX idea into an Anvil generation request.",
+        promptName: "production_ready_prompt",
+        arguments: [
+            WorkflowPromptArgument(
+                name: "prompt",
+                description: "Rough prompt or creative brief to develop.",
+                required: true
+            ),
+            WorkflowPromptArgument(
+                name: "duration",
+                description: "Optional target duration in seconds.",
+                required: false
+            )
+        ],
+        resources: [
+            "anvil://models",
+            "anvil://adapters",
+            "anvil://presets",
+            "anvil://operations"
+        ],
+        tools: [
+            "enhance_prompt",
+            "write_lyrics",
+            "apply_adapter",
+            "generate_song",
+            "generation_status"
+        ],
+        template: """
+        Convert the supplied prompt into a production-ready Anvil generation request.
+        Inspect models, adapters, and presets first so the request fits the current workstation.
+        Use enhance_prompt and write_lyrics when useful, then validate the final generate_song request with dryRun before submitting.
+        """
+    )
+]
 
 private struct AnvilResourceURI {
     let kind: String

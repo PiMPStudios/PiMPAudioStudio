@@ -201,6 +201,7 @@ private final class AnvilMCPSDKBridge {
             name: "Anvil",
             version: version,
             capabilities: .init(
+                prompts: .init(listChanged: false),
                 resources: .init(subscribe: false, listChanged: false),
                 tools: .init(listChanged: false)
             )
@@ -279,6 +280,14 @@ private final class AnvilMCPSDKBridge {
                 )
             }
             return await self.callTool(params)
+        }
+
+        await server.withMethodHandler(ListPrompts.self) { _ in
+            .init(prompts: MCPPromptCatalog.prompts, nextCursor: nil)
+        }
+
+        await server.withMethodHandler(GetPrompt.self) { params in
+            try MCPPromptCatalog.getPrompt(params)
         }
 
         await server.withMethodHandler(ListResources.self) { [weak self] _ in
@@ -563,6 +572,188 @@ private enum MCPJSON {
             return String(describing: object)
         }
         return text
+    }
+}
+
+private enum MCPPromptCatalog {
+    static let prompts: [Prompt] = [
+        prompt(
+            name: "improve_chorus",
+            title: "Improve Chorus",
+            description: "Plan and safely execute a chorus-focused rewrite or polish pass.",
+            arguments: [
+                argument("takeID", "Optional take/history id to load before editing."),
+                argument("regionStart", "Optional chorus region start time in seconds."),
+                argument("regionEnd", "Optional chorus region end time in seconds."),
+                argument("direction", "Creative direction for the improved chorus.")
+            ]
+        ),
+        prompt(
+            name: "create_mix_variants",
+            title: "Create Mix Variants",
+            description: "Prepare alternate rendered mix treatments from the current take or editor buffer.",
+            arguments: [
+                argument("takeID", "Optional take/history id to load before creating variants."),
+                argument("variantCount", "Requested number of variants. Defaults to three."),
+                argument("direction", "Mix direction such as brighter, wider, tighter, or more ambient.")
+            ]
+        ),
+        prompt(
+            name: "clean_up_region",
+            title: "Clean Up Region",
+            description: "Clean or replace a bounded region while preserving surrounding audio.",
+            arguments: [
+                argument("takeID", "Optional take/history id to load before editing."),
+                argument("regionStart", "Region start time in seconds.", required: true),
+                argument("regionEnd", "Region end time in seconds.", required: true),
+                argument("issue", "Problem to solve, such as click, weak vocal, or muddy transient.")
+            ]
+        ),
+        prompt(
+            name: "prepare_stems_for_review",
+            title: "Prepare Stems for Review",
+            description: "Render review-ready audio files from the current workstation state.",
+            arguments: [
+                argument("takeID", "Optional take/history id to load before rendering."),
+                argument("outputDirectory", "Optional directory for rendered review exports.")
+            ]
+        ),
+        prompt(
+            name: "production_ready_prompt",
+            title: "Production Ready Prompt",
+            description: "Turn a rough music or SFX idea into an Anvil generation request.",
+            arguments: [
+                argument("prompt", "Rough prompt or creative brief to develop.", required: true),
+                argument("duration", "Optional target duration in seconds.")
+            ]
+        )
+    ]
+
+    static func getPrompt(_ params: GetPrompt.Parameters) throws -> GetPrompt.Result {
+        switch params.name {
+        case "improve_chorus":
+            return result(
+                description: "Improve a chorus using current Anvil workstation resources.",
+                text: """
+                Improve the chorus while preserving the best material around it.
+
+                Inputs:
+                - takeID: \(argumentValue(params, "takeID", fallback: "use the current loaded clip"))
+                - regionStart: \(argumentValue(params, "regionStart", fallback: "infer from anvil://region/current-selection"))
+                - regionEnd: \(argumentValue(params, "regionEnd", fallback: "infer from anvil://region/current-selection"))
+                - direction: \(argumentValue(params, "direction", fallback: "make the chorus stronger without over-editing"))
+
+                Inspect anvil://takes, anvil://track/current, anvil://clip/current, anvil://region/current-selection, and anvil://presets first.
+                If takeID is provided, call load_editor_audio and poll get_operation until complete.
+                Validate submit_editor_inpaint and apply_editor_effect_chain with dryRun before any mutation.
+                Require confirm: true before inpaint or DSP changes, then render_editor_audio if the user wants an export.
+                """
+            )
+        case "create_mix_variants":
+            return result(
+                description: "Create alternate mix renders with bounded DSP chains.",
+                text: """
+                Create mix variants from the loaded editor audio or takeID \(argumentValue(params, "takeID", fallback: "current clip")).
+
+                Target variant count: \(argumentValue(params, "variantCount", fallback: "3"))
+                Direction: \(argumentValue(params, "direction", fallback: "balanced review variants"))
+
+                Inspect anvil://takes, anvil://track/current, anvil://clip/current, and anvil://presets.
+                Prefer reversible, bounded DSP chains with apply_editor_effect_chain dryRun first.
+                Use render_editor_audio for each approved variant and poll get_operation for completion.
+                Do not mark_preferred_take unless the user explicitly asks.
+                """
+            )
+        case "clean_up_region":
+            return result(
+                description: "Clean or replace a specific editor region safely.",
+                text: """
+                Clean the specified region only.
+
+                Inputs:
+                - takeID: \(argumentValue(params, "takeID", fallback: "current loaded clip"))
+                - regionStart: \(argumentValue(params, "regionStart", fallback: "required if no current region exists"))
+                - regionEnd: \(argumentValue(params, "regionEnd", fallback: "required if no current region exists"))
+                - issue: \(argumentValue(params, "issue", fallback: "remove obvious defect while preserving musical context"))
+
+                Inspect anvil://track/current, anvil://clip/current, anvil://region/current-selection, and anvil://presets.
+                Use apply_editor_effect_chain for mechanical cleanup and submit_editor_inpaint for musical replacement.
+                Every editor mutation must be scoped to the selected region, dry-run first, and then require confirm: true.
+                """
+            )
+        case "prepare_stems_for_review":
+            return result(
+                description: "Render lossless review files from the current workstation state.",
+                text: """
+                Prepare review-ready renders from the current clip or takeID \(argumentValue(params, "takeID", fallback: "current loaded clip")).
+
+                Output directory: \(argumentValue(params, "outputDirectory", fallback: "default MCPExports folder beside the source audio"))
+
+                Inspect anvil://takes, anvil://track/current, anvil://clip/current, and anvil://operations.
+                Use render_editor_audio with lossless output and descriptive filenames.
+                Poll get_operation until render operations complete.
+                Do not overwrite existing files unless overwrite is explicitly requested.
+                """
+            )
+        case "production_ready_prompt":
+            return result(
+                description: "Develop a rough idea into a validated Anvil generation request.",
+                text: """
+                Convert this rough idea into a production-ready Anvil generation request:
+                \(argumentValue(params, "prompt", fallback: "No prompt supplied. Ask for a prompt before submitting generation."))
+
+                Target duration: \(argumentValue(params, "duration", fallback: "choose based on prompt and current presets"))
+
+                Inspect anvil://models, anvil://adapters, anvil://presets, and anvil://operations first.
+                Use enhance_prompt and write_lyrics when useful.
+                Validate the final generate_song call with dryRun before submitting a real generation.
+                """
+            )
+        default:
+            throw MCPError.invalidParams("Unknown Anvil prompt: \(params.name)")
+        }
+    }
+
+    private static func prompt(
+        name: String,
+        title: String,
+        description: String,
+        arguments: [Prompt.Argument]
+    ) -> Prompt {
+        Prompt(
+            name: name,
+            title: title,
+            description: description,
+            arguments: arguments
+        )
+    }
+
+    private static func argument(
+        _ name: String,
+        _ description: String,
+        required: Bool = false
+    ) -> Prompt.Argument {
+        Prompt.Argument(
+            name: name,
+            description: description,
+            required: required
+        )
+    }
+
+    private static func argumentValue(
+        _ params: GetPrompt.Parameters,
+        _ key: String,
+        fallback: String
+    ) -> String {
+        let value = params.arguments?[key]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return value.isEmpty ? fallback : value
+    }
+
+    private static func result(description: String, text: String) -> GetPrompt.Result {
+        .init(
+            description: description,
+            messages: [.user(.text(text: text))]
+        )
     }
 }
 

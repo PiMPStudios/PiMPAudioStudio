@@ -62,6 +62,18 @@ logic concerns, and they should not be reinvented piecemeal inside
 - `render_editor_audio` exports the current editor buffer or selected time range
   to a lossless local file through the same operation layer, reporting as
   `editor.renderAudio`.
+- Workstation resources now expose the current local project/session, current
+  track, loaded clip, current/last editor region, recent takes, saved/built-in
+  presets, and workflow prompt metadata:
+  `anvil://project/current`, `anvil://track/current`,
+  `anvil://clip/current`, `anvil://region/current-selection`,
+  `anvil://takes`, `anvil://take/{id}`, `anvil://presets`,
+  `anvil://preset/{id}`, `anvil://workflows`, and
+  `anvil://workflow/{id}`.
+- The SDK-backed server advertises workflow prompts through `prompts/list` and
+  `prompts/get`: `improve_chorus`, `create_mix_variants`,
+  `clean_up_region`, `prepare_stems_for_review`, and
+  `production_ready_prompt`.
 - Operation state is exposed through `list_operations`, `get_operation`,
   `cancel_operation`, `generation_status.currentOperation`,
   `editor_status.currentOperation`, `anvil://editor`, `anvil://operations`,
@@ -277,8 +289,8 @@ Anvil's JSON-safe facade payloads and SDK `Value` objects.
 
 - [x] Extend the current `editor.loadAudio` operation pattern to inpaint, DSP,
       and render actions with explicit confirmation where edits are destructive.
-- Add prompts for common editing/generation workflows.
-- Add project, track, clip, region, take, and preset resources.
+- [x] Add prompts for common editing/generation workflows.
+- [x] Add project, track, clip, region, take, and preset resources.
 - Map background generation/editor operation progress onto MCP task-augmented
   requests once the Swift SDK supports task capabilities, without breaking the
   pollable operation contract.

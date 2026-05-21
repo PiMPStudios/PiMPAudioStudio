@@ -193,6 +193,16 @@ The same data is also available as MCP resources:
 - `anvil://adapter/{id}`
 - `anvil://history`
 - `anvil://history/{id}`
+- `anvil://project/current`
+- `anvil://track/current`
+- `anvil://clip/current`
+- `anvil://region/current-selection`
+- `anvil://takes`
+- `anvil://take/{id}`
+- `anvil://presets`
+- `anvil://preset/{id}`
+- `anvil://workflows`
+- `anvil://workflow/{id}`
 - `anvil://trace/{id}`
 - `anvil://audio/{id}`
 - `anvil://editor`
@@ -201,6 +211,37 @@ The same data is also available as MCP resources:
 
 Audio resources return local file metadata and paths only. They do not stream
 audio bytes over MCP.
+
+`anvil://project/current` is the top-level local workstation snapshot. It links
+the current editor track, clip, current/last region, recent takes, presets,
+workflow prompts, editor status, and operation registry.
+
+`anvil://takes` and `anvil://take/{id}` present generation history in a
+workstation-friendly shape with links to the matching history, trace, and audio
+resources.
+
+`anvil://presets` includes saved generation presets plus built-in guidance,
+inpaint, reverb, and DSP effect catalogs. Individual saved presets are
+addressable as `anvil://preset/{id}`.
+
+`anvil://workflows` and `anvil://workflow/{id}` expose the same workflow prompt
+catalog that is available through MCP prompts, including required arguments,
+recommended resources, and relevant tools.
+
+## Prompts
+
+The local MCP endpoint advertises reusable workflow prompts through the SDK
+`prompts/list` and `prompts/get` methods:
+
+- `improve_chorus`
+- `create_mix_variants`
+- `clean_up_region`
+- `prepare_stems_for_review`
+- `production_ready_prompt`
+
+These prompts do not mutate app state by themselves. They give a client a
+structured workflow recipe that points at Anvil resources and tools, with the
+same dry-run and `confirm: true` expectations used by the direct tools.
 
 ## Smoke Test
 
@@ -217,9 +258,9 @@ ANVIL_MCP_TOKEN='<token>' scripts/smoke-mcp.sh
 ```
 
 The smoke script initializes a session, parses POST SSE responses, checks the
-tool/resource catalog, verifies editor and operation resources, dry-runs editor
-audio loading when a history WAV is available, opens `GET /mcp`, and checks a
-`notifications/progress` event.
+tool/resource/prompt catalog, verifies editor and operation resources, dry-runs
+editor audio loading when a history WAV is available, opens `GET /mcp`, and
+checks a `notifications/progress` event.
 
 Manual curl testing is possible, but every request after initialize must send
 the returned `MCP-Session-Id`. The raw response body may be SSE, so inspect
