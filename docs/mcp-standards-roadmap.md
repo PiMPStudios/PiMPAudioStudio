@@ -31,8 +31,9 @@ logic concerns, and they should not be reinvented piecemeal inside
 - `AnvilMCPServer` is a local, app-hosted, localhost-only HTTP endpoint at
   `http://127.0.0.1:38765/mcp`.
 - The server implements the small method set Anvil currently needs:
-  `initialize`, `ping`, `tools/list`, `tools/call`, `resources/list`, and
-  `resources/read`.
+  `initialize`, `ping`, `tools/list`, `tools/call`, `resources/list`,
+  `resources/read`, `resources/templates/list`, `prompts/list`, `prompts/get`,
+  and `completion/complete`.
 - Tool/resource registration, lifecycle handling, structured tool results,
   JSON-RPC dispatch, stateful Streamable HTTP sessions, and SSE response
   handling now run through the official Swift MCP SDK.
@@ -71,10 +72,16 @@ logic concerns, and they should not be reinvented piecemeal inside
   `anvil://takes`, `anvil://take/{id}`, `anvil://presets`,
   `anvil://preset/{id}`, `anvil://workflows`, and
   `anvil://workflow/{id}`.
+- Resource templates are now advertised through `resources/templates/list` for
+  model, adapter, history, take, trace, audio, preset, workflow, and operation
+  URI patterns.
 - The SDK-backed server advertises workflow prompts through `prompts/list` and
   `prompts/get`: `improve_chorus`, `create_mix_variants`,
   `clean_up_region`, `prepare_stems_for_review`, and
   `production_ready_prompt`.
+- The SDK-backed server advertises `completions` and handles
+  `completion/complete` for workflow prompt arguments and resource-template
+  ids, including take IDs, region times, presets, workflows, and operations.
 - Operation state is exposed through `list_operations`, `get_operation`,
   `cancel_operation`, `generation_status.currentOperation`,
   `editor_status.currentOperation`, `anvil://editor`, `anvil://operations`,
@@ -296,6 +303,7 @@ Anvil's JSON-safe facade payloads and SDK `Value` objects.
       and render actions with explicit confirmation where edits are destructive.
 - [x] Add prompts for common editing/generation workflows.
 - [x] Add project, track, clip, region, take, and preset resources.
+- [x] Add resource templates and completions for workflow prompt/resource ids.
 - Map background generation/editor operation progress onto MCP task-augmented
   requests once the Swift SDK supports task capabilities, without breaking the
   pollable operation contract.

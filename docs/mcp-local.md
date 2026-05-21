@@ -230,6 +230,19 @@ workflow prompts, editor status, and operation registry.
 workstation-friendly shape with links to the matching history, trace, and audio
 resources.
 
+The endpoint also supports `resources/templates/list` for parameterized
+resource discovery. Current templates are:
+
+- `anvil://model/{id}`
+- `anvil://adapter/{id}`
+- `anvil://history/{id}`
+- `anvil://take/{id}`
+- `anvil://trace/{id}`
+- `anvil://audio/{id}`
+- `anvil://preset/{id}`
+- `anvil://workflow/{id}`
+- `anvil://operation/{id}`
+
 `anvil://presets` includes saved generation presets plus built-in guidance,
 inpaint, reverb, and DSP effect catalogs. Individual saved presets are
 addressable as `anvil://preset/{id}`.
@@ -252,6 +265,12 @@ The local MCP endpoint advertises reusable workflow prompts through the SDK
 These prompts do not mutate app state by themselves. They give a client a
 structured workflow recipe that points at Anvil resources and tools, with the
 same dry-run and guarded-confirmation expectations used by the direct tools.
+
+Anvil advertises MCP completions through `completion/complete`. Completions
+cover workflow prompt arguments such as `takeID`, `regionStart`, `regionEnd`,
+`variantCount`, `duration`, `direction`, `issue`, and `outputDirectory`, plus
+resource-template ids for models, adapters, history/takes/traces/audio,
+presets, workflows, and operations.
 
 ## Smoke Test
 

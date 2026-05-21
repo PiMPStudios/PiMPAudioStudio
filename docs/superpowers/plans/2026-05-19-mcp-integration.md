@@ -82,6 +82,8 @@ paths.
 - [x] Add `anvil://preset/{id}`.
 - [x] Add `anvil://workflows`.
 - [x] Add `anvil://workflow/{id}`.
+- [x] Add `resources/templates/list` for parameterized model, adapter,
+      history, take, trace, audio, preset, workflow, and operation resources.
 
 ## Phase 3 — Controlled Local Actions
 
@@ -174,6 +176,11 @@ MCP prompts instead of broad generic tools. Initial prompt names are
 `anvil://workflow/{id}` resources document their arguments, related resources,
 and tool dependencies.
 
+Implementation note: MCP completions now cover workflow prompt arguments and
+resource-template ids. `completion/complete` suggests take/history ids, current
+region times, common editor issue/direction values, preset/workflow ids, and
+recent operation ids from the existing local metadata surface.
+
 ## Phase 4 — Standards Hardening
 
 **Deliverable:** Decide whether the official Swift MCP SDK can replace the
@@ -251,4 +258,6 @@ read-only phase.
       operations with confirmation on destructive edit paths.
 - [x] `release_memory` refuses to run without `confirm: true` or MCP form
       elicitation approval.
+- [x] `resources/templates/list` and `completion/complete` are SDK-backed and
+      covered by the localhost smoke script.
 - [ ] App quit stops the MCP server cleanly.

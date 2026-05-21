@@ -178,6 +178,19 @@ browse artifacts directly.
 Resource responses should reference local file paths where appropriate instead
 of streaming large audio blobs by default.
 
+Resource templates should be exposed through `resources/templates/list` for
+parameterized ids:
+
+- `anvil://model/{id}`
+- `anvil://adapter/{id}`
+- `anvil://history/{id}`
+- `anvil://take/{id}`
+- `anvil://trace/{id}`
+- `anvil://audio/{id}`
+- `anvil://preset/{id}`
+- `anvil://workflow/{id}`
+- `anvil://operation/{id}`
+
 ## Prompt Shape
 
 Reusable workflow prompts should be exposed through MCP `prompts/list` and
@@ -193,6 +206,11 @@ Each prompt should point clients at the relevant Anvil resources and tools, and
 should preserve the existing safety rules: dry-run validation before mutations
 and `confirm: true` or MCP form elicitation approval for editor edits that
 change audio.
+
+The server should advertise MCP completions and handle `completion/complete`
+for common workflow prompt arguments and resource-template ids. Completion
+values should stay low-risk and reference existing local metadata such as
+history/take ids, current region times, presets, workflows, and operation ids.
 
 ## Architecture
 

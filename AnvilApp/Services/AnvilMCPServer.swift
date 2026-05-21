@@ -202,6 +202,7 @@ private final class AnvilMCPSDKBridge {
             name: "Anvil",
             version: version,
             capabilities: .init(
+                completions: .init(),
                 prompts: .init(listChanged: false),
                 resources: .init(subscribe: false, listChanged: false),
                 tools: .init(listChanged: false)
@@ -301,6 +302,13 @@ private final class AnvilMCPSDKBridge {
             try MCPPromptCatalog.getPrompt(params)
         }
 
+        await server.withMethodHandler(Complete.self) { [weak self] params in
+            guard let self else {
+                return .init(completion: .init(values: []))
+            }
+            return await self.complete(params)
+        }
+
         await server.withMethodHandler(ListResources.self) { [weak self] _ in
             guard let self else {
                 return .init(resources: [], nextCursor: nil)
@@ -309,12 +317,235 @@ private final class AnvilMCPSDKBridge {
             return .init(resources: resources.compactMap(MCPResourceCatalog.sdkResource), nextCursor: nil)
         }
 
+        await server.withMethodHandler(ListResourceTemplates.self) { _ in
+            .init(templates: MCPResourceCatalog.templates, nextCursor: nil)
+        }
+
         await server.withMethodHandler(ReadResource.self) { [weak self] params in
             guard let self else {
                 throw MCPError.internalError("MCP server is shutting down")
             }
             return try await self.readResource(params)
         }
+    }
+
+    private func complete(_ params: Complete.Parameters) async -> Complete.Result {
+        let values: [String]
+
+        switch params.ref {
+        case .prompt(let promptRef):
+            values = await promptCompletionValues(
+                promptName: promptRef.name,
+                argumentName: params.argument.name
+            )
+        case .resource(let resourceRef):
+            values = await resourceCompletionValues(
+                resourceURI: resourceRef.uri,
+                argumentName: params.argument.name
+            )
+        }
+
+        return completionResult(values, matching: params.argument.value)
+    }
+
+    private func promptCompletionValues(
+        promptName: String,
+        argumentName: String
+    ) async -> [String] {
+        switch argumentName {
+        case "takeID":
+            return historyCompletionValues()
+        case "regionStart":
+            return await currentRegionCompletionValues(key: "startTime", defaults: ["0", "5", "10", "15", "30"])
+        case "regionEnd":
+            return await currentRegionCompletionValues(key: "endTime", defaults: ["5", "10", "15", "30", "60"])
+        case "variantCount":
+            return ["2", "3", "4", "5"]
+        case "duration":
+            return ["5", "10", "15", "30", "60", "90", "120"]
+        case "direction":
+            return directionCompletionValues(promptName: promptName)
+        case "issue":
+            return [
+                "click/pop cleanup",
+                "reduce muddy low mids",
+                "smooth harsh transient",
+                "replace weak vocal phrase",
+                "remove clipped artifact"
+            ]
+        case "outputDirectory":
+            return await outputDirectoryCompletionValues()
+        default:
+            return []
+        }
+    }
+
+    private func resourceCompletionValues(
+        resourceURI: String,
+        argumentName: String
+    ) async -> [String] {
+        guard argumentName == "id" || argumentName == "identifier" else {
+            return []
+        }
+
+        let normalized = resourceURI.lowercased()
+        if normalized.contains("model") {
+            return await modelCompletionValues()
+        }
+        if normalized.contains("adapter") {
+            return await adapterCompletionValues()
+        }
+        if normalized.contains("preset") {
+            return await presetCompletionValues()
+        }
+        if normalized.contains("workflow") {
+            return MCPPromptCatalog.promptNames
+        }
+        if normalized.contains("operation") {
+            return operationCompletionValues()
+        }
+        if normalized.contains("trace") {
+            return historyCompletionValues(traceOnly: true)
+        }
+        if normalized.contains("history")
+            || normalized.contains("take")
+            || normalized.contains("audio") {
+            return historyCompletionValues()
+        }
+        return []
+    }
+
+    private func completionResult(
+        _ values: [String],
+        matching partialValue: String
+    ) -> Complete.Result {
+        let partial = partialValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let uniqueValues = uniqueNonEmpty(values)
+        let matches = partial.isEmpty
+            ? uniqueValues
+            : uniqueValues.filter { $0.lowercased().hasPrefix(partial) }
+        let limited = Array(matches.prefix(100))
+
+        return .init(
+            completion: .init(
+                values: limited,
+                total: matches.count,
+                hasMore: matches.count > limited.count
+            )
+        )
+    }
+
+    private func uniqueNonEmpty(_ values: [String]) -> [String] {
+        var seen = Set<String>()
+        var unique: [String] = []
+        for value in values {
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, seen.insert(trimmed).inserted else { continue }
+            unique.append(trimmed)
+        }
+        return unique
+    }
+
+    private func directionCompletionValues(promptName: String) -> [String] {
+        switch promptName {
+        case "improve_chorus":
+            return [
+                "make the chorus more anthemic",
+                "tighten the vocal phrasing",
+                "add a cleaner synth lift",
+                "make it bigger without over-editing"
+            ]
+        case "create_mix_variants":
+            return [
+                "brighter and wider",
+                "tighter low end",
+                "more ambient",
+                "vocal-forward"
+            ]
+        default:
+            return [
+                "keep it conservative",
+                "make it more polished",
+                "preserve the original feel"
+            ]
+        }
+    }
+
+    private func historyCompletionValues(traceOnly: Bool = false) -> [String] {
+        let payload = facade.listHistory(limit: 100)
+        let rows = payload["history"] as? [[String: Any]] ?? []
+        var values: [String] = []
+        for row in rows {
+            if traceOnly, boolArgument(row["hasTrace"]) != true {
+                continue
+            }
+            values.append(contentsOf: stringFields(row, keys: ["id", "fileName", "traceFileName"]))
+        }
+        return values
+    }
+
+    private func modelCompletionValues() async -> [String] {
+        let payload = await facade.listModels()
+        let rows = payload["models"] as? [[String: Any]] ?? []
+        return rows.flatMap { stringFields($0, keys: ["id", "displayName"]) }
+    }
+
+    private func adapterCompletionValues() async -> [String] {
+        let payload = await facade.listAdapters()
+        let rows = payload["adapters"] as? [[String: Any]] ?? []
+        return rows.flatMap { stringFields($0, keys: ["id", "name"]) }
+    }
+
+    private func presetCompletionValues() async -> [String] {
+        guard let payload = try? await facade.readResource(uri: "anvil://presets"),
+              let presets = payload["savedGenerationPresets"] as? [[String: Any]] else {
+            return []
+        }
+        return presets.flatMap { stringFields($0, keys: ["id", "name"]) }
+    }
+
+    private func operationCompletionValues() -> [String] {
+        let payload = facade.listOperations(arguments: ["limit": 50])
+        let rows = payload["operations"] as? [[String: Any]] ?? []
+        return rows.flatMap { stringFields($0, keys: ["id"]) }
+    }
+
+    private func currentRegionCompletionValues(
+        key: String,
+        defaults: [String]
+    ) async -> [String] {
+        var values: [String] = []
+        if let payload = try? await facade.readResource(uri: "anvil://region/current-selection"),
+           let selection = payload["selection"] as? [String: Any],
+           let value = decimalString(selection[key]) {
+            values.append(value)
+        }
+        values.append(contentsOf: defaults)
+        return values
+    }
+
+    private func outputDirectoryCompletionValues() async -> [String] {
+        guard let payload = try? await facade.readResource(uri: "anvil://clip/current"),
+              let path = nonEmptyString(payload["path"]) else {
+            return []
+        }
+
+        let directory = URL(fileURLWithPath: path).deletingLastPathComponent()
+        return [directory.appendingPathComponent("MCPExports").path(percentEncoded: false)]
+    }
+
+    private func stringFields(_ payload: [String: Any], keys: [String]) -> [String] {
+        keys.compactMap { nonEmptyString(payload[$0]) }
+    }
+
+    private func decimalString(_ value: Any?) -> String? {
+        guard let number = doubleValue(value) else {
+            return nonEmptyString(value)
+        }
+        if number.rounded() == number {
+            return String(Int(number))
+        }
+        return String(format: "%.3f", number)
     }
 
     private func callTool(_ params: CallTool.Parameters) async -> CallTool.Result {
@@ -663,6 +894,23 @@ private final class AnvilMCPSDKBridge {
             return nil
         }
     }
+
+    private func doubleValue(_ value: Any?) -> Double? {
+        switch value {
+        case let value as Double:
+            return value
+        case let value as Float:
+            return Double(value)
+        case let value as Int:
+            return Double(value)
+        case let value as NSNumber:
+            return value.doubleValue
+        case let value as String:
+            return Double(value)
+        default:
+            return nil
+        }
+    }
 }
 
 private enum MCPValueConverter {
@@ -746,6 +994,10 @@ private enum MCPJSON {
 }
 
 private enum MCPPromptCatalog {
+    static var promptNames: [String] {
+        prompts.map(\.name)
+    }
+
     static let prompts: [Prompt] = [
         prompt(
             name: "improve_chorus",
@@ -928,6 +1180,63 @@ private enum MCPPromptCatalog {
 }
 
 private enum MCPResourceCatalog {
+    static let templates: [Resource.Template] = [
+        template(
+            uriTemplate: "anvil://model/{id}",
+            name: "model",
+            title: "Anvil Model",
+            description: "Model registry entry by model id."
+        ),
+        template(
+            uriTemplate: "anvil://adapter/{id}",
+            name: "adapter",
+            title: "Anvil Adapter",
+            description: "LoRA adapter registry entry by adapter id or name."
+        ),
+        template(
+            uriTemplate: "anvil://history/{id}",
+            name: "history",
+            title: "Generation History Entry",
+            description: "Generation history entry by UUID, trace filename, or audio filename."
+        ),
+        template(
+            uriTemplate: "anvil://take/{id}",
+            name: "take",
+            title: "Generated Take",
+            description: "Workstation take view by history id or audio filename."
+        ),
+        template(
+            uriTemplate: "anvil://trace/{id}",
+            name: "trace",
+            title: "Generation Trace",
+            description: "Generation trace sidecar by history id, trace filename, or audio filename."
+        ),
+        template(
+            uriTemplate: "anvil://audio/{id}",
+            name: "audio",
+            title: "Generated Audio Metadata",
+            description: "Generated audio metadata by history id or audio filename."
+        ),
+        template(
+            uriTemplate: "anvil://preset/{id}",
+            name: "preset",
+            title: "Generation Preset",
+            description: "Saved generation preset by UUID or preset name."
+        ),
+        template(
+            uriTemplate: "anvil://workflow/{id}",
+            name: "workflow",
+            title: "Workflow Prompt",
+            description: "Workflow prompt definition by workflow id."
+        ),
+        template(
+            uriTemplate: "anvil://operation/{id}",
+            name: "operation",
+            title: "MCP Operation",
+            description: "Recent MCP-observable operation by operation id."
+        )
+    ]
+
     static func sdkResource(_ definition: [String: Any]) -> Resource? {
         guard let name = definition["name"] as? String,
               let uri = definition["uri"] as? String else {
@@ -940,6 +1249,21 @@ private enum MCPResourceCatalog {
             title: definition["title"] as? String,
             description: definition["description"] as? String,
             mimeType: definition["mimeType"] as? String ?? "application/json"
+        )
+    }
+
+    private static func template(
+        uriTemplate: String,
+        name: String,
+        title: String,
+        description: String
+    ) -> Resource.Template {
+        Resource.Template(
+            uriTemplate: uriTemplate,
+            name: name,
+            title: title,
+            description: description,
+            mimeType: "application/json"
         )
     }
 }

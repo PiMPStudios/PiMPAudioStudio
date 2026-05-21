@@ -266,6 +266,20 @@ if "confirm: true" not in text:
     sys.exit("release_memory rejection did not mention confirm: true")
 '
 
+python_check_completion_contains='
+import json
+import sys
+
+expected = sys.argv[1]
+data = json.load(sys.stdin)
+completion = data.get("result", {}).get("completion", {})
+values = completion.get("values", [])
+if expected not in values:
+    sys.exit(f"completion response did not include {expected!r}: {values!r}")
+if completion.get("total", 0) < 1:
+    sys.exit("completion response did not report a positive total")
+'
+
 echo "MCP endpoint: $ENDPOINT"
 
 echo "1. /health"
@@ -452,6 +466,35 @@ rpc '{
 }' 11 > "$TMP_DIR/prompt-clean-up-region.json"
 grep -q 'apply_editor_effect_chain' "$TMP_DIR/prompt-clean-up-region.json"
 grep -q 'submit_editor_inpaint' "$TMP_DIR/prompt-clean-up-region.json"
+
+echo "12a. resources/templates/list"
+rpc '{"jsonrpc":"2.0","id":110,"method":"resources/templates/list"}' 110 > "$TMP_DIR/resource-templates.json"
+grep -q 'anvil://workflow/{id}' "$TMP_DIR/resource-templates.json"
+grep -q 'anvil://operation/{id}' "$TMP_DIR/resource-templates.json"
+
+echo "12b. completion/complete prompt issue"
+rpc '{
+  "jsonrpc": "2.0",
+  "id": 111,
+  "method": "completion/complete",
+  "params": {
+    "ref": { "type": "ref/prompt", "name": "clean_up_region" },
+    "argument": { "name": "issue", "value": "cl" }
+  }
+}' 111 > "$TMP_DIR/completion-prompt-issue.json"
+/usr/bin/python3 -c "$python_check_completion_contains" "click/pop cleanup" < "$TMP_DIR/completion-prompt-issue.json"
+
+echo "12c. completion/complete workflow resource"
+rpc '{
+  "jsonrpc": "2.0",
+  "id": 112,
+  "method": "completion/complete",
+  "params": {
+    "ref": { "type": "ref/resource", "uri": "anvil://workflow/{id}" },
+    "argument": { "name": "id", "value": "clean" }
+  }
+}' 112 > "$TMP_DIR/completion-workflow-resource.json"
+/usr/bin/python3 -c "$python_check_completion_contains" "clean_up_region" < "$TMP_DIR/completion-workflow-resource.json"
 
 echo "13. list_history"
 rpc '{

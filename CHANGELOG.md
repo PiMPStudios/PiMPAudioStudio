@@ -59,6 +59,10 @@ All notable changes to AnvilApp are documented here.
   SDK `prompts/list` / `prompts/get` workflow prompts for chorus improvement,
   mix variants, region cleanup, review exports, and production-ready generation
   prompts.
+- **MCP resource templates and completions** — the local MCP endpoint now
+  advertises parameterized resource templates and SDK `completion/complete`
+  suggestions for workflow prompt arguments, take/history ids, current region
+  times, presets, workflows, and recent operation ids.
 - **MCP Streamable HTTP sessions** — the local MCP bridge now uses the Swift
   SDK's `StatefulHTTPServerTransport`. `initialize` returns `MCP-Session-Id`,
   POST requests may return SSE, `GET /mcp` opens the standalone server stream,
