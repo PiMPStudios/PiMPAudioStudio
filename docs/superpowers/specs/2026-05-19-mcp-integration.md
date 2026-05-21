@@ -48,8 +48,10 @@ The MCP server is a local command/control surface for Anvil.
 - Network bind: localhost only.
 - Auth token: optional for localhost.
 - Remote/LAN access: out of scope.
-- Expensive actions: require explicit arguments, for example `confirm: true`.
-- Destructive actions: require explicit arguments, for example `confirm: true`.
+- Expensive actions: require explicit confirmation, either `confirm: true` or
+  MCP form elicitation approval when the client advertises support.
+- Destructive actions: require explicit confirmation, either `confirm: true` or
+  MCP form elicitation approval when the client advertises support.
 - Raw model/tensor access: out of scope.
 
 The server should be safe for same-machine agent workflows without making local
@@ -110,11 +112,12 @@ Add after read-only tools are stable.
   into the shared editor coordinator. Guard: validates the source, returns an
   operation id, and does not apply edits; implemented.
 - `submit_editor_inpaint`: submit an inpaint/repaint request against the loaded
-  editor audio. Guard: requires `confirm: true` for mutation, supports
-  `dryRun`, returns an operation id; implemented.
+  editor audio. Guard: requires `confirm: true` or MCP form elicitation approval
+  for mutation, supports `dryRun`, returns an operation id; implemented.
 - `apply_editor_effect_chain`: submit one or more DSP effects against the
-  loaded editor audio. Guard: requires `confirm: true` for mutation, supports
-  `dryRun`, refreshes editable latents after apply; implemented.
+  loaded editor audio. Guard: requires `confirm: true` or MCP form elicitation
+  approval for mutation, supports `dryRun`, refreshes editable latents after
+  apply; implemented.
 - `render_editor_audio`: render the loaded editor buffer or a selected time
   range to WAV/AIFF. Guard: refuses overwrite unless requested, supports
   `dryRun`, returns an operation id; implemented.
@@ -134,7 +137,7 @@ Add after read-only tools are stable.
 - `apply_adapter`: select or stack adapters for next generation. Guard:
   validates adapter/base model compatibility; implemented.
 - `release_memory`: run the existing release GPU memory path. Guard: requires
-  `confirm: true`; implemented.
+  `confirm: true` or MCP form elicitation approval; implemented.
 
 ### Deferred Tools
 
@@ -188,7 +191,8 @@ Reusable workflow prompts should be exposed through MCP `prompts/list` and
 
 Each prompt should point clients at the relevant Anvil resources and tools, and
 should preserve the existing safety rules: dry-run validation before mutations
-and `confirm: true` for editor edits that change audio.
+and `confirm: true` or MCP form elicitation approval for editor edits that
+change audio.
 
 ## Architecture
 
@@ -266,8 +270,8 @@ facade that wraps the same services the UI already uses.
   explicit guarded bulk-cancel action.
 - `release_memory` should remain a guarded cleanup action. It may cancel
   active generation, unload resident models, and flush MLX GPU cache, so it
-  requires `confirm: true` and returns before/after memory counters instead of
-  running silently.
+  requires `confirm: true` or MCP form elicitation approval and returns
+  before/after memory counters instead of running silently.
 
 ## Non-Goals for v1
 

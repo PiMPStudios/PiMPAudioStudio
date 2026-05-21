@@ -192,6 +192,11 @@ if structured.get("requiresLoadedAudio") is not True:
     sys.exit("submit_editor_inpaint dry-run did not advertise loaded-audio requirement")
 if structured.get("requiresConfirmation") is not True:
     sys.exit("submit_editor_inpaint dry-run did not advertise confirmation requirement")
+confirmation = structured.get("confirmation", {})
+if confirmation.get("confirmArgument") != "confirm":
+    sys.exit("submit_editor_inpaint dry-run did not advertise confirm argument")
+if "elicitation/form" not in confirmation.get("supportedModes", []):
+    sys.exit("submit_editor_inpaint dry-run did not advertise elicitation confirmation mode")
 if request.get("mode") != "inpaint":
     sys.exit("submit_editor_inpaint dry-run did not resolve inpaint mode")
 if request.get("regionPrompt") != "replace the selected phrase with a cleaner synth swell":
@@ -233,6 +238,11 @@ if structured.get("requiresLoadedAudio") is not True:
     sys.exit("apply_editor_effect_chain dry-run did not advertise loaded-audio requirement")
 if structured.get("requiresConfirmation") is not True:
     sys.exit("apply_editor_effect_chain dry-run did not advertise confirmation requirement")
+confirmation = structured.get("confirmation", {})
+if confirmation.get("confirmArgument") != "confirm":
+    sys.exit("apply_editor_effect_chain dry-run did not advertise confirm argument")
+if "elicitation/form" not in confirmation.get("supportedModes", []):
+    sys.exit("apply_editor_effect_chain dry-run did not advertise elicitation confirmation mode")
 if request.get("effectCount") != 2 or len(effects) != 2:
     sys.exit("apply_editor_effect_chain dry-run did not resolve the effect chain")
 if effects[0].get("effect") != "fadeIn":
@@ -241,6 +251,19 @@ if effects[1].get("effect") != "normalize":
     sys.exit("apply_editor_effect_chain dry-run did not resolve normalize")
 if effects[0].get("target", {}).get("type") != "selection":
     sys.exit("apply_editor_effect_chain dry-run did not resolve selection target")
+'
+
+python_check_release_memory_confirmation_required='
+import json
+import sys
+
+data = json.load(sys.stdin)
+result = data.get("result", {})
+if result.get("isError") is not True:
+    sys.exit("release_memory without confirmation was not rejected")
+text = "\n".join(block.get("text", "") for block in result.get("content", []))
+if "confirm: true" not in text:
+    sys.exit("release_memory rejection did not mention confirm: true")
 '
 
 echo "MCP endpoint: $ENDPOINT"
@@ -284,6 +307,18 @@ grep -q '"list_operations"' "$TMP_DIR/tools.json"
 grep -q '"get_operation"' "$TMP_DIR/tools.json"
 grep -q '"cancel_operation"' "$TMP_DIR/tools.json"
 grep -q '"release_memory"' "$TMP_DIR/tools.json"
+
+echo "3a. release_memory confirmation guard"
+rpc '{
+  "jsonrpc": "2.0",
+  "id": 30,
+  "method": "tools/call",
+  "params": {
+    "name": "release_memory",
+    "arguments": {}
+  }
+}' 30 > "$TMP_DIR/release-memory-confirmation-required.json"
+/usr/bin/python3 -c "$python_check_release_memory_confirmation_required" < "$TMP_DIR/release-memory-confirmation-required.json"
 
 echo "4. generate_song dry-run"
 rpc '{

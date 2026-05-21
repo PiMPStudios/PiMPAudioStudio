@@ -732,6 +732,7 @@ final class AnvilCommandFacade {
                 "dryRun": true,
                 "requiresLoadedAudio": true,
                 "requiresConfirmation": true,
+                "confirmation": confirmationRequirementPayload(toolName: "submit_editor_inpaint"),
                 "request": requestPayload,
                 "operationID": NSNull(),
                 "operation": NSNull()
@@ -831,6 +832,7 @@ final class AnvilCommandFacade {
                 "dryRun": true,
                 "requiresLoadedAudio": true,
                 "requiresConfirmation": true,
+                "confirmation": confirmationRequirementPayload(toolName: "apply_editor_effect_chain"),
                 "request": requestPayload,
                 "operationID": NSNull(),
                 "operation": NSNull()
@@ -3909,6 +3911,19 @@ final class AnvilCommandFacade {
         let encoded = identifier.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? identifier
         return "anvil://\(kind)/\(encoded)"
     }
+
+    private func confirmationRequirementPayload(toolName: String) -> [String: Any] {
+        [
+            "required": true,
+            "confirmArgument": "confirm",
+            "confirmValue": true,
+            "supportedModes": [
+                "confirmArgument",
+                "elicitation/form"
+            ],
+            "fallback": "Clients without MCP elicitation support must call \(toolName) with confirm: true after explicit user approval."
+        ]
+    }
 }
 
 private enum AnvilCommandFacadeError: LocalizedError {
@@ -4175,7 +4190,7 @@ private let workflowPromptDefinitions: [WorkflowPromptDefinition] = [
         Improve the chorus while preserving the best material around it.
         Inspect current takes, the loaded clip, the current/last region, and presets first.
         If a takeID is provided, load it with load_editor_audio and poll the operation before editing.
-        Validate edits with dryRun before any mutation; require explicit confirm for inpaint or DSP changes.
+        Validate edits with dryRun before any mutation; require confirm: true or MCP elicitation approval for inpaint or DSP changes.
         Use direction as the creative target, or infer a conservative chorus polish if direction is blank.
         """
     ),
@@ -4265,7 +4280,7 @@ private let workflowPromptDefinitions: [WorkflowPromptDefinition] = [
         Clean the specified region only.
         Use regionStart and regionEnd as the selection boundaries, and keep every mutation bounded to that range unless the user says otherwise.
         Prefer DSP for mechanical cleanup and submit_editor_inpaint for musical replacement.
-        Always run dryRun first, then require confirm: true before applying an editor mutation.
+        Always run dryRun first, then require confirm: true or MCP elicitation approval before applying an editor mutation.
         """
     ),
     WorkflowPromptDefinition(

@@ -187,6 +187,7 @@ private final class AnvilMCPSDKBridge {
     private var transport: StatefulHTTPServerTransport
     private var isStarted = false
     private var hasActiveSession = false
+    private var clientSupportsFormElicitation = false
 
     init(facade: AnvilCommandFacade, version: String) {
         self.facade = facade
@@ -212,7 +213,9 @@ private final class AnvilMCPSDKBridge {
     func start() async throws {
         guard !isStarted else { return }
         await registerHandlers()
-        try await server.start(transport: transport)
+        try await server.start(transport: transport) { [weak self] _, capabilities in
+            await self?.recordClientCapabilities(capabilities)
+        }
         isStarted = true
     }
 
@@ -230,6 +233,7 @@ private final class AnvilMCPSDKBridge {
             hasActiveSession = true
         } else if request.method.uppercased() == "DELETE", (200..<300).contains(response.statusCode) {
             hasActiveSession = false
+            clientSupportsFormElicitation = false
             _ = await resetSessionTransport()
         }
 
@@ -246,15 +250,22 @@ private final class AnvilMCPSDKBridge {
         server = components.server
         transport = components.transport
         hasActiveSession = false
+        clientSupportsFormElicitation = false
 
         do {
             await registerHandlers()
-            try await server.start(transport: transport)
+            try await server.start(transport: transport) { [weak self] _, capabilities in
+                await self?.recordClientCapabilities(capabilities)
+            }
             isStarted = true
             return nil
         } catch {
             return .error(statusCode: 500, .internalError("Failed to reset MCP session transport: \(error.localizedDescription)"))
         }
+    }
+
+    private func recordClientCapabilities(_ capabilities: Client.Capabilities) {
+        clientSupportsFormElicitation = capabilities.elicitation?.form != nil
     }
 
     private func isInitializeRequest(_ request: MCP.HTTPRequest) -> Bool {
@@ -410,6 +421,15 @@ private final class AnvilMCPSDKBridge {
     }
 
     private func executeTool(name: String, arguments: [String: Any]) async throws -> Any {
+        switch await confirmedArgumentsIfNeeded(toolName: name, arguments: arguments) {
+        case .proceed(let confirmedArguments):
+            return try await executeConfirmedTool(name: name, arguments: confirmedArguments)
+        case .declined(let payload):
+            return payload
+        }
+    }
+
+    private func executeConfirmedTool(name: String, arguments: [String: Any]) async throws -> Any {
         switch name {
         case "list_models":
             return await facade.listModels()
@@ -456,6 +476,156 @@ private final class AnvilMCPSDKBridge {
         default:
             throw MCPError.methodNotFound("Unknown Anvil tool: \(name)")
         }
+    }
+
+    private enum ConfirmationDecision {
+        case proceed([String: Any])
+        case declined([String: Any])
+    }
+
+    private func confirmedArgumentsIfNeeded(
+        toolName: String,
+        arguments: [String: Any]
+    ) async -> ConfirmationDecision {
+        guard requiresElicitableConfirmation(toolName),
+              boolArgument(arguments["confirm"]) != true,
+              !isDryRun(arguments) else {
+            return .proceed(arguments)
+        }
+
+        guard clientSupportsFormElicitation else {
+            return .proceed(arguments)
+        }
+
+        do {
+            let result = try await server.requestElicitation(
+                message: confirmationMessage(for: toolName),
+                requestedSchema: confirmationSchema(for: toolName),
+                mode: .form,
+                _meta: Metadata(additionalFields: [
+                    "anvilTool": .string(toolName),
+                    "confirmArgument": .string("confirm")
+                ])
+            )
+
+            guard result.action == .accept else {
+                return .declined(confirmationDeclinedPayload(
+                    toolName: toolName,
+                    action: result.action.rawValue,
+                    reason: "User \(pastTense(result.action)) the MCP confirmation request."
+                ))
+            }
+
+            guard result.content?["approved"]?.boolValue == true else {
+                return .declined(confirmationDeclinedPayload(
+                    toolName: toolName,
+                    action: result.action.rawValue,
+                    reason: "The MCP confirmation response did not set approved=true."
+                ))
+            }
+
+            var confirmedArguments = arguments
+            confirmedArguments["confirm"] = true
+            return .proceed(confirmedArguments)
+        } catch {
+            return .proceed(arguments)
+        }
+    }
+
+    private func requiresElicitableConfirmation(_ toolName: String) -> Bool {
+        switch toolName {
+        case "submit_editor_inpaint", "apply_editor_effect_chain", "release_memory":
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func isDryRun(_ arguments: [String: Any]) -> Bool {
+        boolArgument(arguments["dryRun"] ?? arguments["validateOnly"]) == true
+    }
+
+    private func boolArgument(_ value: Any?) -> Bool? {
+        switch value {
+        case let value as Bool:
+            return value
+        case let value as NSNumber:
+            return value.boolValue
+        case let value as String:
+            switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            case "true", "yes", "1":
+                return true
+            case "false", "no", "0":
+                return false
+            default:
+                return nil
+            }
+        default:
+            return nil
+        }
+    }
+
+    private func confirmationSchema(for toolName: String) -> Elicitation.RequestSchema {
+        Elicitation.RequestSchema(
+            title: "Confirm Anvil MCP Action",
+            description: "Approve only if this local Anvil action was intentional.",
+            properties: [
+                "approved": [
+                    "type": "boolean",
+                    "title": "Approve",
+                    "description": "Set true to run \(toolName). Leave false to decline.",
+                    "default": false
+                ]
+            ],
+            required: ["approved"]
+        )
+    }
+
+    private func confirmationMessage(for toolName: String) -> String {
+        switch toolName {
+        case "submit_editor_inpaint":
+            return "Anvil wants to submit a selected-region editor inpaint/repaint mutation. Approve this action?"
+        case "apply_editor_effect_chain":
+            return "Anvil wants to apply DSP effects to the loaded editor audio. Approve this mutation?"
+        case "release_memory":
+            return "Anvil wants to cancel active generation if needed, unload model weights, and flush MLX GPU cache. Approve this action?"
+        default:
+            return "Anvil wants to run \(toolName). Approve this action?"
+        }
+    }
+
+    private func pastTense(_ action: CreateElicitation.Result.Action) -> String {
+        switch action {
+        case .accept:
+            return "accepted"
+        case .decline:
+            return "declined"
+        case .cancel:
+            return "cancelled"
+        }
+    }
+
+    private func confirmationDeclinedPayload(
+        toolName: String,
+        action: String,
+        reason: String
+    ) -> [String: Any] {
+        [
+            "submitted": false,
+            "dryRun": false,
+            "tool": toolName,
+            "operationID": NSNull(),
+            "operation": NSNull(),
+            "confirmation": [
+                "required": true,
+                "accepted": false,
+                "mode": "elicitation/form",
+                "action": action,
+                "reason": reason,
+                "confirmArgument": "confirm",
+                "fallback": "Clients without MCP elicitation can call again with confirm: true after explicit user approval."
+            ]
+        ]
     }
 
     private func canonicalToolName(_ name: String) -> String {
@@ -646,7 +816,7 @@ private enum MCPPromptCatalog {
                 Inspect anvil://takes, anvil://track/current, anvil://clip/current, anvil://region/current-selection, and anvil://presets first.
                 If takeID is provided, call load_editor_audio and poll get_operation until complete.
                 Validate submit_editor_inpaint and apply_editor_effect_chain with dryRun before any mutation.
-                Require confirm: true before inpaint or DSP changes, then render_editor_audio if the user wants an export.
+                Require confirm: true or MCP elicitation approval before inpaint or DSP changes, then render_editor_audio if the user wants an export.
                 """
             )
         case "create_mix_variants":
@@ -678,7 +848,7 @@ private enum MCPPromptCatalog {
 
                 Inspect anvil://track/current, anvil://clip/current, anvil://region/current-selection, and anvil://presets.
                 Use apply_editor_effect_chain for mechanical cleanup and submit_editor_inpaint for musical replacement.
-                Every editor mutation must be scoped to the selected region, dry-run first, and then require confirm: true.
+                Every editor mutation must be scoped to the selected region, dry-run first, and then require confirm: true or MCP elicitation approval.
                 """
             )
         case "prepare_stems_for_review":
@@ -1879,7 +2049,7 @@ private enum MCPToolCatalog {
                 ],
                 "confirm": [
                     "type": "boolean",
-                    "description": "Must be true for an actual editor mutation."
+                    "description": "Set true after explicit approval. If omitted, clients advertising MCP form elicitation may be asked to approve through elicitation/create."
                 ],
                 "dryRun": [
                     "type": "boolean",
@@ -2096,7 +2266,7 @@ private enum MCPToolCatalog {
                 ],
                 "confirm": [
                     "type": "boolean",
-                    "description": "Must be true for an actual editor mutation."
+                    "description": "Set true after explicit approval. If omitted, clients advertising MCP form elicitation may be asked to approve through elicitation/create."
                 ],
                 "dryRun": [
                     "type": "boolean",
@@ -2250,12 +2420,11 @@ private enum MCPToolCatalog {
         tool(
             name: "release_memory",
             title: "Release Memory",
-            description: "Cancel active generation if needed, unload model weights, and flush MLX GPU cache. Requires confirm: true.",
-            required: ["confirm"],
+            description: "Cancel active generation if needed, unload model weights, and flush MLX GPU cache. Requires confirm: true or MCP form elicitation approval.",
             properties: [
                 "confirm": [
                     "type": "boolean",
-                    "description": "Must be true to release memory."
+                    "description": "Set true after explicit approval. If omitted, clients advertising MCP form elicitation may be asked to approve through elicitation/create."
                 ]
             ]
         )

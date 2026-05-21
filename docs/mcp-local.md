@@ -84,12 +84,13 @@ sandboxed app builds may not have permission to read arbitrary paths.
 `submit_editor_inpaint` submits a selected-region editor mutation against the
 loaded editor audio. Use `dryRun: true` to validate and echo the resolved
 request without touching audio. Actual runs require loaded editor audio and
-`confirm: true`, then return an `editor.inpaint` `operationID` for polling or
-cancellation.
+either `confirm: true` or MCP form elicitation approval, then return an
+`editor.inpaint` `operationID` for polling or cancellation.
 `apply_editor_effect_chain` submits one or more DSP effects against the loaded
 editor audio. It accepts a single `effect` or an ordered `effects` array,
 optional `selectionStart`/`selectionEnd`, per-effect `parameters`, and requires
-`confirm: true` for actual mutations. Supported effects are
+`confirm: true` or MCP form elicitation approval for actual mutations.
+Supported effects are
 `trimToSelection`, `deleteSelection`, `fadeIn`, `fadeOut`, `normalize`, `eq`,
 `reverb`, `timeStretch`, and `pitchShift`; the operation reports as
 `editor.applyEffectChain`.
@@ -115,6 +116,14 @@ record.
 MCP permits progress tokens to stay valid after the original response only for
 task-augmented requests, and the Swift SDK version currently integrated here
 does not expose task capabilities yet.
+
+For guarded mutations, Anvil uses the standard MCP `elicitation/create` flow
+when the initialized client advertises form elicitation support and the tool
+call omits `confirm: true`. The elicitation asks for an `approved` boolean;
+only `action: "accept"` with `approved: true` is treated as confirmation.
+Decline/cancel responses return a no-op structured result. Clients without
+elicitation support still use the compatibility fallback: call the tool again
+with `confirm: true` after explicit user approval.
 
 It also exposes controlled app actions:
 
@@ -178,7 +187,8 @@ It exposes one guarded cleanup action:
 `release_memory` runs the same release path as **Settings > Models >
 Release GPU Memory**: it cancels active generation if needed, unloads model
 weights, evicts the local LLM, and flushes the MLX GPU cache. It requires
-`confirm: true` and returns before/after memory counters.
+`confirm: true` or MCP form elicitation approval and returns before/after
+memory counters.
 
 Legacy aliases using `anvil.` and `anvil_` prefixes are still accepted for
 compatibility, for example `anvil.list_history` and `anvil_list_history`.
@@ -241,7 +251,7 @@ The local MCP endpoint advertises reusable workflow prompts through the SDK
 
 These prompts do not mutate app state by themselves. They give a client a
 structured workflow recipe that points at Anvil resources and tools, with the
-same dry-run and `confirm: true` expectations used by the direct tools.
+same dry-run and guarded-confirmation expectations used by the direct tools.
 
 ## Smoke Test
 
@@ -393,7 +403,7 @@ curl -s -X DELETE "$ENDPOINT" \
   `notifications/cancelled` apply to in-flight MCP requests through the SDK;
   after background work has been submitted, use `cancel_operation` for the app
   operation itself.
-- `release_memory` is intentionally guarded because it cancels active
-  generation and unloads resident model state. The next generation or LLM tool
-  call reloads what it needs.
+- `submit_editor_inpaint`, `apply_editor_effect_chain`, and `release_memory`
+  are intentionally guarded. They accept `confirm: true` as the compatibility
+  path and use MCP form elicitation when the client advertises support.
 - The standards direction is tracked in `docs/mcp-standards-roadmap.md`.

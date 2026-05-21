@@ -22,7 +22,9 @@ take marking, and memory release.
 - v1 binds only to `127.0.0.1` / `localhost`.
 - Localhost token/pairing is optional.
 - Token becomes mandatory only for future LAN/remote/tunnel/headless modes.
-- Expensive/destructive operations require explicit `confirm: true`.
+- Expensive/destructive operations require explicit confirmation, either
+  `confirm: true` or MCP form elicitation approval when the client advertises
+  support.
 - No raw tensors or model internals in v1.
 - MCP must call app services through a command facade, not SwiftUI views.
 - Public tool names are plain snake_case. Legacy `anvil.` and `anvil_` aliases
@@ -101,7 +103,7 @@ with explicit safeguards.
 - [x] `list_operations`
 - [x] `get_operation`
 - [x] `cancel_operation`
-- [x] `release_memory` with required `confirm: true`
+- [x] `release_memory` with required confirmation
 
 Implementation note: `enhance_prompt` and `write_lyrics` are
 return-only action tools. They reuse the same `PromptEnhancer` and
@@ -154,8 +156,16 @@ bounces the current editor buffer or a selected time range to WAV/AIFF using
 
 Implementation note: `release_memory` is the first guarded cleanup
 action. It calls the same consolidated `GenerationService.unloadAllWeights()`
-path as Settings, requires `confirm: true`, and returns before/after MLX active,
-cache, and peak memory counters so an MCP client can verify cleanup.
+path as Settings, requires `confirm: true` or MCP form elicitation approval,
+and returns before/after MLX active, cache, and peak memory counters so an MCP
+client can verify cleanup.
+
+Implementation note: guarded MCP mutations now use the SDK-backed
+`elicitation/create` form flow when the initialized client advertises form
+elicitation support and omits `confirm: true`. Decline/cancel responses return
+a no-op structured result. Clients without elicitation support keep the
+compatibility path and must call again with `confirm: true` after explicit user
+approval.
 
 Implementation note: common editing/generation workflows are now exposed through
 MCP prompts instead of broad generic tools. Initial prompt names are
@@ -239,5 +249,6 @@ read-only phase.
 - [x] `editor_status`, `load_editor_audio`, `submit_editor_inpaint`, and
       `apply_editor_effect_chain`, and `render_editor_audio` expose editor
       operations with confirmation on destructive edit paths.
-- [x] `release_memory` refuses to run without `confirm: true`.
+- [x] `release_memory` refuses to run without `confirm: true` or MCP form
+      elicitation approval.
 - [ ] App quit stops the MCP server cleanly.

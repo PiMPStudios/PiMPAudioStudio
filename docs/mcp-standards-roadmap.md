@@ -53,12 +53,13 @@ logic concerns, and they should not be reinvented piecemeal inside
   `editor.loadAudio`.
 - `submit_editor_inpaint` submits confirmed editor inpaint/repaint mutations
   through the operation layer. Dry runs validate request shape without touching
-  audio; actual runs require loaded editor audio and `confirm: true`, then
-  report as `editor.inpaint`.
+  audio; actual runs require loaded editor audio plus `confirm: true` or MCP
+  form elicitation approval, then report as `editor.inpaint`.
 - `apply_editor_effect_chain` submits confirmed bounded DSP mutations through
   the same operation layer. Dry runs validate one effect or an ordered effect
   chain; actual runs apply the existing editor DSP processor, refresh editable
-  latents, and report as `editor.applyEffectChain`.
+  latents, and report as `editor.applyEffectChain` after `confirm: true` or MCP
+  form elicitation approval.
 - `render_editor_audio` exports the current editor buffer or selected time range
   to a lossless local file through the same operation layer, reporting as
   `editor.renderAudio`.
@@ -87,6 +88,10 @@ logic concerns, and they should not be reinvented piecemeal inside
   `_meta.progressToken` and keep `GET /mcp` open. Background app operations are
   still exposed through pollable operation records because MCP progress tokens
   remain valid after a response only for task-augmented requests.
+- Guarded MCP mutations preserve `confirm: true` as the compatibility path and
+  use SDK `elicitation/create` form prompts when the initialized client
+  advertises form elicitation support. Decline/cancel responses return no-op
+  structured results and do not reach the app mutation path.
 - The current Swift SDK integration does not expose MCP task capability types
   yet, so `tasks/get`, `tasks/result`, `tasks/list`, and `tasks/cancel` remain a
   future experimental slice rather than a hand-rolled partial protocol.
@@ -162,9 +167,9 @@ Prompts should capture reusable workflows:
 - make a sparse prompt more production-ready
 
 Long-running operations should use progress and cancellation support where the
-client supports it. Expensive or destructive actions should continue requiring
-explicit confirmation arguments and, later, MCP elicitation when supported by
-the host client.
+client supports it. Expensive or destructive actions should continue accepting
+explicit confirmation arguments and use MCP elicitation when the host client
+advertises support.
 
 The current polling-compatible operation layer is intentionally shaped around
 MCP progress semantics: operation progress payloads use normalized `progress`,
@@ -296,8 +301,8 @@ Anvil's JSON-safe facade payloads and SDK `Value` objects.
   pollable operation contract.
 - Preserve `cancel_operation` for app-owned background jobs while relying on SDK
   cancellation notifications for in-flight MCP requests.
-- Add stronger confirmation and, where supported, elicitation for destructive
-  editing actions.
+- Extend the current confirmation/elicitation pattern before adding broader
+  destructive editing actions.
 - Defer LAN/remote access until authentication and session posture are
   revisited.
 

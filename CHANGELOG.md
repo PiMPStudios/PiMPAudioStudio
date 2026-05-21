@@ -64,10 +64,14 @@ All notable changes to AnvilApp are documented here.
   POST requests may return SSE, `GET /mcp` opens the standalone server stream,
   and `DELETE /mcp` terminates and resets the embedded SDK session. Tool calls
   with `_meta.progressToken` emit request-scoped `notifications/progress`.
+- **MCP elicitation confirmations** — guarded mutations now use SDK
+  `elicitation/create` form prompts when a client advertises form elicitation
+  and omits `confirm: true`. The existing `confirm: true` path remains the
+  compatibility fallback for clients without elicitation support.
 - **MCP normalized operation progress** — pollable generation operation records
   now expose `progress` / `total` as whole-operation completion values, with
   `stageProgress` / `stageTotal` preserving stage-local counters when available.
-- **MCP guarded memory release** — the local MCP endpoint now exposes `release_memory`, which runs the same consolidated model-unload and MLX GPU-cache flush path as Settings. The tool requires `confirm: true` and returns before/after active, cache, and peak memory counters for agent-visible cleanup checks.
+- **MCP guarded memory release** — the local MCP endpoint now exposes `release_memory`, which runs the same consolidated model-unload and MLX GPU-cache flush path as Settings. The tool requires `confirm: true` or MCP form elicitation approval and returns before/after active, cache, and peak memory counters for agent-visible cleanup checks.
 - **MCP standards roadmap** — added `docs/mcp-standards-roadmap.md` to lock in the standards-first direction: preserve `AnvilCommandFacade` as the app boundary, prefer the official Swift MCP SDK for transport/lifecycle/schema handling where practical, stage Swift 6/concurrency migration instead of flipping the whole app at once, and plan richer workstation resources, prompts, progress, and cancellation support.
 - **Serial AnvilCore test baseline** — added `scripts/test-anvilcore-serial.sh` to enumerate AnvilCore test suites and run each suite filter in its own `swift test` invocation while the raw whole-suite runner still trips MLX under all-at-once scheduling.
 - **Swift MCP SDK spike package** — added `Spikes/MCPServerSDKSpike`, an isolated Swift 6 package that resolves `modelcontextprotocol/swift-sdk`, exposes `list_history` plus `anvil://history`, and verifies SDK client discovery plus stateless HTTP handling for the same JSON-RPC method shape used by the MCP smoke script.
