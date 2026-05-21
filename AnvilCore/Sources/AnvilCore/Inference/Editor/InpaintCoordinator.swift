@@ -117,6 +117,46 @@ public actor InpaintCoordinator {
         )
     }
 
+    /// Replace the currently loaded audio with an edited buffer and refresh the
+    /// editable latent cache so subsequent AI edits operate on the new audio.
+    public func replaceAudio(
+        samples: MLXArray,
+        sampleRate: Int,
+        description: String,
+        precision: Precision = .float32
+    ) async throws -> AudioLoadResult {
+        self.sampleRate = sampleRate
+        let numSamples = samples.shape[1]
+        self.totalDuration = Double(numSamples) / Double(sampleRate)
+
+        let latents = try await vaeActor.encodeMean(audio: samples, precision: precision)
+        self.currentLatents = latents
+        self.currentAudio = samples
+        self.latentFrames = latents.shape[1]
+
+        self.sfxCurrentLatents = nil
+        self.sfxLatentFrames = 0
+        if let sfxVAE = sfxVAEActor, await sfxVAE.isLoaded {
+            if let sfxLat = try? await sfxVAE.encodeMean(audio: samples) {
+                self.sfxCurrentLatents = sfxLat
+                self.sfxLatentFrames = sfxLat.shape[1]
+            }
+        }
+
+        let snapshot = EditSnapshot(
+            description: description,
+            audioData: Data(),
+            latents: nil
+        )
+        historyManager.push(snapshot)
+
+        return AudioLoadResult(
+            duration: totalDuration,
+            sampleRate: sampleRate,
+            latentFrames: latentFrames
+        )
+    }
+
     // MARK: - Edit
 
     public func edit(request: InpaintRequest) -> AsyncStream<InpaintProgress> {

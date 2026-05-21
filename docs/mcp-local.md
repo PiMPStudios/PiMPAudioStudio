@@ -59,6 +59,7 @@ The local MCP endpoint exposes read/status tools:
 - `editor_status`
 - `load_editor_audio`
 - `submit_editor_inpaint`
+- `apply_editor_effect_chain`
 - `render_editor_audio`
 - `list_operations`
 - `get_operation`
@@ -77,25 +78,32 @@ operation record.
 editor action descriptors, and the active editor operation when present.
 `load_editor_audio` loads an Anvil history/audio id, or a readable local audio
 path, into the shared editor coordinator as a background operation. It returns
-an `operationID` for polling or cancellation before future inpaint/DSP/render
-tools mutate the editor buffer. History/audio ids are preferred because
+an `operationID` for polling or cancellation before inpaint/DSP/render tools
+mutate the editor buffer. History/audio ids are preferred because
 sandboxed app builds may not have permission to read arbitrary paths.
 `submit_editor_inpaint` submits a selected-region editor mutation against the
 loaded editor audio. Use `dryRun: true` to validate and echo the resolved
 request without touching audio. Actual runs require loaded editor audio and
 `confirm: true`, then return an `editor.inpaint` `operationID` for polling or
 cancellation.
+`apply_editor_effect_chain` submits one or more DSP effects against the loaded
+editor audio. It accepts a single `effect` or an ordered `effects` array,
+optional `selectionStart`/`selectionEnd`, per-effect `parameters`, and requires
+`confirm: true` for actual mutations. Supported effects are
+`trimToSelection`, `deleteSelection`, `fadeIn`, `fadeOut`, `normalize`, `eq`,
+`reverb`, `timeStretch`, and `pitchShift`; the operation reports as
+`editor.applyEffectChain`.
 `render_editor_audio` writes the current editor buffer, or an optional selected
 time range, to a WAV/AIFF file. It defaults to an `MCPExports` folder beside
 the loaded source audio and returns an `editor.renderAudio` `operationID`.
 
 `list_operations`, `get_operation`, and `cancel_operation` expose the current
 operation layer for long-running work. Generation submissions return an
-`operationID`; editor audio loads return `editor.loadAudio` operations, and
-editor inpaint/repaint submissions return `editor.inpaint` operations. Editor
-render submissions return `editor.renderAudio` operations. Clients can poll
-those ids for status/progress or cancel them through the same operation registry
-used by the app.
+`operationID`; editor audio loads return `editor.loadAudio` operations,
+editor inpaint/repaint submissions return `editor.inpaint`, DSP chains return
+`editor.applyEffectChain`, and editor render submissions return
+`editor.renderAudio`. Clients can poll those ids for status/progress or cancel
+them through the same operation registry used by the app.
 
 Protocol progress is currently request-scoped: when a client includes
 `_meta.progressToken` on `tools/call`, Anvil emits start/completed/failed
@@ -116,6 +124,7 @@ It also exposes controlled app actions:
 - `generate`
 - `load_editor_audio`
 - `submit_editor_inpaint`
+- `apply_editor_effect_chain`
 - `render_editor_audio`
 
 `mark_preferred_take` only updates review metadata on an existing trace:
@@ -147,6 +156,12 @@ accepts `regionPrompt`, a selected time range (`selectionStart`/`selectionEnd`
 or a `selection` object), optional frequency band bounds, strength/guidance
 controls, pipeline choice, and seed. It is intentionally confirmation-gated
 because it mutates the shared editor buffer.
+
+`apply_editor_effect_chain` applies confirmed DSP edits to the shared editor
+buffer and refreshes editable latents so future inpaint/render calls see the
+edited audio. Use `effect` for a single effect or `effects` for an ordered
+chain. Selection-only effects require a selected time range; other effects
+default to the whole track.
 
 `render_editor_audio` writes the current editor audio to disk. It accepts an
 optional selected time range, `format: "wav"` or `"aiff"`, `outputPath` or
@@ -333,11 +348,10 @@ curl -s -X DELETE "$ENDPOINT" \
   record; reads the file; encodes editor latents; and updates
   `editor_status.loadedAudio` when complete.
 - `cancel_operation` currently supports active generation operations and
-  background editor load tasks. Client `notifications/cancelled` apply to
-  in-flight MCP requests through the SDK; after background work has been
-  submitted, use `cancel_operation` for the app operation itself. Future
-  editor/render operations should register with the same operation layer before
-  they are exposed as mutating MCP tools.
+  background editor load, inpaint, DSP, and render tasks. Client
+  `notifications/cancelled` apply to in-flight MCP requests through the SDK;
+  after background work has been submitted, use `cancel_operation` for the app
+  operation itself.
 - `release_memory` is intentionally guarded because it cancels active
   generation and unloads resident model state. The next generation or LLM tool
   call reloads what it needs.

@@ -55,6 +55,10 @@ logic concerns, and they should not be reinvented piecemeal inside
   through the operation layer. Dry runs validate request shape without touching
   audio; actual runs require loaded editor audio and `confirm: true`, then
   report as `editor.inpaint`.
+- `apply_editor_effect_chain` submits confirmed bounded DSP mutations through
+  the same operation layer. Dry runs validate one effect or an ordered effect
+  chain; actual runs apply the existing editor DSP processor, refresh editable
+  latents, and report as `editor.applyEffectChain`.
 - `render_editor_audio` exports the current editor buffer or selected time range
   to a lossless local file through the same operation layer, reporting as
   `editor.renderAudio`.
@@ -158,10 +162,10 @@ when the active stage has its own counters. Request-scoped
 when a progress token is supplied. Background generation/editor progress should
 remain on the operation record until a later task/progress design maps app
 operations to MCP task-augmented requests for their full lifetime.
-`load_editor_audio` now proves the same operation shape for editor-owned work
-before destructive inpaint, DSP, or render tools are exposed. `cancel_operation`
-gives clients an app tool today, while SDK `notifications/cancelled` handling
-covers in-flight MCP request cancellation.
+`load_editor_audio` proved the same operation shape for editor-owned work;
+inpaint, DSP, and render now extend that pattern. `cancel_operation` gives
+clients an app tool today, while SDK `notifications/cancelled` handling covers
+in-flight MCP request cancellation.
 
 ## Swift 6 Migration Posture
 
@@ -271,8 +275,8 @@ Anvil's JSON-safe facade payloads and SDK `Value` objects.
 
 ### Phase 3 - Rich Workstation Capabilities
 
-- Extend the current `editor.loadAudio` operation pattern to inpaint, DSP, and
-  render actions with explicit confirmation where edits are destructive.
+- [x] Extend the current `editor.loadAudio` operation pattern to inpaint, DSP,
+      and render actions with explicit confirmation where edits are destructive.
 - Add prompts for common editing/generation workflows.
 - Add project, track, clip, region, take, and preset resources.
 - Map background generation/editor operation progress onto MCP task-augmented

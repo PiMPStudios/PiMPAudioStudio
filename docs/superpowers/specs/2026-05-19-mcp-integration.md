@@ -112,6 +112,9 @@ Add after read-only tools are stable.
 - `submit_editor_inpaint`: submit an inpaint/repaint request against the loaded
   editor audio. Guard: requires `confirm: true` for mutation, supports
   `dryRun`, returns an operation id; implemented.
+- `apply_editor_effect_chain`: submit one or more DSP effects against the
+  loaded editor audio. Guard: requires `confirm: true` for mutation, supports
+  `dryRun`, refreshes editable latents after apply; implemented.
 - `render_editor_audio`: render the loaded editor buffer or a selected time
   range to WAV/AIFF. Guard: refuses overwrite unless requested, supports
   `dryRun`, returns an operation id; implemented.
@@ -219,9 +222,9 @@ facade that wraps the same services the UI already uses.
   whole-operation completion; stage-local counters can be exposed as
   `stageProgress` / `stageTotal`.
 - Editor-owned work follows the same operation contract. Implemented editor
-  operations are `editor.loadAudio`, `editor.inpaint`, and
-  `editor.renderAudio`; DSP tools should extend that shape and require explicit
-  confirmation where they mutate audio destructively.
+  operations are `editor.loadAudio`, `editor.inpaint`,
+  `editor.applyEffectChain`, and `editor.renderAudio`; DSP tools require
+  explicit confirmation where they mutate audio destructively.
 - `tools/call` requests may include `_meta.progressToken`. When a token is
   supplied and the client keeps `GET /mcp` open, Anvil emits request-scoped
   `notifications/progress` for start/completion/failure. These notifications

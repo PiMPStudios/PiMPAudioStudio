@@ -43,6 +43,11 @@ All notable changes to AnvilApp are documented here.
   supports dry-run validation, selected time ranges, optional frequency bands,
   strength/guidance/pipeline controls, seeded runs, `editor.inpaint` operation
   polling, cancellation, and `editor_status.lastEdit` metadata after completion.
+- **MCP editor DSP chains** — the local MCP endpoint now exposes
+  `apply_editor_effect_chain` for confirmed DSP mutations against loaded editor
+  audio. It supports dry-run validation, ordered effect chains, selection-aware
+  fade/trim/delete actions, EQ/reverb/time-stretch/pitch-shift parameters,
+  editable-latent refresh, and `editor.applyEffectChain` polling/cancellation.
 - **MCP editor render export** — the local MCP endpoint now exposes
   `render_editor_audio` for exporting the current editor buffer or selected time
   range to WAV/AIFF. It resolves a default `MCPExports` path, refuses accidental

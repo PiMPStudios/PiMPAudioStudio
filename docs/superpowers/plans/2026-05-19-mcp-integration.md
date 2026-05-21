@@ -86,6 +86,7 @@ with explicit safeguards.
 - [x] `editor_status`
 - [x] `load_editor_audio`
 - [x] `submit_editor_inpaint`
+- [x] `apply_editor_effect_chain`
 - [x] `render_editor_audio`
 - [x] `list_operations`
 - [x] `get_operation`
@@ -135,8 +136,11 @@ readable local path, registers `editor.loadAudio`, loads the file into the
 shared editor coordinator, and records loaded-audio metadata when latent
 encoding completes. `submit_editor_inpaint` extends the same operation shape to
 confirmed selected-region editor mutations, with `dryRun` validation and
-`editor.inpaint` polling/cancellation. `render_editor_audio` bounces the current
-editor buffer or a selected time range to WAV/AIFF using `editor.renderAudio`.
+`editor.inpaint` polling/cancellation. `apply_editor_effect_chain` applies
+confirmed DSP chains through the existing editor DSP processor, re-encodes
+editable latents, and reports as `editor.applyEffectChain`. `render_editor_audio`
+bounces the current editor buffer or a selected time range to WAV/AIFF using
+`editor.renderAudio`.
 
 Implementation note: `release_memory` is the first guarded cleanup
 action. It calls the same consolidated `GenerationService.unloadAllWeights()`
@@ -215,7 +219,7 @@ read-only phase.
       `notifications/progress` when `_meta.progressToken` is supplied.
 - [x] Pollable operation payloads expose normalized whole-operation progress.
 - [x] `editor_status`, `load_editor_audio`, `submit_editor_inpaint`, and
-      `render_editor_audio` expose editor operations with confirmation on the
-      destructive edit path.
+      `apply_editor_effect_chain`, and `render_editor_audio` expose editor
+      operations with confirmation on destructive edit paths.
 - [x] `release_memory` refuses to run without `confirm: true`.
 - [ ] App quit stops the MCP server cleanly.

@@ -62,6 +62,16 @@ final class AnvilCommandFacade {
         "error": (1.00, 0.00),
         "cancelled": (1.00, 0.00)
     ]
+    private let editorDSPProgressPlan: [String: (base: Double, span: Double)] = [
+        "queued": (0.00, 0.02),
+        "readingBuffer": (0.02, 0.13),
+        "applyingEffects": (0.15, 0.35),
+        "preparingAudio": (0.50, 0.10),
+        "encodingLatents": (0.60, 0.35),
+        "complete": (1.00, 0.00),
+        "error": (1.00, 0.00),
+        "cancelled": (1.00, 0.00)
+    ]
 
     init(
         registry: ModelRegistry,
@@ -698,6 +708,54 @@ final class AnvilCommandFacade {
 
         operationTasks[operation.id] = Task { [weak self] in
             await self?.runEditorRenderOperation(id: operation.id, request: request)
+        }
+
+        return [
+            "submitted": true,
+            "dryRun": false,
+            "request": requestPayload,
+            "operationID": operation.id,
+            "operation": operationPayload(operation)
+        ]
+    }
+
+    func applyEditorEffectChain(arguments: [String: Any]) async throws -> [String: Any] {
+        let dryRun = boolValue(arguments["dryRun"] ?? arguments["validateOnly"]) == true
+        let loadedAudio = editorService?.loadedAudio
+        let request = try editorDSPRequest(arguments, loadedAudio: loadedAudio)
+        let requestPayload = editorDSPRequestPayload(request)
+
+        if dryRun {
+            return [
+                "submitted": false,
+                "dryRun": true,
+                "requiresLoadedAudio": true,
+                "requiresConfirmation": true,
+                "request": requestPayload,
+                "operationID": NSNull(),
+                "operation": NSNull()
+            ]
+        }
+
+        guard boolValue(arguments["confirm"]) == true else {
+            throw AnvilCommandFacadeError.confirmationRequired("apply_editor_effect_chain")
+        }
+        guard let editorService, let coordinator = editorService.coordinator else {
+            throw AnvilCommandFacadeError.editorServiceUnavailable
+        }
+        guard await coordinator.hasLoadedAudio, editorService.loadedAudio != nil else {
+            throw AnvilCommandFacadeError.editorAudioNotLoaded
+        }
+
+        let operation = registerOperation(
+            kind: "editor.applyEffectChain",
+            title: request.steps.count == 1 ? "Apply editor effect" : "Apply editor effect chain",
+            request: requestPayload,
+            progress: editorDSPProgressPayload(stage: "queued", message: "Editor DSP chain accepted.")
+        )
+
+        operationTasks[operation.id] = Task { [weak self] in
+            await self?.runEditorDSPOperation(id: operation.id, request: request)
         }
 
         return [
@@ -1523,6 +1581,21 @@ final class AnvilCommandFacade {
         )
     }
 
+    private func editorDSPProgressPayload(
+        stage: String,
+        message: String,
+        stageProgress: Double? = nil,
+        stageTotal: Double? = nil
+    ) -> [String: Any] {
+        operationProgressPayload(
+            stage: stage,
+            message: message,
+            plan: editorDSPProgressPlan,
+            stageProgress: stageProgress,
+            stageTotal: stageTotal
+        )
+    }
+
     private func cancellationProgressPayload(for record: MCPOperationRecord) -> [String: Any] {
         if record.kind == "generation" {
             return generationOperationProgressPayload(.cancelled)
@@ -1535,6 +1608,9 @@ final class AnvilCommandFacade {
         }
         if record.kind == "editor.renderAudio" {
             return editorRenderProgressPayload(stage: "cancelled", message: "Editor render cancelled.")
+        }
+        if record.kind == "editor.applyEffectChain" {
+            return editorDSPProgressPayload(stage: "cancelled", message: "Editor DSP chain cancelled.")
         }
         return [
             "stage": "cancelled",
@@ -1798,6 +1874,132 @@ final class AnvilCommandFacade {
         }
     }
 
+    private func runEditorDSPOperation(id: String, request: EditorDSPRequest) async {
+        defer { operationTasks[id] = nil }
+
+        do {
+            try Task.checkCancellation()
+            guard let editorService, let coordinator = editorService.coordinator else {
+                throw AnvilCommandFacadeError.editorServiceUnavailable
+            }
+            guard let loadedAudio = editorService.loadedAudio else {
+                throw AnvilCommandFacadeError.editorAudioNotLoaded
+            }
+
+            updateOperationProgress(
+                id: id,
+                progress: editorDSPProgressPayload(stage: "readingBuffer", message: "Reading editor audio buffer.")
+            )
+            guard let currentAudio = await coordinator.getCurrentAudio() else {
+                throw AnvilCommandFacadeError.editorAudioNotLoaded
+            }
+
+            try Task.checkCancellation()
+            var workingBuffer = AudioBufferConverter.fromMLXArray(
+                currentAudio,
+                sampleRate: loadedAudio.sampleRate
+            )
+            let beforeBuffer = workingBuffer
+            let processor = DSPProcessor()
+            var summaries: [EditorDSPEffectSummary] = []
+
+            for (index, step) in request.steps.enumerated() {
+                try Task.checkCancellation()
+                let operation = processor.makeDescription(
+                    effect: step.effect,
+                    target: step.target,
+                    parameters: step.parameters
+                )
+                updateOperationProgress(
+                    id: id,
+                    progress: editorDSPProgressPayload(
+                        stage: "applyingEffects",
+                        message: "Applying \(step.effect.displayName).",
+                        stageProgress: Double(index),
+                        stageTotal: Double(request.steps.count)
+                    )
+                )
+                workingBuffer = try processor.apply(
+                    effect: step.effect,
+                    to: workingBuffer,
+                    target: step.target,
+                    parameters: step.parameters
+                )
+                summaries.append(editorDSPEffectSummary(step: step, description: operation.description))
+            }
+
+            try Task.checkCancellation()
+            updateOperationProgress(
+                id: id,
+                progress: editorDSPProgressPayload(
+                    stage: "applyingEffects",
+                    message: "Applied editor DSP chain.",
+                    stageProgress: Double(request.steps.count),
+                    stageTotal: Double(request.steps.count)
+                )
+            )
+
+            updateOperationProgress(
+                id: id,
+                progress: editorDSPProgressPayload(stage: "preparingAudio", message: "Preparing edited audio buffer.")
+            )
+            let editedSamples = AudioBufferConverter.toMLXArray(workingBuffer)
+
+            try Task.checkCancellation()
+            updateOperationProgress(
+                id: id,
+                progress: editorDSPProgressPayload(stage: "encodingLatents", message: "Encoding edited audio latents.")
+            )
+            let loadResult = try await coordinator.replaceAudio(
+                samples: editedSamples,
+                sampleRate: workingBuffer.sampleRate,
+                description: request.description,
+                precision: .float32
+            )
+
+            try Task.checkCancellation()
+            let updatedAudio = loadedAudio.updating(
+                duration: loadResult.duration,
+                sampleRate: loadResult.sampleRate,
+                channels: workingBuffer.channels,
+                frameCount: workingBuffer.frameCount,
+                latentFrames: loadResult.latentFrames
+            )
+            let summary = EditorEditSummary(
+                dspEffects: summaries,
+                beforeDuration: beforeBuffer.duration,
+                afterDuration: workingBuffer.duration,
+                completedAt: Date()
+            )
+            editorService.recordCompletedEdit(summary, loadedAudio: updatedAudio)
+
+            completeOperation(
+                id: id,
+                progress: editorDSPProgressPayload(stage: "complete", message: "Editor DSP chain completed."),
+                result: editorDSPResultPayload(
+                    request: request,
+                    sourceAudio: loadedAudio,
+                    updatedAudio: updatedAudio,
+                    beforeBuffer: beforeBuffer,
+                    afterBuffer: workingBuffer,
+                    edit: summary
+                )
+            )
+        } catch is CancellationError {
+            cancelOperationRecord(
+                id: id,
+                reason: "Editor DSP chain was cancelled.",
+                progress: editorDSPProgressPayload(stage: "cancelled", message: "Editor DSP chain cancelled.")
+            )
+        } catch {
+            failOperation(
+                id: id,
+                error: error.localizedDescription,
+                progress: editorDSPProgressPayload(stage: "error", message: error.localizedDescription)
+            )
+        }
+    }
+
     private func readAudioBuffer(from url: URL) async throws -> AudioBuffer {
         try await Task.detached(priority: .userInitiated) {
             let audioFile = try AVAudioFile(forReading: url)
@@ -2024,21 +2226,25 @@ final class AnvilCommandFacade {
 
     private func editorEditSummaryPayload(_ edit: EditorEditSummary) -> [String: Any] {
         [
-            "mode": edit.mode,
-            "regionPrompt": edit.regionPrompt,
+            "kind": edit.kind,
+            "mode": edit.mode.map { $0 as Any } ?? NSNull(),
+            "regionPrompt": edit.regionPrompt.map { $0 as Any } ?? NSNull(),
             "originalPrompt": edit.originalPrompt.map { $0 as Any } ?? NSNull(),
-            "pipeline": edit.pipeline,
+            "pipeline": edit.pipeline.map { $0 as Any } ?? NSNull(),
             "selection": [
-                "startTime": edit.selectionStart,
-                "endTime": edit.selectionEnd,
+                "startTime": edit.selectionStart.map { $0 as Any } ?? NSNull(),
+                "endTime": edit.selectionEnd.map { $0 as Any } ?? NSNull(),
                 "frequencyBand": editorFrequencyBandPayload(
                     lowCutHz: edit.lowCutHz,
                     highCutHz: edit.highCutHz
                 )
             ],
-            "strength": edit.strength,
-            "guidanceScale": edit.guidanceScale,
+            "strength": edit.strength.map { $0 as Any } ?? NSNull(),
+            "guidanceScale": edit.guidanceScale.map { $0 as Any } ?? NSNull(),
             "seed": edit.seed.map { $0 as Any } ?? NSNull(),
+            "dspEffects": edit.dspEffects.map(editorDSPEffectSummaryPayload),
+            "beforeDuration": edit.beforeDuration.map { $0 as Any } ?? NSNull(),
+            "afterDuration": edit.afterDuration.map { $0 as Any } ?? NSNull(),
             "completedAt": dateFormatter.string(from: edit.completedAt)
         ]
     }
@@ -2081,6 +2287,175 @@ final class AnvilCommandFacade {
             "selection": request.selection.map { editorSelectionPayload($0) as Any } ?? NSNull(),
             "sourceLoadedAudio": editorLoadedAudioPayload(sourceAudio)
         ]
+    }
+
+    private func editorDSPRequestPayload(_ request: EditorDSPRequest) -> [String: Any] {
+        [
+            "effectCount": request.steps.count,
+            "description": request.description,
+            "effects": request.steps.map(editorDSPStepPayload)
+        ]
+    }
+
+    private func editorDSPStepPayload(_ step: EditorDSPEffectStep) -> [String: Any] {
+        [
+            "effect": step.effect.rawValue,
+            "displayName": step.effect.displayName,
+            "target": editorDSPTargetPayload(step.target),
+            "parameters": editorDSPParametersPayload(step.parameters)
+        ]
+    }
+
+    private func editorDSPResultPayload(
+        request: EditorDSPRequest,
+        sourceAudio: EditorLoadedAudio,
+        updatedAudio: EditorLoadedAudio,
+        beforeBuffer: AudioBuffer,
+        afterBuffer: AudioBuffer,
+        edit: EditorEditSummary
+    ) -> [String: Any] {
+        [
+            "request": editorDSPRequestPayload(request),
+            "edit": editorEditSummaryPayload(edit),
+            "sourceLoadedAudio": editorLoadedAudioPayload(sourceAudio),
+            "updatedLoadedAudio": editorLoadedAudioPayload(updatedAudio),
+            "before": editorAudioBufferPayload(beforeBuffer),
+            "after": editorAudioBufferPayload(afterBuffer),
+            "canUndo": true,
+            "canRedo": false
+        ]
+    }
+
+    private func editorAudioBufferPayload(_ buffer: AudioBuffer) -> [String: Any] {
+        [
+            "duration": buffer.duration,
+            "sampleRate": buffer.sampleRate,
+            "channels": buffer.channels,
+            "frameCount": buffer.frameCount
+        ]
+    }
+
+    private func editorDSPEffectSummary(
+        step: EditorDSPEffectStep,
+        description: String
+    ) -> EditorDSPEffectSummary {
+        let selection: (start: TimeInterval?, end: TimeInterval?)
+        switch step.target {
+        case .selection(let start, let end):
+            selection = (start, end)
+        case .wholeTrack:
+            selection = (nil, nil)
+        }
+        return EditorDSPEffectSummary(
+            effect: step.effect.rawValue,
+            displayName: step.effect.displayName,
+            description: description,
+            target: editorDSPTargetName(step.target),
+            selectionStart: selection.start,
+            selectionEnd: selection.end,
+            parameters: editorDSPParameterSummary(step.parameters)
+        )
+    }
+
+    private func editorDSPEffectSummaryPayload(_ summary: EditorDSPEffectSummary) -> [String: Any] {
+        [
+            "effect": summary.effect,
+            "displayName": summary.displayName,
+            "description": summary.description,
+            "target": summary.target,
+            "selection": [
+                "startTime": summary.selectionStart.map { $0 as Any } ?? NSNull(),
+                "endTime": summary.selectionEnd.map { $0 as Any } ?? NSNull()
+            ],
+            "parameters": summary.parameters
+        ]
+    }
+
+    private func editorDSPTargetPayload(_ target: ApplyTarget) -> [String: Any] {
+        switch target {
+        case .wholeTrack:
+            return [
+                "type": "wholeTrack",
+                "selection": NSNull()
+            ]
+        case .selection(let start, let end):
+            return [
+                "type": "selection",
+                "selection": [
+                    "startTime": start,
+                    "endTime": end
+                ]
+            ]
+        }
+    }
+
+    private func editorDSPTargetName(_ target: ApplyTarget) -> String {
+        switch target {
+        case .wholeTrack:
+            return "wholeTrack"
+        case .selection:
+            return "selection"
+        }
+    }
+
+    private func editorDSPParametersPayload(_ parameters: DSPParameters) -> Any {
+        switch parameters {
+        case .none:
+            return NSNull()
+        case .eq(let params):
+            return [
+                "bands": params.bands.map { band in
+                    [
+                        "frequency": band.frequency,
+                        "gain": band.gain,
+                        "q": band.q
+                    ]
+                }
+            ]
+        case .reverb(let params):
+            return [
+                "decayTime": params.decayTime,
+                "wetDryMix": params.wetDryMix,
+                "preDelay": params.preDelay,
+                "damping": params.damping
+            ]
+        case .timeStretch(let params):
+            return ["rate": params.rate]
+        case .pitchShift(let params):
+            return [
+                "pitch": params.pitch,
+                "semitones": params.pitch / 100.0
+            ]
+        }
+    }
+
+    private func editorDSPParameterSummary(_ parameters: DSPParameters) -> [String: Double] {
+        switch parameters {
+        case .none:
+            return [:]
+        case .eq(let params):
+            var summary: [String: Double] = [:]
+            for (index, band) in params.bands.enumerated() {
+                summary["band\(index + 1)Frequency"] = Double(band.frequency)
+                summary["band\(index + 1)Gain"] = Double(band.gain)
+                summary["band\(index + 1)Q"] = Double(band.q)
+            }
+            return summary
+        case .reverb(let params):
+            return [
+                "decayTime": Double(params.decayTime),
+                "wetDryMix": Double(params.wetDryMix),
+                "preDelay": Double(params.preDelay),
+                "damping": Double(params.damping)
+            ]
+        case .timeStretch(let params):
+            return ["rate": Double(params.rate)]
+        case .pitchShift(let params):
+            return [
+                "pitch": Double(params.pitch),
+                "semitones": Double(params.pitch / 100.0)
+            ]
+        }
     }
 
     private func editorSelectionPayload(_ selection: InpaintSelection) -> [String: Any] {
@@ -2144,6 +2519,326 @@ final class AnvilCommandFacade {
             selection: selection,
             overwrite: boolValue(arguments["overwrite"]) == true
         )
+    }
+
+    private func editorDSPRequest(
+        _ arguments: [String: Any],
+        loadedAudio: EditorLoadedAudio?
+    ) throws -> EditorDSPRequest {
+        let rawSteps = try editorDSPRawSteps(from: arguments)
+        let steps = try rawSteps.map { try editorDSPEffectStep($0, topLevel: arguments, loadedAudio: loadedAudio) }
+        guard !steps.isEmpty else {
+            throw AnvilCommandFacadeError.editorDSPChainEmpty
+        }
+        let descriptions = steps.map { step in
+            DSPProcessor()
+                .makeDescription(effect: step.effect, target: step.target, parameters: step.parameters)
+                .description
+        }
+        return EditorDSPRequest(
+            steps: steps,
+            description: descriptions.joined(separator: " -> ")
+        )
+    }
+
+    private func editorDSPRawSteps(from arguments: [String: Any]) throws -> [[String: Any]] {
+        if let rawEffects = arguments["effects"] ?? arguments["effectChain"] ?? arguments["chain"] {
+            if let typed = rawEffects as? [[String: Any]] {
+                return typed
+            }
+            if let rawItems = rawEffects as? [Any] {
+                let items = rawItems.compactMap { item -> [String: Any]? in
+                    if let object = item as? [String: Any] { return object }
+                    if let name = stringValue(item) { return ["effect": name] }
+                    return nil
+                }
+                guard items.count == rawItems.count else {
+                    throw AnvilCommandFacadeError.invalidDSPChain
+                }
+                return items
+            }
+            throw AnvilCommandFacadeError.invalidDSPChain
+        }
+
+        let effect = stringValue(arguments["effect"] ?? arguments["name"])?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !effect.isEmpty else {
+            throw AnvilCommandFacadeError.missingRequiredArgument("effect")
+        }
+        return [arguments]
+    }
+
+    private func editorDSPEffectStep(
+        _ stepArguments: [String: Any],
+        topLevel: [String: Any],
+        loadedAudio: EditorLoadedAudio?
+    ) throws -> EditorDSPEffectStep {
+        let effectName = stringValue(
+            stepArguments["effect"] ?? stepArguments["name"] ?? stepArguments["type"]
+        )?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !effectName.isEmpty else {
+            throw AnvilCommandFacadeError.missingRequiredArgument("effect")
+        }
+
+        let effect = try editorDSPEffect(from: effectName)
+        let parameters = try editorDSPParameters(
+            for: effect,
+            stepArguments: stepArguments,
+            topLevel: topLevel
+        )
+        let target = try editorDSPTarget(
+            for: effect,
+            stepArguments: stepArguments,
+            topLevel: topLevel,
+            loadedAudio: loadedAudio
+        )
+        return EditorDSPEffectStep(effect: effect, target: target, parameters: parameters)
+    }
+
+    private func editorDSPEffect(from value: String) throws -> DSPEffect {
+        let normalized = value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "_", with: "")
+            .replacingOccurrences(of: "-", with: "")
+            .replacingOccurrences(of: " ", with: "")
+        switch normalized {
+        case "trim", "trimselection", "trimtoselection":
+            return .trimToSelection
+        case "delete", "deleteselection", "cut", "cutselection":
+            return .deleteSelection
+        case "fadein":
+            return .fadeIn
+        case "fadeout":
+            return .fadeOut
+        case "normalize", "normalise":
+            return .normalize
+        case "eq", "equalizer", "equaliser", "parametriceq", "parametricequalizer":
+            return .eq
+        case "reverb":
+            return .reverb
+        case "timestretch", "stretch":
+            return .timeStretch
+        case "pitchshift", "pitch", "transpose":
+            return .pitchShift
+        default:
+            throw AnvilCommandFacadeError.invalidDSPEffect(value)
+        }
+    }
+
+    private func editorDSPTarget(
+        for effect: DSPEffect,
+        stepArguments: [String: Any],
+        topLevel: [String: Any],
+        loadedAudio: EditorLoadedAudio?
+    ) throws -> ApplyTarget {
+        let targetValue = stepArguments["target"] ?? topLevel["target"]
+        let explicitTarget = stringValue(targetValue)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "_", with: "")
+            .replacingOccurrences(of: "-", with: "")
+            .replacingOccurrences(of: " ", with: "")
+
+        let selection = try editorDSPSelection(
+            stepArguments: stepArguments,
+            topLevel: topLevel,
+            loadedAudio: loadedAudio
+        )
+
+        if let explicitTarget, !explicitTarget.isEmpty {
+            switch explicitTarget {
+            case "whole", "track", "wholetrack", "full", "fulltrack":
+                if effect.requiresSelection {
+                    throw AnvilCommandFacadeError.invalidDSPTarget("Effect '\(effect.rawValue)' requires a selection target.")
+                }
+                return .wholeTrack
+            case "selection", "selected", "region", "range":
+                guard let selection else {
+                    throw AnvilCommandFacadeError.invalidEditorSelection
+                }
+                return .selection(start: selection.startTime, end: selection.endTime)
+            default:
+                throw AnvilCommandFacadeError.invalidDSPTarget("Unsupported target '\(explicitTarget)'.")
+            }
+        }
+
+        if let selection {
+            return .selection(start: selection.startTime, end: selection.endTime)
+        }
+        if effect.requiresSelection {
+            throw AnvilCommandFacadeError.invalidEditorSelection
+        }
+        return .wholeTrack
+    }
+
+    private func editorDSPSelection(
+        stepArguments: [String: Any],
+        topLevel: [String: Any],
+        loadedAudio: EditorLoadedAudio?
+    ) throws -> InpaintSelection? {
+        let stepSelection = stepArguments["selection"] as? [String: Any]
+        let topSelection = topLevel["selection"] as? [String: Any]
+
+        let startValue = editorSelectionValue(
+            ["selectionStart", "startTime", "start"],
+            arguments: stepArguments,
+            selectionArguments: stepSelection
+        ) ?? editorSelectionValue(
+            ["selectionStart", "startTime", "start"],
+            arguments: topLevel,
+            selectionArguments: topSelection
+        )
+        let endValue = editorSelectionValue(
+            ["selectionEnd", "endTime", "end"],
+            arguments: stepArguments,
+            selectionArguments: stepSelection
+        ) ?? editorSelectionValue(
+            ["selectionEnd", "endTime", "end"],
+            arguments: topLevel,
+            selectionArguments: topSelection
+        )
+
+        guard startValue != nil || endValue != nil else { return nil }
+        guard let startTime = doubleValue(startValue),
+              let endTime = doubleValue(endValue) else {
+            throw AnvilCommandFacadeError.invalidEditorSelection
+        }
+        let selection = InpaintSelection(startTime: startTime, endTime: endTime)
+        try validateEditorSelection(selection, loadedAudio: loadedAudio)
+        return selection
+    }
+
+    private func editorDSPParameters(
+        for effect: DSPEffect,
+        stepArguments: [String: Any],
+        topLevel: [String: Any]
+    ) throws -> DSPParameters {
+        let parameterArguments = stepArguments["parameters"] as? [String: Any]
+            ?? stepArguments["params"] as? [String: Any]
+            ?? [:]
+
+        switch effect {
+        case .eq:
+            return .eq(try editorEQParameters(parameterArguments, fallback: topLevel))
+        case .reverb:
+            return .reverb(try editorReverbParameters(parameterArguments, fallback: topLevel))
+        case .timeStretch:
+            return .timeStretch(try editorTimeStretchParameters(parameterArguments, fallback: topLevel))
+        case .pitchShift:
+            return .pitchShift(try editorPitchShiftParameters(parameterArguments, fallback: topLevel))
+        case .trimToSelection, .deleteSelection, .fadeIn, .fadeOut, .normalize:
+            return .none
+        }
+    }
+
+    private func editorEQParameters(
+        _ parameters: [String: Any],
+        fallback: [String: Any]
+    ) throws -> EQParameters {
+        let rawBands = parameters["bands"] ?? fallback["bands"]
+        guard let rawBands else {
+            return .default
+        }
+        let bandObjects: [[String: Any]]
+        if let typed = rawBands as? [[String: Any]] {
+            bandObjects = typed
+        } else if let rawItems = rawBands as? [Any] {
+            bandObjects = rawItems.compactMap { $0 as? [String: Any] }
+            guard bandObjects.count == rawItems.count else {
+                throw AnvilCommandFacadeError.invalidDSPParameters("EQ bands must be objects.")
+            }
+        } else {
+            throw AnvilCommandFacadeError.invalidDSPParameters("EQ bands must be an array.")
+        }
+
+        let bands = try bandObjects.map { band -> EQBand in
+            guard let frequency = doubleValue(band["frequency"] ?? band["freq"] ?? band["hz"]),
+                  frequency > 0,
+                  frequency <= 24_000 else {
+                throw AnvilCommandFacadeError.invalidDSPParameters("EQ band frequency must be between 0 and 24000 Hz.")
+            }
+            guard let gain = doubleValue(band["gain"] ?? band["gainDB"] ?? band["db"]),
+                  gain >= -48,
+                  gain <= 48 else {
+                throw AnvilCommandFacadeError.invalidDSPParameters("EQ band gain must be between -48 and 48 dB.")
+            }
+            let q = doubleValue(band["q"] ?? band["quality"]) ?? 1.0
+            guard q > 0, q <= 20 else {
+                throw AnvilCommandFacadeError.invalidDSPParameters("EQ band q must be > 0 and <= 20.")
+            }
+            return EQBand(frequency: Float(frequency), gain: Float(gain), q: Float(q))
+        }
+        guard !bands.isEmpty else {
+            throw AnvilCommandFacadeError.invalidDSPParameters("EQ must include at least one band.")
+        }
+        return EQParameters(bands: bands)
+    }
+
+    private func editorReverbParameters(
+        _ parameters: [String: Any],
+        fallback: [String: Any]
+    ) throws -> ReverbParameters {
+        let presetValue = stringValue(parameters["preset"] ?? fallback["preset"])?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let presetParams: ReverbParameters
+        if let presetValue, !presetValue.isEmpty {
+            guard let preset = ReverbPreset(rawValue: presetValue) else {
+                throw AnvilCommandFacadeError.invalidDSPParameters("Unsupported reverb preset '\(presetValue)'.")
+            }
+            presetParams = preset.parameters
+        } else {
+            presetParams = .default
+        }
+
+        let decayTime = doubleValue(parameters["decayTime"] ?? fallback["decayTime"])
+            .map(Float.init) ?? presetParams.decayTime
+        let wetDryMix = doubleValue(parameters["wetDryMix"] ?? parameters["mix"] ?? fallback["wetDryMix"] ?? fallback["mix"])
+            .map(Float.init) ?? presetParams.wetDryMix
+        let preDelay = doubleValue(parameters["preDelay"] ?? fallback["preDelay"])
+            .map(Float.init) ?? presetParams.preDelay
+        let damping = doubleValue(parameters["damping"] ?? fallback["damping"])
+            .map(Float.init) ?? presetParams.damping
+
+        guard decayTime >= 0.1, decayTime <= 20,
+              wetDryMix >= 0, wetDryMix <= 1,
+              preDelay >= 0, preDelay <= 500,
+              damping >= 0, damping <= 1 else {
+            throw AnvilCommandFacadeError.invalidDSPParameters(
+                "Reverb requires decayTime 0.1...20, wetDryMix 0...1, preDelay 0...500, and damping 0...1."
+            )
+        }
+        return ReverbParameters(
+            decayTime: decayTime,
+            wetDryMix: wetDryMix,
+            preDelay: preDelay,
+            damping: damping
+        )
+    }
+
+    private func editorTimeStretchParameters(
+        _ parameters: [String: Any],
+        fallback: [String: Any]
+    ) throws -> TimeStretchParameters {
+        let rate = doubleValue(parameters["rate"] ?? parameters["ratio"] ?? fallback["rate"] ?? fallback["ratio"]) ?? 1.0
+        guard rate >= 0.25, rate <= 4.0 else {
+            throw AnvilCommandFacadeError.invalidDSPParameters("Time-stretch rate must be between 0.25 and 4.0.")
+        }
+        return TimeStretchParameters(rate: Float(rate))
+    }
+
+    private func editorPitchShiftParameters(
+        _ parameters: [String: Any],
+        fallback: [String: Any]
+    ) throws -> PitchShiftParameters {
+        let centsValue = doubleValue(parameters["pitch"] ?? parameters["cents"] ?? fallback["pitch"] ?? fallback["cents"])
+        let semitoneValue = doubleValue(parameters["semitones"] ?? parameters["semitone"] ?? fallback["semitones"] ?? fallback["semitone"])
+        let pitch = centsValue ?? semitoneValue.map { $0 * 100.0 } ?? 0
+        guard pitch >= -2_400, pitch <= 2_400 else {
+            throw AnvilCommandFacadeError.invalidDSPParameters("Pitch shift must be between -2400 and 2400 cents.")
+        }
+        return PitchShiftParameters(pitch: Float(pitch))
     }
 
     private func editorRenderSelection(
@@ -2475,9 +3170,10 @@ final class AnvilCommandFacade {
             ],
             [
                 "id": "applyEffectChain",
+                "tool": "apply_editor_effect_chain",
                 "operationKind": "editor.applyEffectChain",
-                "status": "planned",
-                "description": "Apply bounded DSP edits with explicit confirmation for destructive actions."
+                "status": "implemented",
+                "description": "Apply confirmed bounded DSP effect chains to the loaded editor buffer."
             ],
             [
                 "id": "renderAudio",
@@ -2784,6 +3480,11 @@ private enum AnvilCommandFacadeError: LocalizedError {
     case invalidRenderFormat(String)
     case editorRenderFileExists(String)
     case editorRenderWriteFailed(String, String)
+    case editorDSPChainEmpty
+    case invalidDSPChain
+    case invalidDSPEffect(String)
+    case invalidDSPTarget(String)
+    case invalidDSPParameters(String)
     case operationNotFound(String)
     case encodingFailed
 
@@ -2855,6 +3556,16 @@ private enum AnvilCommandFacadeError: LocalizedError {
             return "Editor render output already exists at '\(path)'. Pass overwrite: true or choose another path."
         case .editorRenderWriteFailed(let path, let reason):
             return "Could not write editor render output to '\(path)': \(reason)"
+        case .editorDSPChainEmpty:
+            return "Editor DSP effect chain must include at least one effect."
+        case .invalidDSPChain:
+            return "'effects' must be an array of effect names or effect objects."
+        case .invalidDSPEffect(let value):
+            return "Unsupported editor DSP effect '\(value)'."
+        case .invalidDSPTarget(let reason):
+            return reason
+        case .invalidDSPParameters(let reason):
+            return reason
         case .operationNotFound(let id):
             return "No MCP operation matched '\(id)'."
         case .encodingFailed:
@@ -2881,6 +3592,17 @@ private struct EditorRenderRequest {
     let outputURL: URL
     let selection: InpaintSelection?
     let overwrite: Bool
+}
+
+private struct EditorDSPRequest {
+    let steps: [EditorDSPEffectStep]
+    let description: String
+}
+
+private struct EditorDSPEffectStep {
+    let effect: DSPEffect
+    let target: ApplyTarget
+    let parameters: DSPParameters
 }
 
 private enum EditorRenderFormat: String {

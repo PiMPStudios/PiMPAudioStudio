@@ -432,6 +432,8 @@ private final class AnvilMCPSDKBridge {
             return try facade.loadEditorAudio(arguments: arguments)
         case "submit_editor_inpaint":
             return try await facade.submitEditorInpaint(arguments: arguments)
+        case "apply_editor_effect_chain":
+            return try await facade.applyEditorEffectChain(arguments: arguments)
         case "render_editor_audio":
             return try await facade.renderEditorAudio(arguments: arguments)
         case "list_operations":
@@ -1699,6 +1701,223 @@ private enum MCPToolCatalog {
             ]
         ),
         tool(
+            name: "apply_editor_effect_chain",
+            title: "Apply Editor Effect Chain",
+            description: "Apply one or more confirmed DSP effects to the loaded editor audio as a background operation. Use dryRun to validate without mutating audio.",
+            properties: [
+                "effect": [
+                    "type": "string",
+                    "enum": [
+                        "trimToSelection",
+                        "deleteSelection",
+                        "fadeIn",
+                        "fadeOut",
+                        "normalize",
+                        "eq",
+                        "reverb",
+                        "timeStretch",
+                        "pitchShift"
+                    ],
+                    "description": "Single effect to apply when effects is omitted."
+                ],
+                "name": [
+                    "type": "string",
+                    "description": "Alias for effect."
+                ],
+                "effects": [
+                    "type": "array",
+                    "description": "Optional ordered effect chain. Items can be effect names or objects with effect, target, selection, and parameters.",
+                    "items": [
+                        "oneOf": [
+                            [
+                                "type": "string",
+                                "enum": [
+                                    "trimToSelection",
+                                    "deleteSelection",
+                                    "fadeIn",
+                                    "fadeOut",
+                                    "normalize",
+                                    "eq",
+                                    "reverb",
+                                    "timeStretch",
+                                    "pitchShift"
+                                ]
+                            ],
+                            [
+                                "type": "object",
+                                "additionalProperties": true,
+                                "properties": [
+                                    "effect": ["type": "string"],
+                                    "name": ["type": "string"],
+                                    "target": [
+                                        "type": "string",
+                                        "enum": ["wholeTrack", "selection", "whole", "region"]
+                                    ],
+                                    "selection": [
+                                        "type": "object",
+                                        "additionalProperties": false,
+                                        "properties": [
+                                            "startTime": ["type": "number"],
+                                            "endTime": ["type": "number"],
+                                            "start": ["type": "number"],
+                                            "end": ["type": "number"]
+                                        ]
+                                    ],
+                                    "parameters": [
+                                        "type": "object",
+                                        "additionalProperties": true
+                                    ]
+                                ]
+                            ]
+                        ]
+                    ]
+                ],
+                "effectChain": [
+                    "type": "array",
+                    "description": "Alias for effects."
+                ],
+                "chain": [
+                    "type": "array",
+                    "description": "Alias for effects."
+                ],
+                "target": [
+                    "type": "string",
+                    "enum": ["wholeTrack", "selection", "whole", "region"],
+                    "description": "Default target for effects. Selection-only effects require a selected range."
+                ],
+                "selection": [
+                    "type": "object",
+                    "additionalProperties": false,
+                    "description": "Default selected time range for effects that target a region.",
+                    "properties": [
+                        "startTime": ["type": "number"],
+                        "endTime": ["type": "number"],
+                        "start": ["type": "number"],
+                        "end": ["type": "number"]
+                    ]
+                ],
+                "selectionStart": [
+                    "type": "number",
+                    "description": "Default selected region start time in seconds."
+                ],
+                "selectionEnd": [
+                    "type": "number",
+                    "description": "Default selected region end time in seconds."
+                ],
+                "startTime": [
+                    "type": "number",
+                    "description": "Alias for selectionStart."
+                ],
+                "endTime": [
+                    "type": "number",
+                    "description": "Alias for selectionEnd."
+                ],
+                "start": [
+                    "type": "number",
+                    "description": "Alias for selectionStart."
+                ],
+                "end": [
+                    "type": "number",
+                    "description": "Alias for selectionEnd."
+                ],
+                "parameters": [
+                    "type": "object",
+                    "additionalProperties": true,
+                    "description": "Effect parameters for single-effect calls. Use bands for eq, preset or reverb values for reverb, rate for timeStretch, and pitch/cents/semitones for pitchShift."
+                ],
+                "params": [
+                    "type": "object",
+                    "additionalProperties": true,
+                    "description": "Alias for parameters."
+                ],
+                "bands": [
+                    "type": "array",
+                    "description": "EQ band array. Each band accepts frequency, gain, and q.",
+                    "items": [
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": [
+                            "frequency": ["type": "number"],
+                            "freq": ["type": "number"],
+                            "hz": ["type": "number"],
+                            "gain": ["type": "number"],
+                            "gainDB": ["type": "number"],
+                            "db": ["type": "number"],
+                            "q": ["type": "number"],
+                            "quality": ["type": "number"]
+                        ]
+                    ]
+                ],
+                "preset": [
+                    "type": "string",
+                    "enum": ["room", "hall", "plate"],
+                    "description": "Reverb preset."
+                ],
+                "decayTime": [
+                    "type": "number",
+                    "description": "Reverb decay time in seconds."
+                ],
+                "wetDryMix": [
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "Reverb wet/dry mix from 0.0 to 1.0."
+                ],
+                "preDelay": [
+                    "type": "number",
+                    "description": "Reverb pre-delay in milliseconds."
+                ],
+                "damping": [
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "Reverb damping from 0.0 to 1.0."
+                ],
+                "rate": [
+                    "type": "number",
+                    "minimum": 0.25,
+                    "maximum": 4,
+                    "description": "Time-stretch rate. 1.0 keeps the original duration."
+                ],
+                "ratio": [
+                    "type": "number",
+                    "minimum": 0.25,
+                    "maximum": 4,
+                    "description": "Alias for rate."
+                ],
+                "pitch": [
+                    "type": "number",
+                    "minimum": -2400,
+                    "maximum": 2400,
+                    "description": "Pitch shift in cents."
+                ],
+                "cents": [
+                    "type": "number",
+                    "minimum": -2400,
+                    "maximum": 2400,
+                    "description": "Alias for pitch."
+                ],
+                "semitones": [
+                    "type": "number",
+                    "minimum": -24,
+                    "maximum": 24,
+                    "description": "Pitch shift in semitones."
+                ],
+                "confirm": [
+                    "type": "boolean",
+                    "description": "Must be true for an actual editor mutation."
+                ],
+                "dryRun": [
+                    "type": "boolean",
+                    "description": "Validate and echo the resolved DSP request without mutating editor audio."
+                ],
+                "validateOnly": [
+                    "type": "boolean",
+                    "description": "Alias for dryRun."
+                ]
+            ]
+        ),
+        tool(
             name: "render_editor_audio",
             title: "Render Editor Audio",
             description: "Render the loaded editor buffer or a selected time range to a WAV/AIFF file as a background operation. Use dryRun to resolve the output path without writing.",
@@ -1802,7 +2021,7 @@ private enum MCPToolCatalog {
             properties: [
                 "id": [
                     "type": "string",
-                    "description": "Operation id returned by generate, generate_song, load_editor_audio, submit_editor_inpaint, render_editor_audio, list_operations, editor_status, or generation_status."
+                    "description": "Operation id returned by generate, generate_song, load_editor_audio, submit_editor_inpaint, apply_editor_effect_chain, render_editor_audio, list_operations, editor_status, or generation_status."
                 ],
                 "operationID": [
                     "type": "string",
@@ -1821,7 +2040,7 @@ private enum MCPToolCatalog {
             properties: [
                 "id": [
                     "type": "string",
-                    "description": "Operation id returned by generate, generate_song, load_editor_audio, submit_editor_inpaint, render_editor_audio, list_operations, editor_status, or generation_status."
+                    "description": "Operation id returned by generate, generate_song, load_editor_audio, submit_editor_inpaint, apply_editor_effect_chain, render_editor_audio, list_operations, editor_status, or generation_status."
                 ],
                 "operationID": [
                     "type": "string",
