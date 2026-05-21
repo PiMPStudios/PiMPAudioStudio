@@ -504,11 +504,11 @@ enum ProviderCLIParsers {
 enum ProviderCommandRunner {
     private static let envURL = URL(fileURLWithPath: "/usr/bin/env")
 
-    private static var commandEnvironment: [String: String] {
-        var environment = ProcessInfo.processInfo.environment
-        let home = environment["HOME"] ?? NSHomeDirectory()
+    static func commandEnvironment(from baseEnvironment: [String: String] = ProcessInfo.processInfo.environment) -> [String: String] {
+        var environment = baseEnvironment
+        let home = ProviderCLIPaths.realUserHomeDirectory(environment: environment)
         let user = environment["USER"] ?? NSUserName()
-        environment["PATH"] = "\(home)/.grok/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin"
+        environment["PATH"] = ProviderCLIPaths.executableSearchPath(environment: environment)
         environment["HOME"] = home
         environment["USER"] = user
         environment["LOGNAME"] = environment["LOGNAME"] ?? user
@@ -525,9 +525,77 @@ enum ProviderCommandRunner {
             executableURL: envURL,
             command: command,
             arguments: arguments,
-            environment: commandEnvironment
+            environment: commandEnvironment()
         )
         return try await capture.run(timeoutSeconds: timeoutSeconds)
+    }
+}
+
+enum ProviderCLIPaths {
+    private static let standardBinaryDirectories = [
+        "/opt/homebrew/bin",
+        "/opt/homebrew/sbin",
+        "/usr/local/bin",
+        "/usr/local/sbin",
+        "/usr/bin",
+        "/bin",
+        "/usr/sbin",
+        "/sbin",
+    ]
+
+    static func realUserHomeDirectory(environment: [String: String] = ProcessInfo.processInfo.environment) -> String {
+        let environmentHome = environment["HOME"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let user = environment["USER"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+            ?? NSUserName()
+
+        if let environmentHome, !environmentHome.isEmpty, !isSandboxContainerHome(environmentHome) {
+            return environmentHome
+        }
+
+        if !user.isEmpty,
+           let accountHome = NSHomeDirectoryForUser(user),
+           !accountHome.isEmpty,
+           !isSandboxContainerHome(accountHome) {
+            return accountHome
+        }
+
+        if !user.isEmpty {
+            return "/Users/\(user)"
+        }
+
+        if let environmentHome, !environmentHome.isEmpty {
+            return environmentHome
+        }
+
+        return NSHomeDirectory()
+    }
+
+    static func executableSearchPath(environment: [String: String] = ProcessInfo.processInfo.environment) -> String {
+        let rawHome = environment["HOME"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let userHome = realUserHomeDirectory(environment: environment)
+        var directories = [
+            "\(userHome)/.grok/bin",
+            "\(userHome)/.local/bin",
+        ]
+
+        if let rawHome, !rawHome.isEmpty, rawHome != userHome {
+            directories.append("\(rawHome)/.grok/bin")
+            directories.append("\(rawHome)/.local/bin")
+        }
+
+        directories.append(contentsOf: standardBinaryDirectories)
+        return unique(directories).joined(separator: ":")
+    }
+
+    private static func isSandboxContainerHome(_ path: String) -> Bool {
+        path.contains("/Library/Containers/")
+    }
+
+    private static func unique(_ values: [String]) -> [String] {
+        var seen = Set<String>()
+        return values.filter { value in
+            seen.insert(value).inserted
+        }
     }
 }
 

@@ -98,3 +98,16 @@ import Testing
     #expect(outcome.success)
     #expect(outcome.detail == "Received response: OK")
 }
+
+@Test func providerCLIEnvironmentUsesAccountHomeWhenAppHomeIsSandboxContainer() {
+    let environment = ProviderCommandRunner.commandEnvironment(from: [
+        "HOME": "/Users/testuser/Library/Containers/net.pimp.anvil.AnvilApp/Data",
+        "USER": "testuser",
+    ])
+
+    #expect(environment["HOME"] == "/Users/testuser")
+
+    let pathDirectories = environment["PATH"]?.split(separator: ":").map(String.init) ?? []
+    #expect(pathDirectories.first == "/Users/testuser/.grok/bin")
+    #expect(pathDirectories.contains("/Users/testuser/Library/Containers/net.pimp.anvil.AnvilApp/Data/.grok/bin"))
+}
