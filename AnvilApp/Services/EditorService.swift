@@ -40,6 +40,8 @@ class EditorService: ObservableObject {
 }
 
 struct EditorLoadedAudio: Equatable {
+    let source: String
+    let historyEntryID: String?
     let fileName: String
     let path: String
     let duration: TimeInterval

@@ -106,9 +106,9 @@ Add after read-only tools are stable.
 - `editor_status`: poll editor readiness, loaded audio metadata, supported
   editor action descriptors, and the active editor operation. Guard: read-only
   status; implemented.
-- `load_editor_audio`: load a local audio file into the shared editor
-  coordinator. Guard: validates local path, returns an operation id, and does
-  not apply edits; implemented.
+- `load_editor_audio`: load a history/audio id or readable local audio path
+  into the shared editor coordinator. Guard: validates the source, returns an
+  operation id, and does not apply edits; implemented.
 - `list_operations`: list recent MCP-observable operations. Guard: read-only
   operation state; implemented.
 - `get_operation`: read one operation by id. Guard: read-only operation state;

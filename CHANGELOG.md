@@ -34,10 +34,10 @@ All notable changes to AnvilApp are documented here.
 - **MCP editor operation bridge** — `editor_status` now exposes editor
   readiness, loaded audio metadata, supported editor actions, and the active
   editor operation. `load_editor_audio` registers a background
-  `editor.loadAudio` operation, loads a local audio file into the shared editor
-  coordinator, encodes editable latents, and reports through the same
-  `list_operations` / `get_operation` / `cancel_operation` contract as
-  generation.
+  `editor.loadAudio` operation, loads a history/audio id or readable local path
+  into the shared editor coordinator, encodes editable latents, and reports
+  through the same `list_operations` / `get_operation` / `cancel_operation`
+  contract as generation.
 - **MCP Streamable HTTP sessions** — the local MCP bridge now uses the Swift
   SDK's `StatefulHTTPServerTransport`. `initialize` returns `MCP-Session-Id`,
   POST requests may return SSE, `GET /mcp` opens the standalone server stream,

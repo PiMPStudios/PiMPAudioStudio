@@ -129,9 +129,9 @@ Operation progress is now normalized across the full generation lifecycle:
 Implementation note: `editor_status` exposes the shared editor coordinator
 readiness, loaded audio metadata, supported editor action descriptors, and any
 active editor operation. `load_editor_audio` is the first editor-owned
-background operation; it validates a local path, registers `editor.loadAudio`,
-loads the file into the shared editor coordinator, and records loaded-audio
-metadata when latent encoding completes.
+background operation; it validates a history/audio id or readable local path,
+registers `editor.loadAudio`, loads the file into the shared editor
+coordinator, and records loaded-audio metadata when latent encoding completes.
 
 Implementation note: `release_memory` is the first guarded cleanup
 action. It calls the same consolidated `GenerationService.unloadAllWeights()`

@@ -48,8 +48,9 @@ logic concerns, and they should not be reinvented piecemeal inside
 - `editor_status` exposes the shared editor coordinator readiness, loaded audio
   metadata, supported action descriptors, and the active editor operation.
 - `load_editor_audio` is the first editor operation registered through the same
-  pollable operation layer. It loads a local audio file into the editor
-  coordinator, encodes editable latents, and reports as `editor.loadAudio`.
+  pollable operation layer. It loads a history/audio id or readable local path
+  into the editor coordinator, encodes editable latents, and reports as
+  `editor.loadAudio`.
 - Operation state is exposed through `list_operations`, `get_operation`,
   `cancel_operation`, `generation_status.currentOperation`,
   `editor_status.currentOperation`, `anvil://editor`, `anvil://operations`,

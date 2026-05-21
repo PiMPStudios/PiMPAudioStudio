@@ -1466,12 +1466,31 @@ private enum MCPToolCatalog {
         tool(
             name: "load_editor_audio",
             title: "Load Editor Audio",
-            description: "Load a local audio file into the editor coordinator as a background operation. Returns an operationID for polling.",
-            required: ["path"],
+            description: "Load a history audio id or readable local audio path into the editor coordinator as a background operation. Returns an operationID for polling.",
             properties: [
+                "id": [
+                    "type": "string",
+                    "description": "History entry id or audio resource id. Prefer this over path for sandbox-safe access."
+                ],
+                "historyID": [
+                    "type": "string",
+                    "description": "History entry id to load into the editor."
+                ],
+                "historyId": [
+                    "type": "string",
+                    "description": "Alias for historyID."
+                ],
+                "audioID": [
+                    "type": "string",
+                    "description": "Audio resource id to load into the editor."
+                ],
+                "audioId": [
+                    "type": "string",
+                    "description": "Alias for audioID."
+                ],
                 "path": [
                     "type": "string",
-                    "description": "Local audio file path to load into the editor."
+                    "description": "Readable local audio file path. History/audio ids are preferred because sandboxed app builds may not read arbitrary paths."
                 ],
                 "audioPath": [
                     "type": "string",

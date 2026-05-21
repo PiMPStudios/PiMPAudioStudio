@@ -543,13 +543,13 @@ final class AnvilCommandFacade {
             throw AnvilCommandFacadeError.editorServiceUnavailable
         }
 
-        let rawPath = try requiredString("path", aliases: ["audioPath", "filePath"], in: arguments)
-        let url = localFileURL(from: rawPath)
-        try validateReadableFile(url)
+        let source = try editorAudioLoadSource(from: arguments)
+        try validateReadableFile(source.url)
 
         let originalPrompt = stringValue(arguments["originalPrompt"] ?? arguments["prompt"])?
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        let request = editorAudioLoadRequestPayload(url: url, originalPrompt: originalPrompt)
+        let resolvedPrompt = originalPrompt?.isEmpty == false ? originalPrompt : source.originalPrompt
+        let request = editorAudioLoadRequestPayload(source: source, originalPrompt: resolvedPrompt)
         let dryRun = boolValue(arguments["dryRun"] ?? arguments["validateOnly"]) == true
         if dryRun {
             return [
@@ -571,8 +571,8 @@ final class AnvilCommandFacade {
         operationTasks[operation.id] = Task { [weak self] in
             await self?.runEditorAudioLoadOperation(
                 id: operation.id,
-                url: url,
-                originalPrompt: originalPrompt
+                source: source,
+                originalPrompt: resolvedPrompt
             )
         }
 
@@ -1386,7 +1386,7 @@ final class AnvilCommandFacade {
 
     private func runEditorAudioLoadOperation(
         id: String,
-        url: URL,
+        source: EditorAudioLoadSource,
         originalPrompt: String?
     ) async {
         defer { operationTasks[id] = nil }
@@ -1397,7 +1397,7 @@ final class AnvilCommandFacade {
                 id: id,
                 progress: editorLoadProgressPayload(stage: "readingFile", message: "Reading audio file.")
             )
-            let buffer = try await readAudioBuffer(from: url)
+            let buffer = try await readAudioBuffer(from: source.url)
 
             try Task.checkCancellation()
             updateOperationProgress(
@@ -1423,8 +1423,10 @@ final class AnvilCommandFacade {
 
             try Task.checkCancellation()
             let loadedAudio = EditorLoadedAudio(
-                fileName: url.lastPathComponent,
-                path: url.path(percentEncoded: false),
+                source: source.kind,
+                historyEntryID: source.historyEntryID,
+                fileName: source.fileName,
+                path: source.url.path(percentEncoded: false),
                 duration: loadResult.duration,
                 sampleRate: loadResult.sampleRate,
                 channels: buffer.channels,
@@ -1621,18 +1623,22 @@ final class AnvilCommandFacade {
     }
 
     private func editorAudioLoadRequestPayload(
-        url: URL,
+        source: EditorAudioLoadSource,
         originalPrompt: String?
     ) -> [String: Any] {
         [
-            "path": url.path(percentEncoded: false),
-            "fileName": url.lastPathComponent,
+            "source": source.kind,
+            "historyEntryID": source.historyEntryID.map { $0 as Any } ?? NSNull(),
+            "path": source.url.path(percentEncoded: false),
+            "fileName": source.fileName,
             "originalPrompt": originalPrompt.map { $0 as Any } ?? NSNull()
         ]
     }
 
     private func editorLoadedAudioPayload(_ audio: EditorLoadedAudio) -> [String: Any] {
         [
+            "source": audio.source,
+            "historyEntryID": audio.historyEntryID.map { $0 as Any } ?? NSNull(),
             "fileName": audio.fileName,
             "path": audio.path,
             "duration": audio.duration,
@@ -1643,6 +1649,36 @@ final class AnvilCommandFacade {
             "originalPrompt": audio.originalPrompt.map { $0 as Any } ?? NSNull(),
             "loadedAt": dateFormatter.string(from: audio.loadedAt)
         ]
+    }
+
+    private func editorAudioLoadSource(from arguments: [String: Any]) throws -> EditorAudioLoadSource {
+        let id = stringValue(
+            arguments["historyID"]
+                ?? arguments["historyId"]
+                ?? arguments["audioID"]
+                ?? arguments["audioId"]
+                ?? arguments["id"]
+        )?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !id.isEmpty {
+            let entry = try resolveHistoryEntry(id)
+            return EditorAudioLoadSource(
+                kind: "history",
+                url: historyStore.fileURL(for: entry),
+                fileName: entry.fileName,
+                historyEntryID: entry.id.uuidString,
+                originalPrompt: entry.prompt
+            )
+        }
+
+        let rawPath = try requiredString("path", aliases: ["audioPath", "filePath"], in: arguments)
+        let url = localFileURL(from: rawPath)
+        return EditorAudioLoadSource(
+            kind: "path",
+            url: url,
+            fileName: url.lastPathComponent,
+            historyEntryID: nil,
+            originalPrompt: nil
+        )
     }
 
     private func editorActionsPayload() -> [[String: Any]] {
@@ -2016,6 +2052,14 @@ private enum AnvilCommandFacadeError: LocalizedError {
 private struct AdapterSelection {
     let adapter: LoRAAdapter
     let strength: Float
+}
+
+private struct EditorAudioLoadSource {
+    let kind: String
+    let url: URL
+    let fileName: String
+    let historyEntryID: String?
+    let originalPrompt: String?
 }
 
 private enum MCPOperationStatus: String {

@@ -73,9 +73,11 @@ operation record.
 
 `editor_status` returns editor readiness, loaded audio metadata, supported
 editor action descriptors, and the active editor operation when present.
-`load_editor_audio` loads a local audio file into the shared editor coordinator
-as a background operation, returning an `operationID` for polling or
-cancellation before future inpaint/DSP/render tools mutate the editor buffer.
+`load_editor_audio` loads an Anvil history/audio id, or a readable local audio
+path, into the shared editor coordinator as a background operation. It returns
+an `operationID` for polling or cancellation before future inpaint/DSP/render
+tools mutate the editor buffer. History/audio ids are preferred because
+sandboxed app builds may not have permission to read arbitrary paths.
 
 `list_operations`, `get_operation`, and `cancel_operation` expose the current
 operation layer for long-running work. Generation submissions return an
@@ -122,9 +124,9 @@ button.
 `dryRun: true` to validate and echo the resolved request without starting a
 render.
 
-`load_editor_audio` submits a background editor load. It validates the local
-file path up front, returns an `operationID`, and only updates the editor's
-loaded-audio state after the coordinator has encoded editable latents.
+`load_editor_audio` submits a background editor load. It validates the source
+up front, returns an `operationID`, and only updates the editor's loaded-audio
+state after the coordinator has encoded editable latents.
 
 It exposes one guarded cleanup action:
 
@@ -298,9 +300,10 @@ curl -s -X DELETE "$ENDPOINT" \
   `_meta.progressToken` and keeps `GET /mcp` open. Full background-operation
   progress notifications should be implemented through MCP task-augmented
   requests once the SDK supports task capabilities.
-- `load_editor_audio` is the first editor operation. It validates a local audio
-  path, registers an `editor.loadAudio` record, reads the file, encodes editor
-  latents, and updates `editor_status.loadedAudio` when complete.
+- `load_editor_audio` is the first editor operation. It accepts `id`,
+  `historyID`, `audioID`, or a readable `path`; registers an `editor.loadAudio`
+  record; reads the file; encodes editor latents; and updates
+  `editor_status.loadedAudio` when complete.
 - `cancel_operation` currently supports active generation operations and
   background editor load tasks. Client `notifications/cancelled` apply to
   in-flight MCP requests through the SDK; after background work has been

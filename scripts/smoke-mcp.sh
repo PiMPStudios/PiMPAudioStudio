@@ -136,7 +136,7 @@ ids = [row.get("id") for row in history if row.get("hasTrace") and row.get("id")
 print("\n".join(ids[:2]))
 '
 
-python_get_audio_path='
+python_get_audio_ref='
 import json
 import os
 import sys
@@ -144,9 +144,10 @@ import sys
 data = json.load(sys.stdin)
 history = data.get("result", {}).get("structuredContent", {}).get("history", [])
 for row in history:
+    history_id = row.get("id")
     path = row.get("audioFilePath")
-    if path and os.path.isfile(path):
-        print(path)
+    if history_id and path and os.path.isfile(path):
+        print(json.dumps({"id": history_id, "path": path}))
         break
 '
 
@@ -274,13 +275,14 @@ while IFS= read -r trace_id; do
   fi
 done < <(/usr/bin/python3 -c "$python_get_trace_ids" < "$TMP_DIR/history.json")
 
-AUDIO_PATH="$(/usr/bin/python3 -c "$python_get_audio_path" < "$TMP_DIR/history.json")"
-if [[ -n "$AUDIO_PATH" ]]; then
+AUDIO_REF="$(/usr/bin/python3 -c "$python_get_audio_ref" < "$TMP_DIR/history.json")"
+if [[ -n "$AUDIO_REF" ]]; then
   echo "9. load_editor_audio dry-run"
-  /usr/bin/python3 - "$AUDIO_PATH" > "$TMP_DIR/load-editor-audio-request.json" <<'PY'
+  /usr/bin/python3 - "$AUDIO_REF" > "$TMP_DIR/load-editor-audio-request.json" <<'PY'
 import json
 import sys
 
+ref = json.loads(sys.argv[1])
 print(json.dumps({
     "jsonrpc": "2.0",
     "id": 8,
@@ -288,7 +290,7 @@ print(json.dumps({
     "params": {
         "name": "load_editor_audio",
         "arguments": {
-            "path": sys.argv[1],
+            "id": ref["id"],
             "dryRun": True
         }
     }
