@@ -518,10 +518,14 @@ enum ProviderCLIParsers {
     static func parseGrokAuth(_ result: ProviderCommandResult) -> ProviderCLIProbe {
         let output = result.cleanedOutput
         guard result.exitStatus == 0 else {
-            if output.localizedCaseInsensitiveContains("not logged in") {
+            if isGrokUnauthenticated(output) {
                 return ProviderCLIProbe(state: .unauthenticated, detail: "Not signed in")
             }
             return failedProbe(result, fallback: "Grok auth probe failed")
+        }
+
+        if isGrokUnauthenticated(output) {
+            return ProviderCLIProbe(state: .unauthenticated, detail: "Not signed in")
         }
 
         if output.localizedCaseInsensitiveContains("logged in with grok.com") {
@@ -707,6 +711,11 @@ enum ProviderCLIParsers {
         let lowercased = line.lowercased()
         return lowercased.contains("current folder is not trusted") ||
             lowercased.contains("workspace") && lowercased.contains("not trusted")
+    }
+
+    private static func isGrokUnauthenticated(_ output: String) -> Bool {
+        output.localizedCaseInsensitiveContains("not logged in") ||
+            output.localizedCaseInsensitiveContains("not authenticated")
     }
 }
 

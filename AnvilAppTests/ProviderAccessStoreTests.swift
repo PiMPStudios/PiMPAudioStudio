@@ -70,6 +70,24 @@ import Testing
     #expect(probe.detail.contains("grok-build"))
 }
 
+@Test func providerCLIParsesGrokUnauthenticatedOutput() {
+    let result = ProviderCommandResult(
+        command: "grok",
+        arguments: ["models"],
+        exitStatus: 0,
+        stdout: "You are not authenticated.\n",
+        stderr: ""
+    )
+
+    let probe = ProviderCLIParsers.parseGrokAuth(result)
+    let outcome = ProviderCLIParsers.testOutcome(from: probe)
+
+    #expect(probe.state == .unauthenticated)
+    #expect(probe.detail == "Not signed in")
+    #expect(!outcome.success)
+    #expect(outcome.detail == "Not signed in")
+}
+
 @Test func providerCLIParsesHuggingFaceWhoami() {
     let result = ProviderCommandResult(
         command: "hf",
