@@ -50,6 +50,32 @@ import Testing
     #expect(probe.detail == "Logged in using ChatGPT")
 }
 
+@Test func providerCLIParsesGeminiOAuthSettings() throws {
+    let homeURL = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let geminiURL = homeURL.appendingPathComponent(".gemini", isDirectory: true)
+    try FileManager.default.createDirectory(
+        at: geminiURL,
+        withIntermediateDirectories: true
+    )
+    defer { try? FileManager.default.removeItem(at: homeURL) }
+
+    try """
+    {"security":{"auth":{"selectedType":"oauth-personal"}}}
+    """
+    .data(using: .utf8)!
+    .write(to: geminiURL.appendingPathComponent("settings.json"))
+    try "{}".data(using: .utf8)!
+        .write(to: geminiURL.appendingPathComponent("oauth_creds.json"))
+
+    let probe = ProviderCLIParsers.parseGeminiLocalAuth(
+        environment: ["HOME": homeURL.path]
+    )
+
+    #expect(probe.state == .authenticated)
+    #expect(probe.detail == "Signed in with Google OAuth")
+}
+
 @Test func providerCLIParsesGrokModelsWithWarnings() {
     let result = ProviderCommandResult(
         command: "grok",
@@ -156,6 +182,20 @@ import Testing
         return
     }
     #expect(homebrewIndex < accountGrokIndex)
+}
+
+@Test func providerCLICredentialBackedProvidersUseRealUserHome() {
+    let modes = Dictionary(
+        uniqueKeysWithValues: ProviderCLIDefinition.all.map {
+            ($0.providerID, $0.homeDirectoryMode)
+        }
+    )
+
+    #expect(modes["openai"] == .realUser)
+    #expect(modes["google"] == .realUser)
+    #expect(modes["xai"] == .realUser)
+    #expect(modes["anthropic"] == .process)
+    #expect(modes["huggingface"] == .process)
 }
 
 @Test func providerCLIEnvironmentCanUseRealUserHomeForCredentialCLIs() {

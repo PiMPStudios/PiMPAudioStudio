@@ -54,7 +54,10 @@ targets:
           - /usr/local/
           - /opt/local/
         com.apple.security.temporary-exception.files.home-relative-path.read-only:
+          - /.codex/
           - /.grok/
+        com.apple.security.temporary-exception.files.home-relative-path.read-write:
+          - /.gemini/
 
   AnvilAppTests:
     type: bundle.unit-test

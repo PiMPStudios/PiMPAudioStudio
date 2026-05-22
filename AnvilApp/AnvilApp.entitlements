@@ -18,7 +18,12 @@
 	</array>
 	<key>com.apple.security.temporary-exception.files.home-relative-path.read-only</key>
 	<array>
+		<string>/.codex/</string>
 		<string>/.grok/</string>
+	</array>
+	<key>com.apple.security.temporary-exception.files.home-relative-path.read-write</key>
+	<array>
+		<string>/.gemini/</string>
 	</array>
 </dict>
 </plist>

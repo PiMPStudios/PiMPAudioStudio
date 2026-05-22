@@ -253,6 +253,7 @@ struct ProviderCLIDefinition {
     let homeDirectoryMode: ProviderCLIHomeDirectoryMode
     let authProbeArguments: [String]?
     let authParser: ((ProviderCommandResult) -> ProviderCLIProbe)?
+    let localAuthProbe: (([String: String]) -> ProviderCLIProbe)?
     let testArguments: [String]?
     let testParser: ((ProviderCommandResult) -> ProviderCLITestOutcome)?
 
@@ -264,6 +265,7 @@ struct ProviderCLIDefinition {
         homeDirectoryMode: ProviderCLIHomeDirectoryMode = .process,
         authProbeArguments: [String]?,
         authParser: ((ProviderCommandResult) -> ProviderCLIProbe)?,
+        localAuthProbe: (([String: String]) -> ProviderCLIProbe)? = nil,
         testArguments: [String]?,
         testParser: ((ProviderCommandResult) -> ProviderCLITestOutcome)?
     ) {
@@ -274,6 +276,7 @@ struct ProviderCLIDefinition {
         self.homeDirectoryMode = homeDirectoryMode
         self.authProbeArguments = authProbeArguments
         self.authParser = authParser
+        self.localAuthProbe = localAuthProbe
         self.testArguments = testArguments
         self.testParser = testParser
     }
@@ -294,6 +297,7 @@ struct ProviderCLIDefinition {
             displayName: "OpenAI Codex",
             commandCandidates: ["codex"],
             versionArguments: ["--version"],
+            homeDirectoryMode: .realUser,
             authProbeArguments: ["login", "status"],
             authParser: ProviderCLIParsers.parseCodexAuth,
             testArguments: nil,
@@ -304,9 +308,12 @@ struct ProviderCLIDefinition {
             displayName: "Gemini CLI",
             commandCandidates: ["gemini"],
             versionArguments: ["--version"],
+            homeDirectoryMode: .realUser,
             authProbeArguments: nil,
             authParser: nil,
+            localAuthProbe: ProviderCLIParsers.parseGeminiLocalAuth,
             testArguments: [
+                "--skip-trust",
                 "--prompt",
                 "Reply with OK only.",
                 "--output-format",
@@ -427,6 +434,14 @@ enum ProviderCLIDetector {
                         detail = error.localizedDescription
                     }
                 }
+            } else if let localAuthProbe = definition.localAuthProbe {
+                let probe = localAuthProbe(
+                    ProviderCommandRunner.commandEnvironment(
+                        homeDirectoryMode: definition.homeDirectoryMode
+                    )
+                )
+                state = probe.state
+                detail = probe.detail
             } else {
                 detail = "Installed; test required for sign-in check"
             }
@@ -540,6 +555,47 @@ enum ProviderCLIParsers {
             return ProviderCLIProbe(state: .authenticated, detail: firstUsefulLine(output) ?? "Signed in")
         }
         return ProviderCLIProbe(state: .installed, detail: firstUsefulLine(output) ?? "Installed")
+    }
+
+    static func parseGeminiLocalAuth(environment: [String: String]) -> ProviderCLIProbe {
+        if let detail = geminiEnvironmentAuthDetail(environment) {
+            return ProviderCLIProbe(state: .authenticated, detail: detail)
+        }
+
+        let home = ProviderCLIPaths.processHomeDirectory(environment: environment)
+        let geminiURL = URL(fileURLWithPath: home, isDirectory: true)
+            .appendingPathComponent(".gemini", isDirectory: true)
+        let settingsURL = geminiURL.appendingPathComponent("settings.json")
+
+        guard FileManager.default.fileExists(atPath: settingsURL.path) else {
+            return ProviderCLIProbe(state: .unauthenticated, detail: "Not signed in")
+        }
+
+        do {
+            let data = try Data(contentsOf: settingsURL)
+            let settings = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            guard let selectedType = geminiSelectedAuthType(from: settings) else {
+                return ProviderCLIProbe(state: .unauthenticated, detail: "Not signed in")
+            }
+
+            if selectedType.localizedCaseInsensitiveContains("oauth") {
+                let oauthURL = geminiURL.appendingPathComponent("oauth_creds.json")
+                guard FileManager.default.fileExists(atPath: oauthURL.path) else {
+                    return ProviderCLIProbe(state: .unauthenticated, detail: "Google OAuth credentials missing")
+                }
+                return ProviderCLIProbe(state: .authenticated, detail: "Signed in with Google OAuth")
+            }
+
+            return ProviderCLIProbe(state: .authenticated, detail: "Configured with \(selectedType)")
+        } catch {
+            if let detail = sandboxPermissionDetail(error) {
+                return ProviderCLIProbe(state: .blocked(detail), detail: detail)
+            }
+            return ProviderCLIProbe(
+                state: .failed(error.localizedDescription),
+                detail: error.localizedDescription
+            )
+        }
     }
 
     static func parseGrokAuth(_ result: ProviderCommandResult) -> ProviderCLIProbe {
@@ -740,6 +796,27 @@ enum ProviderCLIParsers {
             lowercased.contains("workspace") && lowercased.contains("not trusted")
     }
 
+    private static func geminiEnvironmentAuthDetail(_ environment: [String: String]) -> String? {
+        if let apiKey = environment["GEMINI_API_KEY"], !apiKey.isEmpty {
+            return "Configured with GEMINI_API_KEY"
+        }
+        if environment["GOOGLE_GENAI_USE_VERTEXAI"] == "true" {
+            return "Configured with Vertex AI"
+        }
+        if environment["GOOGLE_GENAI_USE_GCA"] == "true" {
+            return "Configured with Gemini Code Assist"
+        }
+        return nil
+    }
+
+    private static func geminiSelectedAuthType(from settings: [String: Any]?) -> String? {
+        let security = settings?["security"] as? [String: Any]
+        let auth = security?["auth"] as? [String: Any]
+        let selectedType = (auth?["selectedType"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return selectedType?.isEmpty == false ? selectedType : nil
+    }
+
     private static func isGrokUnauthenticated(_ output: String) -> Bool {
         output.localizedCaseInsensitiveContains("not logged in") ||
             output.localizedCaseInsensitiveContains("not authenticated")
@@ -802,7 +879,7 @@ enum ProviderCommandRunner {
     }
 }
 
-enum ProviderCLIHomeDirectoryMode {
+enum ProviderCLIHomeDirectoryMode: Equatable {
     case process
     case realUser
 }
