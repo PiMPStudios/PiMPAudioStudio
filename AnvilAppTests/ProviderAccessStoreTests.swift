@@ -119,7 +119,7 @@ import Testing
         command: "hf",
         arguments: ["auth", "whoami"],
         exitStatus: 0,
-        stdout: "Logged in\n  user: DaRealDahoodie\n",
+        stdout: "user=DaRealDahoodie\n",
         stderr: ""
     )
 
@@ -194,8 +194,8 @@ import Testing
     #expect(modes["openai"] == .realUser)
     #expect(modes["google"] == .realUser)
     #expect(modes["xai"] == .realUser)
+    #expect(modes["huggingface"] == .realUser)
     #expect(modes["anthropic"] == .process)
-    #expect(modes["huggingface"] == .process)
 }
 
 @Test func providerCLIEnvironmentCanUseRealUserHomeForCredentialCLIs() {

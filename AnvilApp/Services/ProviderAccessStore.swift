@@ -339,6 +339,7 @@ struct ProviderCLIDefinition {
             displayName: "Hugging Face CLI",
             commandCandidates: ["hf", "huggingface-cli"],
             versionArguments: ["--version"],
+            homeDirectoryMode: .realUser,
             authProbeArguments: ["auth", "whoami"],
             authParser: ProviderCLIParsers.parseHuggingFaceAuth,
             testArguments: nil,

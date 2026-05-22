@@ -18,6 +18,7 @@
 	</array>
 	<key>com.apple.security.temporary-exception.files.home-relative-path.read-only</key>
 	<array>
+		<string>/.cache/huggingface/</string>
 		<string>/.codex/</string>
 		<string>/.grok/</string>
 	</array>
