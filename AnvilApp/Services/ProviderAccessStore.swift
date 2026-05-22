@@ -553,7 +553,10 @@ enum ProviderCLIParsers {
         }
 
         if output.localizedCaseInsensitiveContains("logged in") {
-            return ProviderCLIProbe(state: .authenticated, detail: firstUsefulLine(output) ?? "Signed in")
+            return ProviderCLIProbe(
+                state: .authenticated,
+                detail: codexLoginStatusLine(output) ?? firstUsefulLine(output) ?? "Signed in"
+            )
         }
         return ProviderCLIProbe(state: .installed, detail: firstUsefulLine(output) ?? "Installed")
     }
@@ -816,6 +819,16 @@ enum ProviderCLIParsers {
         let selectedType = (auth?["selectedType"] as? String)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return selectedType?.isEmpty == false ? selectedType : nil
+    }
+
+    private static func codexLoginStatusLine(_ output: String) -> String? {
+        output
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first {
+                !$0.isEmpty &&
+                    $0.localizedCaseInsensitiveContains("logged in")
+            }
     }
 
     private static func isGrokUnauthenticated(_ output: String) -> Bool {

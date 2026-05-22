@@ -50,6 +50,24 @@ import Testing
     #expect(probe.detail == "Logged in using ChatGPT")
 }
 
+@Test func providerCLIParsesCodexAuthAfterPathWarning() {
+    let result = ProviderCommandResult(
+        command: "codex",
+        arguments: ["login", "status"],
+        exitStatus: 0,
+        stdout: """
+        WARNING: proceeding, even though we could not update PATH: Operation not permitted (os error 1)
+        Logged in using ChatGPT
+        """,
+        stderr: ""
+    )
+
+    let probe = ProviderCLIParsers.parseCodexAuth(result)
+
+    #expect(probe.state == .authenticated)
+    #expect(probe.detail == "Logged in using ChatGPT")
+}
+
 @Test func providerCLIParsesGeminiOAuthSettings() throws {
     let homeURL = FileManager.default.temporaryDirectory
         .appendingPathComponent(UUID().uuidString, isDirectory: true)
