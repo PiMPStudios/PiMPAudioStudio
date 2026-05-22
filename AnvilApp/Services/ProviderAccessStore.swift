@@ -710,13 +710,48 @@ enum ProviderCommandRunner {
         let scopedAccess = ProviderCLIAccessGrants.startAccessingGrantedDirectories()
         defer { scopedAccess.forEach { $0.stopAccessing() } }
 
-        let capture = ProviderCapturedProcess(
-            executableURL: envURL,
+        let environment = commandEnvironment()
+        let launch = ProviderCommandLaunch.resolve(
             command: command,
             arguments: arguments,
-            environment: commandEnvironment()
+            environment: environment,
+            fallbackURL: envURL
+        )
+        let capture = ProviderCapturedProcess(
+            executableURL: launch.executableURL,
+            command: command,
+            arguments: arguments,
+            processArguments: launch.processArguments,
+            environment: environment
         )
         return try await capture.run(timeoutSeconds: timeoutSeconds)
+    }
+}
+
+struct ProviderCommandLaunch {
+    let executableURL: URL
+    let processArguments: [String]
+
+    static func resolve(
+        command: String,
+        arguments: [String],
+        environment: [String: String],
+        fallbackURL: URL
+    ) -> ProviderCommandLaunch {
+        if let executableURL = ProviderCLIPaths.resolvedExecutableURL(
+            for: command,
+            environment: environment
+        ) {
+            return ProviderCommandLaunch(
+                executableURL: executableURL,
+                processArguments: arguments
+            )
+        }
+
+        return ProviderCommandLaunch(
+            executableURL: fallbackURL,
+            processArguments: [command] + arguments
+        )
     }
 }
 
@@ -725,7 +760,7 @@ enum ProviderCLIAccessGrantPicker {
     static func chooseDirectory(for definition: ProviderCLIDefinition) -> URL? {
         let panel = NSOpenPanel()
         panel.title = "Grant \(definition.displayName) Access"
-        panel.message = "Choose the folder that contains \(definition.commandCandidates.first ?? "the provider CLI")."
+        panel.message = "Choose the provider CLI install folder."
         panel.prompt = "Grant Access"
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
@@ -749,7 +784,13 @@ enum ProviderCLIAccessGrants {
     }
 
     static func grantedDirectoryPaths() -> [String] {
-        grantedDirectories().map(\.path)
+        grantedDirectories()
+            .flatMap { url in
+                [
+                    url.path,
+                    url.appendingPathComponent("bin", isDirectory: true).path,
+                ]
+            }
     }
 
     static func startAccessingGrantedDirectories() -> [ProviderSecurityScopedAccess] {
@@ -889,12 +930,36 @@ enum ProviderCLIPaths {
         switch definition.providerID {
         case "xai":
             return URL(
-                fileURLWithPath: "\(realUserHomeDirectory())/.grok/bin",
+                fileURLWithPath: "\(realUserHomeDirectory())/.grok",
                 isDirectory: true
             )
         default:
             return nil
         }
+    }
+
+    static func resolvedExecutableURL(
+        for command: String,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> URL? {
+        if command.contains("/") {
+            return isExecutable(atPath: command) ? URL(fileURLWithPath: command) : nil
+        }
+
+        let directories = (environment["PATH"] ?? executableSearchPath(environment: environment))
+            .split(separator: ":")
+            .map(String.init)
+
+        for directory in directories {
+            let path = URL(fileURLWithPath: directory)
+                .appendingPathComponent(command)
+                .path
+            if isExecutable(atPath: path) {
+                return URL(fileURLWithPath: path)
+            }
+        }
+
+        return nil
     }
 
     private static func isSandboxContainerHome(_ path: String) -> Bool {
@@ -906,6 +971,10 @@ enum ProviderCLIPaths {
         return values.filter { value in
             seen.insert(value).inserted
         }
+    }
+
+    private static func isExecutable(atPath path: String) -> Bool {
+        FileManager.default.isExecutableFile(atPath: path)
     }
 }
 
@@ -933,11 +1002,17 @@ private final class ProviderCapturedProcess: @unchecked Sendable {
     private var didResume = false
     private var didCancel = false
 
-    init(executableURL: URL, command: String, arguments: [String], environment: [String: String]) {
+    init(
+        executableURL: URL,
+        command: String,
+        arguments: [String],
+        processArguments: [String],
+        environment: [String: String]
+    ) {
         self.command = command
         self.arguments = arguments
         process.executableURL = executableURL
-        process.arguments = [command] + arguments
+        process.arguments = processArguments
         process.environment = environment
         process.standardOutput = stdout
         process.standardError = stderr

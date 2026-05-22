@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import AnvilApp
 
@@ -137,6 +138,33 @@ import Testing
         return
     }
     #expect(homebrewIndex < accountGrokIndex)
+}
+
+@Test func providerCLIResolvesExecutableBeforeFallingBackToEnv() throws {
+    let directoryURL = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(
+        at: directoryURL,
+        withIntermediateDirectories: true
+    )
+    defer { try? FileManager.default.removeItem(at: directoryURL) }
+
+    let toolURL = directoryURL.appendingPathComponent("mock-cli")
+    FileManager.default.createFile(atPath: toolURL.path, contents: Data())
+    try FileManager.default.setAttributes(
+        [.posixPermissions: 0o755],
+        ofItemAtPath: toolURL.path
+    )
+
+    let launch = ProviderCommandLaunch.resolve(
+        command: "mock-cli",
+        arguments: ["--version"],
+        environment: ["PATH": directoryURL.path],
+        fallbackURL: URL(fileURLWithPath: "/usr/bin/env")
+    )
+
+    #expect(launch.executableURL.path == toolURL.path)
+    #expect(launch.processArguments == ["--version"])
 }
 
 @Test func providerCLIClassifiesSandboxPermissionAsBlocked() {
