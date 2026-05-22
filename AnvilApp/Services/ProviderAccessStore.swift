@@ -1023,11 +1023,14 @@ enum ProviderCLIPaths {
 
 enum ProviderCommandError: LocalizedError {
     case timedOut(String, TimeInterval)
+    case launchFailed(String, String, Error)
 
     var errorDescription: String? {
         switch self {
         case .timedOut(let command, let timeout):
             return "\(command) timed out after \(Int(timeout)) seconds"
+        case .launchFailed(let command, let diagnostic, let error):
+            return "\(command) launch failed: \(error.localizedDescription); \(diagnostic)"
         }
     }
 }
@@ -1116,7 +1119,7 @@ private final class ProviderCapturedProcess: @unchecked Sendable {
         do {
             try process.run()
         } catch {
-            finish(error: error)
+            finish(error: ProviderCommandError.launchFailed(command, launchDiagnostic, error))
         }
     }
 

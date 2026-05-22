@@ -205,6 +205,17 @@ import Testing
     #expect(launch.processArguments == ["--version"])
 }
 
+@Test func providerCLILaunchFailureIncludesDiagnostic() {
+    let error = ProviderCommandError.launchFailed(
+        "grok",
+        "launch=direct /Users/test/.grok/downloads/grok",
+        CocoaError(.fileNoSuchFile)
+    )
+
+    #expect(error.localizedDescription.contains("grok launch failed"))
+    #expect(error.localizedDescription.contains("launch=direct"))
+}
+
 @Test func providerCLIClassifiesSandboxPermissionAsBlocked() {
     let result = ProviderCommandResult(
         command: "grok",
