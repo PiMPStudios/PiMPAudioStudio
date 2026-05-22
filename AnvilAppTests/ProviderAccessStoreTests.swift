@@ -158,6 +158,24 @@ import Testing
     #expect(homebrewIndex < accountGrokIndex)
 }
 
+@Test func providerCLIEnvironmentCanUseRealUserHomeForCredentialCLIs() {
+    let environment = ProviderCommandRunner.commandEnvironment(
+        from: [
+            "HOME": "/Users/testuser/Library/Containers/net.pimp.anvil.AnvilApp/Data",
+            "USER": "testuser",
+            "PATH": "/usr/bin:/bin",
+            "ANVIL_DISABLE_PROVIDER_CLI_GRANTS": "1",
+        ],
+        homeDirectoryMode: .realUser
+    )
+
+    #expect(environment["HOME"] == "/Users/testuser")
+
+    let pathDirectories = environment["PATH"]?.split(separator: ":").map(String.init) ?? []
+    #expect(pathDirectories.first == "/Users/testuser/.grok/bin")
+    #expect(!pathDirectories.contains("/Users/testuser/Library/Containers/net.pimp.anvil.AnvilApp/Data/.grok/bin"))
+}
+
 @Test func providerCLIResolvesExecutableBeforeFallingBackToEnv() throws {
     let directoryURL = FileManager.default.temporaryDirectory
         .appendingPathComponent(UUID().uuidString, isDirectory: true)

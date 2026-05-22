@@ -250,10 +250,33 @@ struct ProviderCLIDefinition {
     let displayName: String
     let commandCandidates: [String]
     let versionArguments: [String]
+    let homeDirectoryMode: ProviderCLIHomeDirectoryMode
     let authProbeArguments: [String]?
     let authParser: ((ProviderCommandResult) -> ProviderCLIProbe)?
     let testArguments: [String]?
     let testParser: ((ProviderCommandResult) -> ProviderCLITestOutcome)?
+
+    init(
+        providerID: String,
+        displayName: String,
+        commandCandidates: [String],
+        versionArguments: [String],
+        homeDirectoryMode: ProviderCLIHomeDirectoryMode = .process,
+        authProbeArguments: [String]?,
+        authParser: ((ProviderCommandResult) -> ProviderCLIProbe)?,
+        testArguments: [String]?,
+        testParser: ((ProviderCommandResult) -> ProviderCLITestOutcome)?
+    ) {
+        self.providerID = providerID
+        self.displayName = displayName
+        self.commandCandidates = commandCandidates
+        self.versionArguments = versionArguments
+        self.homeDirectoryMode = homeDirectoryMode
+        self.authProbeArguments = authProbeArguments
+        self.authParser = authParser
+        self.testArguments = testArguments
+        self.testParser = testParser
+    }
 
     static let all: [ProviderCLIDefinition] = [
         ProviderCLIDefinition(
@@ -298,6 +321,7 @@ struct ProviderCLIDefinition {
             displayName: "Grok CLI",
             commandCandidates: ["grok"],
             versionArguments: ["--version"],
+            homeDirectoryMode: .realUser,
             authProbeArguments: ["models"],
             authParser: ProviderCLIParsers.parseGrokAuth,
             testArguments: nil,
@@ -324,6 +348,7 @@ enum ProviderCLIDetector {
                 versionResult = try await ProviderCommandRunner.run(
                     command: command,
                     arguments: definition.versionArguments,
+                    homeDirectoryMode: definition.homeDirectoryMode,
                     timeoutSeconds: 5
                 )
             } catch {
@@ -387,6 +412,7 @@ enum ProviderCLIDetector {
                     let authResult = try await ProviderCommandRunner.run(
                         command: command,
                         arguments: arguments,
+                        homeDirectoryMode: definition.homeDirectoryMode,
                         timeoutSeconds: 10
                     )
                     let probe = parser(authResult)
@@ -436,6 +462,7 @@ enum ProviderCLIDetector {
             let result = try await ProviderCommandRunner.run(
                 command: command,
                 arguments: arguments,
+                homeDirectoryMode: definition.homeDirectoryMode,
                 timeoutSeconds: definition.testArguments == nil ? 10 : 30
             )
 
@@ -722,11 +749,20 @@ enum ProviderCLIParsers {
 enum ProviderCommandRunner {
     private static let envURL = URL(fileURLWithPath: "/usr/bin/env")
 
-    static func commandEnvironment(from baseEnvironment: [String: String] = ProcessInfo.processInfo.environment) -> [String: String] {
+    static func commandEnvironment(
+        from baseEnvironment: [String: String] = ProcessInfo.processInfo.environment,
+        homeDirectoryMode: ProviderCLIHomeDirectoryMode = .process
+    ) -> [String: String] {
         var environment = baseEnvironment
-        let home = ProviderCLIPaths.processHomeDirectory(environment: environment)
+        let home = ProviderCLIPaths.homeDirectory(
+            for: homeDirectoryMode,
+            environment: environment
+        )
         let user = environment["USER"] ?? NSUserName()
-        environment["PATH"] = ProviderCLIPaths.executableSearchPath(environment: environment)
+        environment["PATH"] = ProviderCLIPaths.executableSearchPath(
+            environment: environment,
+            primaryHomeDirectory: home
+        )
         environment["HOME"] = home
         environment["USER"] = user
         environment["LOGNAME"] = environment["LOGNAME"] ?? user
@@ -738,11 +774,16 @@ enum ProviderCommandRunner {
         return environment
     }
 
-    static func run(command: String, arguments: [String], timeoutSeconds: TimeInterval) async throws -> ProviderCommandResult {
+    static func run(
+        command: String,
+        arguments: [String],
+        homeDirectoryMode: ProviderCLIHomeDirectoryMode = .process,
+        timeoutSeconds: TimeInterval
+    ) async throws -> ProviderCommandResult {
         let scopedAccess = ProviderCLIAccessGrants.startAccessingGrantedDirectories()
         defer { scopedAccess.forEach { $0.stopAccessing() } }
 
-        let environment = commandEnvironment()
+        let environment = commandEnvironment(homeDirectoryMode: homeDirectoryMode)
         let launch = ProviderCommandLaunch.resolve(
             command: command,
             arguments: arguments,
@@ -759,6 +800,11 @@ enum ProviderCommandRunner {
         )
         return try await capture.run(timeoutSeconds: timeoutSeconds)
     }
+}
+
+enum ProviderCLIHomeDirectoryMode {
+    case process
+    case realUser
 }
 
 struct ProviderCommandLaunch {
@@ -938,8 +984,23 @@ enum ProviderCLIPaths {
         return NSHomeDirectory()
     }
 
-    static func executableSearchPath(environment: [String: String] = ProcessInfo.processInfo.environment) -> String {
-        let processHome = processHomeDirectory(environment: environment)
+    static func homeDirectory(
+        for mode: ProviderCLIHomeDirectoryMode,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> String {
+        switch mode {
+        case .process:
+            return processHomeDirectory(environment: environment)
+        case .realUser:
+            return realUserHomeDirectory(environment: environment)
+        }
+    }
+
+    static func executableSearchPath(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        primaryHomeDirectory: String? = nil
+    ) -> String {
+        let processHome = primaryHomeDirectory ?? processHomeDirectory(environment: environment)
         let userHome = realUserHomeDirectory(environment: environment)
         let includeGrantedDirectories = environment["ANVIL_DISABLE_PROVIDER_CLI_GRANTS"] != "1"
         var directories = includeGrantedDirectories ? ProviderCLIAccessGrants.grantedDirectoryPaths() : []
