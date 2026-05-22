@@ -161,6 +161,16 @@ struct IntelligenceSettingsView: View {
                             .controlSize(.small)
                     }
 
+                    if status.canGrantAccess {
+                        Button {
+                            Task { await providerAccessStore.grantAccess(providerID: provider.id) }
+                        } label: {
+                            Image(systemName: "folder.badge.plus")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Grant local CLI folder access")
+                    }
+
                     Button {
                         Task { await providerAccessStore.test(providerID: provider.id) }
                     } label: {
@@ -249,6 +259,8 @@ struct IntelligenceSettingsView: View {
             return "Testing..."
         case .passed:
             return "Test passed"
+        case .workspaceTrustNeeded:
+            return "Workspace trust needed"
         case .blocked:
             return "Test blocked"
         case .failed:
@@ -268,6 +280,8 @@ struct IntelligenceSettingsView: View {
             return "Signed in"
         case .unauthenticated:
             return "Sign-in needed"
+        case .workspaceTrustNeeded:
+            return "Workspace trust needed"
         case .blocked:
             return "Sandbox access needed"
         case .failed:
@@ -277,7 +291,7 @@ struct IntelligenceSettingsView: View {
 
     private func statusDetail(for status: ProviderCLIStatus) -> String? {
         switch status.testState {
-        case .passed(let detail), .blocked(let detail), .failed(let detail):
+        case .passed(let detail), .workspaceTrustNeeded(let detail), .blocked(let detail), .failed(let detail):
             return detail
         case .running, .idle:
             break
@@ -302,6 +316,8 @@ struct IntelligenceSettingsView: View {
             return "clock"
         case .passed:
             return "checkmark.circle.fill"
+        case .workspaceTrustNeeded:
+            return "folder.badge.questionmark"
         case .blocked:
             return "lock.fill"
         case .failed:
@@ -317,6 +333,8 @@ struct IntelligenceSettingsView: View {
             return "terminal"
         case .unauthenticated:
             return "person.crop.circle.badge.exclamationmark"
+        case .workspaceTrustNeeded:
+            return "folder.badge.questionmark"
         case .blocked:
             return "lock.fill"
         case .missing, .notChecked:
@@ -332,6 +350,8 @@ struct IntelligenceSettingsView: View {
             return .blue
         case .passed:
             return .green
+        case .workspaceTrustNeeded:
+            return .orange
         case .blocked:
             return .orange
         case .failed:
@@ -346,6 +366,8 @@ struct IntelligenceSettingsView: View {
         case .installed:
             return .blue
         case .unauthenticated:
+            return .orange
+        case .workspaceTrustNeeded:
             return .orange
         case .blocked:
             return .orange

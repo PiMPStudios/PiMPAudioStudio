@@ -99,11 +99,28 @@ import Testing
     #expect(outcome.detail == "Received response: OK")
 }
 
+@Test func providerCLIClassifiesGeminiWorkspaceTrustFailure() {
+    let result = ProviderCommandResult(
+        command: "gemini",
+        arguments: ["--prompt", "Reply with OK only.", "--output-format", "json"],
+        exitStatus: 1,
+        stdout: "",
+        stderr: "Approval mode overridden to \"default\" because the current folder is not trusted.\n"
+    )
+
+    let outcome = ProviderCLIParsers.parseGeminiTest(result)
+
+    #expect(!outcome.success)
+    #expect(outcome.isWorkspaceTrustNeeded)
+    #expect(outcome.detail.contains("current folder is not trusted"))
+}
+
 @Test func providerCLIEnvironmentPreservesSandboxHomeWithAccountPathFallback() {
     let environment = ProviderCommandRunner.commandEnvironment(from: [
         "HOME": "/Users/testuser/Library/Containers/net.pimp.anvil.AnvilApp/Data",
         "USER": "testuser",
         "PATH": "/usr/bin:/bin",
+        "ANVIL_DISABLE_PROVIDER_CLI_GRANTS": "1",
     ])
 
     #expect(environment["HOME"] == "/Users/testuser/Library/Containers/net.pimp.anvil.AnvilApp/Data")

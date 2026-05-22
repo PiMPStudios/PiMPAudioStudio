@@ -1,4 +1,5 @@
 import Darwin
+import AppKit
 import Foundation
 
 @MainActor
@@ -74,11 +75,46 @@ final class ProviderAccessStore: ObservableObject {
         let outcome = await ProviderCLIDetector.test(definition: definition, command: command)
         var updated = statuses[providerID] ?? detected
         if outcome.isBlocked {
+            updated.state = .blocked(outcome.detail)
+            updated.detail = outcome.detail
             updated.testState = .blocked(outcome.detail)
+        } else if outcome.isWorkspaceTrustNeeded {
+            updated.state = .workspaceTrustNeeded(outcome.detail)
+            updated.detail = outcome.detail
+            updated.testState = .workspaceTrustNeeded(outcome.detail)
         } else {
             updated.testState = outcome.success ? .passed(outcome.detail) : .failed(outcome.detail)
         }
         statuses[providerID] = updated
+    }
+
+    func grantAccess(providerID: String) async {
+        guard let definition = definitions.first(where: { $0.providerID == providerID }) else { return }
+        guard let directoryURL = ProviderCLIAccessGrantPicker.chooseDirectory(for: definition) else { return }
+
+        do {
+            try ProviderCLIAccessGrants.saveDirectory(directoryURL, providerID: providerID)
+            var current = statuses[providerID] ?? ProviderCLIStatus.notChecked(
+                providerID: definition.providerID,
+                displayName: definition.displayName
+            )
+            current.state = .installed
+            current.detail = "CLI folder access granted; rechecking"
+            current.testState = .idle
+            statuses[providerID] = current
+
+            let refreshed = await ProviderCLIDetector.detect(definition: definition)
+            statuses[providerID] = refreshed
+        } catch {
+            var current = statuses[providerID] ?? ProviderCLIStatus.notChecked(
+                providerID: definition.providerID,
+                displayName: definition.displayName
+            )
+            current.state = .failed(error.localizedDescription)
+            current.detail = error.localizedDescription
+            current.testState = .idle
+            statuses[providerID] = current
+        }
     }
 }
 
@@ -96,6 +132,10 @@ struct ProviderCLIStatus: Identifiable, Equatable {
 
     var canTest: Bool {
         command != nil && state != .missing && !state.isBlocked
+    }
+
+    var canGrantAccess: Bool {
+        providerID == "xai" && (state.isBlocked || testState.isBlocked)
     }
 
     static func notChecked(providerID: String, displayName: String) -> ProviderCLIStatus {
@@ -117,6 +157,7 @@ enum ProviderCLIState: Equatable {
     case installed
     case authenticated
     case unauthenticated
+    case workspaceTrustNeeded(String)
     case blocked(String)
     case failed(String)
 
@@ -132,8 +173,16 @@ enum ProviderCLITestState: Equatable {
     case idle
     case running
     case passed(String)
+    case workspaceTrustNeeded(String)
     case blocked(String)
     case failed(String)
+
+    var isBlocked: Bool {
+        if case .blocked = self {
+            return true
+        }
+        return false
+    }
 }
 
 struct ProviderCommandResult: Equatable {
@@ -164,11 +213,18 @@ struct ProviderCLITestOutcome: Equatable {
     let success: Bool
     let detail: String
     let isBlocked: Bool
+    let isWorkspaceTrustNeeded: Bool
 
-    init(success: Bool, detail: String, isBlocked: Bool = false) {
+    init(
+        success: Bool,
+        detail: String,
+        isBlocked: Bool = false,
+        isWorkspaceTrustNeeded: Bool = false
+    ) {
         self.success = success
         self.detail = detail
         self.isBlocked = isBlocked
+        self.isWorkspaceTrustNeeded = isWorkspaceTrustNeeded
     }
 }
 
@@ -496,6 +552,13 @@ enum ProviderCLIParsers {
 
     static func parseGeminiTest(_ result: ProviderCommandResult) -> ProviderCLITestOutcome {
         guard result.exitStatus == 0 else {
+            if let detail = workspaceTrustDetail(result) {
+                return ProviderCLITestOutcome(
+                    success: false,
+                    detail: detail,
+                    isWorkspaceTrustNeeded: true
+                )
+            }
             return ProviderCLITestOutcome(
                 success: false,
                 detail: firstUsefulLine(result.cleanedOutput) ?? "Gemini test failed"
@@ -539,6 +602,12 @@ enum ProviderCLIParsers {
             return ProviderCLITestOutcome(success: true, detail: probe.detail)
         case .unauthenticated:
             return ProviderCLITestOutcome(success: false, detail: probe.detail)
+        case .workspaceTrustNeeded(let message):
+            return ProviderCLITestOutcome(
+                success: false,
+                detail: message,
+                isWorkspaceTrustNeeded: true
+            )
         case .blocked:
             return ProviderCLITestOutcome(success: false, detail: probe.detail, isBlocked: true)
         case .failed(let message):
@@ -575,6 +644,18 @@ enum ProviderCLIParsers {
         return "Sandbox blocked CLI access: \(line)"
     }
 
+    static func workspaceTrustDetail(_ result: ProviderCommandResult) -> String? {
+        let lines = result.cleanedOutput
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        guard let line = lines.first(where: isWorkspaceTrustLine) else {
+            return nil
+        }
+        return line
+    }
+
     static func firstUsefulLine(_ output: String) -> String? {
         output
             .components(separatedBy: .newlines)
@@ -586,6 +667,9 @@ enum ProviderCLIParsers {
         if let detail = sandboxPermissionDetail(result) {
             return ProviderCLIProbe(state: .blocked(detail), detail: detail)
         }
+        if let detail = workspaceTrustDetail(result) {
+            return ProviderCLIProbe(state: .workspaceTrustNeeded(detail), detail: detail)
+        }
         let detail = firstUsefulLine(result.cleanedOutput) ?? fallback
         return ProviderCLIProbe(state: .failed(detail), detail: detail)
     }
@@ -594,6 +678,12 @@ enum ProviderCLIParsers {
         let lowercased = line.lowercased()
         return lowercased.contains("operation not permitted") ||
             lowercased.contains("eperm")
+    }
+
+    private static func isWorkspaceTrustLine(_ line: String) -> Bool {
+        let lowercased = line.lowercased()
+        return lowercased.contains("current folder is not trusted") ||
+            lowercased.contains("workspace") && lowercased.contains("not trusted")
     }
 }
 
@@ -617,6 +707,9 @@ enum ProviderCommandRunner {
     }
 
     static func run(command: String, arguments: [String], timeoutSeconds: TimeInterval) async throws -> ProviderCommandResult {
+        let scopedAccess = ProviderCLIAccessGrants.startAccessingGrantedDirectories()
+        defer { scopedAccess.forEach { $0.stopAccessing() } }
+
         let capture = ProviderCapturedProcess(
             executableURL: envURL,
             command: command,
@@ -624,6 +717,100 @@ enum ProviderCommandRunner {
             environment: commandEnvironment()
         )
         return try await capture.run(timeoutSeconds: timeoutSeconds)
+    }
+}
+
+enum ProviderCLIAccessGrantPicker {
+    @MainActor
+    static func chooseDirectory(for definition: ProviderCLIDefinition) -> URL? {
+        let panel = NSOpenPanel()
+        panel.title = "Grant \(definition.displayName) Access"
+        panel.message = "Choose the folder that contains \(definition.commandCandidates.first ?? "the provider CLI")."
+        panel.prompt = "Grant Access"
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = ProviderCLIPaths.suggestedGrantDirectory(for: definition)
+
+        return panel.runModal() == .OK ? panel.url : nil
+    }
+}
+
+enum ProviderCLIAccessGrants {
+    private static let bookmarkPrefix = "providerCLIAccessBookmark."
+
+    static func saveDirectory(_ url: URL, providerID: String) throws {
+        let bookmark = try url.bookmarkData(
+            options: [.withSecurityScope],
+            includingResourceValuesForKeys: nil,
+            relativeTo: nil
+        )
+        UserDefaults.standard.set(bookmark, forKey: bookmarkKey(providerID: providerID))
+    }
+
+    static func grantedDirectoryPaths() -> [String] {
+        grantedDirectories().map(\.path)
+    }
+
+    static func startAccessingGrantedDirectories() -> [ProviderSecurityScopedAccess] {
+        grantedDirectories().map { url in
+            ProviderSecurityScopedAccess(
+                url: url,
+                didStartAccessing: url.startAccessingSecurityScopedResource()
+            )
+        }
+    }
+
+    private static func grantedDirectories() -> [URL] {
+        UserDefaults.standard
+            .dictionaryRepresentation()
+            .keys
+            .filter { $0.hasPrefix(bookmarkPrefix) }
+            .compactMap { providerID(fromBookmarkKey: $0) }
+            .compactMap(resolveDirectory(providerID:))
+    }
+
+    private static func resolveDirectory(providerID: String) -> URL? {
+        guard let data = UserDefaults.standard.data(forKey: bookmarkKey(providerID: providerID)) else {
+            return nil
+        }
+
+        do {
+            var isStale = false
+            let url = try URL(
+                resolvingBookmarkData: data,
+                options: [.withSecurityScope],
+                relativeTo: nil,
+                bookmarkDataIsStale: &isStale
+            )
+            if isStale {
+                try saveDirectory(url, providerID: providerID)
+            }
+            return url
+        } catch {
+            UserDefaults.standard.removeObject(forKey: bookmarkKey(providerID: providerID))
+            return nil
+        }
+    }
+
+    private static func bookmarkKey(providerID: String) -> String {
+        bookmarkPrefix + providerID
+    }
+
+    private static func providerID(fromBookmarkKey key: String) -> String? {
+        guard key.hasPrefix(bookmarkPrefix) else { return nil }
+        return String(key.dropFirst(bookmarkPrefix.count))
+    }
+}
+
+struct ProviderSecurityScopedAccess {
+    let url: URL
+    let didStartAccessing: Bool
+
+    func stopAccessing() {
+        if didStartAccessing {
+            url.stopAccessingSecurityScopedResource()
+        }
     }
 }
 
@@ -677,10 +864,12 @@ enum ProviderCLIPaths {
     static func executableSearchPath(environment: [String: String] = ProcessInfo.processInfo.environment) -> String {
         let processHome = processHomeDirectory(environment: environment)
         let userHome = realUserHomeDirectory(environment: environment)
-        var directories = [
+        let includeGrantedDirectories = environment["ANVIL_DISABLE_PROVIDER_CLI_GRANTS"] != "1"
+        var directories = includeGrantedDirectories ? ProviderCLIAccessGrants.grantedDirectoryPaths() : []
+        directories.append(contentsOf: [
             "\(processHome)/.grok/bin",
             "\(processHome)/.local/bin",
-        ]
+        ])
 
         directories.append(contentsOf: standardBinaryDirectories)
 
@@ -694,6 +883,18 @@ enum ProviderCLIPaths {
         }
 
         return unique(directories).joined(separator: ":")
+    }
+
+    static func suggestedGrantDirectory(for definition: ProviderCLIDefinition) -> URL? {
+        switch definition.providerID {
+        case "xai":
+            return URL(
+                fileURLWithPath: "\(realUserHomeDirectory())/.grok/bin",
+                isDirectory: true
+            )
+        default:
+            return nil
+        }
     }
 
     private static func isSandboxContainerHome(_ path: String) -> Bool {
