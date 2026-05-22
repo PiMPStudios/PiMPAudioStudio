@@ -872,6 +872,7 @@ enum ProviderCommandRunner {
     static func run(
         command: String,
         arguments: [String],
+        standardInput: String? = nil,
         homeDirectoryMode: ProviderCLIHomeDirectoryMode = .process,
         timeoutSeconds: TimeInterval
     ) async throws -> ProviderCommandResult {
@@ -890,6 +891,7 @@ enum ProviderCommandRunner {
             command: command,
             arguments: arguments,
             processArguments: launch.processArguments,
+            standardInput: standardInput,
             environment: environment,
             launchDiagnostic: launch.diagnostic
         )
@@ -1208,6 +1210,8 @@ private final class ProviderCapturedProcess: @unchecked Sendable {
     private let command: String
     private let arguments: [String]
     private let launchDiagnostic: String
+    private let standardInputData: Data?
+    private let standardInputPipe: Pipe?
     private var stdoutData = Data()
     private var stderrData = Data()
     private var continuation: CheckedContinuation<ProviderCommandResult, Error>?
@@ -1219,17 +1223,23 @@ private final class ProviderCapturedProcess: @unchecked Sendable {
         command: String,
         arguments: [String],
         processArguments: [String],
+        standardInput: String?,
         environment: [String: String],
         launchDiagnostic: String
     ) {
         self.command = command
         self.arguments = arguments
         self.launchDiagnostic = launchDiagnostic
+        self.standardInputData = standardInput?.data(using: .utf8)
+        self.standardInputPipe = standardInput == nil ? nil : Pipe()
         process.executableURL = executableURL
         process.arguments = processArguments
         process.environment = environment
         process.standardOutput = stdout
         process.standardError = stderr
+        if let standardInputPipe {
+            process.standardInput = standardInputPipe
+        }
     }
 
     func run(timeoutSeconds: TimeInterval) async throws -> ProviderCommandResult {
@@ -1283,8 +1293,18 @@ private final class ProviderCapturedProcess: @unchecked Sendable {
 
         do {
             try process.run()
+            writeStandardInput()
         } catch {
             finish(error: ProviderCommandError.launchFailed(command, launchDiagnostic, error))
+        }
+    }
+
+    private func writeStandardInput() {
+        guard let standardInputData, let standardInputPipe else { return }
+        let writer = standardInputPipe.fileHandleForWriting
+        DispatchQueue.global(qos: .utility).async {
+            try? writer.write(contentsOf: standardInputData)
+            try? writer.close()
         }
     }
 
@@ -1334,6 +1354,7 @@ private final class ProviderCapturedProcess: @unchecked Sendable {
     private func finish(error: Error) {
         stdout.fileHandleForReading.readabilityHandler = nil
         stderr.fileHandleForReading.readabilityHandler = nil
+        try? standardInputPipe?.fileHandleForWriting.close()
 
         lock.lock()
         guard !didResume, let continuation else {
@@ -1350,6 +1371,7 @@ private final class ProviderCapturedProcess: @unchecked Sendable {
     private func cancel() {
         stdout.fileHandleForReading.readabilityHandler = nil
         stderr.fileHandleForReading.readabilityHandler = nil
+        try? standardInputPipe?.fileHandleForWriting.close()
 
         lock.lock()
         didCancel = true

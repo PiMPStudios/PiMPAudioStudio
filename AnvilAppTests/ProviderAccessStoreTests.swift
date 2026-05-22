@@ -262,6 +262,19 @@ import Testing
     #expect(launch.diagnostic.contains("launch=direct"))
 }
 
+@Test func providerCommandRunnerPassesStandardInput() async throws {
+    let result = try await ProviderCommandRunner.run(
+        command: "cat",
+        arguments: [],
+        standardInput: "hello stdin",
+        timeoutSeconds: 5
+    )
+
+    #expect(result.exitStatus == 0)
+    #expect(result.stdout == "hello stdin")
+    #expect(result.arguments.isEmpty)
+}
+
 @Test func providerCLIResolvesSymlinkedExecutableTarget() throws {
     let directoryURL = FileManager.default.temporaryDirectory
         .appendingPathComponent(UUID().uuidString, isDirectory: true)

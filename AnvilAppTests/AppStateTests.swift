@@ -206,6 +206,40 @@ import Foundation
     #expect(LyricCLIResponseParser.responseText(from: grok, providerID: "xai") == "[Chorus]\nSignal comes alive")
 }
 
+@Test func lyricCLIInvocationsDoNotExposePromptTextInArguments() throws {
+    let secret = "PRIVATE_DELTA_BLUES_PROMPT"
+    let fullPrompt = "System instructions\n\nSong description: \(secret)"
+    let modes: [ProviderCLILyricMode] = [.claude, .codex, .gemini, .grok]
+
+    for mode in modes {
+        let invocation = try mode.invocation(
+            systemPrompt: "System instructions",
+            userPrompt: "Song description: \(secret)",
+            fullPrompt: fullPrompt
+        )
+        defer { invocation.cleanup() }
+
+        let visibleArguments = invocation.arguments.joined(separator: " ")
+        #expect(!visibleArguments.contains(secret))
+        #expect(!visibleArguments.contains(fullPrompt))
+
+        switch mode {
+        case .grok:
+            guard let url = invocation.temporaryPromptFileURL else {
+                #expect(Bool(false))
+                continue
+            }
+            #expect(invocation.standardInput == nil)
+            #expect(try String(contentsOf: url, encoding: .utf8).contains(secret))
+            invocation.cleanup()
+            #expect(!FileManager.default.fileExists(atPath: url.path))
+        default:
+            #expect(invocation.standardInput == fullPrompt)
+            #expect(invocation.temporaryPromptFileURL == nil)
+        }
+    }
+}
+
 @Test func lyricSanitizerRestructuresOversizedSingleVerseForLongSongs() {
     let raw = """
     [Verse]

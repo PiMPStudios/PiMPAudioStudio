@@ -41,13 +41,17 @@ struct ProviderCLILyricWriter: LyricWriter {
                 let fullPrompt = "\(plan.systemPrompt)\n\n\(userPrompt)"
 
                 do {
+                    let invocation = try mode.invocation(
+                        systemPrompt: plan.systemPrompt,
+                        userPrompt: userPrompt,
+                        fullPrompt: fullPrompt
+                    )
+                    defer { invocation.cleanup() }
+
                     let result = try await ProviderCommandRunner.run(
                         command: command,
-                        arguments: mode.arguments(
-                            systemPrompt: plan.systemPrompt,
-                            userPrompt: userPrompt,
-                            fullPrompt: fullPrompt
-                        ),
+                        arguments: invocation.arguments,
+                        standardInput: invocation.standardInput,
                         homeDirectoryMode: homeDirectoryMode,
                         timeoutSeconds: 120
                     )
@@ -79,6 +83,17 @@ struct ProviderCLILyricWriter: LyricWriter {
     }
 }
 
+struct ProviderCLILyricInvocation {
+    let arguments: [String]
+    let standardInput: String?
+    let temporaryPromptFileURL: URL?
+
+    func cleanup() {
+        guard let temporaryPromptFileURL else { return }
+        try? FileManager.default.removeItem(at: temporaryPromptFileURL)
+    }
+}
+
 enum ProviderCLILyricMode: Sendable {
     case claude
     case codex
@@ -100,58 +115,90 @@ enum ProviderCLILyricMode: Sendable {
         }
     }
 
-    func arguments(systemPrompt: String, userPrompt: String, fullPrompt: String) -> [String] {
+    func invocation(
+        systemPrompt: String,
+        userPrompt: String,
+        fullPrompt: String
+    ) throws -> ProviderCLILyricInvocation {
         switch self {
         case .claude:
-            return [
-                "--print",
-                "--output-format",
-                "json",
-                "--permission-mode",
-                "plan",
-                "--no-session-persistence",
-                "--system-prompt",
-                systemPrompt,
-                userPrompt,
-            ]
+            return ProviderCLILyricInvocation(
+                arguments: [
+                    "--print",
+                    "--output-format",
+                    "json",
+                    "--permission-mode",
+                    "plan",
+                    "--no-session-persistence",
+                ],
+                standardInput: fullPrompt,
+                temporaryPromptFileURL: nil
+            )
         case .codex:
-            return [
-                "exec",
-                "--skip-git-repo-check",
-                "--ignore-rules",
-                "--ignore-user-config",
-                "--sandbox",
-                "read-only",
-                "--color",
-                "never",
-                "--json",
-                fullPrompt,
-            ]
+            return ProviderCLILyricInvocation(
+                arguments: [
+                    "exec",
+                    "--skip-git-repo-check",
+                    "--ignore-rules",
+                    "--ignore-user-config",
+                    "--sandbox",
+                    "read-only",
+                    "--color",
+                    "never",
+                    "--json",
+                    "-",
+                ],
+                standardInput: fullPrompt,
+                temporaryPromptFileURL: nil
+            )
         case .gemini:
-            return [
-                "--skip-trust",
-                "--approval-mode",
-                "plan",
-                "--output-format",
-                "json",
-                "--prompt",
-                fullPrompt,
-            ]
+            return ProviderCLILyricInvocation(
+                arguments: [
+                    "--skip-trust",
+                    "--approval-mode",
+                    "plan",
+                    "--output-format",
+                    "json",
+                    "--prompt",
+                    "",
+                ],
+                standardInput: fullPrompt,
+                temporaryPromptFileURL: nil
+            )
         case .grok:
-            return [
-                "--no-memory",
-                "--no-subagents",
-                "--disable-web-search",
-                "--permission-mode",
-                "plan",
-                "--output-format",
-                "json",
-                "--system-prompt-override",
-                systemPrompt,
-                "--single",
-                userPrompt,
-            ]
+            let promptFileURL = try ProviderCLIPromptFile.write(fullPrompt)
+            return ProviderCLILyricInvocation(
+                arguments: [
+                    "--no-memory",
+                    "--no-subagents",
+                    "--disable-web-search",
+                    "--permission-mode",
+                    "plan",
+                    "--output-format",
+                    "json",
+                    "--prompt-file",
+                    promptFileURL.path,
+                ],
+                standardInput: nil,
+                temporaryPromptFileURL: promptFileURL
+            )
         }
+    }
+}
+
+enum ProviderCLIPromptFile {
+    static func write(_ prompt: String) throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("anvil-lyric-prompt-\(UUID().uuidString).txt")
+        let didCreate = FileManager.default.createFile(
+            atPath: url.path,
+            contents: Data(prompt.utf8),
+            attributes: [.posixPermissions: 0o600]
+        )
+        guard didCreate else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        return url
     }
 }
 
