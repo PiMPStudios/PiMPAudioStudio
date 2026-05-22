@@ -9,8 +9,12 @@ final class ProviderAccessStore: ObservableObject {
 
     private let definitions: [ProviderCLIDefinition]
 
-    init(definitions: [ProviderCLIDefinition] = ProviderCLIDefinition.all) {
+    init(
+        definitions: [ProviderCLIDefinition] = ProviderCLIDefinition.all,
+        statuses: [String: ProviderCLIStatus] = [:]
+    ) {
         self.definitions = definitions
+        self.statuses = statuses
     }
 
     func status(for providerID: String, displayName: String) -> ProviderCLIStatus {
@@ -893,7 +897,7 @@ enum ProviderCommandRunner {
     }
 }
 
-enum ProviderCLIHomeDirectoryMode: Equatable {
+enum ProviderCLIHomeDirectoryMode: Equatable, Sendable {
     case process
     case realUser
 }

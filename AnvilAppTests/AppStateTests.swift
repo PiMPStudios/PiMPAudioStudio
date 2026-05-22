@@ -129,6 +129,83 @@ import Foundation
     #expect(plan.systemPrompt.contains("Do not collapse the whole song into one [Verse]"))
 }
 
+@Test func lyricBackendProvidersExcludeHuggingFace() {
+    let providerIDs = LyricWriterManager.remoteBackendProviders.map(\.id)
+
+    #expect(providerIDs.contains("anthropic"))
+    #expect(providerIDs.contains("openai"))
+    #expect(providerIDs.contains("google"))
+    #expect(providerIDs.contains("xai"))
+    #expect(!providerIDs.contains("huggingface"))
+}
+
+@Test @MainActor func lyricWriterManagerRegistersAuthenticatedCLIBackend() {
+    let providerAccessStore = ProviderAccessStore(statuses: [
+        "xai": ProviderCLIStatus(
+            providerID: "xai",
+            displayName: "Grok (xAI)",
+            command: "grok",
+            version: "grok 0.1.213",
+            state: .authenticated,
+            detail: "Signed in with grok.com",
+            lastChecked: Date()
+        )
+    ])
+    let manager = LyricWriterManager(
+        apiKeyStore: APIKeyStore(),
+        providerAccessStore: providerAccessStore
+    )
+
+    manager.refreshRemoteBackends()
+
+    #expect(manager.availableBackends().contains { $0.id == "xai" })
+    #expect(manager.backendRequirementMessage(for: "xai") == nil)
+}
+
+@Test func lyricCLIResponseParserReadsProviderJSONResults() {
+    let claude = ProviderCommandResult(
+        command: "claude",
+        arguments: [],
+        exitStatus: 0,
+        stdout: #"{"result":"[Verse]\nLights up"}"#,
+        stderr: ""
+    )
+    let codex = ProviderCommandResult(
+        command: "codex",
+        arguments: [],
+        exitStatus: 0,
+        stdout: """
+        {"type":"thread.started","thread_id":"abc"}
+        {"type":"item.completed","item":{"type":"agent_message","text":"[Verse]\\nClean room glow"}}
+        """,
+        stderr: "WARN ignored\n"
+    )
+    let gemini = ProviderCommandResult(
+        command: "gemini",
+        arguments: [],
+        exitStatus: 0,
+        stdout: #"{"response":"[Hook]\nSoft static"}"#,
+        stderr: ""
+    )
+    let grok = ProviderCommandResult(
+        command: "grok",
+        arguments: [],
+        exitStatus: 0,
+        stdout: """
+        A new version is available.
+        {
+          "text": "[Chorus]\\nSignal comes alive"
+        }
+        """,
+        stderr: ""
+    )
+
+    #expect(LyricCLIResponseParser.responseText(from: claude, providerID: "anthropic") == "[Verse]\nLights up")
+    #expect(LyricCLIResponseParser.responseText(from: codex, providerID: "openai") == "[Verse]\nClean room glow")
+    #expect(LyricCLIResponseParser.responseText(from: gemini, providerID: "google") == "[Hook]\nSoft static")
+    #expect(LyricCLIResponseParser.responseText(from: grok, providerID: "xai") == "[Chorus]\nSignal comes alive")
+}
+
 @Test func lyricSanitizerRestructuresOversizedSingleVerseForLongSongs() {
     let raw = """
     [Verse]

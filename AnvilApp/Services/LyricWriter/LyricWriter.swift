@@ -7,6 +7,263 @@ protocol LyricWriter: Sendable {
     func write(prompt: String, style: String, duration: TimeInterval) -> AsyncStream<String>
 }
 
+struct ProviderCLILyricWriter: LyricWriter {
+    let id: String
+    let displayName: String
+    let requiresAPIKey = false
+
+    private let command: String
+    private let mode: ProviderCLILyricMode
+    private let homeDirectoryMode: ProviderCLIHomeDirectoryMode
+
+    init?(
+        providerID: String,
+        displayName: String,
+        command: String,
+        homeDirectoryMode: ProviderCLIHomeDirectoryMode
+    ) {
+        guard let mode = ProviderCLILyricMode(providerID: providerID) else {
+            return nil
+        }
+
+        self.id = providerID
+        self.displayName = displayName
+        self.command = command
+        self.mode = mode
+        self.homeDirectoryMode = homeDirectoryMode
+    }
+
+    func write(prompt: String, style: String, duration: TimeInterval) -> AsyncStream<String> {
+        AsyncStream { continuation in
+            let task = Task {
+                let plan = LyricWritingPlan.make(duration: duration)
+                let userPrompt = plan.userPrompt(prompt: prompt, style: style)
+                let fullPrompt = "\(plan.systemPrompt)\n\n\(userPrompt)"
+
+                do {
+                    let result = try await ProviderCommandRunner.run(
+                        command: command,
+                        arguments: mode.arguments(
+                            systemPrompt: plan.systemPrompt,
+                            userPrompt: userPrompt,
+                            fullPrompt: fullPrompt
+                        ),
+                        homeDirectoryMode: homeDirectoryMode,
+                        timeoutSeconds: 120
+                    )
+
+                    guard result.exitStatus == 0 else {
+                        continuation.finish()
+                        return
+                    }
+
+                    let text = LyricCLIResponseParser.responseText(
+                        from: result,
+                        providerID: id
+                    )
+                    if !text.isEmpty {
+                        continuation.yield(text)
+                    }
+                } catch {
+                    // Network/auth/provider failures should not crash generation.
+                    // The settings panel already surfaces CLI readiness.
+                }
+
+                continuation.finish()
+            }
+
+            continuation.onTermination = { _ in
+                task.cancel()
+            }
+        }
+    }
+}
+
+enum ProviderCLILyricMode: Sendable {
+    case claude
+    case codex
+    case gemini
+    case grok
+
+    init?(providerID: String) {
+        switch providerID {
+        case "anthropic":
+            self = .claude
+        case "openai":
+            self = .codex
+        case "google":
+            self = .gemini
+        case "xai":
+            self = .grok
+        default:
+            return nil
+        }
+    }
+
+    func arguments(systemPrompt: String, userPrompt: String, fullPrompt: String) -> [String] {
+        switch self {
+        case .claude:
+            return [
+                "--print",
+                "--output-format",
+                "json",
+                "--permission-mode",
+                "plan",
+                "--no-session-persistence",
+                "--system-prompt",
+                systemPrompt,
+                userPrompt,
+            ]
+        case .codex:
+            return [
+                "exec",
+                "--skip-git-repo-check",
+                "--ignore-rules",
+                "--ignore-user-config",
+                "--sandbox",
+                "read-only",
+                "--color",
+                "never",
+                "--json",
+                fullPrompt,
+            ]
+        case .gemini:
+            return [
+                "--skip-trust",
+                "--approval-mode",
+                "plan",
+                "--output-format",
+                "json",
+                "--prompt",
+                fullPrompt,
+            ]
+        case .grok:
+            return [
+                "--no-memory",
+                "--no-subagents",
+                "--disable-web-search",
+                "--permission-mode",
+                "plan",
+                "--output-format",
+                "json",
+                "--system-prompt-override",
+                systemPrompt,
+                "--single",
+                userPrompt,
+            ]
+        }
+    }
+}
+
+enum LyricCLIResponseParser {
+    static func responseText(from result: ProviderCommandResult, providerID: String) -> String {
+        let outputs = [result.stdout, result.combinedOutput]
+        let objects = outputs.flatMap(jsonObjects)
+
+        let parsed: String?
+        switch providerID {
+        case "anthropic":
+            parsed = lastStringValue(in: objects, key: "result")
+        case "openai":
+            parsed = lastCodexAgentMessage(in: objects)
+        case "google":
+            parsed = lastStringValue(in: objects, key: "response")
+        case "xai":
+            parsed = lastStringValue(in: objects, key: "text")
+        default:
+            parsed = nil
+        }
+
+        return clean(parsed ?? result.stdout)
+    }
+
+    private static func lastStringValue(in objects: [[String: Any]], key: String) -> String? {
+        objects.reversed().compactMap { $0[key] as? String }.first
+    }
+
+    private static func lastCodexAgentMessage(in objects: [[String: Any]]) -> String? {
+        for object in objects.reversed() {
+            guard object["type"] as? String == "item.completed",
+                  let item = object["item"] as? [String: Any],
+                  item["type"] as? String == "agent_message",
+                  let text = item["text"] as? String else {
+                continue
+            }
+            return text
+        }
+        return nil
+    }
+
+    private static func jsonObjects(in text: String) -> [[String: Any]] {
+        var objects: [[String: Any]] = []
+        var startIndex: String.Index?
+        var depth = 0
+        var isInsideString = false
+        var isEscaped = false
+
+        var index = text.startIndex
+        while index < text.endIndex {
+            let character = text[index]
+
+            if isInsideString {
+                if isEscaped {
+                    isEscaped = false
+                } else if character == "\\" {
+                    isEscaped = true
+                } else if character == "\"" {
+                    isInsideString = false
+                }
+                index = text.index(after: index)
+                continue
+            }
+
+            switch character {
+            case "\"":
+                isInsideString = true
+            case "{":
+                if depth == 0 {
+                    startIndex = index
+                }
+                depth += 1
+            case "}":
+                guard depth > 0 else { break }
+                depth -= 1
+                if depth == 0, let objectStartIndex = startIndex {
+                    let endIndex = text.index(after: index)
+                    let candidate = String(text[objectStartIndex..<endIndex])
+                    if let object = jsonObject(from: candidate) {
+                        objects.append(object)
+                    }
+                    startIndex = nil
+                }
+            default:
+                break
+            }
+
+            index = text.index(after: index)
+        }
+
+        return objects
+    }
+
+    private static func jsonObject(from text: String) -> [String: Any]? {
+        guard let data = text.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+        return object
+    }
+
+    private static func clean(_ text: String) -> String {
+        text.replacingOccurrences(
+            of: "\u{001B}\\[[0-9;]*[A-Za-z]",
+            with: "",
+            options: .regularExpression
+        )
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
 struct LyricWritingPlan {
     let durationSeconds: Int
     let lineBudget: String

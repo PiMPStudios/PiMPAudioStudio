@@ -21,6 +21,13 @@ struct IntelligenceSettingsView: View {
         .frame(minWidth: 500, minHeight: 400)
         .task {
             await providerAccessStore.refreshIfNeeded()
+            lyricWriterManager.refreshRemoteBackends()
+        }
+        .onChange(of: apiKeyStore.availableProviders) { _, _ in
+            lyricWriterManager.refreshRemoteBackends()
+        }
+        .onChange(of: providerAccessStore.statuses) { _, _ in
+            lyricWriterManager.refreshRemoteBackends()
         }
     }
 
@@ -110,15 +117,16 @@ struct IntelligenceSettingsView: View {
         Section("Lyric Writer") {
             Picker("Backend", selection: $lyricWriterManager.activeBackend) {
                 Text("Local (On-Device)").tag("local")
-                ForEach(APIKeyStore.providers, id: \.id) { provider in
+                ForEach(LyricWriterManager.remoteBackendProviders, id: \.id) { provider in
                     Text(provider.displayName).tag(provider.id)
                 }
             }
             .pickerStyle(.menu)
 
-            if lyricWriterManager.activeBackend != "local"
-                && !apiKeyStore.hasKey(for: lyricWriterManager.activeBackend) {
-                Label("API key required by current lyric backend", systemImage: "exclamationmark.triangle")
+            if let message = lyricWriterManager.backendRequirementMessage(
+                for: lyricWriterManager.activeBackend
+            ) {
+                Label(message, systemImage: "exclamationmark.triangle")
                     .font(.caption)
                     .foregroundStyle(.orange)
             }

@@ -7,12 +7,17 @@ final class LyricWriterManager: ObservableObject {
     @Published var isWriting: Bool = false
     @Published var activeBackend: String = "local"
 
+    static let remoteBackendProviders = APIKeyStore.providers
+        .filter { $0.id != APIKeyStore.huggingFaceProviderID }
+
     private var backends: [String: any LyricWriter] = [:]
     private var writeTask: Task<Void, Never>?
     private let apiKeyStore: APIKeyStore
+    private let providerAccessStore: ProviderAccessStore
 
-    init(apiKeyStore: APIKeyStore) {
+    init(apiKeyStore: APIKeyStore, providerAccessStore: ProviderAccessStore) {
         self.apiKeyStore = apiKeyStore
+        self.providerAccessStore = providerAccessStore
     }
 
     func updateLLM(_ llm: LLMActor?) {
@@ -24,30 +29,119 @@ final class LyricWriterManager: ObservableObject {
     }
 
     func refreshAPIBackends() {
-        if let key = apiKeyStore.apiKey(for: "anthropic") {
-            backends["anthropic"] = ClaudeLyricWriter(apiKey: key)
-        } else {
-            backends.removeValue(forKey: "anthropic")
-        }
-        if let key = apiKeyStore.apiKey(for: "openai") {
-            backends["openai"] = OpenAILyricWriter(apiKey: key)
-        } else {
-            backends.removeValue(forKey: "openai")
-        }
-        if let key = apiKeyStore.apiKey(for: "google") {
-            backends["google"] = GeminiLyricWriter(apiKey: key)
-        } else {
-            backends.removeValue(forKey: "google")
-        }
-        if let key = apiKeyStore.apiKey(for: "xai") {
-            backends["xai"] = XAILyricWriter(apiKey: key)
-        } else {
-            backends.removeValue(forKey: "xai")
+        refreshRemoteBackends()
+    }
+
+    func refreshRemoteBackends() {
+        for provider in Self.remoteBackendProviders {
+            if let apiBackend = apiBackend(for: provider.id) {
+                backends[provider.id] = apiBackend
+                continue
+            }
+
+            if let cliBackend = cliBackend(for: provider) {
+                backends[provider.id] = cliBackend
+            } else {
+                backends.removeValue(forKey: provider.id)
+            }
         }
     }
 
     func availableBackends() -> [(id: String, displayName: String)] {
         backends.map { ($0.key, $0.value.displayName) }.sorted { $0.id < $1.id }
+    }
+
+    func backendRequirementMessage(for backendID: String) -> String? {
+        guard backendID != "local", backends[backendID] == nil else {
+            return nil
+        }
+
+        guard let provider = Self.remoteBackendProviders.first(where: { $0.id == backendID }) else {
+            return nil
+        }
+
+        if apiKeyStore.hasKey(for: backendID) {
+            return nil
+        }
+
+        let status = providerAccessStore.status(
+            for: provider.id,
+            displayName: provider.displayName
+        )
+
+        switch status.testState {
+        case .running:
+            return "Checking local CLI access"
+        case .passed:
+            return nil
+        case .workspaceTrustNeeded:
+            return "Trust the workspace for \(provider.displayName) or add an API key"
+        case .blocked:
+            return "Grant local CLI access for \(provider.displayName) or add an API key"
+        case .failed:
+            return "Sign in to \(provider.displayName) CLI or add an API key"
+        case .idle:
+            break
+        }
+
+        switch status.state {
+        case .authenticated:
+            return nil
+        case .installed:
+            return "Test \(provider.displayName) CLI access or add an API key"
+        case .unauthenticated:
+            return "Sign in to \(provider.displayName) CLI or add an API key"
+        case .workspaceTrustNeeded:
+            return "Trust the workspace for \(provider.displayName) or add an API key"
+        case .blocked:
+            return "Grant local CLI access for \(provider.displayName) or add an API key"
+        case .failed:
+            return "Check \(provider.displayName) CLI access or add an API key"
+        case .missing:
+            return "Install \(provider.displayName) CLI or add an API key"
+        case .notChecked:
+            return "Refresh local CLI access or add an API key"
+        }
+    }
+
+    private func apiBackend(for providerID: String) -> (any LyricWriter)? {
+        guard let key = apiKeyStore.apiKey(for: providerID) else {
+            return nil
+        }
+
+        switch providerID {
+        case "anthropic":
+            return ClaudeLyricWriter(apiKey: key)
+        case "openai":
+            return OpenAILyricWriter(apiKey: key)
+        case "google":
+            return GeminiLyricWriter(apiKey: key)
+        case "xai":
+            return XAILyricWriter(apiKey: key)
+        default:
+            return nil
+        }
+    }
+
+    private func cliBackend(
+        for provider: (id: String, displayName: String, envVar: String)
+    ) -> ProviderCLILyricWriter? {
+        let status = providerAccessStore.status(
+            for: provider.id,
+            displayName: provider.displayName
+        )
+        guard status.isUsableForLyricWriting,
+              let command = status.command,
+              let definition = ProviderCLIDefinition.all.first(where: { $0.providerID == provider.id }) else {
+            return nil
+        }
+
+        return ProviderCLILyricWriter(
+            providerID: provider.id,
+            displayName: provider.displayName,
+            command: command,
+            homeDirectoryMode: definition.homeDirectoryMode
+        )
     }
 
     func writeLyrics(
@@ -130,5 +224,17 @@ enum LyricWriterManagerError: LocalizedError {
         case .noAvailableBackend:
             return "No lyric writer backend is available. Activate the local LLM or configure an API backend."
         }
+    }
+}
+
+private extension ProviderCLIStatus {
+    var isUsableForLyricWriting: Bool {
+        if case .authenticated = state {
+            return true
+        }
+        if case .passed = testState {
+            return true
+        }
+        return false
     }
 }

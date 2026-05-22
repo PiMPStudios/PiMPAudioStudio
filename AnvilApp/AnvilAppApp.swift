@@ -28,7 +28,10 @@ struct AnvilAppApp: App {
         let manager = LLMModelManager()
         let router = IntentRouter(llm: manager.llmActor)
         let enhancer = PromptEnhancer(llm: manager.llmActor)
-        let lyricManager = LyricWriterManager(apiKeyStore: apiKeys)
+        let lyricManager = LyricWriterManager(
+            apiKeyStore: apiKeys,
+            providerAccessStore: providerAccess
+        )
         let sfxManager = SFXModelManager(registry: appState.registry)
         let services = AppServices(
             sfxModelManager: sfxManager,
@@ -104,10 +107,13 @@ struct AnvilAppApp: App {
                     intentRouter.updateLLM(modelManager.llmActor)
                     promptEnhancer.updateLLM(modelManager.llmActor)
                     lyricWriterManager.updateLLM(modelManager.llmActor)
-                    lyricWriterManager.refreshAPIBackends()
+                    lyricWriterManager.refreshRemoteBackends()
                 }
                 .onChange(of: apiKeyStore.availableProviders) { _, _ in
-                    lyricWriterManager.refreshAPIBackends()
+                    lyricWriterManager.refreshRemoteBackends()
+                }
+                .onChange(of: providerAccessStore.statuses) { _, _ in
+                    lyricWriterManager.refreshRemoteBackends()
                 }
                 .onReceive(NotificationCenter.default.publisher(
                     for: NSApplication.willTerminateNotification
