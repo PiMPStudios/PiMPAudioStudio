@@ -191,6 +191,23 @@ struct ProviderCommandResult: Equatable {
     let exitStatus: Int32
     let stdout: String
     let stderr: String
+    let launchDiagnostic: String?
+
+    init(
+        command: String,
+        arguments: [String],
+        exitStatus: Int32,
+        stdout: String,
+        stderr: String,
+        launchDiagnostic: String? = nil
+    ) {
+        self.command = command
+        self.arguments = arguments
+        self.exitStatus = exitStatus
+        self.stdout = stdout
+        self.stderr = stderr
+        self.launchDiagnostic = launchDiagnostic
+    }
 
     var combinedOutput: String {
         [stdout, stderr]
@@ -625,7 +642,13 @@ enum ProviderCLIParsers {
     }
 
     static func sandboxPermissionDetail(_ result: ProviderCommandResult) -> String? {
-        sandboxPermissionDetail(from: result.cleanedOutput)
+        guard let detail = sandboxPermissionDetail(from: result.cleanedOutput) else {
+            return nil
+        }
+        guard let launchDiagnostic = result.launchDiagnostic else {
+            return detail
+        }
+        return "\(detail); \(launchDiagnostic)"
     }
 
     static func sandboxPermissionDetail(_ error: Error) -> String? {
@@ -722,7 +745,8 @@ enum ProviderCommandRunner {
             command: command,
             arguments: arguments,
             processArguments: launch.processArguments,
-            environment: environment
+            environment: environment,
+            launchDiagnostic: launch.diagnostic
         )
         return try await capture.run(timeoutSeconds: timeoutSeconds)
     }
@@ -731,6 +755,7 @@ enum ProviderCommandRunner {
 struct ProviderCommandLaunch {
     let executableURL: URL
     let processArguments: [String]
+    let diagnostic: String
 
     static func resolve(
         command: String,
@@ -744,13 +769,15 @@ struct ProviderCommandLaunch {
         ) {
             return ProviderCommandLaunch(
                 executableURL: executableURL,
-                processArguments: arguments
+                processArguments: arguments,
+                diagnostic: "launch=direct \(executableURL.path)"
             )
         }
 
         return ProviderCommandLaunch(
             executableURL: fallbackURL,
-            processArguments: [command] + arguments
+            processArguments: [command] + arguments,
+            diagnostic: "launch=env fallback"
         )
     }
 }
@@ -943,7 +970,7 @@ enum ProviderCLIPaths {
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> URL? {
         if command.contains("/") {
-            return isExecutable(atPath: command) ? URL(fileURLWithPath: command) : nil
+            return launchCandidateURL(atPath: command)
         }
 
         let directories = (environment["PATH"] ?? executableSearchPath(environment: environment))
@@ -954,8 +981,8 @@ enum ProviderCLIPaths {
             let path = URL(fileURLWithPath: directory)
                 .appendingPathComponent(command)
                 .path
-            if isExecutable(atPath: path) {
-                return URL(fileURLWithPath: path)
+            if let url = launchCandidateURL(atPath: path) {
+                return url
             }
         }
 
@@ -973,8 +1000,24 @@ enum ProviderCLIPaths {
         }
     }
 
-    private static func isExecutable(atPath path: String) -> Bool {
-        FileManager.default.isExecutableFile(atPath: path)
+    private static func launchCandidateURL(atPath path: String) -> URL? {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory),
+              !isDirectory.boolValue else {
+            return nil
+        }
+
+        let url = URL(fileURLWithPath: path).resolvingSymlinksInPath()
+        if FileManager.default.isExecutableFile(atPath: url.path) ||
+            FileManager.default.isExecutableFile(atPath: path) {
+            return url
+        }
+
+        return isKnownProviderInstallPath(path) ? url : nil
+    }
+
+    private static func isKnownProviderInstallPath(_ path: String) -> Bool {
+        path.contains("/.grok/bin/") || path.contains("/.grok/downloads/")
     }
 }
 
@@ -996,6 +1039,7 @@ private final class ProviderCapturedProcess: @unchecked Sendable {
     private let lock = NSLock()
     private let command: String
     private let arguments: [String]
+    private let launchDiagnostic: String
     private var stdoutData = Data()
     private var stderrData = Data()
     private var continuation: CheckedContinuation<ProviderCommandResult, Error>?
@@ -1007,10 +1051,12 @@ private final class ProviderCapturedProcess: @unchecked Sendable {
         command: String,
         arguments: [String],
         processArguments: [String],
-        environment: [String: String]
+        environment: [String: String],
+        launchDiagnostic: String
     ) {
         self.command = command
         self.arguments = arguments
+        self.launchDiagnostic = launchDiagnostic
         process.executableURL = executableURL
         process.arguments = processArguments
         process.environment = environment
@@ -1112,7 +1158,8 @@ private final class ProviderCapturedProcess: @unchecked Sendable {
             arguments: arguments,
             exitStatus: process.terminationStatus,
             stdout: String(data: outData, encoding: .utf8) ?? "",
-            stderr: String(data: errData, encoding: .utf8) ?? ""
+            stderr: String(data: errData, encoding: .utf8) ?? "",
+            launchDiagnostic: launchDiagnostic
         ))
     }
 

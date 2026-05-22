@@ -165,6 +165,44 @@ import Testing
 
     #expect(launch.executableURL.path == toolURL.path)
     #expect(launch.processArguments == ["--version"])
+    #expect(launch.diagnostic.contains("launch=direct"))
+}
+
+@Test func providerCLIResolvesSymlinkedExecutableTarget() throws {
+    let directoryURL = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let binURL = directoryURL.appendingPathComponent("bin", isDirectory: true)
+    let downloadsURL = directoryURL.appendingPathComponent("downloads", isDirectory: true)
+    try FileManager.default.createDirectory(
+        at: binURL,
+        withIntermediateDirectories: true
+    )
+    try FileManager.default.createDirectory(
+        at: downloadsURL,
+        withIntermediateDirectories: true
+    )
+    defer { try? FileManager.default.removeItem(at: directoryURL) }
+
+    let targetURL = downloadsURL.appendingPathComponent("grok-real")
+    FileManager.default.createFile(atPath: targetURL.path, contents: Data())
+    try FileManager.default.setAttributes(
+        [.posixPermissions: 0o755],
+        ofItemAtPath: targetURL.path
+    )
+    try FileManager.default.createSymbolicLink(
+        at: binURL.appendingPathComponent("grok"),
+        withDestinationURL: targetURL
+    )
+
+    let launch = ProviderCommandLaunch.resolve(
+        command: "grok",
+        arguments: ["--version"],
+        environment: ["PATH": binURL.path],
+        fallbackURL: URL(fileURLWithPath: "/usr/bin/env")
+    )
+
+    #expect(launch.executableURL.path == targetURL.path)
+    #expect(launch.processArguments == ["--version"])
 }
 
 @Test func providerCLIClassifiesSandboxPermissionAsBlocked() {
