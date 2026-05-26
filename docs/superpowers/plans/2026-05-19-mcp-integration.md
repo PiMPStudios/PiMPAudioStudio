@@ -238,10 +238,10 @@ read-only phase.
 
 ## Test Plan
 
-- [ ] With MCP disabled, no localhost listener is active.
+- [x] With MCP disabled, no localhost listener is active.
 - [x] Enabling MCP starts a localhost-only listener.
 - [x] Read-only tools work without a token when token mode is off.
-- [ ] When optional token mode is on, clients without the token are rejected.
+- [x] When optional token mode is on, clients without the token are rejected.
 - [x] `list_history` and `get_trace` agree with the GUI History/Analyzer.
 - [x] `compare_traces` returns the same changed-field grouping as Analyzer.
 - [x] `enhance_prompt` returns enhanced text without mutating the Generate form.
@@ -279,3 +279,13 @@ local backend, reversible `mark_preferred_take` trace/history mirroring plus
 omitted-note preservation, and a real two-second / one-step ACE-Step
 `generate` operation followed via `get_operation` and `generation_status` to a
 `succeeded` terminal state.
+
+Follow-up validation note (2026-05-26): with Anvil still running but MCP
+toggled off in Settings, `curl http://127.0.0.1:38765/health` failed with
+connection refused and `lsof -nP -iTCP:38765 -sTCP:LISTEN` returned no listener.
+
+Bearer-token validation note (2026-05-26): with MCP toggled on and bearer-token
+mode enabled, unauthenticated `POST /mcp initialize` returned `401 Missing or
+invalid MCP token`. `ANVIL_MCP_TOKEN=<stored local token> scripts/smoke-mcp.sh`
+then passed the full authenticated smoke. `/health` remains public and still
+returns status metadata without requiring the token.
