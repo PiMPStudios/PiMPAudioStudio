@@ -103,11 +103,17 @@ All notable changes to AnvilApp are documented here.
   tool/resource registration, lifecycle handling, structured tool results,
   JSON-RPC dispatch, and stateful HTTP/SSE response shaping now run through the
   official Swift MCP SDK.
-- **Cover-song preprocessing now conditions FSQ audio codes through the active
-  ACE-Step LM** — the native Swift cover path tokenizes source latents to packed
-  5 Hz audio codes, validates the LM tokenizer's `<|audio_code_N|>` vocabulary,
-  runs the active ACE-Step LM over that code stream, reconstructs FSQ hints from
-  predicted codes, then detokenizes/blends them into the diffusion context.
+- **Cover-song preprocessing follows the upstream source-audio hint path** —
+  the native Swift cover path tokenizes source latents to 5 Hz FSQ vectors,
+  detokenizes them to 25 Hz acoustic hints, then blends them into the diffusion
+  context. The experimental greedy LM next-code hop is disabled after listening
+  tests produced tone-like output; ACE-Step LM assets remain available for
+  future discrete audio-code workflows.
+- **Cover-song generation now honors selected LoRA adapters** — the cover path
+  preloads its ACE-Step DiT/VAE stack before diffusion, applies the same
+  selected adapter or weighted adapter stack used by normal ACE-Step generation,
+  and records the adapter plan, source audio file, and cover strength in the
+  Generation Analyzer trace/compare views.
 
 ### Fixed
 
@@ -174,7 +180,7 @@ All notable changes to AnvilApp are documented here.
 - **`AudioTokenizer`** — top-level acoustic→codes module. Composes `audio_acoustic_proj` Linear + `AudioTokenizerPooler` + `ResidualFSQ`. Converts 25 Hz `[B, T, 64]` VAE latents into 5 Hz `[B, T/pool, 2048]` quantized representations + packed indices.
 - **`AudioTokenDetokenizer`** — codes→acoustic upsampler. Linear projection + 5 learnable special_tokens for window expansion + 2 self-attention layers per window + `proj_out` back to acoustic dim.
 - **`AceStepLMConfig`** — JSON decoder for each LM variant's `config.json` (hidden_size / num_hidden_layers / etc). Drives variant-aware module construction; no hardcoded constants per variant.
-- **`AceStepLM`** — Qwen-architecture decoder-only transformer reusing `Qwen3Layer`. Returns final hidden states (no `lm_head`). Used in cover-song path to convert audio codes → 5 Hz hidden states for the detokenizer.
+- **`AceStepLM`** — Qwen-architecture decoder-only transformer reusing `Qwen3Layer`. Returns final hidden states (no `lm_head`) for experimental discrete audio-code workflows; source-audio covers use the tokenizer/detokenizer path directly.
 - **`WeightConverter.loadShardedSafetensors(indexURL:)`** — reads `model.safetensors.index.json`'s `weight_map`, groups keys by shard, loads each shard once, and merges into a single sorted `(name, array)` list. Required for the 4B LM variant which ships across 2 safetensors files.
 - **Three new weight name maps**: `AudioTokenizerNameMap`, `AudioTokenDetokenizerNameMap`, `AceStepLMNameMap`. Each strips its own subtree prefix and applies the standard snake_case → camelCase conversion plus the Qwen-style sub-renames (`self_attn` → `attention`, `input_layernorm` → `inputNorm`, etc.).
 - **Three new `WeightConverter` methods** — `convertAudioTokenizerWeights`, `convertAudioTokenDetokenizerWeights`, `convertAceStepLMWeights`. All actor-isolated, called via `await`.
@@ -184,7 +190,7 @@ All notable changes to AnvilApp are documented here.
 
 - `mapDiTKey` doc comment now explicitly notes that `tokenizer.*` and `detokenizer.*` keys are intentionally returned as nil; their loading happens through dedicated converters that work on the raw safetensors list independently.
 
-Phase 2B/2C are now partially implemented: `CoverSongCoordinator`, Generate UI source-audio controls, `GenerationService` routing, MCP `referenceAudioPath` submission, and native LM audio-code conditioning exist. Remaining cover-song work is polish around import/storage cleanup, diagnostics, and listening-quality iteration.
+Phase 2B/2C are now partially implemented: `CoverSongCoordinator`, Generate UI source-audio controls, `GenerationService` routing, MCP `referenceAudioPath` submission, and native source-audio tokenization/detokenization conditioning exist. Remaining cover-song work is polish around import/storage cleanup, diagnostics, experimental discrete audio-code workflows, and listening-quality iteration.
 
 ---
 
@@ -350,7 +356,7 @@ Phase 2B/2C are now partially implemented: `CoverSongCoordinator`, Generate UI s
 - **Advanced section in GenerateView** — collapsible disclosure surfacing three diffusion knobs that were already plumbed but never rendered: precision (Float16 / Float32 segmented), inference steps (numeric override; blank = auto: 8 Turbo / 50 Base or SFT), and shift (slider 0.5–10.0 with reset to 3.0). Intended for chasing the audio-quality bug and now for controlled quality A/Bs.
 - **`GenerationRequest.stepsOverride` / `shiftOverride`** — Optional Int / Float request fields. When nil, `ACEStepGenerationService` keeps the existing auto-pick (8 Turbo / 50 Base or SFT) and shift=3.0 default.
 - **`GenerationParameters` `@MainActor ObservableObject`** — shared bag for the four user knobs that live in both the inspector sidebar and `GenerateView`: `duration`, `seedText`, `guidanceScale`, `pipelineOverride`. Injected via `@EnvironmentObject` so both surfaces read/write the same instance.
-- **ACE-Step LM model specs** (`ace-step-lm-0.6b`, `ace-step-lm-4b`) and a dedicated **ACE-Step LM** section in `ModelsSettingsView` — model-registry plumbing for upcoming cover-song generation. The 0.6B variant is single-file (1.28 GB); the 4B is sharded (7.85 GB).
+- **ACE-Step LM model specs** (`ace-step-lm-0.6b`, `ace-step-lm-4b`) and a dedicated **ACE-Step LM** section in `ModelsSettingsView` — model-registry plumbing for future discrete audio-code workflows. The 0.6B variant is single-file (1.28 GB); the 4B is sharded (7.85 GB).
 - **`ModelCategory.aceStepLM`** — new enum case wired into `AddModelView`'s expected-files switch.
 - **Cover-song generation Phase 2 design spec** at `docs/superpowers/specs/2026-05-07-cover-song-generation-design.md` (480 lines) — three new modules (AudioTokenizer, AudioTokenDetokenizer, AceStepLM), CoverSongCoordinator, `srcLatentsOverride` parameter on the DiT path, UI changes, phased plan (2A → 2D), open questions, test plan.
 - **Cover-song Phase 2A implementation plan** at `docs/superpowers/plans/2026-05-07-cover-song-phase-2a.md` (13 tasks) — foundation modules only (AudioTokenizer + Detokenizer + AceStepLM + sharded safetensors loader + three name maps + smoke test). Phase 2B/2C/2D deferred. Execution gated on text-to-music audio-quality bug being resolved first.

@@ -19,7 +19,7 @@ struct AddModelView: View {
     private var categoryOptions: [(ModelCategory, String)] {
         [
             (.aceStepDiT, "ACE-Step DiT (Music)"),
-            (.aceStepLM, "ACE-Step LM (Cover Songs)"),
+            (.aceStepLM, "ACE-Step LM (Audio Codes)"),
             (.stableAudio, "Stable Audio (SFX)")
         ]
     }

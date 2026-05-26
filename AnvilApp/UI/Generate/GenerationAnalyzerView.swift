@@ -113,6 +113,10 @@ struct GenerationAnalyzerView: View {
             metricRow("Model", trace.primaryModel?.displayName ?? trace.primaryModel?.id ?? "Unknown")
             metricRow("LoRA", adapterSummary(trace.adapters))
             metricRow("Seed", trace.request.seed.map(String.init) ?? "Random")
+            if let sourceAudio = trace.request.referenceAudioFileName {
+                metricRow("Source", sourceAudio)
+                metricRow("Cover", coverStrengthSummary(trace.request.coverStrength))
+            }
             metricRow("Trace", trace.traceFileName)
         }
         .padding(12)
@@ -409,6 +413,10 @@ struct GenerationAnalyzerView: View {
             metricRow("CFG Window", "\(session.request.cfgIntervalStart) → \(session.request.cfgIntervalEnd)")
             metricRow("Precision", session.request.precision)
             metricRow("Steps", session.request.stepsOverride.map(String.init) ?? "Auto")
+            if let sourceAudio = session.request.referenceAudioFileName {
+                metricRow("Source", sourceAudio)
+                metricRow("Cover Strength", coverStrengthSummary(session.request.coverStrength))
+            }
 
             Divider()
 
@@ -667,6 +675,10 @@ struct GenerationAnalyzerView: View {
             let label = adapter.name ?? adapter.id
             return "\(label) x\(String(format: "%.2f", adapter.weight))"
         }.joined(separator: ", ")
+    }
+
+    private func coverStrengthSummary(_ value: Float) -> String {
+        "\(Int((value * 100).rounded()))%"
     }
 
     private func isTraceLoaded(_ trace: GenerationTrace) -> Bool {

@@ -201,7 +201,7 @@ struct ModelsSettingsView: View {
                 )
             }
         } header: {
-            Text("ACE-Step LM (cover songs)")
+            Text("ACE-Step LM (audio codes)")
         }
     }
 

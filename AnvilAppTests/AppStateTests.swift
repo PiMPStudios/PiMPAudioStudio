@@ -295,3 +295,89 @@ import Foundation
     Through the shadows, I'll call home
     """)
 }
+
+@Test func traceCompareIncludesCoverSourceAndStrength() {
+    let left = traceForComparison(
+        sourceAudioFileName: "InDaClub.m4a",
+        coverStrength: 0.7
+    )
+    let right = traceForComparison(
+        sourceAudioFileName: "InDaClub-DryRun.m4a",
+        coverStrength: 0.35
+    )
+
+    let groups = GenerationTraceComparator.groups(left: left, right: right)
+    let samplingRows = groups
+        .first { $0.title == "Sampling" }?
+        .rows
+        .reduce(into: [String: TraceComparisonRow]()) { rows, row in
+            rows[row.label] = row
+        }
+
+    #expect(samplingRows?["Source Audio"]?.left == "InDaClub.m4a")
+    #expect(samplingRows?["Source Audio"]?.right == "InDaClub-DryRun.m4a")
+    #expect(samplingRows?["Cover Strength"]?.left == "70%")
+    #expect(samplingRows?["Cover Strength"]?.right == "35%")
+}
+
+private func traceForComparison(
+    sourceAudioFileName: String?,
+    coverStrength: Float
+) -> GenerationTrace {
+    GenerationTrace(
+        historyEntryID: UUID(),
+        createdAt: Date(timeIntervalSince1970: 0),
+        audioFileName: "test.wav",
+        traceFileName: "test.trace.json",
+        pipeline: sourceAudioFileName == nil ? "aceStep" : "coverSong",
+        prompt: "dark blues cover",
+        originalPrompt: nil,
+        lyrics: "",
+        request: GenerationTraceRequestSnapshot(
+            duration: 30,
+            seed: 1234,
+            method: "ode",
+            guidanceScale: 6,
+            guidancePreset: "softLate",
+            guidancePresetName: "Soft Late",
+            cfgIntervalStart: 0.3,
+            cfgIntervalEnd: 1.0,
+            precision: "float32",
+            stepsOverride: nil,
+            shiftOverride: nil,
+            resolvedMode: "music",
+            pipelineOverride: "auto",
+            coverStrength: coverStrength,
+            referenceAudioFileName: sourceAudioFileName
+        ),
+        primaryModel: HistoryModelSnapshot(
+            category: "aceStepDiT",
+            id: "ace-step-test",
+            displayName: "ACE-Step Test"
+        ),
+        supportingModels: [],
+        adapters: [],
+        featureFlags: GenerationTraceFeatureFlags(
+            lmThinkingEnabled: false,
+            cotMetadataEnabled: false,
+            cotCaptionEnabled: false,
+            dcwEnabled: false
+        ),
+        timing: GenerationTraceTimingSnapshot(
+            diffusionTime: 1,
+            perStepTime: 0.1,
+            totalTime: 2
+        ),
+        audio: GenerationTraceAudioSnapshot(
+            sampleRate: 48000,
+            duration: 30,
+            sampleShape: [1, 1, 2],
+            absMean: 0.1,
+            absMax: 0.4,
+            waveformPeaks: [],
+            perSecondAbsMean: [],
+            perSecondAbsMax: []
+        ),
+        listeningNote: nil
+    )
+}

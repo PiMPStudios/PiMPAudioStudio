@@ -195,11 +195,10 @@ public actor ModelRegistry {
             requiresAuth: true,
             isRunnable: true
         ),
-        // 5 Hz Audio→Token Language Models for cover-song generation
-        // (audio→audio conditioning). Optional — pick one based on
-        // quality/disk/RAM budget. Inference plumbing is a follow-up
-        // phase; these specs land first so the Settings UI can show
-        // them and users can begin downloading in advance.
+        // 5 Hz Audio→Token Language Models for experimental discrete
+        // audio-code workflows. Source-audio cover generation uses the
+        // DiT bundle's tokenizer/detokenizer path and does not require
+        // one of these LM variants.
         ModelSpec(
             id: "ace-step-lm-0.6b",
             displayName: "ACE-Step LM 0.6B",

@@ -141,7 +141,7 @@ final class GenerationService: ObservableObject {
                     usesStableAudio: usesStableAudio,
                     usesCoverSong: usesCoverSong
                 )
-                let adapters = usesStableAudio || usesCoverSong
+                let adapters = usesStableAudio
                     ? []
                     : self.historyAdapterSnapshots()
                 self.traceMonitor.configure(
@@ -155,6 +155,22 @@ final class GenerationService: ObservableObject {
                 if usesStableAudio {
                     audioResult = try await self.runSFX(request: resolvedRequest)
                 } else if usesCoverSong {
+                    if await self.coverSongCoordinator.needsModelLoad() {
+                        self.state = .loadingWeights(progress: 0)
+                        self.traceMonitor.recordStage("Models", message: "Loading active cover-song models")
+                        self.traceMonitor.updateLoadingWeights(progress: 0)
+                    }
+                    try await self.coverSongCoordinator.ensureLoaded()
+
+                    await self.loraCoordinator.clearAll()
+                    if !self.adapterStack.isEmpty {
+                        self.traceMonitor.recordStage("Adapters", message: "Applying adapter stack to cover diffusion")
+                        await self.loraCoordinator.ensureStack(stack: self.adapterStack)
+                    } else {
+                        self.traceMonitor.recordStage("Adapters", message: "Applying selected adapter to cover diffusion")
+                        await self.loraCoordinator.ensureAdapter(selectedID: self.selectedAdapterID)
+                    }
+
                     audioResult = try await self.runCoverSong(request: resolvedRequest)
                 } else {
                     if await self.aceStepService.needsModelLoad() {

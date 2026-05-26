@@ -56,6 +56,8 @@ enum GenerationTraceComparator {
                     row("Precision", left.request.precision, right.request.precision),
                     row("Steps", left.request.stepsOverride.map(String.init) ?? "Auto", right.request.stepsOverride.map(String.init) ?? "Auto"),
                     row("Shift", optionalFormat(left.request.shiftOverride), optionalFormat(right.request.shiftOverride)),
+                    row("Source Audio", sourceAudioSummary(left.request), sourceAudioSummary(right.request)),
+                    row("Cover Strength", coverStrengthSummary(left.request), coverStrengthSummary(right.request)),
                     row("Mode", left.request.resolvedMode, right.request.resolvedMode)
                 ]
             ),
@@ -121,6 +123,15 @@ enum GenerationTraceComparator {
     private static func optionalFormat(_ value: Float?) -> String {
         guard let value else { return "Auto" }
         return format(value)
+    }
+
+    private static func sourceAudioSummary(_ request: GenerationTraceRequestSnapshot) -> String {
+        request.referenceAudioFileName ?? "None"
+    }
+
+    private static func coverStrengthSummary(_ request: GenerationTraceRequestSnapshot) -> String {
+        guard request.referenceAudioFileName != nil else { return "None" }
+        return "\(Int((request.coverStrength * 100).rounded()))%"
     }
 
     private static func format(_ value: Float, digits: Int = 1) -> String {
