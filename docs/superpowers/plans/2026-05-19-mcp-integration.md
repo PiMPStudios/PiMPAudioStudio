@@ -244,14 +244,14 @@ read-only phase.
 - [ ] When optional token mode is on, clients without the token are rejected.
 - [x] `list_history` and `get_trace` agree with the GUI History/Analyzer.
 - [x] `compare_traces` returns the same changed-field grouping as Analyzer.
-- [ ] `enhance_prompt` returns enhanced text without mutating the Generate form.
-- [ ] `write_lyrics` returns sanitized duration-aware lyrics without mutating
+- [x] `enhance_prompt` returns enhanced text without mutating the Generate form.
+- [x] `write_lyrics` returns sanitized duration-aware lyrics without mutating
       the Generate form.
-- [ ] `mark_preferred_take` updates trace/history review metadata and preserves
+- [x] `mark_preferred_take` updates trace/history review metadata and preserves
       existing notes when no note argument is provided.
 - [x] `apply_adapter` can clear adapter selection and refuses missing adapters.
 - [x] `generate` supports dry-run request validation without starting audio.
-- [ ] `generate` can submit a real request and `generation_status` follows it
+- [x] `generate` can submit a real request and `generation_status` follows it
       to completion.
 - [x] `list_operations` exposes MCP operation state and `cancel_operation`
       refuses non-running operation ids without cancelling unrelated work.
@@ -269,3 +269,13 @@ read-only phase.
 - [x] `anvil://client-roots` exposes client-advertised roots and the local path
       policy.
 - [x] App quit stops the MCP server cleanly.
+
+Validation note (2026-05-26): live Anvil MCP validation passed against
+`http://127.0.0.1:38765/mcp`. `scripts/smoke-mcp.sh` completed successfully,
+including session initialization, tool/resource/prompt discovery, completions,
+legacy aliases, editor dry-runs, and request-scoped progress over `GET /mcp`.
+Targeted calls also verified `enhance_prompt`, `write_lyrics` through the
+local backend, reversible `mark_preferred_take` trace/history mirroring plus
+omitted-note preservation, and a real two-second / one-step ACE-Step
+`generate` operation followed via `get_operation` and `generation_status` to a
+`succeeded` terminal state.
