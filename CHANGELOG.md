@@ -128,6 +128,7 @@ All notable changes to AnvilApp are documented here.
 - **Generated WAV files keep a valid RIFF header after streamed export** — the optimized temp-file writer now seeks past the header before writing PCM bytes, fixing `AVAudioFile` / `AVAudioPlayer` load failures that left the player stuck at `0:00 / 0:00` with a spinner.
 - **Generated audio player recovers from transient same-file load misses** — the player now retries when a URL was previously marked loaded but still has no valid duration/waveform, and it can accept late precomputed peaks for the same file instead of staying stuck on the loading spinner.
 - **Editor waveform supports click-to-scrub again** — a normal click now seeks the editor preview playhead, while dragging still creates the orange inpaint selection region.
+- **Cover-song source audio imports are sandbox-safe** — Generate now copies dropped or file-picker-selected source audio into Anvil's Application Support import folder using security-scoped access before submitting cover generation. This keeps Desktop/iCloud/Downloads selections readable after the picker callback returns, while `AudioFileLoader` also starts security-scoped access defensively before AVFoundation reads.
 - **ACE-Step WAV export no longer applies hidden adaptive tail fades** — generated WAVs now preserve the raw VAE-decoded tail. This matches upstream's default behavior and makes the recurring 28-second ending test unambiguous: if it still stops, the model/conditioning path produced it.
 - **ACE-Step context mask regression reverted** — an upstream-parity experiment changed full-generation chunk masks from `1.0` to `2.0`; listening tests showed `2.0` reached the full requested duration but collapsed the output into a hum/buzz. The Swift direct-DiT path now defaults back to the musical `1.0` mask and logs it as `AUDIODIAG cond/chunkMask`.
 - **ACE-Step VAE diagnostics now include per-second audio envelope stats** — verbose audio diagnostics emit `vae/out_audio_abs_mean_per_sec` and `vae/out_audio_abs_max_per_sec` for the first 60 seconds after VAE decode, making the recurring 28-second ending visible in the actual waveform rather than only by ear/player UI.
@@ -172,13 +173,13 @@ All notable changes to AnvilApp are documented here.
 - **`WeightConverter.loadShardedSafetensors(indexURL:)`** — reads `model.safetensors.index.json`'s `weight_map`, groups keys by shard, loads each shard once, and merges into a single sorted `(name, array)` list. Required for the 4B LM variant which ships across 2 safetensors files.
 - **Three new weight name maps**: `AudioTokenizerNameMap`, `AudioTokenDetokenizerNameMap`, `AceStepLMNameMap`. Each strips its own subtree prefix and applies the standard snake_case → camelCase conversion plus the Qwen-style sub-renames (`self_attn` → `attention`, `input_layernorm` → `inputNorm`, etc.).
 - **Three new `WeightConverter` methods** — `convertAudioTokenizerWeights`, `convertAudioTokenDetokenizerWeights`, `convertAceStepLMWeights`. All actor-isolated, called via `await`.
-- **DEBUG-only smoke test** `ACEStepGenerationService.testCoverSongFoundation()` — verifies all three module weight sets load against the user's local files and logs match counts. Will be removed when Phase 2B's `CoverSongCoordinator` lands.
+- **DEBUG-only smoke test** `ACEStepGenerationService.testCoverSongFoundation()` — verifies all three module weight sets load against the user's local files and logs match counts. Kept as a foundation regression check while the runtime cover-song path matures.
 
 ### Documentation
 
 - `mapDiTKey` doc comment now explicitly notes that `tokenizer.*` and `detokenizer.*` keys are intentionally returned as nil; their loading happens through dedicated converters that work on the raw safetensors list independently.
 
-Phase 2B (CoverSongCoordinator + ConditioningActor hook), 2C (UI), and 2D (polish) are deferred to separate plans.
+Phase 2B/2C are now partially implemented: `CoverSongCoordinator`, Generate UI source-audio controls, `GenerationService` routing, and MCP `referenceAudioPath` submission exist. Remaining cover-song work is true LM audio-code conditioning plus polish around import/storage cleanup and user-facing diagnostics.
 
 ---
 

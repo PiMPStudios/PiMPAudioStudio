@@ -28,6 +28,13 @@ enum AudioFileLoader {
     /// Load the audio file at `url`, resample to 48 kHz stereo, and return
     /// `[1, frames, 2]`. Mono inputs are duplicated to stereo.
     static func load(from url: URL) throws -> MLXArray {
+        let didStartAccessing = url.startAccessingSecurityScopedResource()
+        defer {
+            if didStartAccessing {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+
         let file = try AVAudioFile(forReading: url)
         let srcFormat = file.processingFormat
         let srcFrameCount = AVAudioFrameCount(file.length)

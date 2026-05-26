@@ -34,6 +34,7 @@ struct GenerateView: View {
     @State private var coverStrength: Double = 0.7
     @State private var showingAudioImporter: Bool = false
     @State private var isDropTargeted: Bool = false
+    @State private var sourceAudioImportError: String?
 
     var body: some View {
         ScrollView {
@@ -67,6 +68,14 @@ struct GenerateView: View {
             Button("Save") { saveCurrentAsPreset() }
         } message: {
             Text("Enter a name for this preset.")
+        }
+        .alert("Could Not Import Source Audio", isPresented: Binding(
+            get: { sourceAudioImportError != nil },
+            set: { if !$0 { sourceAudioImportError = nil } }
+        )) {
+            Button("OK", role: .cancel) { sourceAudioImportError = nil }
+        } message: {
+            Text(sourceAudioImportError ?? "")
         }
     }
 
@@ -200,7 +209,7 @@ struct GenerateView: View {
                     .foregroundStyle(.tertiary)
                 Spacer()
                 if sourceAudioURL != nil {
-                    Button("Clear") { sourceAudioURL = nil }
+                    Button("Clear") { clearSourceAudio() }
                         .buttonStyle(.borderless)
                         .controlSize(.mini)
                         .foregroundStyle(.secondary)
@@ -289,7 +298,15 @@ struct GenerateView: View {
                         forTypeIdentifier: UTType.audio.identifier
                     ) { url, _, _ in
                         guard let url else { return }
-                        DispatchQueue.main.async { sourceAudioURL = url }
+                        let result = Result { try Self.copySourceAudioIntoAppContainer(from: url) }
+                        Task { @MainActor in
+                            switch result {
+                            case .success(let importedURL):
+                                setImportedSourceAudio(importedURL)
+                            case .failure(let error):
+                                sourceAudioImportError = error.localizedDescription
+                            }
+                        }
                     }
                     return true
                 }
@@ -300,10 +317,110 @@ struct GenerateView: View {
             allowedContentTypes: [.audio],
             allowsMultipleSelection: false
         ) { result in
-            if case .success(let urls) = result, let url = urls.first {
-                sourceAudioURL = url
+            switch result {
+            case .success(let urls):
+                if let url = urls.first {
+                    Task { await importSourceAudio(url) }
+                }
+            case .failure(let error):
+                sourceAudioImportError = error.localizedDescription
             }
         }
+    }
+
+    @MainActor
+    private func importSourceAudio(_ url: URL) async {
+        do {
+            let importedURL = try await Task.detached(priority: .userInitiated) {
+                try Self.copySourceAudioIntoAppContainer(from: url)
+            }.value
+            setImportedSourceAudio(importedURL)
+        } catch {
+            sourceAudioImportError = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func setImportedSourceAudio(_ importedURL: URL) {
+        let previousURL = sourceAudioURL
+        sourceAudioURL = importedURL
+        sourceAudioImportError = nil
+        removeImportedSourceAudio(previousURL)
+    }
+
+    private func clearSourceAudio() {
+        removeImportedSourceAudio(sourceAudioURL)
+        sourceAudioURL = nil
+    }
+
+    private func removeImportedSourceAudio(_ url: URL?) {
+        guard let url, Self.isImportedSourceAudio(url) else {
+            return
+        }
+        try? FileManager.default.removeItem(at: url)
+    }
+
+    private static func copySourceAudioIntoAppContainer(from sourceURL: URL) throws -> URL {
+        if isImportedSourceAudio(sourceURL) {
+            return sourceURL
+        }
+
+        let didStartAccessing = sourceURL.startAccessingSecurityScopedResource()
+        defer {
+            if didStartAccessing {
+                sourceURL.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        let fileManager = FileManager.default
+        let importsDirectory = try sourceAudioImportsDirectory()
+        try fileManager.createDirectory(at: importsDirectory, withIntermediateDirectories: true)
+
+        let destinationURL = uniqueSourceAudioURL(
+            for: sourceURL,
+            in: importsDirectory
+        )
+        try fileManager.copyItem(at: sourceURL, to: destinationURL)
+        return destinationURL
+    }
+
+    private static func sourceAudioImportsDirectory() throws -> URL {
+        let appSupport = try FileManager.default.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        return appSupport
+            .appending(path: "Anvil", directoryHint: .isDirectory)
+            .appending(path: "SourceAudioImports", directoryHint: .isDirectory)
+    }
+
+    private static func uniqueSourceAudioURL(for sourceURL: URL, in directory: URL) -> URL {
+        let rawBaseName = sourceURL.deletingPathExtension().lastPathComponent
+        let baseName = sanitizedFileComponent(rawBaseName, fallback: "source-audio")
+        let rawExtension = sourceURL.pathExtension
+        let fileExtension = sanitizedFileComponent(rawExtension, fallback: "audio")
+        let shortID = UUID().uuidString.prefix(8).lowercased()
+        return directory.appending(path: "\(baseName)-\(shortID).\(fileExtension)")
+    }
+
+    private static func sanitizedFileComponent(_ value: String, fallback: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: " -_"))
+        let scalars = value.unicodeScalars.map { scalar in
+            allowed.contains(scalar) ? Character(scalar) : "-"
+        }
+        let sanitized = String(scalars)
+            .trimmingCharacters(in: CharacterSet(charactersIn: " -_"))
+        return sanitized.isEmpty ? fallback : sanitized
+    }
+
+    private static func isImportedSourceAudio(_ url: URL) -> Bool {
+        guard let importsDirectory = try? sourceAudioImportsDirectory() else {
+            return false
+        }
+        return url.standardizedFileURL.path(percentEncoded: false)
+            .hasPrefix(importsDirectory.standardizedFileURL.path(percentEncoded: false) + "/")
     }
 
     private var coverStrengthHint: String {
