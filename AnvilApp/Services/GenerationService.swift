@@ -603,6 +603,9 @@ final class GenerationService: ObservableObject {
             case .tokenizingSource:
                 self.state = .tokenizingSource
                 self.traceMonitor.recordStage("Source Audio", message: "Tokenizing source audio")
+            case .lmAudioCodeConditioning:
+                self.state = .lmAudioCodeConditioning
+                self.traceMonitor.recordStage("Audio Codes", message: "Running 5 Hz LM audio-code conditioning")
             case .generating(let step, let totalSteps, let eta):
                 self.state = .generating(step: step, totalSteps: totalSteps, eta: eta)
                 self.traceMonitor.updateGenerationStep(step: step, totalSteps: totalSteps, eta: eta)
@@ -647,6 +650,9 @@ final class GenerationService: ObservableObject {
                 self.state = .conditioning
                 self.traceMonitor.recordStage("Conditioning", message: "Encoding prompt and lyrics")
             case .tokenizingSource:
+                // Cover-song-only stage — not emitted by the standard ACE-Step path.
+                break
+            case .lmAudioCodeConditioning:
                 // Cover-song-only stage — not emitted by the standard ACE-Step path.
                 break
             case .generating(let step, let totalSteps, let eta):

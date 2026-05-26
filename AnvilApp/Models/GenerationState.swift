@@ -6,6 +6,7 @@ enum GenerationState: Equatable, Sendable {
     case loadingWeights(progress: Float)
     case conditioning
     case tokenizingSource
+    case lmAudioCodeConditioning
     case generating(step: Int, totalSteps: Int, eta: TimeInterval)
     case decoding
     case complete

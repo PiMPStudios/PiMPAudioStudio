@@ -12,13 +12,14 @@ private let logger = Logger(subsystem: "com.pimp.AnvilApp", category: "CoverSong
 ///  1. Load + resample source audio to 48 kHz stereo
 ///  2. VAE-encode to latent domain (deterministic `encodeMean`)
 ///  3. `AudioTokenizer`: 25 Hz latents → 5 Hz FSQ-quantized vectors (2048-dim)
-///  4. `AudioTokenDetokenizer`: quantized vectors → 25 Hz acoustic hints
-///  5. Blend: `(1−strength)·srcLatents + strength·hints`
-///  6. Standard ACE-Step diffusion via `MusicPipeline`
+///  4. `AceStepLM`: condition the 5 Hz packed audio-code stream
+///  5. `ResidualFSQ` + `AudioTokenDetokenizer`: conditioned codes → 25 Hz acoustic hints
+///  6. Blend: `(1−strength)·srcLatents + strength·hints`
+///  7. Standard ACE-Step diffusion via `MusicPipeline`
 ///
-/// Weight management mirrors `ACEStepGenerationService`: DiT + VAE + tokenizer +
-/// detokenizer are loaded lazily on first call and reloaded when the active
-/// model ID changes.
+/// Weight management mirrors `ACEStepGenerationService`: DiT + VAE + LM +
+/// tokenizer/detokenizer are loaded lazily on first call and reloaded when the
+/// active model ID changes.
 actor CoverSongCoordinator {
     private let pipeline: MusicPipeline
     private var conditioning: ConditioningActor
@@ -27,8 +28,11 @@ actor CoverSongCoordinator {
 
     private var audioTokenizer: AudioTokenizer?
     private var audioDetokenizer: AudioTokenDetokenizer?
+    private var aceStepLM: AceStepLM?
+    private var audioCodeVocabulary: AudioCodeVocabulary?
     private var currentlyLoadedDiTModelID: String?
     private var currentlyLoadedVAEModelID: String?
+    private var currentlyLoadedLMModelID: String?
     private var currentlyLoadedDiTConfig: DiTConfig?
 
     init(
@@ -72,6 +76,13 @@ actor CoverSongCoordinator {
                         try await self.loadVAEWeights()
                     }
 
+                    // Ensure Audio→Token LM weights
+                    let lmSpec = try await self.selectedLMModelSpec()
+                    if lmSpec.id != self.currentlyLoadedLMModelID {
+                        continuation.yield(.loadingWeights(progress: 0))
+                        try await self.loadLMWeights(spec: lmSpec)
+                    }
+
                     try Task.checkCancellation()
                     continuation.yield(.conditioning)
 
@@ -86,10 +97,13 @@ actor CoverSongCoordinator {
                     )
                     logger.info("[CoverSongCoordinator] srcLatents shape=\(srcLatents.shape)")
 
-                    // Cover-song preprocessing: tokenize → (LM) → detokenize → blend
+                    // Cover-song preprocessing: tokenize → LM code conditioning → detokenize → blend
                     continuation.yield(.tokenizingSource)
-                    let blendedLatents = self.preprocessForCoverSong(
-                        srcLatents: srcLatents,
+                    let tokenizedSource = try self.tokenizeSourceLatents(srcLatents)
+
+                    continuation.yield(.lmAudioCodeConditioning)
+                    let blendedLatents = try self.conditionAndBlendSourceLatents(
+                        tokenizedSource,
                         coverStrength: request.coverStrength
                     )
                     logger.info("[CoverSongCoordinator] blendedLatents shape=\(blendedLatents.shape)")
@@ -174,26 +188,19 @@ actor CoverSongCoordinator {
         currentlyLoadedDiTModelID = nil
         currentlyLoadedDiTConfig = nil
         currentlyLoadedVAEModelID = nil
+        currentlyLoadedLMModelID = nil
         audioTokenizer = nil
         audioDetokenizer = nil
+        aceStepLM = nil
+        audioCodeVocabulary = nil
     }
 
     // MARK: - Audio Preprocessing
 
-    /// Tokenize → detokenize → blend with source latents.
-    ///
-    /// Falls back to `srcLatents` unchanged when the tokenizer is not yet loaded
-    /// (graceful degradation — the diffusion still runs, just without the acoustic
-    /// hint blending that makes it a "cover").
-    private func preprocessForCoverSong(
-        srcLatents: MLXArray,
-        coverStrength: Float
-    ) -> MLXArray {
-        guard let tokenizer = audioTokenizer, let detokenizer = audioDetokenizer else {
-            logger.warning("[CoverSongCoordinator] tokenizer not loaded — using srcLatents directly")
-            return srcLatents
+    private func tokenizeSourceLatents(_ srcLatents: MLXArray) throws -> CoverSongTokenizedSource {
+        guard let tokenizer = audioTokenizer else {
+            throw CoverSongError.coverPreprocessorNotReady
         }
-
         let T = srcLatents.shape[1]
         let pool = tokenizer.poolWindowSize
 
@@ -209,17 +216,47 @@ actor CoverSongCoordinator {
         }
 
         // Tokenize: [1, paddedT, 64] → quantized [1, paddedT/pool, 2048] + indices [1, paddedT/pool, 1]
-        let (quantized, _) = tokenizer(padded)
+        let (_, indices) = tokenizer(padded)
+        eval(indices)
 
-        // Detokenize: quantized [1, paddedT/pool, 2048] → [1, paddedT, 64]
-        let upsampled = detokenizer(quantized)
+        return CoverSongTokenizedSource(
+            sourceLatents: srcLatents,
+            originalLength: T,
+            paddedLength: paddedT,
+            packedCodes: indices
+        )
+    }
+
+    /// Condition packed source audio codes with the active LM, reconstruct 5 Hz
+    /// FSQ hints, detokenize to 25 Hz acoustic hints, then blend with source latents.
+    private func conditionAndBlendSourceLatents(
+        _ source: CoverSongTokenizedSource,
+        coverStrength: Float
+    ) throws -> MLXArray {
+        guard let tokenizer = audioTokenizer,
+              let detokenizer = audioDetokenizer,
+              let lm = aceStepLM,
+              let vocabulary = audioCodeVocabulary else {
+            throw CoverSongError.coverPreprocessorNotReady
+        }
+
+        let conditionedCodes = lm.predictAudioCodes(
+            sourceCodes: source.packedCodes,
+            vocabulary: vocabulary
+        )
+        let lmHints5Hz = tokenizer.quantizer.getOutputFromIndices(conditionedCodes)
+
+        // Detokenize: FSQ hints [1, paddedT/pool, 2048] → [1, paddedT, 64]
+        let upsampled = detokenizer(lmHints5Hz)
 
         // Trim padding back to original T
-        let lmHints = paddedT == T ? upsampled : upsampled[0..., 0..<T, 0...]
+        let lmHints = source.paddedLength == source.originalLength
+            ? upsampled
+            : upsampled[0..., 0..<source.originalLength, 0...]
 
         // Blend: (1 − strength) × src + strength × acoustic hints
         let strength = MLXArray(coverStrength)
-        let blended = (1 - strength) * srcLatents + strength * lmHints
+        let blended = (1 - strength) * source.sourceLatents + strength * lmHints
         eval(blended)
         return blended.asType(.float32)
     }
@@ -338,6 +375,76 @@ actor CoverSongCoordinator {
         }
     }
 
+    private func selectedLMModelSpec() async throws -> ModelSpec {
+        if let spec = await registry.activeSpec(for: .aceStepLM) {
+            let status = await registry.status(for: spec.id)
+            guard case .ready = status else {
+                throw CoverSongError.audioLanguageModelNotReady(spec.displayName)
+            }
+            return spec
+        }
+
+        let specs = await registry.specs(for: .aceStepLM)
+        for spec in specs where spec.isRunnable {
+            let status = await registry.status(for: spec.id)
+            if case .ready = status {
+                return spec
+            }
+        }
+
+        throw CoverSongError.noAudioLanguageModel
+    }
+
+    private func loadLMWeights(spec: ModelSpec) async throws {
+        let baseDir = await registry.baseDirectory
+        aceStepLM = nil
+        audioCodeVocabulary = nil
+        currentlyLoadedLMModelID = nil
+
+        let configURL = spec.localPath(for: "config.json", base: baseDir)
+        let tokenizerURL = spec.localPath(for: "tokenizer.json", base: baseDir)
+        guard FileManager.default.fileExists(atPath: configURL.path(percentEncoded: false)),
+              FileManager.default.fileExists(atPath: tokenizerURL.path(percentEncoded: false)) else {
+            throw CoverSongError.audioLanguageModelFilesMissing(spec.displayName)
+        }
+
+        let config = try AceStepLMConfig.load(from: configURL)
+        let vocabulary = try AudioCodeVocabulary.load(from: tokenizerURL)
+        let rawWeights = try await lmWeightList(for: spec, baseDir: baseDir)
+        let weights = await weightConverter.convertAceStepLMWeights(from: rawWeights)
+
+        let lm = AceStepLM(config: config)
+        lm.update(parameters: ModuleParameters.unflattened(weights))
+        eval(lm.parameters())
+
+        aceStepLM = lm
+        audioCodeVocabulary = vocabulary
+        currentlyLoadedLMModelID = spec.id
+        logger.info("[CoverSongCoordinator] loaded ACE-Step LM \(spec.id) weights=\(weights.count)")
+    }
+
+    private func lmWeightList(for spec: ModelSpec, baseDir: URL) async throws -> [(String, MLXArray)] {
+        let indexURL = spec.localPath(for: "model.safetensors.index.json", base: baseDir)
+        if FileManager.default.fileExists(atPath: indexURL.path(percentEncoded: false)) {
+            return try await weightConverter.loadShardedSafetensors(indexURL: indexURL)
+        }
+
+        let singleURL = spec.localPath(for: "model.safetensors", base: baseDir)
+        if FileManager.default.fileExists(atPath: singleURL.path(percentEncoded: false)) {
+            return try await weightConverter.loadSafetensors(from: singleURL)
+        }
+
+        let shardURLs = spec.files
+            .filter { $0.localName.hasPrefix("model-") && $0.localName.hasSuffix(".safetensors") }
+            .map { spec.localPath(for: $0.localName, base: baseDir) }
+        if !shardURLs.isEmpty,
+           shardURLs.allSatisfy({ FileManager.default.fileExists(atPath: $0.path(percentEncoded: false)) }) {
+            return try await weightConverter.loadSafetensors(from: shardURLs)
+        }
+
+        throw CoverSongError.audioLanguageModelFilesMissing(spec.displayName)
+    }
+
     private func ditWeightPaths(for spec: ModelSpec, baseDir: URL) -> [URL] {
         let paths = spec.files
             .filter { file in
@@ -351,11 +458,22 @@ actor CoverSongCoordinator {
     }
 }
 
+private struct CoverSongTokenizedSource {
+    let sourceLatents: MLXArray
+    let originalLength: Int
+    let paddedLength: Int
+    let packedCodes: MLXArray
+}
+
 // MARK: - Errors
 
 enum CoverSongError: Error, LocalizedError {
     case noSourceAudio
     case audioLoadFailed(String)
+    case coverPreprocessorNotReady
+    case noAudioLanguageModel
+    case audioLanguageModelNotReady(String)
+    case audioLanguageModelFilesMissing(String)
 
     var errorDescription: String? {
         switch self {
@@ -363,6 +481,14 @@ enum CoverSongError: Error, LocalizedError {
             return "No source audio file selected for cover song generation"
         case .audioLoadFailed(let message):
             return "Could not load source audio: \(message)"
+        case .coverPreprocessorNotReady:
+            return "Cover song preprocessing is not ready. Load ACE-Step DiT, VAE, and LM models before generating a cover."
+        case .noAudioLanguageModel:
+            return "No ACE-Step LM is downloaded. Download one in Settings → Models → ACE-Step LM to generate cover songs."
+        case .audioLanguageModelNotReady(let displayName):
+            return "\(displayName) is not ready. Re-download or select a ready ACE-Step LM in Settings → Models."
+        case .audioLanguageModelFilesMissing(let displayName):
+            return "\(displayName) is missing required ACE-Step LM files. Re-download it in Settings → Models."
         }
     }
 }

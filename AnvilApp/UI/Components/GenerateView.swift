@@ -680,6 +680,9 @@ struct GenerateView: View {
         case .tokenizingSource:
             ProgressView("Tokenizing source audio...")
                 .progressViewStyle(.linear)
+        case .lmAudioCodeConditioning:
+            ProgressView("Conditioning audio codes...")
+                .progressViewStyle(.linear)
         case .generating(let step, let total, _):
             VStack(spacing: 4) {
                 ProgressView(value: Double(step), total: Double(total))

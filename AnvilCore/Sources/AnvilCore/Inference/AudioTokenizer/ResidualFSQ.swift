@@ -80,12 +80,15 @@ public class ResidualFSQ: Module {
     /// Used during cover generation when `audio_codes` are supplied directly:
     /// `lm_hints_5Hz = quantizer.get_output_from_indices(audio_codes)`.
     public func getOutputFromIndices(_ packed: MLXArray) -> MLXArray {
-        let bsz = packed.shape[0]
-        let seqL = packed.shape[1]
+        let codes = packed.ndim == 3 && packed.shape[2] == 1
+            ? packed[0..., 0..., 0]
+            : packed
+        let bsz = codes.shape[0]
+        let seqL = codes.shape[1]
         let dim = levels.count
 
-        var idxPerAxis = MLXArray.zeros([bsz, seqL, dim], dtype: .int32)
-        var remaining = packed
+        let idxPerAxis = MLXArray.zeros([bsz, seqL, dim], dtype: .int32)
+        var remaining = codes
         for i in (0..<dim).reversed() {
             let level = levels[i]
             let axis = remaining % level

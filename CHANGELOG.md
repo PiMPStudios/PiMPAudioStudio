@@ -103,6 +103,11 @@ All notable changes to AnvilApp are documented here.
   tool/resource registration, lifecycle handling, structured tool results,
   JSON-RPC dispatch, and stateful HTTP/SSE response shaping now run through the
   official Swift MCP SDK.
+- **Cover-song preprocessing now conditions FSQ audio codes through the active
+  ACE-Step LM** — the native Swift cover path tokenizes source latents to packed
+  5 Hz audio codes, validates the LM tokenizer's `<|audio_code_N|>` vocabulary,
+  runs the active ACE-Step LM over that code stream, reconstructs FSQ hints from
+  predicted codes, then detokenizes/blends them into the diffusion context.
 
 ### Fixed
 
@@ -179,7 +184,7 @@ All notable changes to AnvilApp are documented here.
 
 - `mapDiTKey` doc comment now explicitly notes that `tokenizer.*` and `detokenizer.*` keys are intentionally returned as nil; their loading happens through dedicated converters that work on the raw safetensors list independently.
 
-Phase 2B/2C are now partially implemented: `CoverSongCoordinator`, Generate UI source-audio controls, `GenerationService` routing, and MCP `referenceAudioPath` submission exist. Remaining cover-song work is true LM audio-code conditioning plus polish around import/storage cleanup and user-facing diagnostics.
+Phase 2B/2C are now partially implemented: `CoverSongCoordinator`, Generate UI source-audio controls, `GenerationService` routing, MCP `referenceAudioPath` submission, and native LM audio-code conditioning exist. Remaining cover-song work is polish around import/storage cleanup, diagnostics, and listening-quality iteration.
 
 ---
 

@@ -28,7 +28,8 @@ final class AnvilCommandFacade {
         "loadingWeights": (0.15, 0.20),
         "conditioning": (0.35, 0.05),
         "tokenizingSource": (0.40, 0.05),
-        "generating": (0.45, 0.40),
+        "lmAudioCodeConditioning": (0.45, 0.08),
+        "generating": (0.53, 0.32),
         "decoding": (0.85, 0.10),
         "complete": (1.00, 0.00),
         "error": (1.00, 0.00),
@@ -1829,6 +1830,8 @@ final class AnvilCommandFacade {
             return ["name": "conditioning"]
         case .tokenizingSource:
             return ["name": "tokenizingSource"]
+        case .lmAudioCodeConditioning:
+            return ["name": "lmAudioCodeConditioning"]
         case .generating(let step, let totalSteps, let eta):
             return ["name": "generating", "step": step, "totalSteps": totalSteps, "eta": eta]
         case .decoding:
@@ -1930,6 +1933,11 @@ final class AnvilCommandFacade {
             return generationOperationProgressPayload(
                 stage: "tokenizingSource",
                 message: "Tokenizing reference audio."
+            )
+        case .lmAudioCodeConditioning:
+            return generationOperationProgressPayload(
+                stage: "lmAudioCodeConditioning",
+                message: "Conditioning reference audio codes."
             )
         case .generating(let step, let totalSteps, let eta):
             var payload = generationOperationProgressPayload(
@@ -3673,6 +3681,7 @@ final class AnvilCommandFacade {
         case .loadingWeights: return "loadingWeights"
         case .conditioning: return "conditioning"
         case .tokenizingSource: return "tokenizingSource"
+        case .lmAudioCodeConditioning: return "lmAudioCodeConditioning"
         case .generating: return "generating"
         case .decoding: return "decoding"
         case .complete: return "complete"
