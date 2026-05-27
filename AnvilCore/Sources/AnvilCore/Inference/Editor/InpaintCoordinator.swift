@@ -86,11 +86,18 @@ public actor InpaintCoordinator {
         self.sampleRate = sampleRate
         let numSamples = samples.shape[1]
         self.totalDuration = Double(numSamples) / Double(sampleRate)
+        AudioDiagnostics.memory("editor/loadAudio/begin")
+        AudioDiagnostics.note(
+            "editor/loadAudio/config",
+            "samplesShape=\(samples.shape) sampleRate=\(sampleRate) duration=\(totalDuration) precision=\(precision)"
+        )
+        AudioDiagnostics.tensor("editor/loadAudio/samples", samples)
 
         let latents = try await vaeActor.encodeMean(audio: samples, precision: precision)
         self.currentLatents = latents
         self.currentAudio = samples
         self.latentFrames = latents.shape[1]
+        AudioDiagnostics.tensor("editor/loadAudio/aceLatents", latents)
 
         // Also eagerly encode SAO latents if the SFX VAE is already loaded.
         // If it isn't, SAO inpainting will encode lazily on first request.
@@ -100,7 +107,12 @@ public actor InpaintCoordinator {
             if let sfxLat = try? await sfxVAE.encodeMean(audio: samples) {
                 self.sfxCurrentLatents = sfxLat
                 self.sfxLatentFrames   = sfxLat.shape[1]
+                AudioDiagnostics.tensor("editor/loadAudio/sfxLatents", sfxLat)
+            } else {
+                AudioDiagnostics.note("editor/loadAudio/sfxLatents", "encode failed")
             }
+        } else {
+            AudioDiagnostics.note("editor/loadAudio/sfxLatents", "sfxVAE not loaded")
         }
 
         let initialSnapshot = EditSnapshot(
@@ -110,11 +122,13 @@ public actor InpaintCoordinator {
         )
         historyManager.push(initialSnapshot)
 
-        return AudioLoadResult(
+        let result = AudioLoadResult(
             duration: totalDuration,
             sampleRate: sampleRate,
             latentFrames: latentFrames
         )
+        AudioDiagnostics.memory("editor/loadAudio/end")
+        return result
     }
 
     /// Replace the currently loaded audio with an edited buffer and refresh the
@@ -128,11 +142,18 @@ public actor InpaintCoordinator {
         self.sampleRate = sampleRate
         let numSamples = samples.shape[1]
         self.totalDuration = Double(numSamples) / Double(sampleRate)
+        AudioDiagnostics.memory("editor/replaceAudio/begin")
+        AudioDiagnostics.note(
+            "editor/replaceAudio/config",
+            "description=\(description) samplesShape=\(samples.shape) sampleRate=\(sampleRate) duration=\(totalDuration) precision=\(precision)"
+        )
+        AudioDiagnostics.tensor("editor/replaceAudio/samples", samples)
 
         let latents = try await vaeActor.encodeMean(audio: samples, precision: precision)
         self.currentLatents = latents
         self.currentAudio = samples
         self.latentFrames = latents.shape[1]
+        AudioDiagnostics.tensor("editor/replaceAudio/aceLatents", latents)
 
         self.sfxCurrentLatents = nil
         self.sfxLatentFrames = 0
@@ -140,7 +161,12 @@ public actor InpaintCoordinator {
             if let sfxLat = try? await sfxVAE.encodeMean(audio: samples) {
                 self.sfxCurrentLatents = sfxLat
                 self.sfxLatentFrames = sfxLat.shape[1]
+                AudioDiagnostics.tensor("editor/replaceAudio/sfxLatents", sfxLat)
+            } else {
+                AudioDiagnostics.note("editor/replaceAudio/sfxLatents", "encode failed")
             }
+        } else {
+            AudioDiagnostics.note("editor/replaceAudio/sfxLatents", "sfxVAE not loaded")
         }
 
         let snapshot = EditSnapshot(
@@ -150,11 +176,13 @@ public actor InpaintCoordinator {
         )
         historyManager.push(snapshot)
 
-        return AudioLoadResult(
+        let result = AudioLoadResult(
             duration: totalDuration,
             sampleRate: sampleRate,
             latentFrames: latentFrames
         )
+        AudioDiagnostics.memory("editor/replaceAudio/end")
+        return result
     }
 
     // MARK: - Edit
@@ -207,6 +235,12 @@ public actor InpaintCoordinator {
             return
         }
 
+        AudioDiagnostics.memory("editor/edit/begin")
+        AudioDiagnostics.note(
+            "editor/edit/request",
+            "mode=\(request.editMode.rawValue) pipeline=\(request.pipeline.rawValue) selection=\(request.selection.startTime)...\(request.selection.endTime) band=\(diagnosticsBandDescription(request.selection.frequencyBand)) strength=\(request.strength) guidance=\(request.guidanceScale) seed=\(request.seed.map(String.init) ?? "random") totalDuration=\(totalDuration) sampleRate=\(sampleRate) aceFrames=\(latentFrames) sfxFrames=\(sfxLatentFrames) promptChars=\(request.regionPrompt.count) originalPromptChars=\(request.originalPrompt?.count ?? 0)"
+        )
+
         continuation.yield(.buildingMask)
         try Task.checkCancellation()
 
@@ -256,6 +290,11 @@ public actor InpaintCoordinator {
             workingFrames  = latentFrames
             workingHop     = Self.aceStepHopSize
         }
+        AudioDiagnostics.note(
+            "editor/edit/resolvedPipeline",
+            "pipeline=\(request.pipeline.rawValue) workingShape=\(workingLatents.shape) workingFrames=\(workingFrames) hop=\(workingHop)"
+        )
+        AudioDiagnostics.tensor("editor/edit/workingLatents", workingLatents)
 
         // ── Mask + noise injection ────────────────────────────────────────────
         let mask = MaskBuilder.buildMask(
@@ -273,6 +312,9 @@ public actor InpaintCoordinator {
             strength: request.strength,
             seed: request.seed
         )
+        AudioDiagnostics.tensor("editor/edit/mask", mask)
+        AudioDiagnostics.tensor("editor/edit/noisedLatents", noisedLatents)
+        AudioDiagnostics.memory("editor/edit/afterNoise")
 
         continuation.yield(.encoding)
         try Task.checkCancellation()
@@ -294,6 +336,7 @@ public actor InpaintCoordinator {
                 totalSteps: 100,
                 shift: 3.0
             )
+            AudioDiagnostics.floats("editor/aceInpaint/schedule", schedule)
 
             let conditioning = try await condActor.encode(
                 text: request.regionPrompt,
@@ -302,6 +345,9 @@ public actor InpaintCoordinator {
                 duration: totalDuration,
                 precision: .float32
             )
+            AudioDiagnostics.tensor("editor/aceInpaint/encoderStates", conditioning.encoderStates)
+            AudioDiagnostics.tensor("editor/aceInpaint/encoderMask", conditioning.encoderMask)
+            AudioDiagnostics.tensor("editor/aceInpaint/contextLatents", conditioning.contextLatents)
 
             let diffProgressStream = await diffActor.makeProgressStream()
             let diffRelayTask = Task {
@@ -341,6 +387,7 @@ public actor InpaintCoordinator {
                 strength: request.strength,
                 totalSteps: 100
             )
+            AudioDiagnostics.floats("editor/sfxInpaint/schedule", schedule)
             guard !schedule.isEmpty else {
                 // strength == 0 → nothing to do, return working latents unchanged
                 denoised = noisedLatents
@@ -352,6 +399,13 @@ public actor InpaintCoordinator {
                 duration: totalDuration,
                 tokenizer: sfxTok
             )
+            AudioDiagnostics.tensor("editor/sfxInpaint/crossCond", cond.crossCond)
+            AudioDiagnostics.tensor("editor/sfxInpaint/globalCond", cond.globalCond)
+            if let uncross = cond.uncrossCondTokens {
+                AudioDiagnostics.tensor("editor/sfxInpaint/uncrossCondTokens", uncross)
+            } else {
+                AudioDiagnostics.note("editor/sfxInpaint/uncrossCondTokens", "nil")
+            }
 
             let sfxConfig = SFXDiffusionConfig(
                 steps: schedule.count,
@@ -382,6 +436,8 @@ public actor InpaintCoordinator {
             )
             denoised = sfxResult.latents
         }
+        AudioDiagnostics.tensor("editor/edit/denoisedLatents", denoised)
+        AudioDiagnostics.memory("editor/edit/afterDiffusion")
 
         // ── Composite + decode ────────────────────────────────────────────────
         let composited = LatentBlender.composite(
@@ -389,6 +445,7 @@ public actor InpaintCoordinator {
             denoised: denoised,
             mask: mask
         )
+        AudioDiagnostics.tensor("editor/edit/compositedLatents", composited)
 
         continuation.yield(.decoding)
         try Task.checkCancellation()
@@ -405,6 +462,8 @@ public actor InpaintCoordinator {
             }
             audio = try await sfxVAE.decode(latents: composited)
         }
+        AudioDiagnostics.tensor("editor/edit/outputAudio", audio)
+        AudioDiagnostics.memory("editor/edit/afterDecode")
 
         // ── State update ─────────────────────────────────────────────────────
         // After a SAO inpaint: update SAO latents, invalidate ACE-Step latents.
@@ -430,6 +489,12 @@ public actor InpaintCoordinator {
 
         continuation.yield(.complete)
         continuation.finish()
+        AudioDiagnostics.memory("editor/edit/end")
+    }
+
+    private func diagnosticsBandDescription(_ band: FrequencyBand?) -> String {
+        guard let band else { return "none" }
+        return "\(band.lowCutHz)-\(band.highCutHz)Hz"
     }
 
     private func descriptionFor(_ request: InpaintRequest) -> String {

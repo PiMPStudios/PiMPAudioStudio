@@ -85,6 +85,11 @@ actor CoverSongCoordinator {
                     guard let referenceAudioURL = request.referenceAudioURL else {
                         throw CoverSongError.noSourceAudio
                     }
+                    AudioDiagnostics.memory("cover/generate/begin")
+                    AudioDiagnostics.note(
+                        "cover/generate/request",
+                        "source=\(referenceAudioURL.lastPathComponent) duration=\(request.duration) seed=\(request.seed.map(String.init) ?? "random") method=\(request.method) guidancePreset=\(request.guidancePreset.rawValue) guidance=\(request.effectiveGuidanceScale) userGuidance=\(request.guidanceScale) cfgInterval=\(request.cfgIntervalStart)...\(request.cfgIntervalEnd) coverStrength=\(request.coverStrength) precision=\(request.precision) promptChars=\(request.text.count) lyricChars=\(request.lyrics.count)"
+                    )
 
                     if await self.needsModelLoad() {
                         continuation.yield(.loadingWeights(progress: 0))
@@ -97,6 +102,8 @@ actor CoverSongCoordinator {
                     // Load source audio from disk → 48 kHz stereo MLXArray [1, frames, 2]
                     let audioNLC = try AudioFileLoader.load(from: referenceAudioURL)
                     logger.info("[CoverSongCoordinator] source audio loaded shape=\(audioNLC.shape)")
+                    AudioDiagnostics.tensor("cover/sourceAudio", audioNLC)
+                    AudioDiagnostics.memory("cover/afterSourceLoad")
 
                     // VAE-encode (deterministic mean) → srcLatents [1, T, 64]
                     let srcLatents = try await self.pipeline.encodeMean(
@@ -104,6 +111,8 @@ actor CoverSongCoordinator {
                         precision: request.precision
                     )
                     logger.info("[CoverSongCoordinator] srcLatents shape=\(srcLatents.shape)")
+                    AudioDiagnostics.tensor("cover/sourceLatents", srcLatents)
+                    AudioDiagnostics.memory("cover/afterSourceEncode")
 
                     // Cover-song preprocessing: tokenize → detokenize → blend
                     continuation.yield(.tokenizingSource)
@@ -133,6 +142,10 @@ actor CoverSongCoordinator {
                         cfgIntervalStart: request.cfgIntervalStart,
                         cfgIntervalEnd: request.cfgIntervalEnd,
                         precision: request.precision
+                    )
+                    AudioDiagnostics.note(
+                        "cover/diffusion/config",
+                        "steps=\(inferSteps) shift=\(shift) method=\(request.method) guidance=\(effectiveGuidance) cfgInterval=\(request.cfgIntervalStart)...\(request.cfgIntervalEnd) seed=\(request.seed.map(String.init) ?? "random")"
                     )
 
                     continuation.yield(.generating(step: 0, totalSteps: inferSteps, eta: 0))
@@ -167,6 +180,10 @@ actor CoverSongCoordinator {
                         precision: request.precision,
                         srcLatentsOverride: blendedLatents
                     )
+                    AudioDiagnostics.tensor("cover/conditioning/encoderStates", cond.encoderStates)
+                    AudioDiagnostics.tensor("cover/conditioning/encoderMask", cond.encoderMask)
+                    AudioDiagnostics.tensor("cover/conditioning/contextLatents", cond.contextLatents)
+                    AudioDiagnostics.memory("cover/afterConditioning")
 
                     // Run diffusion with the pre-computed conditioning result
                     let audioResult = try await self.pipeline.generate(
@@ -176,6 +193,8 @@ actor CoverSongCoordinator {
                         duration: request.duration,
                         config: config
                     )
+                    AudioDiagnostics.tensor("cover/outputAudio", audioResult.samples)
+                    AudioDiagnostics.memory("cover/generate/end")
 
                     continuation.yield(.decoding)
                     continuation.yield(.result(audioResult))
@@ -208,6 +227,10 @@ actor CoverSongCoordinator {
         }
         let T = srcLatents.shape[1]
         let pool = tokenizer.poolWindowSize
+        AudioDiagnostics.note(
+            "cover/tokenize/config",
+            "sourceShape=\(srcLatents.shape) pool=\(pool)"
+        )
 
         // AudioTokenizer requires T divisible by poolWindowSize (5).
         // Pad the tail with zeros (silence in latent space).
@@ -222,9 +245,11 @@ actor CoverSongCoordinator {
 
         // Tokenize: [1, paddedT, 64] → quantized [1, paddedT/pool, 2048] + indices [1, paddedT/pool, 1]
         let (quantized, indices) = tokenizer(padded)
+        AudioDiagnostics.tensor("cover/tokenizerPaddedLatents", padded)
         AudioDiagnostics.tensor("cover/tokenizerQuantized5Hz", quantized)
         AudioDiagnostics.tensor("cover/tokenizerPackedCodes", indices)
         eval(quantized)
+        AudioDiagnostics.memory("cover/afterTokenize")
 
         return CoverSongTokenizedSource(
             sourceLatents: srcLatents,
@@ -243,6 +268,10 @@ actor CoverSongCoordinator {
         guard let detokenizer = audioDetokenizer else {
             throw CoverSongError.coverPreprocessorNotReady
         }
+        AudioDiagnostics.note(
+            "cover/blend/config",
+            "sourceLength=\(source.originalLength) paddedLength=\(source.paddedLength) coverStrength=\(coverStrength)"
+        )
 
         // Detokenize: FSQ hints [1, paddedT/pool, 2048] → [1, paddedT, 64]
         let upsampled = detokenizer(source.quantizedHints5Hz)
@@ -259,6 +288,7 @@ actor CoverSongCoordinator {
         let blended = (1 - strength) * source.sourceLatents + strength * lmHints
         AudioDiagnostics.tensor("cover/blendedLatents", blended)
         eval(blended)
+        AudioDiagnostics.memory("cover/afterBlend")
         return blended.asType(.float32)
     }
 

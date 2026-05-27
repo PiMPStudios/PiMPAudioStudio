@@ -188,7 +188,7 @@ public actor DiTActor {
         guard let decoder else {
             throw DiTActorError.weightsNotLoaded
         }
-        LoRAInjector.loadWeights(model: decoder, paths: injectedPaths, weights: weights)
+        LoRAInjector.loadWeights(model: decoder, paths: injectedPaths, weights: weights, adapterID: adapterID)
         eval(decoder.parameters())
         injectedAdapterID = adapterID
     }

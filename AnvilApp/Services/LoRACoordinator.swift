@@ -27,8 +27,14 @@ final class LoRACoordinator {
         // Defensive: clear if base model changed
         let activeBaseID = await registry.activeModelID(for: .aceStepDiT)
         let activeSpec = await registry.activeSpec(for: .aceStepDiT)
+        AudioDiagnostics.memory("lora/ensureAdapter/begin")
+        AudioDiagnostics.note(
+            "lora/ensureAdapter/request",
+            "selected=\(selectedID ?? "nil") current=\(currentlyInjectedAdapterID ?? "nil") activeBase=\(activeBaseID ?? "nil") lastBase=\(lastKnownBaseModelID ?? "nil")"
+        )
         if activeBaseID != lastKnownBaseModelID {
             if currentlyInjectedAdapterID != nil {
+                AudioDiagnostics.note("lora/ensureAdapter/baseChanged", "clearing injected=\(currentlyInjectedAdapterID ?? "nil")")
                 await pipeline.removeLoRA()
                 currentlyInjectedAdapterID = nil
             }
@@ -38,36 +44,58 @@ final class LoRACoordinator {
         let desired = selectedID
         let current = currentlyInjectedAdapterID
 
-        guard desired != current else { return }
+        guard desired != current else {
+            AudioDiagnostics.note("lora/ensureAdapter/noop", "desired already active")
+            AudioDiagnostics.memory("lora/ensureAdapter/end")
+            return
+        }
 
         // Remove the currently injected adapter if present
         if current != nil {
+            AudioDiagnostics.note("lora/ensureAdapter/removeCurrent", "current=\(current ?? "nil")")
             await pipeline.removeLoRA()
             currentlyInjectedAdapterID = nil
         }
 
         // Inject the new adapter if one was selected
-        guard let adapterID = desired else { return }
+        guard let adapterID = desired else {
+            AudioDiagnostics.note("lora/ensureAdapter/clear", "no selected adapter")
+            AudioDiagnostics.memory("lora/ensureAdapter/end")
+            return
+        }
 
         do {
             let adapters = AdapterRegistry.listAdapters()
             guard let adapter = adapters.first(where: { $0.id == adapterID }) else {
                 logger.warning("Adapter '\(adapterID)' not found in registry — skipping injection")
+                AudioDiagnostics.note("lora/ensureAdapter/missing", "adapter=\(adapterID)")
+                AudioDiagnostics.memory("lora/ensureAdapter/end")
                 return
             }
+            AudioDiagnostics.note("lora/ensureAdapter/adapter", diagnosticsAdapterDescription(adapter, strength: 1.0))
             if !isCompatible(adapter: adapter, activeBaseID: activeBaseID, activeSpec: activeSpec) {
                 logger.warning("Adapter '\(adapterID)' was trained for '\(adapter.baseModelID)', active DiT is '\(activeBaseID ?? "unknown")' — skipping injection")
+                AudioDiagnostics.note(
+                    "lora/ensureAdapter/incompatible",
+                    "adapter=\(adapterID) adapterBase=\(adapter.baseModelID) activeBase=\(activeBaseID ?? "nil")"
+                )
+                AudioDiagnostics.memory("lora/ensureAdapter/end")
                 return
             }
+            AudioDiagnostics.memory("lora/ensureAdapter/beforeInject")
             let _ = try await pipeline.injectLoRA(config: adapter.config)
             let weights = try await AdapterRegistry.loadWeights(adapterID: adapterID)
+            AudioDiagnostics.note("lora/ensureAdapter/weights", "adapter=\(adapterID) tensors=\(weights.count)")
             try await pipeline.loadLoRAWeights(weights, adapterID: adapterID)
             currentlyInjectedAdapterID = adapterID
             logger.info("Injected LoRA adapter '\(adapterID)'")
+            AudioDiagnostics.memory("lora/ensureAdapter/end")
         } catch {
             logger.error("LoRA injection failed for '\(adapterID)': \(error.localizedDescription)")
+            AudioDiagnostics.note("lora/ensureAdapter/error", "adapter=\(adapterID) error=\(error.localizedDescription)")
             await pipeline.removeLoRA()
             currentlyInjectedAdapterID = nil
+            AudioDiagnostics.memory("lora/ensureAdapter/end")
         }
     }
 
@@ -85,8 +113,14 @@ final class LoRACoordinator {
         // Defensive: clear if base model changed
         let activeBaseID = await registry.activeModelID(for: .aceStepDiT)
         let activeSpec = await registry.activeSpec(for: .aceStepDiT)
+        AudioDiagnostics.memory("lora/ensureStack/begin")
+        AudioDiagnostics.note(
+            "lora/ensureStack/request",
+            "stack=[\(stack.map { "\($0.id)@\(String(format: "%.3f", $0.weight))" }.joined(separator: ","))] current=\(currentlyInjectedAdapterID ?? "nil") activeBase=\(activeBaseID ?? "nil") lastBase=\(lastKnownBaseModelID ?? "nil")"
+        )
         if activeBaseID != lastKnownBaseModelID {
             if currentlyInjectedAdapterID != nil {
+                AudioDiagnostics.note("lora/ensureStack/baseChanged", "clearing injected=\(currentlyInjectedAdapterID ?? "nil")")
                 await pipeline.removeLoRA()
                 currentlyInjectedAdapterID = nil
             }
@@ -96,9 +130,11 @@ final class LoRACoordinator {
         // Empty stack — remove any existing injection
         if stack.isEmpty {
             if currentlyInjectedAdapterID != nil {
+                AudioDiagnostics.note("lora/ensureStack/empty", "removing current=\(currentlyInjectedAdapterID ?? "nil")")
                 await pipeline.removeLoRA()
                 currentlyInjectedAdapterID = nil
             }
+            AudioDiagnostics.memory("lora/ensureStack/end")
             return
         }
 
@@ -107,20 +143,31 @@ final class LoRACoordinator {
         let validEntries: [(adapter: LoRAAdapter, strength: Float)] = stack.compactMap { entry in
             guard let adapter = allAdapters.first(where: { $0.id == entry.id }) else {
                 logger.warning("Adapter '\(entry.id)' not found in registry — skipping")
+                AudioDiagnostics.note("lora/ensureStack/missing", "adapter=\(entry.id)")
                 return nil
             }
             if !isCompatible(adapter: adapter, activeBaseID: activeBaseID, activeSpec: activeSpec) {
                 logger.warning("Adapter '\(entry.id)' trained for '\(adapter.baseModelID)', active DiT is '\(activeBaseID ?? "unknown")' — skipping")
+                AudioDiagnostics.note(
+                    "lora/ensureStack/incompatible",
+                    "adapter=\(entry.id) adapterBase=\(adapter.baseModelID) activeBase=\(activeBaseID ?? "nil")"
+                )
                 return nil
             }
             return (adapter, entry.weight)
         }
+        AudioDiagnostics.note(
+            "lora/ensureStack/valid",
+            "validCount=\(validEntries.count) valid=[\(validEntries.map { diagnosticsAdapterDescription($0.adapter, strength: $0.strength) }.joined(separator: ","))]"
+        )
 
         guard !validEntries.isEmpty else {
             if currentlyInjectedAdapterID != nil {
                 await pipeline.removeLoRA()
                 currentlyInjectedAdapterID = nil
             }
+            AudioDiagnostics.note("lora/ensureStack/noValidEntries", "cleared=\(currentlyInjectedAdapterID == nil)")
+            AudioDiagnostics.memory("lora/ensureStack/end")
             return
         }
 
@@ -131,12 +178,16 @@ final class LoRACoordinator {
                 await pipeline.removeLoRA()
             }
             do {
+                AudioDiagnostics.memory("lora/ensureStack/beforeInject")
                 let _ = try await pipeline.injectLoRA(config: primaryAdapter.config)
                 currentlyInjectedAdapterID = primaryAdapter.id
                 logger.info("Injected LoRALinear layers for '\(primaryAdapter.id)'")
+                AudioDiagnostics.memory("lora/ensureStack/afterInject")
             } catch {
                 logger.error("LoRA injection failed for '\(primaryAdapter.id)': \(error.localizedDescription)")
+                AudioDiagnostics.note("lora/ensureStack/injectError", "adapter=\(primaryAdapter.id) error=\(error.localizedDescription)")
                 currentlyInjectedAdapterID = nil
+                AudioDiagnostics.memory("lora/ensureStack/end")
                 return
             }
         }
@@ -148,6 +199,7 @@ final class LoRACoordinator {
         for (adapter, strength) in validEntries {
             do {
                 let weights = try await AdapterRegistry.loadWeights(adapterID: adapter.id)
+                AudioDiagnostics.note("lora/ensureStack/weights", "adapter=\(adapter.id) tensors=\(weights.count) strength=\(String(format: "%.3f", strength))")
                 await pipeline.addLoRAContribution(
                     adapterID: adapter.id,
                     displayName: adapter.name,
@@ -158,19 +210,27 @@ final class LoRACoordinator {
                 logger.info("Added LoRA contribution '\(adapter.id)' strength=\(strength)")
             } catch {
                 logger.error("Failed to load weights for '\(adapter.id)': \(error.localizedDescription)")
+                AudioDiagnostics.note("lora/ensureStack/loadError", "adapter=\(adapter.id) error=\(error.localizedDescription)")
             }
         }
+        AudioDiagnostics.memory("lora/ensureStack/end")
     }
 
     /// Removes any injected adapter and resets all coordinator state.
     /// Call on unloadAllWeights() and training start.
     func clearAll() async {
+        AudioDiagnostics.note("lora/clearAll", "current=\(currentlyInjectedAdapterID ?? "nil") lastBase=\(lastKnownBaseModelID ?? "nil")")
         if currentlyInjectedAdapterID != nil {
             await pipeline.clearLoRAContributions()
             await pipeline.removeLoRA()
             currentlyInjectedAdapterID = nil
         }
         lastKnownBaseModelID = nil
+        AudioDiagnostics.memory("lora/clearAll/end")
+    }
+
+    private func diagnosticsAdapterDescription(_ adapter: LoRAAdapter, strength: Float) -> String {
+        "id=\(adapter.id):name=\(adapter.name):strength=\(String(format: "%.3f", strength)):source=\(adapter.source.rawValue):rank=\(adapter.config.rank):alpha=\(String(format: "%.3f", adapter.config.alpha)):dropout=\(String(format: "%.3f", adapter.config.dropout)):base=\(adapter.baseModelID):patterns=\(adapter.config.injectionPatterns)"
     }
 
     private func isCompatible(

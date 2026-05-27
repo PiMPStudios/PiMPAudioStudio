@@ -3,6 +3,36 @@ import Foundation
 import MLX
 import MLXRandom
 
+private func sfxAudioDiagnosticStep(_ stepIdx: Int, totalSteps: Int) -> Bool {
+    stepIdx <= 1 || stepIdx == totalSteps - 1 || stepIdx % 10 == 0
+}
+
+private func sfxAudioDiagnosticFloat(_ value: Float, format: String = "%.4g") -> String {
+    String(format: format, value)
+}
+
+private func sfxAudioDiagnosticAbsMean(_ array: MLXArray) -> Float {
+    MLX.abs(array.asType(.float32)).mean().item(Float.self)
+}
+
+private func sfxAudioDiagnosticCFGStats(
+    stepIdx: Int,
+    sigma: Float,
+    sigmaNext: Float,
+    guidanceScale: Float,
+    condPred: MLXArray,
+    uncondPred: MLXArray,
+    velocity: MLXArray
+) -> String {
+    let diff = condPred - uncondPred
+    let condMean = sfxAudioDiagnosticAbsMean(condPred)
+    let uncondMean = sfxAudioDiagnosticAbsMean(uncondPred)
+    let diffMean = sfxAudioDiagnosticAbsMean(diff)
+    let velocityMean = sfxAudioDiagnosticAbsMean(velocity)
+    let ratio = condMean > 0 ? diffMean / condMean : 0
+    return "step=\(stepIdx) sigma=\(sfxAudioDiagnosticFloat(sigma, format: "%.4f")) sigmaNext=\(sfxAudioDiagnosticFloat(sigmaNext, format: "%.4f")) guidance=\(sfxAudioDiagnosticFloat(guidanceScale, format: "%.3f")) cond_abs_mean=\(sfxAudioDiagnosticFloat(condMean)) uncond_abs_mean=\(sfxAudioDiagnosticFloat(uncondMean)) diff_abs_mean=\(sfxAudioDiagnosticFloat(diffMean)) diff_to_cond=\(sfxAudioDiagnosticFloat(ratio)) velocity_abs_mean=\(sfxAudioDiagnosticFloat(velocityMean))"
+}
+
 public actor SFXDiffusionActor {
     private let dit: SFXDiTActor
     private var progressContinuation: AsyncStream<GenerationProgress>.Continuation?
@@ -44,10 +74,23 @@ public actor SFXDiffusionActor {
         let sigmas = generateRFSchedule(steps: config.steps, sigmaMax: config.sigmaMax)
         let doCFG  = config.guidanceScale > 1.0 && uncrossCondTokens != nil
 
+        AudioDiagnostics.memory("sfx/diffusion/begin")
         AudioDiagnostics.note("SFX_DIFF", "latentShape=\(config.latentShape) steps=\(config.steps) sigmaMax=\(config.sigmaMax) doCFG=\(doCFG)")
+        AudioDiagnostics.note(
+            "sfx/diffusion/config",
+            "latentShape=\(config.latentShape) steps=\(config.steps) sigmaMax=\(config.sigmaMax) guidance=\(config.guidanceScale) doCFG=\(doCFG) seed=\(config.seed.map(String.init) ?? "random")"
+        )
         // Log first 10 schedule values so we can verify the logSNR sigmoid shape.
         AudioDiagnostics.floats("SFX_SCHEDULE_FIRST10", Array(sigmas.prefix(10)))
         AudioDiagnostics.floats("SFX_SCHEDULE_LAST5",   Array(sigmas.suffix(5)))
+        AudioDiagnostics.floats("sfx/diffusion/schedule", sigmas)
+        AudioDiagnostics.tensor("sfx/diffusion/crossCond", crossCond)
+        AudioDiagnostics.tensor("sfx/diffusion/globalCond", globalCond)
+        if let uncrossCondTokens {
+            AudioDiagnostics.tensor("sfx/diffusion/uncrossCondTokens", uncrossCondTokens)
+        } else {
+            AudioDiagnostics.note("sfx/diffusion/uncrossCondTokens", "nil")
+        }
         AudioDiagnostics.tensor("SFX_NOISE_XT", xt)
 
         // Reset the DiT internal-diag counter so the first two forward calls
@@ -62,6 +105,10 @@ public actor SFXDiffusionActor {
             let sigma     = sigmas[stepIdx]
             let sigmaNext = stepIdx + 1 < sigmas.count ? sigmas[stepIdx + 1] : Float(0)
             let timestep  = MLXArray([sigma])
+            let logDetail = AudioDiagnostics.isEnabled && sfxAudioDiagnosticStep(stepIdx, totalSteps: config.steps)
+            if logDetail {
+                AudioDiagnostics.tensor("sfx/diffusion/step\(stepIdx)/xtBefore", xt)
+            }
 
             var vt: MLXArray
             if doCFG {
@@ -76,22 +123,45 @@ public actor SFXDiffusionActor {
                 )
                 let diff = condPred - uncondPred
                 vt = uncondPred + config.guidanceScale * diff
+                if logDetail {
+                    AudioDiagnostics.note(
+                        "sfx/diffusion/cfgStats",
+                        sfxAudioDiagnosticCFGStats(
+                            stepIdx: stepIdx,
+                            sigma: sigma,
+                            sigmaNext: sigmaNext,
+                            guidanceScale: config.guidanceScale,
+                            condPred: condPred,
+                            uncondPred: uncondPred,
+                            velocity: vt
+                        )
+                    )
+                    AudioDiagnostics.tensor("sfx/diffusion/step\(stepIdx)/condPred", condPred)
+                    AudioDiagnostics.tensor("sfx/diffusion/step\(stepIdx)/uncondPred", uncondPred)
+                    AudioDiagnostics.tensor("sfx/diffusion/step\(stepIdx)/cfgDelta", diff)
+                }
 
                 // Log cond/uncond diff at step 0 — compare to Python reference:
                 //   Python diff.abs_mean ≈ 0.019 (ratio ≈ 11% of v_cond)
                 //   Swift should match within ~2× if cross-attention is working.
                 if stepIdx == 0 {
-                    let diffMean = abs(diff).mean().item(Float.self)
-                    let condMean = abs(condPred).mean().item(Float.self)
+                    let diffMean = MLX.abs(diff).mean().item(Float.self)
+                    let condMean = MLX.abs(condPred).mean().item(Float.self)
                     let ratio    = condMean > 0 ? diffMean / condMean : 0
                     print(String(format: "[SFXDIFF] step0 cond_abs_mean=%.4f uncond_abs_mean=%.4f diff_abs_mean=%.4f ratio=%.4f (Python ref: diff≈0.019 ratio≈0.11)",
-                                 condMean, abs(uncondPred).mean().item(Float.self), diffMean, ratio))
+                                 condMean, MLX.abs(uncondPred).mean().item(Float.self), diffMean, ratio))
                 }
             } else {
                 vt = try await dit.predict(
                     latents: xt, timestep: timestep,
                     crossCond: crossCond, globalCond: globalCond
                 )
+                if logDetail {
+                    AudioDiagnostics.note(
+                        "sfx/diffusion/cfgStats",
+                        "step=\(stepIdx) sigma=\(sfxAudioDiagnosticFloat(sigma, format: "%.4f")) sigmaNext=\(sfxAudioDiagnosticFloat(sigmaNext, format: "%.4f")) doCFG=false guidance=\(sfxAudioDiagnosticFloat(config.guidanceScale, format: "%.3f"))"
+                    )
+                }
             }
 
             // Rectified flow Euler step: x_next = x_t + (t_next - t_curr) * v_t
@@ -103,6 +173,11 @@ public actor SFXDiffusionActor {
                 AudioDiagnostics.note("SFX_STEP[\(stepIdx)]", "sigma=\(String(format:"%.4f",sigma)) sigmaNext=\(String(format:"%.4f",sigmaNext))")
                 AudioDiagnostics.tensor("SFX_VT[\(stepIdx)]", vt)
                 AudioDiagnostics.tensor("SFX_XT[\(stepIdx)]", xt)
+            }
+            if logDetail {
+                AudioDiagnostics.tensor("sfx/diffusion/step\(stepIdx)/vt", vt)
+                AudioDiagnostics.tensor("sfx/diffusion/step\(stepIdx)/xtAfter", xt)
+                AudioDiagnostics.memory("sfx/diffusion/step\(stepIdx)/after")
             }
 
             let elapsed = Date().timeIntervalSince(diffStart)
@@ -121,11 +196,12 @@ public actor SFXDiffusionActor {
 
         AudioDiagnostics.tensor("SFX_FINAL_LATENTS", xt)
         AudioDiagnostics.note("SFX_DIFF_DONE", "diffTime=\(String(format:"%.2f",diffTime))s perStep=\(String(format:"%.3f",diffTime/Double(max(config.steps,1))))s")
+        AudioDiagnostics.memory("sfx/diffusion/end")
 
         // Unconditional diagnostic — always printed regardless of AudioDiagnostics flag.
         // Tells us whether the ODE converged to structured latents or stayed noisy.
-        let finalAbsMean = abs(xt).mean().item(Float.self)
-        let finalAbsMax  = abs(xt).max().item(Float.self)
+        let finalAbsMean = MLX.abs(xt).mean().item(Float.self)
+        let finalAbsMax  = MLX.abs(xt).max().item(Float.self)
         let finalMean    = xt.mean().item(Float.self)
         print("[SFXDIFF] final_latents abs_mean=\(String(format:"%.4f",finalAbsMean)) abs_max=\(String(format:"%.4f",finalAbsMax)) mean=\(String(format:"%.4f",finalMean)) shape=\(xt.shape)")
 
@@ -159,6 +235,21 @@ public actor SFXDiffusionActor {
         let stepCount = schedule.count
         let doCFG = config.guidanceScale > 1.0 && uncrossCondTokens != nil
 
+        AudioDiagnostics.memory("sfx/inpaint/begin")
+        AudioDiagnostics.note(
+            "sfx/inpaint/config",
+            "startShape=\(startLatents.shape) steps=\(stepCount) sigmaMax=\(config.sigmaMax) guidance=\(config.guidanceScale) doCFG=\(doCFG) seed=\(config.seed.map(String.init) ?? "random")"
+        )
+        AudioDiagnostics.floats("sfx/inpaint/schedule", schedule)
+        AudioDiagnostics.tensor("sfx/inpaint/startLatents", startLatents)
+        AudioDiagnostics.tensor("sfx/inpaint/crossCond", crossCond)
+        AudioDiagnostics.tensor("sfx/inpaint/globalCond", globalCond)
+        if let uncrossCondTokens {
+            AudioDiagnostics.tensor("sfx/inpaint/uncrossCondTokens", uncrossCondTokens)
+        } else {
+            AudioDiagnostics.note("sfx/inpaint/uncrossCondTokens", "nil")
+        }
+
         let diffStart = Date()
 
         for stepIdx in 0..<stepCount {
@@ -167,6 +258,10 @@ public actor SFXDiffusionActor {
             let sigma     = schedule[stepIdx]
             let sigmaNext = stepIdx + 1 < stepCount ? schedule[stepIdx + 1] : Float(0)
             let timestep  = MLXArray([sigma])
+            let logDetail = AudioDiagnostics.isEnabled && sfxAudioDiagnosticStep(stepIdx, totalSteps: stepCount)
+            if logDetail {
+                AudioDiagnostics.tensor("sfx/inpaint/step\(stepIdx)/xtBefore", xt)
+            }
 
             var vt: MLXArray
             if doCFG {
@@ -181,22 +276,50 @@ public actor SFXDiffusionActor {
                 )
                 let diff = condPred - uncondPred
                 vt = uncondPred + config.guidanceScale * diff
+                if logDetail {
+                    AudioDiagnostics.note(
+                        "sfx/inpaint/cfgStats",
+                        sfxAudioDiagnosticCFGStats(
+                            stepIdx: stepIdx,
+                            sigma: sigma,
+                            sigmaNext: sigmaNext,
+                            guidanceScale: config.guidanceScale,
+                            condPred: condPred,
+                            uncondPred: uncondPred,
+                            velocity: vt
+                        )
+                    )
+                    AudioDiagnostics.tensor("sfx/inpaint/step\(stepIdx)/condPred", condPred)
+                    AudioDiagnostics.tensor("sfx/inpaint/step\(stepIdx)/uncondPred", uncondPred)
+                    AudioDiagnostics.tensor("sfx/inpaint/step\(stepIdx)/cfgDelta", diff)
+                }
                 if stepIdx == 0 {
-                    let diffMean = abs(diff).mean().item(Float.self)
-                    let condMean = abs(condPred).mean().item(Float.self)
+                    let diffMean = MLX.abs(diff).mean().item(Float.self)
+                    let condMean = MLX.abs(condPred).mean().item(Float.self)
                     let ratio    = condMean > 0 ? diffMean / condMean : 0
                     print(String(format: "[SFXDIFF] step0 cond_abs_mean=%.4f uncond_abs_mean=%.4f diff_abs_mean=%.4f ratio=%.4f (Python ref: diff≈0.019 ratio≈0.11)",
-                                 condMean, abs(uncondPred).mean().item(Float.self), diffMean, ratio))
+                                 condMean, MLX.abs(uncondPred).mean().item(Float.self), diffMean, ratio))
                 }
             } else {
                 vt = try await dit.predict(
                     latents: xt, timestep: timestep,
                     crossCond: crossCond, globalCond: globalCond
                 )
+                if logDetail {
+                    AudioDiagnostics.note(
+                        "sfx/inpaint/cfgStats",
+                        "step=\(stepIdx) sigma=\(sfxAudioDiagnosticFloat(sigma, format: "%.4f")) sigmaNext=\(sfxAudioDiagnosticFloat(sigmaNext, format: "%.4f")) doCFG=false guidance=\(sfxAudioDiagnosticFloat(config.guidanceScale, format: "%.3f"))"
+                    )
+                }
             }
 
             xt = DiffusionSampler.odeStep(xt: xt, vt: vt, currentT: sigma, nextT: sigmaNext)
             eval(xt)
+            if logDetail {
+                AudioDiagnostics.tensor("sfx/inpaint/step\(stepIdx)/vt", vt)
+                AudioDiagnostics.tensor("sfx/inpaint/step\(stepIdx)/xtAfter", xt)
+                AudioDiagnostics.memory("sfx/inpaint/step\(stepIdx)/after")
+            }
 
             let elapsed = Date().timeIntervalSince(diffStart)
             progressContinuation?.yield(.diffusion(DiffusionProgress(
@@ -211,6 +334,9 @@ public actor SFXDiffusionActor {
             perStepTime: diffTime / Double(stepCount),
             totalTime: totalTime
         )
+
+        AudioDiagnostics.tensor("sfx/inpaint/finalLatents", xt)
+        AudioDiagnostics.memory("sfx/inpaint/end")
 
         progressContinuation?.finish()
         progressContinuation = nil

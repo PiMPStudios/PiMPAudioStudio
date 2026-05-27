@@ -101,9 +101,13 @@ public enum LoRAInjector {
     ///   - paths: Key paths where LoRALinear layers exist.
     ///   - weights: Array of (key, weight) tuples (as returned by `extractWeights`).
     public static func loadWeights(
-        model: DiTDecoder, paths: [String], weights: [(String, MLXArray)]
+        model: DiTDecoder, paths: [String], weights: [(String, MLXArray)], adapterID: String? = nil
     ) {
         let weightDict = Dictionary(weights, uniquingKeysWith: { _, last in last })
+        var loadedA = 0
+        var loadedB = 0
+        var missingPaths: [String] = []
+        var loggedFirstTensors = false
 
         for path in paths {
             guard let (layerIdx, subPath) = parsePath(path),
@@ -113,12 +117,29 @@ public enum LoRAInjector {
             if let loraLinear = resolveLinear(in: layer, path: subPath) as? LoRALinear {
                 if let a = weightDict["\(path).loraA"] {
                     loraLinear.loraA._updateInternal(a)
+                    loadedA += 1
                 }
                 if let b = weightDict["\(path).loraB"] {
                     loraLinear.loraB._updateInternal(b)
+                    loadedB += 1
+                }
+                if weightDict["\(path).loraA"] == nil || weightDict["\(path).loraB"] == nil {
+                    missingPaths.append(path)
+                } else if !loggedFirstTensors,
+                          let a = weightDict["\(path).loraA"],
+                          let b = weightDict["\(path).loraB"] {
+                    let adapterTag = diagnosticTagComponent(adapterID ?? "single")
+                    let pathTag = diagnosticTagComponent(path)
+                    AudioDiagnostics.tensor("lora/loadWeights/\(adapterTag)/\(pathTag)/A", a)
+                    AudioDiagnostics.tensor("lora/loadWeights/\(adapterTag)/\(pathTag)/B", b)
+                    loggedFirstTensors = true
                 }
             }
         }
+        AudioDiagnostics.note(
+            "lora/loadWeights",
+            "adapter=\(adapterID ?? "nil") paths=\(paths.count) tensors=\(weights.count) loadedA=\(loadedA) loadedB=\(loadedB) missing=\(missingPaths.count) firstMissing=\(Array(missingPaths.prefix(8)))"
+        )
     }
 
     /// Mark only the adapter matrices as trainable after the parent DiT has
@@ -221,6 +242,13 @@ public enum LoRAInjector {
         default: break
         }
     }
+
+    private static func diagnosticTagComponent(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: " ", with: "_")
+            .replacingOccurrences(of: ":", with: "_")
+    }
 }
 
 // MARK: - Multi-Adapter Stacking
@@ -278,6 +306,7 @@ extension LoRAInjector {
         let unusedWeightPaths = availableWeightPaths.subtracting(requestedPaths)
         var matchedPaths = 0
         var missingPaths: [String] = []
+        var loggedFirstTensors = false
 
         for path in paths {
             guard let (layerIdx, subPath) = parsePath(path),
@@ -304,6 +333,13 @@ extension LoRAInjector {
             )
             loraLinear.contributions.append(contribution)
             matchedPaths += 1
+            if !loggedFirstTensors {
+                let adapterTag = diagnosticTagComponent(adapterID)
+                let pathTag = diagnosticTagComponent(path)
+                AudioDiagnostics.tensor("lora/contribution/\(adapterTag)/\(pathTag)/A", loraA)
+                AudioDiagnostics.tensor("lora/contribution/\(adapterTag)/\(pathTag)/B", loraB)
+                loggedFirstTensors = true
+            }
         }
 
         AudioDiagnostics.note(

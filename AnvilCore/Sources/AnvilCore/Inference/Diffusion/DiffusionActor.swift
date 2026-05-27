@@ -5,6 +5,55 @@ import OSLog
 
 private let diagLogger = Logger(subsystem: "com.pimp.AnvilApp", category: "DiffusionActor")
 
+private func audioDiagnosticStep(_ stepIdx: Int, totalSteps: Int) -> Bool {
+    stepIdx <= 1 || stepIdx == totalSteps - 1 || stepIdx % 10 == 0
+}
+
+private func audioDiagnosticFloat(_ value: Float, format: String = "%.4g") -> String {
+    String(format: format, value)
+}
+
+private func audioDiagnosticAbsMean(_ array: MLXArray) -> Float {
+    MLX.abs(array.asType(.float32)).mean().item(Float.self)
+}
+
+private func audioDiagnosticCFGPlan(
+    schedule: [Float],
+    intervalStart: Float,
+    intervalEnd: Float
+) -> String {
+    var applied: [String] = []
+    var skipped: [String] = []
+    for (idx, timestep) in schedule.enumerated() {
+        let label = "\(idx)@\(audioDiagnosticFloat(timestep, format: "%.4f"))"
+        if timestep >= intervalStart && timestep <= intervalEnd {
+            applied.append(label)
+        } else {
+            skipped.append(label)
+        }
+    }
+    return "interval=\(audioDiagnosticFloat(intervalStart, format: "%.4f"))...\(audioDiagnosticFloat(intervalEnd, format: "%.4f")) appliedCount=\(applied.count) applied=[\(applied.joined(separator: ","))] skippedCount=\(skipped.count) skipped=[\(skipped.joined(separator: ","))]"
+}
+
+private func audioDiagnosticCFGStats(
+    stepIdx: Int,
+    timestep: Float,
+    guidanceScale: Float,
+    applyCFG: Bool,
+    predCond: MLXArray,
+    predUncond: MLXArray,
+    velocity: MLXArray
+) -> String {
+    let diff = predCond - predUncond
+    let condMean = audioDiagnosticAbsMean(predCond)
+    let uncondMean = audioDiagnosticAbsMean(predUncond)
+    let diffMean = audioDiagnosticAbsMean(diff)
+    let velocityMean = audioDiagnosticAbsMean(velocity)
+    let ratio = condMean > 0 ? diffMean / condMean : 0
+
+    return "step=\(stepIdx) t=\(audioDiagnosticFloat(timestep, format: "%.4f")) applyCFG=\(applyCFG) guidance=\(audioDiagnosticFloat(guidanceScale, format: "%.3f")) cond_abs_mean=\(audioDiagnosticFloat(condMean)) uncond_abs_mean=\(audioDiagnosticFloat(uncondMean)) diff_abs_mean=\(audioDiagnosticFloat(diffMean)) diff_to_cond=\(audioDiagnosticFloat(ratio)) velocity_abs_mean=\(audioDiagnosticFloat(velocityMean))"
+}
+
 public actor DiffusionActor {
     private let dit: DiTActor
     private var progressContinuation: AsyncStream<DiffusionProgress>.Continuation?
@@ -33,7 +82,12 @@ public actor DiffusionActor {
         let C = shape.channels
 
         var xt = DiffusionSampler.generateNoise(shape: [bsz, T, C], seed: config.seed)
+        AudioDiagnostics.memory("diff/generate/begin")
         AudioDiagnostics.note("config", "shift=\(config.shift) steps=\(config.steps ?? -1) method=\(config.method) guidance=\(config.guidanceScale) cfgInterval=\(config.cfgIntervalStart)...\(config.cfgIntervalEnd) precision=\(config.precision) seed=\(config.seed.map(String.init) ?? "random")")
+        AudioDiagnostics.note(
+            "diff/generate/config",
+            "shape=[\(bsz),\(T),\(C)] shift=\(config.shift) steps=\(config.steps ?? -1) method=\(config.method) guidance=\(config.guidanceScale) cfgInterval=\(config.cfgIntervalStart)...\(config.cfgIntervalEnd) audioCoverStrength=\(config.audioCoverStrength) precision=\(config.precision) seed=\(config.seed.map(String.init) ?? "random")"
+        )
         AudioDiagnostics.tensor("init/xt(noise)", xt)
         AudioDiagnostics.tensor("init/encoderStates", encoderStates)
         AudioDiagnostics.tensor("init/contextLatents", contextLatents)
@@ -50,6 +104,21 @@ public actor DiffusionActor {
         AudioDiagnostics.floats("schedule", schedule)
 
         let doCFG = config.guidanceScale > 1.0
+        if doCFG {
+            AudioDiagnostics.note(
+                "diff/generate/cfgPlan",
+                audioDiagnosticCFGPlan(
+                    schedule: schedule,
+                    intervalStart: config.cfgIntervalStart,
+                    intervalEnd: config.cfgIntervalEnd
+                )
+            )
+        } else {
+            AudioDiagnostics.note(
+                "diff/generate/cfgPlan",
+                "disabled guidanceScale=\(audioDiagnosticFloat(config.guidanceScale, format: "%.3f"))"
+            )
+        }
         var encHS = encoderStates
         var ctx = contextLatents
         var encMask = encoderMask
@@ -63,8 +132,10 @@ public actor DiffusionActor {
             let nullEmb: MLXArray
             if let nullCond = await dit.nullConditionEmbedding() {
                 nullEmb = MLX.broadcast(nullCond, to: encHS.shape).asType(encHS.dtype)
+                AudioDiagnostics.tensor("diff/generate/nullConditionEmbedding", nullEmb)
             } else {
                 nullEmb = MLXArray.zeros(like: encHS)
+                AudioDiagnostics.note("diff/generate/nullConditionEmbedding", "missing; falling back to zeros")
             }
             encHS = concatenated([encHS, nullEmb], axis: 0)
             ctx = concatenated([ctx, ctx], axis: 0)
@@ -76,16 +147,21 @@ public actor DiffusionActor {
 
         let cache = CrossAttentionCache()
         let diffStart = Date()
+        AudioDiagnostics.memory("diff/generate/diffusionBegin")
 
         for stepIdx in 0..<numSteps {
             try Task.checkCancellation()
             let currentT = schedule[stepIdx]
+            let logDetail = AudioDiagnostics.isEnabled && audioDiagnosticStep(stepIdx, totalSteps: numSteps)
 
             if stepIdx >= coverSteps {
                 cache.reset()
             }
 
             let xIn = doCFG ? concatenated([xt, xt], axis: 0) : xt
+            if logDetail {
+                AudioDiagnostics.tensor("diff/generate/step\(stepIdx)/xtBefore", xt)
+            }
 
             let (vt, _) = try await dit.step(
                 noisyLatents: xIn,
@@ -113,6 +189,30 @@ public actor DiffusionActor {
                 } else {
                     velocity = predCond
                 }
+                if logDetail {
+                    AudioDiagnostics.note(
+                        "diff/generate/cfgStats",
+                        audioDiagnosticCFGStats(
+                            stepIdx: stepIdx,
+                            timestep: currentT,
+                            guidanceScale: config.guidanceScale,
+                            applyCFG: applyCFG,
+                            predCond: predCond,
+                            predUncond: predUncond,
+                            velocity: velocity
+                        )
+                    )
+                    AudioDiagnostics.tensor("diff/generate/step\(stepIdx)/predCond", predCond)
+                    AudioDiagnostics.tensor("diff/generate/step\(stepIdx)/predUncond", predUncond)
+                    AudioDiagnostics.tensor("diff/generate/step\(stepIdx)/cfgDelta", predCond - predUncond)
+                    AudioDiagnostics.tensor("diff/generate/step\(stepIdx)/velocity", velocity)
+                }
+            } else if logDetail {
+                AudioDiagnostics.note(
+                    "diff/generate/cfgStats",
+                    "step=\(stepIdx) t=\(audioDiagnosticFloat(currentT, format: "%.4f")) doCFG=false guidance=\(audioDiagnosticFloat(config.guidanceScale, format: "%.3f"))"
+                )
+                AudioDiagnostics.tensor("diff/generate/step\(stepIdx)/velocity", velocity)
             }
 
             if stepIdx == numSteps - 1 {
@@ -134,6 +234,10 @@ public actor DiffusionActor {
                 }
             }
             eval(xt)
+            if logDetail {
+                AudioDiagnostics.tensor("diff/generate/step\(stepIdx)/xtAfter", xt)
+                AudioDiagnostics.memory("diff/generate/step\(stepIdx)/after")
+            }
 
             let elapsed = Date().timeIntervalSince(diffStart)
             progressContinuation?.yield(DiffusionProgress(
@@ -177,6 +281,8 @@ public actor DiffusionActor {
         let statStrs = perSecStats.map { (s, v) in "s\(s)=\(String(format: "%.4f", v))" }.joined(separator: " ")
         diagLogger.info("[DiffusionActor] per-sec latent abs_mean: \(statStrs)")
         AudioDiagnostics.floats("diff/final_latent_abs_mean_per_sec", perSecStats.map(\.1))
+        AudioDiagnostics.tensor("diff/generate/finalLatents", xt)
+        AudioDiagnostics.memory("diff/generate/end")
 
         progressContinuation?.finish()
         progressContinuation = nil
@@ -274,6 +380,35 @@ public actor DiffusionActor {
         let bsz = xt.shape[0]
 
         let doCFG = config.guidanceScale > 1.0
+        AudioDiagnostics.memory("diff/inpaint/begin")
+        AudioDiagnostics.note(
+            "diff/inpaint/config",
+            "startShape=\(startLatents.shape) steps=\(numSteps) method=\(config.method) guidance=\(config.guidanceScale) cfgInterval=\(config.cfgIntervalStart)...\(config.cfgIntervalEnd) precision=\(config.precision) seed=\(config.seed.map(String.init) ?? "random")"
+        )
+        AudioDiagnostics.floats("diff/inpaint/schedule", schedule)
+        AudioDiagnostics.tensor("diff/inpaint/startLatents", startLatents)
+        AudioDiagnostics.tensor("diff/inpaint/encoderStates", encoderStates)
+        AudioDiagnostics.tensor("diff/inpaint/contextLatents", contextLatents)
+        if let encoderMask {
+            AudioDiagnostics.tensor("diff/inpaint/encoderMask", encoderMask)
+        } else {
+            AudioDiagnostics.note("diff/inpaint/encoderMask", "nil")
+        }
+        if doCFG {
+            AudioDiagnostics.note(
+                "diff/inpaint/cfgPlan",
+                audioDiagnosticCFGPlan(
+                    schedule: schedule,
+                    intervalStart: config.cfgIntervalStart,
+                    intervalEnd: config.cfgIntervalEnd
+                )
+            )
+        } else {
+            AudioDiagnostics.note(
+                "diff/inpaint/cfgPlan",
+                "disabled guidanceScale=\(audioDiagnosticFloat(config.guidanceScale, format: "%.3f"))"
+            )
+        }
         var encHS = encoderStates
         var ctx = contextLatents
         var encMask = encoderMask
@@ -287,8 +422,10 @@ public actor DiffusionActor {
             let nullEmb: MLXArray
             if let nullCond = await dit.nullConditionEmbedding() {
                 nullEmb = MLX.broadcast(nullCond, to: encHS.shape).asType(encHS.dtype)
+                AudioDiagnostics.tensor("diff/inpaint/nullConditionEmbedding", nullEmb)
             } else {
                 nullEmb = MLXArray.zeros(like: encHS)
+                AudioDiagnostics.note("diff/inpaint/nullConditionEmbedding", "missing; falling back to zeros")
             }
             encHS = concatenated([encHS, nullEmb], axis: 0)
             ctx = concatenated([ctx, ctx], axis: 0)
@@ -298,12 +435,17 @@ public actor DiffusionActor {
 
         let cache = CrossAttentionCache()
         let diffStart = Date()
+        AudioDiagnostics.memory("diff/inpaint/diffusionBegin")
 
         for stepIdx in 0..<numSteps {
             try Task.checkCancellation()
             let currentT = schedule[stepIdx]
+            let logDetail = AudioDiagnostics.isEnabled && audioDiagnosticStep(stepIdx, totalSteps: numSteps)
 
             let xIn = doCFG ? concatenated([xt, xt], axis: 0) : xt
+            if logDetail {
+                AudioDiagnostics.tensor("diff/inpaint/step\(stepIdx)/xtBefore", xt)
+            }
 
             let (vt, _) = try await dit.step(
                 noisyLatents: xIn,
@@ -315,6 +457,9 @@ public actor DiffusionActor {
                 cache: cache,
                 useCache: !doCFG
             )
+            if logDetail {
+                AudioDiagnostics.tensor("diff/inpaint/step\(stepIdx)/vt", vt)
+            }
 
             var velocity = vt
 
@@ -330,6 +475,30 @@ public actor DiffusionActor {
                 } else {
                     velocity = predCond
                 }
+                if logDetail {
+                    AudioDiagnostics.note(
+                        "diff/inpaint/cfgStats",
+                        audioDiagnosticCFGStats(
+                            stepIdx: stepIdx,
+                            timestep: currentT,
+                            guidanceScale: config.guidanceScale,
+                            applyCFG: applyCFG,
+                            predCond: predCond,
+                            predUncond: predUncond,
+                            velocity: velocity
+                        )
+                    )
+                    AudioDiagnostics.tensor("diff/inpaint/step\(stepIdx)/predCond", predCond)
+                    AudioDiagnostics.tensor("diff/inpaint/step\(stepIdx)/predUncond", predUncond)
+                    AudioDiagnostics.tensor("diff/inpaint/step\(stepIdx)/cfgDelta", predCond - predUncond)
+                    AudioDiagnostics.tensor("diff/inpaint/step\(stepIdx)/velocity", velocity)
+                }
+            } else if logDetail {
+                AudioDiagnostics.note(
+                    "diff/inpaint/cfgStats",
+                    "step=\(stepIdx) t=\(audioDiagnosticFloat(currentT, format: "%.4f")) doCFG=false guidance=\(audioDiagnosticFloat(config.guidanceScale, format: "%.3f"))"
+                )
+                AudioDiagnostics.tensor("diff/inpaint/step\(stepIdx)/velocity", velocity)
             }
 
             if stepIdx == numSteps - 1 {
@@ -351,6 +520,10 @@ public actor DiffusionActor {
                 }
             }
             eval(xt)
+            if logDetail {
+                AudioDiagnostics.tensor("diff/inpaint/step\(stepIdx)/xtAfter", xt)
+                AudioDiagnostics.memory("diff/inpaint/step\(stepIdx)/after")
+            }
 
             let elapsed = Date().timeIntervalSince(diffStart)
             progressContinuation?.yield(DiffusionProgress(
@@ -365,6 +538,9 @@ public actor DiffusionActor {
             perStepTime: diffTime / Double(max(numSteps, 1)),
             totalTime: totalTime
         )
+
+        AudioDiagnostics.tensor("diff/inpaint/finalLatents", xt)
+        AudioDiagnostics.memory("diff/inpaint/end")
 
         progressContinuation?.finish()
         progressContinuation = nil

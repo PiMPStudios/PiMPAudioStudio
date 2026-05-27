@@ -66,9 +66,25 @@ public enum AudioDiagnostics {
         logger.info("[AUDIODIAG] \(tag) \(message)")
     }
 
+    /// Emit an MLX allocator snapshot so long runs can be checked for growth.
+    public static func memory(_ tag: String) {
+        guard isEnabled else { return }
+        let snapshot = Memory.snapshot()
+        logger.info("""
+        [AUDIODIAG] \(tag) memory \
+        active=\(snapshot.activeMemory) (\(formatMiB(snapshot.activeMemory)) MiB) \
+        cache=\(snapshot.cacheMemory) (\(formatMiB(snapshot.cacheMemory)) MiB) \
+        peak=\(snapshot.peakMemory) (\(formatMiB(snapshot.peakMemory)) MiB)
+        """)
+    }
+
     /// Emit a [Float] array's full contents (for short arrays like timestep schedules).
     public static func floats(_ tag: String, _ values: [Float]) {
         guard isEnabled else { return }
         logger.info("[AUDIODIAG] \(tag) count=\(values.count) values=\(values)")
+    }
+
+    private static func formatMiB(_ bytes: Int) -> String {
+        String(format: "%.1f", Double(bytes) / 1_048_576.0)
     }
 }
