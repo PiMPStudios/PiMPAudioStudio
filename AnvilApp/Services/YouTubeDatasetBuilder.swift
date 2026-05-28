@@ -236,7 +236,8 @@ final class YouTubeDatasetBuilder: ObservableObject {
         clipLength: TimeInterval,
         maxClips: Int,
         styleTemplate: String = "",
-        outputDirectory: URL
+        outputDirectory: URL,
+        filenamePrefix: String = "v"
     ) async throws -> [(url: URL, caption: String)] {
         let asset = AVURLAsset(url: sourceURL)
         let cmDuration = try await asset.load(.duration)
@@ -246,7 +247,7 @@ final class YouTubeDatasetBuilder: ObservableObject {
         // Short track: single clip
         if totalSeconds <= clipLength {
             let dest = outputDirectory.appendingPathComponent(
-                String(format: "v%03d_clip_001.m4a", videoIndex)
+                clipFilename(prefix: filenamePrefix, sourceIndex: videoIndex, clipIndex: 1)
             )
             try await exportRange(asset: asset,
                                   range: CMTimeRange(start: .zero, duration: cmDuration),
@@ -267,7 +268,7 @@ final class YouTubeDatasetBuilder: ObservableObject {
             let dur = CMTime(seconds: actualLen, preferredTimescale: 600)
 
             let dest = outputDirectory.appendingPathComponent(
-                String(format: "v%03d_clip_%03d.m4a", videoIndex, i + 1)
+                clipFilename(prefix: filenamePrefix, sourceIndex: videoIndex, clipIndex: i + 1)
             )
             try await exportRange(asset: asset,
                                   range: CMTimeRange(start: start, duration: dur),
@@ -281,6 +282,12 @@ final class YouTubeDatasetBuilder: ObservableObject {
             clips.append((url: dest, caption: caption))
         }
         return clips
+    }
+
+    private static func clipFilename(prefix: String, sourceIndex: Int, clipIndex: Int) -> String {
+        let source = String(format: "%03d", sourceIndex)
+        let clip = String(format: "%03d", clipIndex)
+        return "\(prefix)\(source)_clip_\(clip).m4a"
     }
 
     static func exportRange(asset: AVAsset, range: CMTimeRange, to dest: URL) async throws {

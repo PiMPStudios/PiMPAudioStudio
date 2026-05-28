@@ -1,0 +1,376 @@
+import SwiftUI
+
+struct LocalFilesImportSheet: View {
+    @EnvironmentObject private var outputManager: OutputDirectoryManager
+    @Environment(\.dismiss) private var dismiss
+
+    var onOpenInTraining: ([(url: URL, description: String)]) -> Void
+
+    @StateObject private var builder = LocalFilesDatasetBuilder()
+
+    @State private var selectedFiles: [URL] = []
+    @State private var styleTemplate = ""
+    @State private var config = LocalFilesDatasetConfig()
+    @State private var editableClips: [(url: URL, caption: String)] = []
+    @State private var showingFileImporter = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            header
+            Divider()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    filesSection
+                    styleSection
+                    configSection
+                    switch builder.phase {
+                    case .idle:
+                        EmptyView()
+                    case .failed(let msg):
+                        errorView(msg)
+                    case .chunking:
+                        progressSection
+                    case .complete:
+                        resultsSection
+                    }
+                }
+                .padding(16)
+            }
+            Divider()
+            actionBar
+        }
+        .frame(minWidth: 540, minHeight: 500)
+        .fileImporter(
+            isPresented: $showingFileImporter,
+            allowedContentTypes: [.audio],
+            allowsMultipleSelection: true
+        ) { result in
+            if case .success(let urls) = result {
+                for url in urls where !selectedFiles.contains(url) {
+                    selectedFiles.append(url)
+                }
+            }
+        }
+        .onChange(of: builder.phase) { _, newPhase in
+            if case .complete = newPhase { editableClips = builder.resultClips }
+        }
+    }
+
+    private var header: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "folder.fill.badge.plus")
+                .font(.title2)
+                .foregroundStyle(.blue)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Build Dataset from Local Files")
+                    .font(.headline)
+                Text("Slice local audio into training clips and captions.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button("Close") { dismiss() }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(builder.phase.isRunning)
+        }
+        .padding(16)
+    }
+
+    private var filesSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Source Files")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                Spacer()
+                Button("Add Audio Files...") { showingFileImporter = true }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(builder.phase.isRunning)
+            }
+
+            if selectedFiles.isEmpty {
+                Text("No files selected.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.quaternary.opacity(0.3))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            } else {
+                VStack(spacing: 4) {
+                    ForEach(selectedFiles.indices, id: \.self) { idx in
+                        HStack(spacing: 8) {
+                            Image(systemName: "waveform")
+                                .foregroundStyle(.secondary)
+                                .frame(width: 16)
+                            Text(selectedFiles[idx].lastPathComponent)
+                                .font(.callout)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Spacer()
+                            Button {
+                                selectedFiles.remove(at: idx)
+                            } label: {
+                                Image(systemName: "xmark.circle")
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.borderless)
+                            .disabled(builder.phase.isRunning)
+                        }
+                    }
+                }
+                .padding(10)
+                .background(.quaternary.opacity(0.3))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+        }
+    }
+
+    private var styleSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Style Description")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+            TextField("dark blues, slow tempo, minor key, atmospheric guitar", text: $styleTemplate)
+                .textFieldStyle(.roundedBorder)
+                .disabled(builder.phase.isRunning)
+            Text("Applied to every clip as its training caption. Leave blank to use file names.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var configSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Import Settings")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+
+            VStack(spacing: 6) {
+                LabeledContent("Clip Length") {
+                    HStack(spacing: 8) {
+                        Slider(value: $config.clipLength, in: 15...60, step: 5)
+                            .frame(maxWidth: 160)
+                            .disabled(builder.phase.isRunning)
+                        Text("\(Int(config.clipLength))s")
+                            .monospacedDigit()
+                            .frame(width: 34, alignment: .trailing)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                LabeledContent("Clips per File") {
+                    Stepper("\(config.clipsPerTrack)",
+                            value: $config.clipsPerTrack,
+                            in: 1...20)
+                        .disabled(builder.phase.isRunning)
+                        .frame(maxWidth: 130)
+                }
+                LabeledContent("Max Total Clips") {
+                    Stepper("\(config.maxTotalClips)",
+                            value: $config.maxTotalClips,
+                            in: 5...200,
+                            step: 5)
+                        .disabled(builder.phase.isRunning)
+                        .frame(maxWidth: 130)
+                }
+            }
+            .padding(10)
+            .background(.quaternary.opacity(0.3))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            if let dir = outputManager.directory {
+                HStack(spacing: 4) {
+                    Image(systemName: "folder")
+                        .foregroundStyle(.secondary)
+                    Text("Output: \(dir.path)/TrainingDatasets/...")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            } else {
+                HStack(spacing: 4) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .foregroundStyle(.orange)
+                    Text("No output directory set. Configure one in Settings before starting.")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+            }
+        }
+    }
+
+    private var progressSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Importing")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+
+            HStack(spacing: 12) {
+                Image(systemName: "scissors")
+                    .font(.title2)
+                    .foregroundStyle(.orange)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(progressLabel)
+                        .font(.callout)
+                        .fontWeight(.medium)
+                    Text(progressDetail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    progressIndicator
+                }
+            }
+            .padding(12)
+            .background(.quaternary.opacity(0.3))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+    }
+
+    private var progressLabel: String {
+        switch builder.phase {
+        case .chunking(let idx, let total, _):
+            return idx == 0 ? "Preparing files..." : "Chunking \(idx) of \(total)"
+        default:
+            return ""
+        }
+    }
+
+    private var progressDetail: String {
+        switch builder.phase {
+        case .chunking(_, _, let name): return name
+        default: return ""
+        }
+    }
+
+    @ViewBuilder
+    private var progressIndicator: some View {
+        switch builder.phase {
+        case .chunking(let idx, let total, _):
+            ProgressView(value: Double(max(0, idx - 1)), total: Double(max(1, total)))
+                .frame(maxWidth: .infinity)
+        default:
+            EmptyView()
+        }
+    }
+
+    private var resultsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                Text("\(editableClips.count) clips ready for training")
+                    .font(.callout)
+                    .fontWeight(.medium)
+                Spacer()
+                if case .complete(let dir, _) = builder.phase {
+                    Button {
+                        NSWorkspace.shared.open(dir)
+                    } label: {
+                        Label("Show in Finder", systemImage: "folder")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+            }
+            .padding(10)
+            .background(.green.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            Text("Review and edit captions below. These become the training descriptions for each clip.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            VStack(spacing: 4) {
+                ForEach(editableClips.indices, id: \.self) { idx in
+                    HStack(spacing: 8) {
+                        Image(systemName: "waveform")
+                            .foregroundStyle(.secondary)
+                            .frame(width: 16)
+                        TextField("Caption", text: Binding(
+                            get: { editableClips[idx].caption },
+                            set: { editableClips[idx].caption = $0 }
+                        ))
+                        .textFieldStyle(.roundedBorder)
+                        .font(.callout)
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+            .padding(10)
+            .background(.quaternary.opacity(0.3))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+    }
+
+    private func errorView(_ message: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "xmark.circle.fill")
+                .foregroundStyle(.red)
+                .padding(.top, 1)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Import failed")
+                    .font(.callout)
+                    .fontWeight(.semibold)
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .padding(12)
+        .background(.red.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var actionBar: some View {
+        HStack {
+            Button("Cancel") { dismiss() }
+                .buttonStyle(.bordered)
+                .disabled(builder.phase.isRunning)
+
+            Spacer()
+
+            switch builder.phase {
+            case .idle, .failed:
+                Button("Start") { startImport() }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!canStart)
+            case .chunking:
+                Button("Stop", role: .destructive) { builder.cancel() }
+                    .buttonStyle(.bordered)
+            case .complete:
+                Button("Open in Training") {
+                    persistCaptions()
+                    let files = editableClips.map { (url: $0.url, description: $0.caption) }
+                    onOpenInTraining(files)
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(16)
+    }
+
+    private var canStart: Bool {
+        !selectedFiles.isEmpty && outputManager.directory != nil
+    }
+
+    private func startImport() {
+        guard let outputBase = outputManager.directory else { return }
+        let template = styleTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
+        builder.start(
+            sourceFiles: selectedFiles,
+            config: config,
+            outputBase: outputBase,
+            styleTemplate: template
+        )
+    }
+
+    private func persistCaptions() {
+        guard case .complete(let dir, _) = builder.phase else { return }
+        try? YouTubeDatasetBuilder.writeCaptionsFile(clips: editableClips, to: dir)
+    }
+}

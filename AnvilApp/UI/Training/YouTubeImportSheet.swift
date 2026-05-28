@@ -387,6 +387,9 @@ struct YouTubeImportSheet: View {
                     .buttonStyle(.bordered)
             case .complete:
                 Button("Open in Training") {
+                    if case .complete(let dir, _) = builder.phase {
+                        try? YouTubeDatasetBuilder.writeCaptionsFile(clips: editableClips, to: dir)
+                    }
                     let files = editableClips.map { (url: $0.url, description: $0.caption) }
                     onOpenInTraining(files)
                 }

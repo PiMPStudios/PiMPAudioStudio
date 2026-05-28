@@ -16,6 +16,7 @@
 		13CF74E2ED45EE9086D3FF45 /* DownloadProgressRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3717DC54FFB7427757568719 /* DownloadProgressRow.swift */; };
 		149D0F7AA4A61FF4806E28E0 /* SFXGenerationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCFDE36CECAA5A75A45571D5 /* SFXGenerationService.swift */; };
 		195C4C2F3C08CE060C136194 /* LyricWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FEC311D281782C3E6E6FBF6 /* LyricWriter.swift */; };
+		1884D938D10C4CFA9EAA5D04 /* LocalFilesDatasetBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CFD141C51F946C0B0D5AA6B /* LocalFilesDatasetBuilder.swift */; };
 		1A51019FA31EB11E9D2DFD4D /* ACEStepGenerationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A68785FD9393563F70F224C /* ACEStepGenerationService.swift */; };
 		1D4AB4D1E19703F0C2C9CA6F /* GenerationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F48405E290FB7817733FDD4 /* GenerationService.swift */; };
 		23312C22747B23B6F7645DCA /* PitchShiftControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A037C24F391D586BD629293 /* PitchShiftControlView.swift */; };
@@ -47,6 +48,7 @@
 		65A8865EEC7DFF72F0979081 /* HuggingFaceImportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 823702D3D9DF8DCBBA0EE034 /* HuggingFaceImportSheet.swift */; };
 		66C0A1E3C6C2D18AA1D8CBA6 /* HistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48050CE43319304DFA74A007 /* HistoryStore.swift */; };
 		66E9184590022F8F6F653BC1 /* PresetStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD2CA362A1B0531F8B13B8DD /* PresetStore.swift */; };
+		560969F0EC704B228087B236 /* LocalFilesImportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FAB6163B419419BBE91922B /* LocalFilesImportSheet.swift */; };
 		6D5694C7B23B8F968AB61C86 /* SimpleDSP.swift in Sources */ = {isa = PBXBuildFile; fileRef = 681D2127C0D042836B2A1EC5 /* SimpleDSP.swift */; };
 		6E8631F6B78C8B22F7EB1EDD /* LyricWriterManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37D2A8CEE5C195E55D979DF2 /* LyricWriterManager.swift */; };
 		7036BAF017D1AD46A18B15AD /* ClaudeLyricWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = C61D0DB6E1E91085513A8234 /* ClaudeLyricWriter.swift */; };
@@ -162,6 +164,7 @@
 		83660A831B3C8EA635656CC1 /* YouTubeImportSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouTubeImportSheet.swift; sourceTree = "<group>"; };
 		83D2A2817A2C70C01A7E9060 /* OutputDirectoryManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutputDirectoryManager.swift; sourceTree = "<group>"; };
 		84554118ADCDC786CACDA7A2 /* LiveGenerationTrace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveGenerationTrace.swift; sourceTree = "<group>"; };
+		8FAB6163B419419BBE91922B /* LocalFilesImportSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalFilesImportSheet.swift; sourceTree = "<group>"; };
 		86328139176C2912FBB1F878 /* CommunityBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommunityBrowserView.swift; sourceTree = "<group>"; };
 		86892F4AB6D7FD9C6D4DFF8E /* AdapterPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdapterPicker.swift; sourceTree = "<group>"; };
 		8D07375021EF6E02E8B129F8 /* GenerationPreset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationPreset.swift; sourceTree = "<group>"; };
@@ -170,6 +173,7 @@
 		961052C73550551009127288 /* OpenAILyricWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAILyricWriter.swift; sourceTree = "<group>"; };
 		9AA36FD1A3879D2885265598 /* AnvilApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AnvilApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		9D65878AD15AC1C5B83D82A2 /* TrainingSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingSheet.swift; sourceTree = "<group>"; };
+		9CFD141C51F946C0B0D5AA6B /* LocalFilesDatasetBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalFilesDatasetBuilder.swift; sourceTree = "<group>"; };
 		9E46D5718C7768D91073FCEE /* AnvilAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AnvilAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		9F48405E290FB7817733FDD4 /* GenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationService.swift; sourceTree = "<group>"; };
 		A594BD4883E8061AEA451F27 /* AudioPlayerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayerService.swift; sourceTree = "<group>"; };
@@ -272,9 +276,10 @@
 				9F48405E290FB7817733FDD4 /* GenerationService.swift */,
 				48050CE43319304DFA74A007 /* HistoryStore.swift */,
 				E400A1E8567A583BF24168D8 /* IntentRouter.swift */,
-				425D1F125449BC69C0BB220D /* LLMModelManager.swift */,
-				21836E28CF66D31E0B4D6C84 /* LoRACoordinator.swift */,
-				83D2A2817A2C70C01A7E9060 /* OutputDirectoryManager.swift */,
+					425D1F125449BC69C0BB220D /* LLMModelManager.swift */,
+					21836E28CF66D31E0B4D6C84 /* LoRACoordinator.swift */,
+					9CFD141C51F946C0B0D5AA6B /* LocalFilesDatasetBuilder.swift */,
+					83D2A2817A2C70C01A7E9060 /* OutputDirectoryManager.swift */,
 				17654E4D0E9713010A5AFBC2 /* PEFTKeyRemapper.swift */,
 				FD2CA362A1B0531F8B13B8DD /* PresetStore.swift */,
 				17140A0355CED442DB2B2EDE /* PromptEnhancer.swift */,
@@ -291,10 +296,11 @@
 		};
 		368DE4E4B381CEB2A28C7CCD /* Training */ = {
 			isa = PBXGroup;
-			children = (
-				5F28E71656FB093C47B48FBF /* LossCurveView.swift */,
-				9D65878AD15AC1C5B83D82A2 /* TrainingSheet.swift */,
-				83660A831B3C8EA635656CC1 /* YouTubeImportSheet.swift */,
+				children = (
+					5F28E71656FB093C47B48FBF /* LossCurveView.swift */,
+					8FAB6163B419419BBE91922B /* LocalFilesImportSheet.swift */,
+					9D65878AD15AC1C5B83D82A2 /* TrainingSheet.swift */,
+					83660A831B3C8EA635656CC1 /* YouTubeImportSheet.swift */,
 			);
 			path = Training;
 			sourceTree = "<group>";
@@ -583,11 +589,13 @@
 				66C0A1E3C6C2D18AA1D8CBA6 /* HistoryStore.swift in Sources */,
 				65A8865EEC7DFF72F0979081 /* HuggingFaceImportSheet.swift in Sources */,
 				F45C62DEE5C2FF96E6CD04D3 /* IntelligenceSettingsView.swift in Sources */,
-				3794B35AA37A6162B20BA858 /* IntentRouter.swift in Sources */,
-				A95BEFD1EEEBDE89CB239B8A /* LLMModelManager.swift in Sources */,
-				DD80478C2C925BA8B2C0C86D /* LPCFormantShifter.swift in Sources */,
-				C86AC26AEE05C99708CBA2BB /* LiveGenerationTrace.swift in Sources */,
-				0287F5C870C67463A38138CC /* LoRACoordinator.swift in Sources */,
+					3794B35AA37A6162B20BA858 /* IntentRouter.swift in Sources */,
+					A95BEFD1EEEBDE89CB239B8A /* LLMModelManager.swift in Sources */,
+					DD80478C2C925BA8B2C0C86D /* LPCFormantShifter.swift in Sources */,
+					C86AC26AEE05C99708CBA2BB /* LiveGenerationTrace.swift in Sources */,
+					1884D938D10C4CFA9EAA5D04 /* LocalFilesDatasetBuilder.swift in Sources */,
+					560969F0EC704B228087B236 /* LocalFilesImportSheet.swift in Sources */,
+					0287F5C870C67463A38138CC /* LoRACoordinator.swift in Sources */,
 				CAFBB4872C118D7158334B25 /* LocalLyricWriter.swift in Sources */,
 				43C4DCA2E466BC0ADE303135 /* LossCurveView.swift in Sources */,
 				195C4C2F3C08CE060C136194 /* LyricWriter.swift in Sources */,
