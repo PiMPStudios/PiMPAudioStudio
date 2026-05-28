@@ -31,6 +31,98 @@ import Foundation
     #expect(state.isSetupComplete == true)
 }
 
+@Test func trainingDatasetImporterUsesVocalStemTranscriptAsLyrics() throws {
+    let datasetDir = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let stemDir = datasetDir
+        .appendingPathComponent("stems", isDirectory: true)
+        .appendingPathComponent("clip_0001", isDirectory: true)
+    try FileManager.default.createDirectory(at: stemDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: datasetDir) }
+
+    let vocalURL = stemDir.appendingPathComponent("vocals.wav")
+    try Data("stub".utf8).write(to: vocalURL)
+
+    let bundleURL = datasetDir.appendingPathComponent("training_bundle_vocals.json")
+    let json = """
+    {
+      "dataset_dir": "\(datasetDir.path)",
+      "include": ["vocals"],
+      "clips": [
+        {
+          "assets": { "vocals": "stems/clip_0001/vocals.wav" },
+          "prompt": "dark blues vocal",
+          "transcription": { "text": "I sing from the shadow" }
+        }
+      ]
+    }
+    """
+    try Data(json.utf8).write(to: bundleURL)
+
+    let files = try TrainingDatasetImporter.importFiles(from: bundleURL)
+
+    #expect(files.count == 1)
+    #expect(files[0].url.path == vocalURL.path)
+    #expect(files[0].description == "dark blues vocal")
+    #expect(files[0].lyrics == "I sing from the shadow")
+}
+
+@Test func trainingDatasetImporterLeavesInstrumentalLyricsEmpty() throws {
+    let datasetDir = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let stemDir = datasetDir
+        .appendingPathComponent("stems", isDirectory: true)
+        .appendingPathComponent("clip_0001", isDirectory: true)
+    try FileManager.default.createDirectory(at: stemDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: datasetDir) }
+
+    let instrumentalURL = stemDir.appendingPathComponent("instrumental.wav")
+    try Data("stub".utf8).write(to: instrumentalURL)
+
+    let bundleURL = datasetDir.appendingPathComponent("training_bundle_instrumental.json")
+    let json = """
+    {
+      "dataset_dir": "\(datasetDir.path)",
+      "include": ["instrumental"],
+      "clips": [
+        {
+          "assets": { "instrumental": "stems/clip_0001/instrumental.wav" },
+          "caption": "dark blues backing track",
+          "transcript": "This lyric should not condition the instrumental stem"
+        }
+      ]
+    }
+    """
+    try Data(json.utf8).write(to: bundleURL)
+
+    let files = try TrainingDatasetImporter.importFiles(from: bundleURL)
+
+    #expect(files.count == 1)
+    #expect(files[0].url.path == instrumentalURL.path)
+    #expect(files[0].description == "dark blues backing track")
+    #expect(files[0].lyrics.isEmpty)
+}
+
+@Test func trainingManifestDecodesImportedFilesWithoutLyrics() throws {
+    let json = """
+    {
+      "historyEntryIDs": [],
+      "importedFiles": [
+        {
+          "url": "file:///tmp/example.wav",
+          "description": "legacy caption"
+        }
+      ]
+    }
+    """
+
+    let manifest = try JSONDecoder().decode(TrainingManifest.self, from: Data(json.utf8))
+
+    #expect(manifest.importedFiles.count == 1)
+    #expect(manifest.importedFiles[0].description == "legacy caption")
+    #expect(manifest.importedFiles[0].lyrics == "")
+}
+
 @Test func lyricSanitizerRemovesCommentaryAndChordPrefixes() {
     let raw = """
     Here's a 140-second ambient blues-inspired soundscape with a slow tempo.

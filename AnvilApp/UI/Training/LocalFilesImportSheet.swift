@@ -4,14 +4,14 @@ struct LocalFilesImportSheet: View {
     @EnvironmentObject private var outputManager: OutputDirectoryManager
     @Environment(\.dismiss) private var dismiss
 
-    var onOpenInTraining: ([(url: URL, description: String)]) -> Void
+    var onOpenInTraining: ([TrainingImportedFile]) -> Void
 
     @StateObject private var builder = LocalFilesDatasetBuilder()
 
     @State private var selectedFiles: [URL] = []
     @State private var styleTemplate = ""
     @State private var config = LocalFilesDatasetConfig()
-    @State private var editableClips: [(url: URL, caption: String)] = []
+    @State private var editableClips: [TrainingImportedFile] = []
     @State private var showingFileImporter = false
 
     var body: some View {
@@ -291,8 +291,8 @@ struct LocalFilesImportSheet: View {
                             .foregroundStyle(.secondary)
                             .frame(width: 16)
                         TextField("Caption", text: Binding(
-                            get: { editableClips[idx].caption },
-                            set: { editableClips[idx].caption = $0 }
+                            get: { editableClips[idx].description },
+                            set: { editableClips[idx].description = $0 }
                         ))
                         .textFieldStyle(.roundedBorder)
                         .font(.callout)
@@ -345,8 +345,7 @@ struct LocalFilesImportSheet: View {
             case .complete:
                 Button("Open in Training") {
                     persistCaptions()
-                    let files = editableClips.map { (url: $0.url, description: $0.caption) }
-                    onOpenInTraining(files)
+                    onOpenInTraining(editableClips)
                 }
                 .buttonStyle(.borderedProminent)
             }
@@ -371,6 +370,9 @@ struct LocalFilesImportSheet: View {
 
     private func persistCaptions() {
         guard case .complete(let dir, _) = builder.phase else { return }
-        try? YouTubeDatasetBuilder.writeCaptionsFile(clips: editableClips, to: dir)
+        try? YouTubeDatasetBuilder.writeCaptionsFile(
+            clips: editableClips.map { (url: $0.url, caption: $0.description) },
+            to: dir
+        )
     }
 }

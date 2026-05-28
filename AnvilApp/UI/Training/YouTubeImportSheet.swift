@@ -5,7 +5,7 @@ struct YouTubeImportSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     /// Called when user taps "Open in Training"; parent opens TrainingSheet with these clips.
-    var onOpenInTraining: ([(url: URL, description: String)]) -> Void
+    var onOpenInTraining: ([TrainingImportedFile]) -> Void
 
     @StateObject private var builder = YouTubeDatasetBuilder()
 
@@ -390,7 +390,9 @@ struct YouTubeImportSheet: View {
                     if case .complete(let dir, _) = builder.phase {
                         try? YouTubeDatasetBuilder.writeCaptionsFile(clips: editableClips, to: dir)
                     }
-                    let files = editableClips.map { (url: $0.url, description: $0.caption) }
+                    let files = editableClips.map {
+                        TrainingImportedFile(url: $0.url, description: $0.caption)
+                    }
                     onOpenInTraining(files)
                 }
                 .buttonStyle(.borderedProminent)

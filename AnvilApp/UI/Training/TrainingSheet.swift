@@ -1,5 +1,6 @@
 import SwiftUI
 import AnvilCore
+import UniformTypeIdentifiers
 
 struct TrainingSheet: View {
     @EnvironmentObject private var trainingService: TrainingService
@@ -16,13 +17,14 @@ struct TrainingSheet: View {
     @State private var selectedTargetLayers: Set<TargetLayer> = [.selfAttention, .crossAttention]
     @State private var warmupFraction: Float = 0.10
     @State private var gradientAccumulationSteps: Int = 1
-    @State private var importedFiles: [(url: URL, description: String)]
+    @State private var importedFiles: [TrainingImportedFile]
     @State private var showingFileImporter: Bool = false
     @State private var showingStopConfirmation: Bool = false
+    @State private var importErrorMessage: String?
 
     init(
         selectedEntries: [HistoryEntry],
-        initialImportedFiles: [(url: URL, description: String)] = [],
+        initialImportedFiles: [TrainingImportedFile] = [],
         initialName: String = "",
         initialConfig: LoRAConfig? = nil,
         resumeAdapterID: String? = nil
@@ -79,13 +81,13 @@ struct TrainingSheet: View {
         }
         .fileImporter(
             isPresented: $showingFileImporter,
-            allowedContentTypes: [.audio],
+            allowedContentTypes: [.audio, .json],
             allowsMultipleSelection: true
         ) { result in
             if case .success(let urls) = result {
-                for url in urls {
-                    importedFiles.append((url: url, description: ""))
-                }
+                importSelectedFiles(urls)
+            } else if case .failure(let error) = result {
+                importErrorMessage = error.localizedDescription
             }
         }
         .alert("Pause or Stop Training?", isPresented: $showingStopConfirmation) {
@@ -146,16 +148,33 @@ struct TrainingSheet: View {
                         }
                     }
                     ForEach(importedFiles.indices, id: \.self) { idx in
-                        HStack {
+                        HStack(alignment: .top, spacing: 8) {
                             Image(systemName: "doc.badge.plus")
                                 .foregroundStyle(.secondary)
-                            TextField("Description", text: Binding(
-                                get: { importedFiles[idx].description },
-                                set: { importedFiles[idx].description = $0 }
-                            ))
-                            .font(.callout)
-                            .textFieldStyle(.roundedBorder)
-                            .disabled(isCheckpointResume)
+                                .padding(.top, 6)
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(importedFiles[idx].url.lastPathComponent)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                TextField("Description", text: Binding(
+                                    get: { importedFiles[idx].description },
+                                    set: { importedFiles[idx].description = $0 }
+                                ))
+                                .font(.callout)
+                                .textFieldStyle(.roundedBorder)
+                                .disabled(isCheckpointResume)
+                                if !importedFiles[idx].lyrics.isEmpty {
+                                    TextField("Lyrics", text: Binding(
+                                        get: { importedFiles[idx].lyrics },
+                                        set: { importedFiles[idx].lyrics = $0 }
+                                    ))
+                                    .font(.caption)
+                                    .textFieldStyle(.roundedBorder)
+                                    .disabled(isCheckpointResume)
+                                }
+                            }
                             Button {
                                 importedFiles.remove(at: idx)
                             } label: {
@@ -164,6 +183,7 @@ struct TrainingSheet: View {
                             }
                             .buttonStyle(.borderless)
                             .disabled(isCheckpointResume)
+                            .padding(.top, 6)
                         }
                     }
                 }
@@ -177,12 +197,17 @@ struct TrainingSheet: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
-                    Button("+ Add audio files...") {
+                    Button("+ Add audio files or JSON...") {
                         showingFileImporter = true
                     }
                     .buttonStyle(.borderless)
                     .font(.caption)
                     .disabled(isCheckpointResume)
+                }
+                if let importErrorMessage {
+                    Label(importErrorMessage, systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
                 }
             }
 
@@ -480,6 +505,23 @@ struct TrainingSheet: View {
             config: config,
             resumeAdapterID: resumeAdapterID
         )
+    }
+
+    private func importSelectedFiles(_ urls: [URL]) {
+        importErrorMessage = nil
+
+        for url in urls {
+            if url.pathExtension.lowercased() == "json" {
+                do {
+                    let imported = try TrainingDatasetImporter.importFiles(from: url)
+                    importedFiles.append(contentsOf: imported)
+                } catch {
+                    importErrorMessage = error.localizedDescription
+                }
+            } else {
+                importedFiles.append(TrainingImportedFile(url: url, description: ""))
+            }
+        }
     }
 }
 

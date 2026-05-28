@@ -78,13 +78,13 @@ final class TrainingService: ObservableObject {
     /// - Parameters:
     ///   - entries: History entries to use as training data.
     ///   - audioURLs: File URLs corresponding 1:1 to `entries`.
-    ///   - importedFiles: Additional audio files with text descriptions.
+    ///   - importedFiles: Additional audio files with text descriptions and optional lyrics.
     ///   - adapterName: User-facing name for the resulting adapter.
     ///   - config: LoRA training configuration.
     func startTraining(
         entries: [HistoryEntry],
         audioURLs: [URL],
-        importedFiles: [(url: URL, description: String)],
+        importedFiles: [TrainingImportedFile],
         adapterName: String,
         config: LoRAConfig,
         resumeAdapterID: String? = nil
@@ -189,7 +189,7 @@ final class TrainingService: ObservableObject {
                     let sample = try await self.preprocessSample(
                         audioURL: imported.url,
                         prompt: imported.description,
-                        lyrics: "",
+                        lyrics: imported.lyrics,
                         duration: 0
                     )
                     samples.append(sample)
@@ -233,9 +233,7 @@ final class TrainingService: ObservableObject {
                 let adapterID = effectiveResumeAdapterID ?? Self.adapterID(from: adapterName)
                 let manifest = TrainingManifest(
                     historyEntryIDs: entries.map(\.id),
-                    importedFiles: importedFiles.map {
-                        TrainingManifest.ImportedFileRef(url: $0.url, description: $0.description)
-                    }
+                    importedFiles: importedFiles
                 )
                 let adapter = LoRAAdapter(
                     id: adapterID,

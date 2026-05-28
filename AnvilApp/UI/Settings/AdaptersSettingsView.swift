@@ -45,7 +45,7 @@ private struct TrainingPresentation: Identifiable {
     /// History entries resolved from the manifest (may be empty for new sessions).
     let selectedEntries: [HistoryEntry]
     /// Imported file entries — from manifest, YouTube, or manual selection.
-    let files: [(url: URL, description: String)]
+    let files: [TrainingImportedFile]
     /// Pre-fill the adapter name field (empty = blank for new sessions).
     let initialName: String
     /// Pre-fill training config (nil = use defaults for new sessions).
@@ -54,7 +54,7 @@ private struct TrainingPresentation: Identifiable {
     let resumeAdapterID: String?
 
     /// Blank new training session.
-    init(files: [(url: URL, description: String)] = []) {
+    init(files: [TrainingImportedFile] = []) {
         self.selectedEntries = []
         self.files = files
         self.initialName = ""
@@ -65,7 +65,7 @@ private struct TrainingPresentation: Identifiable {
     /// Pre-populated retrain session.
     init(
         selectedEntries: [HistoryEntry],
-        files: [(url: URL, description: String)],
+        files: [TrainingImportedFile],
         initialName: String,
         initialConfig: LoRAConfig?,
         resumeAdapterID: String? = nil
@@ -309,7 +309,7 @@ private struct MyAdaptersListView: View {
 
     private func resolvedTrainingSources(
         for adapter: LoRAAdapter
-    ) -> (entries: [HistoryEntry], files: [(url: URL, description: String)]) {
+    ) -> (entries: [HistoryEntry], files: [TrainingImportedFile]) {
         let manifest = AdapterRegistry.loadManifest(adapterID: adapter.id)
 
         // Resolve history entries still present in the store
@@ -322,11 +322,11 @@ private struct MyAdaptersListView: View {
         }
 
         // Resolve imported file references still accessible on disk
-        let resolvedFiles: [(url: URL, description: String)]
+        let resolvedFiles: [TrainingImportedFile]
         if let refs = manifest?.importedFiles {
             resolvedFiles = refs.compactMap { ref in
                 FileManager.default.fileExists(atPath: ref.url.path(percentEncoded: false))
-                    ? (url: ref.url, description: ref.description)
+                    ? ref
                     : nil
             }
         } else {

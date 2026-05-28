@@ -8,7 +8,7 @@ struct LocalFilesDatasetConfig {
 
 struct LocalFilesDatasetResult {
     let outputDirectory: URL
-    let clips: [(url: URL, caption: String)]
+    let clips: [TrainingImportedFile]
     var clipCount: Int { clips.count }
 }
 
@@ -41,7 +41,7 @@ enum LocalFilesDatasetError: LocalizedError {
 @MainActor
 final class LocalFilesDatasetBuilder: ObservableObject {
     @Published var phase: LocalFilesImportPhase = .idle
-    @Published var resultClips: [(url: URL, caption: String)] = []
+    @Published var resultClips: [TrainingImportedFile] = []
 
     private var task: Task<Void, Never>?
 
@@ -96,7 +96,7 @@ final class LocalFilesDatasetBuilder: ObservableObject {
         let clipsDir = outputDir.appendingPathComponent("clips", isDirectory: true)
         try FileManager.default.createDirectory(at: clipsDir, withIntermediateDirectories: true)
 
-        var allClips: [(url: URL, caption: String)] = []
+        var allClips: [TrainingImportedFile] = []
         let trimmedStyle = styleTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
 
         for (idx, sourceURL) in sourceFiles.enumerated() {
@@ -125,7 +125,9 @@ final class LocalFilesDatasetBuilder: ObservableObject {
                     outputDirectory: clipsDir,
                     filenamePrefix: "f"
                 )
-                allClips.append(contentsOf: chunks)
+                allClips.append(contentsOf: chunks.map {
+                    TrainingImportedFile(url: $0.url, description: $0.caption)
+                })
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
@@ -135,7 +137,10 @@ final class LocalFilesDatasetBuilder: ObservableObject {
 
         guard !allClips.isEmpty else { throw LocalFilesDatasetError.noClipsProduced }
 
-        try YouTubeDatasetBuilder.writeCaptionsFile(clips: allClips, to: outputDir)
+        try YouTubeDatasetBuilder.writeCaptionsFile(
+            clips: allClips.map { (url: $0.url, caption: $0.description) },
+            to: outputDir
+        )
         return LocalFilesDatasetResult(outputDirectory: outputDir, clips: allClips)
     }
 
