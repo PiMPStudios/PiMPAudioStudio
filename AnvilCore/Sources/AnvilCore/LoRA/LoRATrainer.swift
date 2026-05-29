@@ -83,10 +83,12 @@ public final class LoRATrainer {
         self.config = config
         self.injectedPaths = injectedPaths
 
-        // Each epoch processes all samples; optimizer steps once per sample.
-        // LR updates happen every gradientAccumulationSteps samples.
-        // totalSteps = total LR update points across training.
-        let updatesPerEpoch = max(1, datasetSize / max(1, config.gradientAccumulationSteps))
+        // Each epoch processes all samples; optimizer steps once per
+        // accumulation window, including a final partial window.
+        let updatesPerEpoch = Self.optimizerStepsPerEpoch(
+            datasetSize: datasetSize,
+            gradientAccumulationSteps: config.gradientAccumulationSteps
+        )
         self.totalSteps = updatesPerEpoch * config.maxEpochs
 
         self.scheduler = CosineScheduler(
@@ -200,6 +202,7 @@ public final class LoRATrainer {
             // Per-window tracking for accurate loss reporting
             var windowLoss: Float = 0
             var windowSamples: Int = 0
+            var accumulatedFlatGrads: [MLXArray]?
 
             for idx in shuffledIndices {
                 guard !isCancelled else { break }
@@ -246,28 +249,27 @@ public final class LoRATrainer {
                     print("[LoRATrainer] firstSample calling valueAndGrad args=\(args.map { $0.shape })")
                 }
 
-                // Forward + backward + step (per-sample optimizer update)
+                // Forward + backward. The optimizer step happens once per
+                // accumulation window below.
                 let trainableParameters = model.trainableParameters().flattened()
                 let trainableValues = trainableParameters.map(\.1)
                 let (lossValues, flatGrads) = lossGrad(trainableValues + args)
                 if shouldLogSample {
                     print("[LoRATrainer] firstSample valueAndGrad returned flatGrads=\(flatGrads.count)")
                 }
-                let gradPairs = zip(trainableParameterKeys, flatGrads).map { ($0.0, $0.1) }
-                let grads = ModuleParameters.unflattened(gradPairs)
                 let loss = lossValues[0]
                 let lossValue = loss.item(Float.self)
                 if shouldLogSample {
                     print("[LoRATrainer] firstSample loss materialized \(lossValue)")
                 }
 
-                optimizer.update(model: model, gradients: grads)
-                if shouldLogSample {
-                    print("[LoRATrainer] firstSample optimizer updated")
+                if let current = accumulatedFlatGrads {
+                    accumulatedFlatGrads = Self.addFlatGradients(current, flatGrads)
+                } else {
+                    accumulatedFlatGrads = flatGrads
                 }
-                eval(model.trainableParameters(), optimizer.innerState())
                 if shouldLogSample {
-                    print("[LoRATrainer] firstSample trainable state evaluated")
+                    print("[LoRATrainer] firstSample gradients accumulated")
                 }
 
                 epochLoss += lossValue
@@ -275,42 +277,37 @@ public final class LoRATrainer {
                 windowLoss += lossValue
                 windowSamples += 1
 
-                // Update LR and report progress every accumSteps samples
-                if windowSamples >= accumSteps {
-                    let currentLR = scheduler.learningRate(atStep: globalStep)
-                    optimizer.learningRate = currentLR
-                    globalStep += 1
-
-                    // Record per-window average loss (not running epoch average)
-                    let avgWindowLoss = windowLoss / Float(windowSamples)
-                    lossHistory.append(avgWindowLoss)
-
-                    // Report progress
-                    let elapsed = Date().timeIntervalSince(startTime)
-                    let stepsRemaining = max(0, totalSteps - globalStep)
-                    let eta: TimeInterval? = globalStep > 0
-                        ? elapsed / Double(globalStep) * Double(stepsRemaining)
-                        : nil
-
-                    onProgress(TrainingProgress(
+                if windowSamples >= accumSteps,
+                   let windowFlatGrads = accumulatedFlatGrads {
+                    updateOptimizerForAccumulationWindow(
+                        optimizer: optimizer,
+                        trainableParameterKeys: trainableParameterKeys,
+                        accumulatedFlatGrads: windowFlatGrads,
+                        windowLoss: windowLoss,
+                        windowSamples: windowSamples,
                         epoch: epoch,
-                        totalEpochs: config.maxEpochs,
-                        step: globalStep,
-                        loss: avgWindowLoss,
-                        learningRate: currentLR,
-                        estimatedTimeRemaining: eta,
-                        lossHistory: lossHistory,
-                        elapsedTime: elapsed
-                    ))
-
-                    // Reset window for next accumulation period
+                        startTime: startTime,
+                        onProgress: onProgress
+                    )
                     windowLoss = 0
                     windowSamples = 0
+                    accumulatedFlatGrads = nil
                 }
             }
 
-            // Partial window at epoch end: discard remaining samples without
-            // incrementing globalStep (no optimizer step was taken for this window).
+            if windowSamples > 0,
+               let windowFlatGrads = accumulatedFlatGrads {
+                updateOptimizerForAccumulationWindow(
+                    optimizer: optimizer,
+                    trainableParameterKeys: trainableParameterKeys,
+                    accumulatedFlatGrads: windowFlatGrads,
+                    windowLoss: windowLoss,
+                    windowSamples: windowSamples,
+                    epoch: epoch,
+                    startTime: startTime,
+                    onProgress: onProgress
+                )
+            }
 
             // Track best weights (per epoch)
             let avgLoss = epochSamples > 0 ? epochLoss / Float(epochSamples) : .infinity
@@ -369,6 +366,65 @@ public final class LoRATrainer {
     public var currentGlobalStep: Int { globalStep }
 
     // MARK: - Private
+
+    static func optimizerStepsPerEpoch(
+        datasetSize: Int,
+        gradientAccumulationSteps: Int
+    ) -> Int {
+        let sampleCount = max(1, datasetSize)
+        let requestedAccumulation = max(1, gradientAccumulationSteps)
+        let accumulation = min(requestedAccumulation, sampleCount)
+        return max(1, (sampleCount + accumulation - 1) / accumulation)
+    }
+
+    private static func addFlatGradients(
+        _ lhs: [MLXArray],
+        _ rhs: [MLXArray]
+    ) -> [MLXArray] {
+        zip(lhs, rhs).map { pair in pair.0 + pair.1 }
+    }
+
+    private func updateOptimizerForAccumulationWindow(
+        optimizer: AdamW,
+        trainableParameterKeys: [String],
+        accumulatedFlatGrads: [MLXArray],
+        windowLoss: Float,
+        windowSamples: Int,
+        epoch: Int,
+        startTime: Date,
+        onProgress: @escaping @Sendable (TrainingProgress) -> Void
+    ) {
+        let currentLR = scheduler.learningRate(atStep: globalStep)
+        optimizer.learningRate = currentLR
+
+        let scale = 1.0 / Float(max(1, windowSamples))
+        let averagedFlatGrads = accumulatedFlatGrads.map { $0 * scale }
+        let gradPairs = zip(trainableParameterKeys, averagedFlatGrads).map { ($0.0, $0.1) }
+        optimizer.update(model: model, gradients: ModuleParameters.unflattened(gradPairs))
+        eval(model.trainableParameters(), optimizer.innerState())
+
+        globalStep += 1
+
+        let avgWindowLoss = windowLoss / Float(max(1, windowSamples))
+        lossHistory.append(avgWindowLoss)
+
+        let elapsed = Date().timeIntervalSince(startTime)
+        let stepsRemaining = max(0, totalSteps - globalStep)
+        let eta: TimeInterval? = globalStep > 0
+            ? elapsed / Double(globalStep) * Double(stepsRemaining)
+            : nil
+
+        onProgress(TrainingProgress(
+            epoch: epoch,
+            totalEpochs: config.maxEpochs,
+            step: globalStep,
+            loss: avgWindowLoss,
+            learningRate: currentLR,
+            estimatedTimeRemaining: eta,
+            lossHistory: lossHistory,
+            elapsedTime: elapsed
+        ))
+    }
 
     private func setTrainingMode(_ training: Bool) {
         for path in injectedPaths {

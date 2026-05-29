@@ -386,10 +386,9 @@ final class TrainingService: ObservableObject {
             uiState = nil
         }
 
-        let updatesPerEpoch = max(
-            1,
-            sampleCount / max(1, config.gradientAccumulationSteps)
-        )
+        let effectiveSampleCount = max(1, sampleCount)
+        let accumulation = min(max(1, config.gradientAccumulationSteps), effectiveSampleCount)
+        let updatesPerEpoch = max(1, (effectiveSampleCount + accumulation - 1) / accumulation)
         let totalSteps = updatesPerEpoch * config.maxEpochs
         let lossHistory = uiState?.lossHistory ?? fallback?.lossHistory ?? []
 
