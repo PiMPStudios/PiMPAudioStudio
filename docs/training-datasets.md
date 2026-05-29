@@ -29,9 +29,7 @@ Readable audio headers are recorded when AVFoundation can open the source/clip. 
 
 After a local-file package is built, use **Separate Stems** in the result view to enrich that package in place. AnvilApp owns this workflow directly; it does not call or require any sibling repo.
 
-The primary enrichment backend is native Swift/MLX Demucs via `demucs-mlx-swift`, using `htdemucs` in vocals-plus-instrumental mode. AnvilApp writes `stems/`, `separation.json`, `training_bundle_vocals.json`, `training_bundle_instrumental.json`, refreshed manifest metadata, and package validation itself.
-
-For developer diagnostics, AnvilApp can fall back to the external `audio-separator` executable when the native backend fails. The fallback looks for `audio-separator` on PATH or at `ANVIL_AUDIO_SEPARATOR_BIN`.
+The enrichment backend is native Swift/MLX Demucs via `demucs-mlx-swift`, using `htdemucs` in vocals-plus-instrumental mode. AnvilApp writes `stems/`, `separation.json`, `training_bundle_vocals.json`, `training_bundle_instrumental.json`, refreshed manifest metadata, and package validation itself.
 
 Native Demucs model selection can be overridden with `ANVIL_DEMUCS_MODEL_NAME`; the optional `ANVIL_DEMUCS_MODEL_DIR` points at a local Demucs MLX model directory. The default model remains `htdemucs`.
 

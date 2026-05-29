@@ -1,5 +1,4 @@
 import AVFoundation
-import Darwin
 import Foundation
 
 enum LocalDatasetEnrichmentStep: String, Equatable {
@@ -63,52 +62,16 @@ struct LocalDatasetEnrichmentResult: Equatable {
     }
 }
 
-struct LocalDatasetEnrichmentCommand: Equatable {
-    let step: LocalDatasetEnrichmentStep
-    let executableURL: URL
-    let arguments: [String]
-
-    var displayCommand: String {
-        ([executableURL.path] + arguments).map(Self.shellQuoted).joined(separator: " ")
-    }
-
-    private static func shellQuoted(_ value: String) -> String {
-        guard value.rangeOfCharacter(from: .whitespacesAndNewlines) != nil else {
-            return value
-        }
-        return "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
-    }
-}
-
 enum LocalDatasetEnrichmentError: LocalizedError {
-    case missingAudioSeparatorCLI
     case invalidCaptions(String)
     case missingClip(String)
-    case noStemOutput(String)
-    case commandFailed(step: LocalDatasetEnrichmentStep, status: Int32, command: String, output: String)
 
     var errorDescription: String? {
         switch self {
-        case .missingAudioSeparatorCLI:
-            return """
-            audio-separator was not found. Install the audio-separator CLI or set ANVIL_AUDIO_SEPARATOR_BIN to its executable path.
-            """
         case .invalidCaptions(let message):
             return "Dataset captions are not valid: \(message)"
         case .missingClip(let path):
             return "Dataset clip is missing: \(path)"
-        case .noStemOutput(let message):
-            return "Stem separation did not produce the expected files: \(message)"
-        case .commandFailed(let step, let status, let command, let output):
-            let detail = output.trimmingCharacters(in: .whitespacesAndNewlines)
-            let clipped = String(detail.prefix(1_200))
-            return """
-            \(step.title) failed with exit code \(status).
-
-            \(command)
-
-            \(clipped)
-            """
         }
     }
 }
@@ -224,30 +187,6 @@ final class LocalDatasetEnrichmentService: ObservableObject {
             role: .instrumental
         )
         return (vocalCount, instrumentalCount)
-    }
-
-    nonisolated static func separatorCommand(
-        executableURL: URL,
-        inputURL: URL,
-        outputDirectory: URL
-    ) -> LocalDatasetEnrichmentCommand {
-        ExternalAudioSeparatorSourceSeparator.command(
-            executableURL: executableURL,
-            inputURL: inputURL,
-            outputDirectory: outputDirectory
-        )
-    }
-
-    nonisolated static func resolveAudioSeparatorExecutableURL(
-        environment: [String: String] = ProcessInfo.processInfo.environment
-    ) throws -> URL {
-        try ExternalAudioSeparatorSourceSeparator.resolveExecutableURL(environment: environment)
-    }
-
-    nonisolated static func candidateAudioSeparatorExecutableURLs(
-        environment: [String: String] = ProcessInfo.processInfo.environment
-    ) -> [URL] {
-        ExternalAudioSeparatorSourceSeparator.candidateExecutableURLs(environment: environment)
     }
 
     nonisolated private static func separateClip(
@@ -860,160 +799,5 @@ private enum StemBundleRole: CaseIterable {
         case .instrumental:
             return "constant"
         }
-    }
-}
-
-final class LocalDatasetCapturedProcess: @unchecked Sendable {
-    private let process = Process()
-    private let stdout = Pipe()
-    private let stderr = Pipe()
-    private let lock = NSLock()
-    private let command: LocalDatasetEnrichmentCommand
-    private var stdoutData = Data()
-    private var stderrData = Data()
-    private var continuation: CheckedContinuation<String, Error>?
-    private var didResume = false
-    private var didCancel = false
-
-    init(command: LocalDatasetEnrichmentCommand, environment: [String: String]) {
-        self.command = command
-        process.executableURL = command.executableURL
-        process.arguments = command.arguments
-        process.environment = environment
-        process.standardOutput = stdout
-        process.standardError = stderr
-    }
-
-    func run() async throws -> String {
-        try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<String, Error>) in
-                start(continuation: continuation)
-            }
-        } onCancel: {
-            cancel()
-        }
-    }
-
-    private func start(continuation: CheckedContinuation<String, Error>) {
-        lock.lock()
-        if didCancel {
-            lock.unlock()
-            continuation.resume(throwing: CancellationError())
-            return
-        }
-        self.continuation = continuation
-        lock.unlock()
-
-        stdout.fileHandleForReading.readabilityHandler = { [weak self] handle in
-            self?.appendStdout(handle.availableData)
-        }
-        stderr.fileHandleForReading.readabilityHandler = { [weak self] handle in
-            self?.appendStderr(handle.availableData)
-        }
-        process.terminationHandler = { [weak self] process in
-            self?.finish(process: process)
-        }
-
-        do {
-            try process.run()
-        } catch {
-            finish(error: error)
-        }
-    }
-
-    private func appendStdout(_ data: Data) {
-        guard !data.isEmpty else { return }
-        lock.lock()
-        stdoutData.append(data)
-        lock.unlock()
-    }
-
-    private func appendStderr(_ data: Data) {
-        guard !data.isEmpty else { return }
-        lock.lock()
-        stderrData.append(data)
-        lock.unlock()
-    }
-
-    private func finish(process: Process) {
-        stdout.fileHandleForReading.readabilityHandler = nil
-        stderr.fileHandleForReading.readabilityHandler = nil
-        let remainingStdout = stdout.fileHandleForReading.readDataToEndOfFile()
-        let remainingStderr = stderr.fileHandleForReading.readDataToEndOfFile()
-
-        lock.lock()
-        stdoutData.append(remainingStdout)
-        stderrData.append(remainingStderr)
-        guard !didResume, let continuation else {
-            lock.unlock()
-            return
-        }
-        didResume = true
-        self.continuation = nil
-        let outData = stdoutData
-        let errData = stderrData
-        lock.unlock()
-
-        let output = [
-            String(data: outData, encoding: .utf8) ?? "",
-            String(data: errData, encoding: .utf8) ?? "",
-        ]
-        .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-        .joined(separator: "\n")
-
-        if process.terminationStatus == 0 {
-            continuation.resume(returning: output)
-        } else {
-            continuation.resume(
-                throwing: LocalDatasetEnrichmentError.commandFailed(
-                    step: command.step,
-                    status: process.terminationStatus,
-                    command: command.displayCommand,
-                    output: output
-                )
-            )
-        }
-    }
-
-    private func finish(error: Error) {
-        stdout.fileHandleForReading.readabilityHandler = nil
-        stderr.fileHandleForReading.readabilityHandler = nil
-
-        lock.lock()
-        guard !didResume, let continuation else {
-            lock.unlock()
-            return
-        }
-        didResume = true
-        self.continuation = nil
-        lock.unlock()
-
-        continuation.resume(throwing: error)
-    }
-
-    private func cancel() {
-        stdout.fileHandleForReading.readabilityHandler = nil
-        stderr.fileHandleForReading.readabilityHandler = nil
-
-        lock.lock()
-        didCancel = true
-        let continuation = didResume ? nil : self.continuation
-        if continuation != nil {
-            didResume = true
-            self.continuation = nil
-        }
-        lock.unlock()
-
-        if process.isRunning {
-            let pid = process.processIdentifier
-            process.terminate()
-            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 2.0) { [process] in
-                if process.isRunning {
-                    kill(pid, SIGKILL)
-                }
-            }
-        }
-
-        continuation?.resume(throwing: CancellationError())
     }
 }
