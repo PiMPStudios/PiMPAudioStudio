@@ -2,6 +2,47 @@ import SwiftUI
 import AnvilCore
 import UniformTypeIdentifiers
 
+/// Drives `.sheet(item:)` for any training sheet presentation.
+/// Carrying all data as value types ensures the sheet closure sees the
+/// correct dataset regardless of when SwiftUI evaluates it.
+struct TrainingPresentation: Identifiable {
+    let id = UUID()
+    /// History entries resolved from the manifest (may be empty for new sessions).
+    let selectedEntries: [HistoryEntry]
+    /// Imported file entries — from manifest, YouTube, or manual selection.
+    let files: [TrainingImportedFile]
+    /// Pre-fill the adapter name field (empty = blank for new sessions).
+    let initialName: String
+    /// Pre-fill training config (nil = use defaults for new sessions).
+    let initialConfig: LoRAConfig?
+    /// Adapter ID to resume from a saved checkpoint. Nil means fresh training/retraining.
+    let resumeAdapterID: String?
+
+    /// Blank new training session.
+    init(files: [TrainingImportedFile] = []) {
+        self.selectedEntries = []
+        self.files = files
+        self.initialName = ""
+        self.initialConfig = nil
+        self.resumeAdapterID = nil
+    }
+
+    /// Pre-populated retrain session.
+    init(
+        selectedEntries: [HistoryEntry],
+        files: [TrainingImportedFile],
+        initialName: String,
+        initialConfig: LoRAConfig?,
+        resumeAdapterID: String? = nil
+    ) {
+        self.selectedEntries = selectedEntries
+        self.files = files
+        self.initialName = initialName
+        self.initialConfig = initialConfig
+        self.resumeAdapterID = resumeAdapterID
+    }
+}
+
 struct TrainingSheet: View {
     @EnvironmentObject private var trainingService: TrainingService
     @EnvironmentObject private var historyStore: HistoryStore

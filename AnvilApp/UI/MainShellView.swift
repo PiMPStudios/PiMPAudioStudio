@@ -78,6 +78,12 @@ struct MainShellView: View {
                 Label("Edit", systemImage: "waveform.badge.minus")
                     .tag(SidebarItem.edit)
             }
+            Section("Build") {
+                Label("Datasets", systemImage: "folder.badge.plus")
+                    .tag(SidebarItem.datasets)
+                Label("Training", systemImage: "graduationcap")
+                    .tag(SidebarItem.training)
+            }
             Section("Library") {
                 Label("History", systemImage: "clock")
                     .tag(SidebarItem.history)
@@ -96,6 +102,10 @@ struct MainShellView: View {
             GenerateView()
         case .edit:
             EditorView(preloadedAudioURL: editAudioURL, preloadedPrompt: editOriginalPrompt)
+        case .datasets:
+            BuildDatasetsView()
+        case .training:
+            BuildTrainingView()
         case .history:
             HistoryListView()
         case .presets:
@@ -154,8 +164,272 @@ struct MainShellView: View {
 enum SidebarItem: Hashable {
     case generate
     case edit
+    case datasets
+    case training
     case history
     case presets
+}
+
+// MARK: - Build Section
+
+private struct BuildDatasetsView: View {
+    @EnvironmentObject private var outputManager: OutputDirectoryManager
+
+    @State private var showingYouTubeSheet = false
+    @State private var showingLocalFilesSheet = false
+    @State private var trainingPresentation: TrainingPresentation?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            header
+            Divider()
+            List {
+                Section("Sources") {
+                    Button {
+                        showingLocalFilesSheet = true
+                    } label: {
+                        Label("From Local Files\u{2026}", systemImage: "folder.badge.plus")
+                    }
+                    Button {
+                        showingYouTubeSheet = true
+                    } label: {
+                        Label("From YouTube\u{2026}", systemImage: "play.rectangle")
+                    }
+                }
+            }
+            .listStyle(.inset)
+        }
+        .sheet(isPresented: $showingLocalFilesSheet) {
+            LocalFilesImportSheet { files in
+                showingLocalFilesSheet = false
+                DispatchQueue.main.async {
+                    trainingPresentation = TrainingPresentation(files: files)
+                }
+            }
+            .environmentObject(outputManager)
+        }
+        .sheet(isPresented: $showingYouTubeSheet) {
+            YouTubeImportSheet { files in
+                showingYouTubeSheet = false
+                DispatchQueue.main.async {
+                    trainingPresentation = TrainingPresentation(files: files)
+                }
+            }
+            .environmentObject(outputManager)
+        }
+        .sheet(item: $trainingPresentation) { presentation in
+            TrainingSheet(
+                selectedEntries: presentation.selectedEntries,
+                initialImportedFiles: presentation.files,
+                initialName: presentation.initialName,
+                initialConfig: presentation.initialConfig,
+                resumeAdapterID: presentation.resumeAdapterID
+            )
+        }
+    }
+
+    private var header: some View {
+        HStack {
+            Text("Datasets")
+                .font(.headline)
+            Spacer()
+        }
+        .padding()
+    }
+}
+
+private struct BuildTrainingView: View {
+    @EnvironmentObject private var trainingService: TrainingService
+
+    @State private var trainingPresentation: TrainingPresentation?
+    @State private var showingStopConfirmation = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            header
+            Divider()
+            statusView
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .sheet(item: $trainingPresentation) { presentation in
+            TrainingSheet(
+                selectedEntries: presentation.selectedEntries,
+                initialImportedFiles: presentation.files,
+                initialName: presentation.initialName,
+                initialConfig: presentation.initialConfig,
+                resumeAdapterID: presentation.resumeAdapterID
+            )
+        }
+        .alert("Pause or Stop Training?", isPresented: $showingStopConfirmation) {
+            Button("Continue Training", role: .cancel) {}
+            if trainingService.canSaveOnStop {
+                Button("Save & Pause") {
+                    trainingService.stopTraining(saveCheckpoint: true)
+                }
+            }
+            Button("Discard & Stop", role: .destructive) {
+                trainingService.stopTraining(saveCheckpoint: false)
+            }
+        } message: {
+            if trainingService.canSaveOnStop {
+                Text("Training has made progress. Save a checkpoint so you can resume this adapter later.")
+            } else {
+                Text("No training step has completed yet. Progress will be lost.")
+            }
+        }
+    }
+
+    private var header: some View {
+        HStack {
+            Text("Training")
+                .font(.headline)
+            Spacer()
+            Button {
+                trainingPresentation = TrainingPresentation()
+            } label: {
+                Label("Train from Files\u{2026}", systemImage: "graduationcap")
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(!canStartNewTraining)
+        }
+        .padding()
+    }
+
+    @ViewBuilder
+    private var statusView: some View {
+        switch trainingService.state {
+        case .idle:
+            emptyStatus("Ready", systemImage: "graduationcap")
+        case .loadingModels:
+            progressStatus(title: "Loading Models", detail: "Preparing ACE-Step training models.")
+        case .preparingDataset(let current, let total):
+            VStack(spacing: 12) {
+                Text("Preparing Dataset")
+                    .font(.headline)
+                Text("Sample \(current) of \(total)")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                ProgressView(value: Double(current), total: Double(max(total, 1)))
+                    .frame(maxWidth: 320)
+            }
+            .padding()
+        case .training(let uiState):
+            VStack(spacing: 14) {
+                Text("Training")
+                    .font(.headline)
+                Text("Epoch \(uiState.epoch) of \(uiState.totalEpochs)")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                ProgressView(value: Double(uiState.epoch), total: Double(max(uiState.totalEpochs, 1)))
+                    .frame(maxWidth: 320)
+                HStack(spacing: 20) {
+                    trainingMetric("Loss", String(format: "%.4f", uiState.loss))
+                    trainingMetric("LR", String(format: "%.1e", uiState.learningRate))
+                    trainingMetric("Elapsed", formatDuration(uiState.elapsed))
+                    if let remaining = uiState.remaining {
+                        trainingMetric("ETA", "~\(formatDuration(remaining))")
+                    }
+                }
+                Button("Pause / Stop Training", role: .destructive) {
+                    showingStopConfirmation = true
+                }
+                .buttonStyle(.bordered)
+            }
+            .padding()
+        case .saving:
+            progressStatus(title: "Saving Adapter", detail: "Writing adapter weights.")
+        case .complete(let adapter):
+            VStack(spacing: 10) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.largeTitle)
+                    .foregroundStyle(.green)
+                Text("Training Complete")
+                    .font(.headline)
+                Text(adapter.name)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            .padding()
+        case .paused:
+            emptyStatus("Paused", systemImage: "pause.circle")
+        case .failed(let message):
+            statusMessage("Training Failed", message: message, systemImage: "exclamationmark.triangle", color: .red)
+        case .cancelled:
+            emptyStatus("Cancelled", systemImage: "xmark.circle")
+        }
+    }
+
+    private var canStartNewTraining: Bool {
+        switch trainingService.state {
+        case .loadingModels, .preparingDataset, .training, .saving:
+            return false
+        default:
+            return true
+        }
+    }
+
+    private func progressStatus(title: String, detail: String) -> some View {
+        VStack(spacing: 10) {
+            ProgressView()
+                .controlSize(.large)
+            Text(title)
+                .font(.headline)
+            Text(detail)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .padding()
+    }
+
+    private func emptyStatus(_ title: String, systemImage: String) -> some View {
+        statusMessage(title, message: nil, systemImage: systemImage, color: .secondary)
+    }
+
+    private func statusMessage(
+        _ title: String,
+        message: String?,
+        systemImage: String,
+        color: Color
+    ) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: systemImage)
+                .font(.largeTitle)
+                .foregroundStyle(color)
+            Text(title)
+                .font(.headline)
+            if let message {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+            }
+        }
+        .padding()
+    }
+
+    private func trainingMetric(_ label: String, _ value: String) -> some View {
+        VStack(spacing: 2) {
+            Text(value)
+                .font(.caption)
+                .monospacedDigit()
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func formatDuration(_ interval: TimeInterval) -> String {
+        let total = max(0, Int(interval))
+        let minutes = total / 60
+        let seconds = total % 60
+        if minutes >= 60 {
+            let hours = minutes / 60
+            let remainingMinutes = minutes % 60
+            return "\(hours)h \(remainingMinutes)m"
+        }
+        return "\(minutes)m \(seconds)s"
+    }
 }
 
 // MARK: - Model Inspector Section

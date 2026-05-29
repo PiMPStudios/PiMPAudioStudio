@@ -35,58 +35,14 @@ struct AdaptersSettingsView: View {
     }
 }
 
-// MARK: - My Adapters (extracted from original)
-
-/// Drives `.sheet(item:)` for any training sheet presentation.
-/// Carrying all data as value types ensures the sheet closure sees the
-/// correct dataset regardless of when SwiftUI evaluates it.
-private struct TrainingPresentation: Identifiable {
-    let id = UUID()
-    /// History entries resolved from the manifest (may be empty for new sessions).
-    let selectedEntries: [HistoryEntry]
-    /// Imported file entries — from manifest, YouTube, or manual selection.
-    let files: [TrainingImportedFile]
-    /// Pre-fill the adapter name field (empty = blank for new sessions).
-    let initialName: String
-    /// Pre-fill training config (nil = use defaults for new sessions).
-    let initialConfig: LoRAConfig?
-    /// Adapter ID to resume from a saved checkpoint. Nil means fresh training/retraining.
-    let resumeAdapterID: String?
-
-    /// Blank new training session.
-    init(files: [TrainingImportedFile] = []) {
-        self.selectedEntries = []
-        self.files = files
-        self.initialName = ""
-        self.initialConfig = nil
-        self.resumeAdapterID = nil
-    }
-
-    /// Pre-populated retrain session.
-    init(
-        selectedEntries: [HistoryEntry],
-        files: [TrainingImportedFile],
-        initialName: String,
-        initialConfig: LoRAConfig?,
-        resumeAdapterID: String? = nil
-    ) {
-        self.selectedEntries = selectedEntries
-        self.files = files
-        self.initialName = initialName
-        self.initialConfig = initialConfig
-        self.resumeAdapterID = resumeAdapterID
-    }
-}
+// MARK: - My Adapters
 
 private struct MyAdaptersListView: View {
-    @EnvironmentObject private var outputManager: OutputDirectoryManager
     @EnvironmentObject private var historyStore: HistoryStore
 
     @State private var adapters: [LoRAAdapter] = []
     @State private var showingMergeSheet = false
     @State private var trainingPresentation: TrainingPresentation?
-    @State private var showingYouTubeSheet = false
-    @State private var showingLocalFilesSheet = false
     @State private var renamingAdapter: LoRAAdapter?
     @State private var renameText: String = ""
     @State private var errorMessage: String?
@@ -98,12 +54,6 @@ private struct MyAdaptersListView: View {
                 Text("LoRA Adapters")
                     .font(.headline)
                 Spacer()
-                Button("From YouTube…") { showingYouTubeSheet = true }
-                    .buttonStyle(.bordered)
-                Button("From Local Files…") { showingLocalFilesSheet = true }
-                    .buttonStyle(.bordered)
-                Button("Train from Files…") { trainingPresentation = TrainingPresentation() }
-                    .buttonStyle(.bordered)
                 Button("Merge Two") {
                     showingMergeSheet = true
                 }
@@ -151,24 +101,6 @@ private struct MyAdaptersListView: View {
                 resumeAdapterID: presentation.resumeAdapterID
             )
         }
-        .sheet(isPresented: $showingYouTubeSheet) {
-            YouTubeImportSheet { files in
-                showingYouTubeSheet = false
-                DispatchQueue.main.async {
-                    trainingPresentation = TrainingPresentation(files: files)
-                }
-            }
-            .environmentObject(outputManager)
-        }
-        .sheet(isPresented: $showingLocalFilesSheet) {
-            LocalFilesImportSheet { files in
-                showingLocalFilesSheet = false
-                DispatchQueue.main.async {
-                    trainingPresentation = TrainingPresentation(files: files)
-                }
-            }
-            .environmentObject(outputManager)
-        }
         .alert("Rename Adapter", isPresented: Binding(
             get: { renamingAdapter != nil },
             set: { if !$0 { renamingAdapter = nil } }
@@ -190,7 +122,7 @@ private struct MyAdaptersListView: View {
             Text("No Adapters Yet")
                 .font(.headline)
                 .foregroundStyle(.secondary)
-            Text("Train one from History or download from the Community tab.")
+            Text("Train one from Build or download from the Community tab.")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
             Spacer()

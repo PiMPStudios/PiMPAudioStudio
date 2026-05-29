@@ -163,7 +163,6 @@ struct AnvilAppApp: App {
                     .tabItem { Label("Adapters", systemImage: "puzzlepiece.extension") }
                     .environmentObject(services.trainingService)
                     .environmentObject(services.historyStore)
-                    .environmentObject(outputManager)
             }
             .frame(minWidth: 550, minHeight: 450)
         }
@@ -182,8 +181,8 @@ final class AppServices: ObservableObject {
     let editorService: EditorService
 
     /// LoRA training service — owns the training task and publishes progress.
-    /// Created once and injected into every scene so both the History sidebar
-    /// and the Adapters settings tab share the same running state.
+    /// Created once and injected into every scene so History, Build, and the
+    /// Adapters settings tab share the same running state.
     let trainingService: TrainingService
 
     private var currentOutputManager: OutputDirectoryManager?
