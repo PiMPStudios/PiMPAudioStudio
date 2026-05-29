@@ -41,6 +41,54 @@ private func silentWAVData(sampleRate: Int = 22_050, channels: Int = 1, frameCou
     return data
 }
 
+private func pcm16WAVData(sampleRate: Int = 22_050, samples: [Float]) -> Data {
+    let bitsPerSample = 16
+    let channels = 1
+    let blockAlign = channels * bitsPerSample / 8
+    let byteRate = sampleRate * blockAlign
+    let dataSize = samples.count * blockAlign
+    var data = Data()
+
+    func appendString(_ value: String) {
+        data.append(Data(value.utf8))
+    }
+
+    func appendUInt16(_ value: UInt16) {
+        var littleEndian = value.littleEndian
+        withUnsafeBytes(of: &littleEndian) { data.append(contentsOf: $0) }
+    }
+
+    func appendUInt32(_ value: UInt32) {
+        var littleEndian = value.littleEndian
+        withUnsafeBytes(of: &littleEndian) { data.append(contentsOf: $0) }
+    }
+
+    func appendInt16(_ value: Int16) {
+        var littleEndian = value.littleEndian
+        withUnsafeBytes(of: &littleEndian) { data.append(contentsOf: $0) }
+    }
+
+    appendString("RIFF")
+    appendUInt32(UInt32(36 + dataSize))
+    appendString("WAVE")
+    appendString("fmt ")
+    appendUInt32(16)
+    appendUInt16(1)
+    appendUInt16(UInt16(channels))
+    appendUInt32(UInt32(sampleRate))
+    appendUInt32(UInt32(byteRate))
+    appendUInt16(UInt16(blockAlign))
+    appendUInt16(UInt16(bitsPerSample))
+    appendString("data")
+    appendUInt32(UInt32(dataSize))
+
+    for sample in samples {
+        let clamped = max(-1, min(1, sample))
+        appendInt16(Int16(clamped * Float(Int16.max)))
+    }
+    return data
+}
+
 @Test @MainActor func appStateDetectsIncompleteSetup() async {
     let tempDir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
     let registry = ModelRegistry(baseDirectory: tempDir)
@@ -545,6 +593,43 @@ private func silentWAVData(sampleRate: Int = 22_050, channels: Int = 1, frameCou
     #expect(abs(duration - 0.1) < 0.001)
 }
 
+@Test func localDatasetEnrichmentAnalyzesTempoAndKeyFromAudio() throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let sampleRate = 22_050
+    let frameCount = sampleRate * 8
+    var samples = [Float](repeating: 0, count: frameCount)
+    for index in samples.indices {
+        let time = Double(index) / Double(sampleRate)
+        let chord =
+            0.24 * sin(2 * Double.pi * 82.407 * time) +
+            0.14 * sin(2 * Double.pi * 123.471 * time) +
+            0.14 * sin(2 * Double.pi * 164.814 * time) +
+            0.08 * sin(2 * Double.pi * 246.942 * time)
+        samples[index] = Float(chord)
+    }
+
+    let beatInterval = sampleRate / 2
+    for beatStart in stride(from: 0, to: frameCount, by: beatInterval) {
+        for tap in 0..<256 where beatStart + tap < frameCount {
+            let envelope = 1 - (Float(tap) / 256)
+            samples[beatStart + tap] += 0.6 * envelope
+        }
+    }
+
+    let url = directory.appendingPathComponent("e_minor_120bpm.wav")
+    try pcm16WAVData(sampleRate: sampleRate, samples: samples).write(to: url)
+
+    let analysis = LocalDatasetEnrichmentService.analyzeAudioFile(url, role: "instrumental")
+    let bpm = (analysis["tempo_bpm_estimate"] as? NSNumber)?.doubleValue ?? 0
+    #expect(abs(bpm - 120) < 4)
+    #expect(analysis["key_status"] as? String == "estimated_from_audio")
+    #expect((analysis["keyscale"] as? String)?.isEmpty == false)
+}
+
 @Test func localDatasetPackageWriterPreservesEnrichmentMetadataOnCaptionRefresh() throws {
     let datasetDir = FileManager.default.temporaryDirectory
         .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -788,7 +873,14 @@ private func silentWAVData(sampleRate: Int = 22_050, channels: Int = 1, frameCou
         },
         "instrumental": {
           "file": "stems/f001_clip_001/instrumental.wav",
-          "analysis": { "tempo_bpm_estimate": 72 }
+          "analysis": {
+            "tempo_bpm_estimate": 72,
+            "key": "E minor",
+            "keyscale": "E minor",
+            "key_status": "estimated_from_audio",
+            "key_source": "native-dsp-instrumental",
+            "key_confidence": 0.82
+          }
         }
       }
     }
@@ -838,6 +930,11 @@ private func silentWAVData(sampleRate: Int = 22_050, channels: Int = 1, frameCou
     #expect(annotation?["model_id"] as? String == "fake-qwen3-asr")
     let assets = record?["assets"] as? [String: Any]
     #expect(assets?["timed_lyrics"] as? String == "stems/f001_clip_001/lyrics.timed.json")
+    #expect((record?["bpm"] as? NSNumber)?.doubleValue == 72)
+    #expect(record?["keyscale"] as? String == "E minor")
+    let analysis = record?["analysis"] as? [String: Any]
+    #expect(analysis?["bpm_status"] as? String == "estimated_from_stems")
+    #expect(analysis?["key_status"] as? String == "estimated_from_audio")
 
     let vocalImported = try TrainingDatasetImporter.importFiles(
         from: datasetDir.appendingPathComponent("training_bundle_vocals.json")
@@ -854,6 +951,9 @@ private func silentWAVData(sampleRate: Int = 22_050, channels: Int = 1, frameCou
     let manifestAnnotation = manifest?["annotation"] as? [String: Any]
     let lyricSources = manifestAnnotation?["lyrics_sources"] as? [String] ?? []
     #expect(lyricSources.contains("native-qwen3-asr"))
+    let manifestAnalysis = manifest?["analysis"] as? [String: Any]
+    #expect(manifestAnalysis?["bpm_status"] as? String == "estimated_from_stems")
+    #expect(manifestAnalysis?["key_status"] as? String == "estimated_from_audio")
 }
 
 @Test func localDatasetEnrichmentExportsStemBundlesNatively() throws {

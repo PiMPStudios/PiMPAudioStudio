@@ -1,3 +1,4 @@
+import Accelerate
 import AVFoundation
 import Foundation
 import AnvilCore
@@ -51,6 +52,7 @@ struct LocalDatasetEnrichmentResult: Equatable {
     let instrumentalBundleExists: Bool
     let bpmEstimateCount: Int
     let averageBPM: Double?
+    let keyEstimateCount: Int
     let transcribedClipCount: Int
 
     var summary: String {
@@ -68,7 +70,7 @@ struct LocalDatasetEnrichmentResult: Equatable {
             parts.append("\(bpmEstimateCount) BPM estimate\(bpmEstimateCount == 1 ? "" : "s"), avg \(formatted)")
         }
         parts.append(transcribedClipCount > 0 ? "\(transcribedClipCount) transcript\(transcribedClipCount == 1 ? "" : "s") found" : "transcription pending")
-        parts.append("key analysis pending")
+        parts.append(keyEstimateCount > 0 ? "\(keyEstimateCount) key estimate\(keyEstimateCount == 1 ? "" : "s")" : "key analysis pending")
         return parts.joined(separator: "; ") + "."
     }
 }
@@ -167,6 +169,15 @@ final class LocalDatasetEnrichmentService: ObservableObject {
                     record: records[index],
                     datasetDirectory: datasetDirectory,
                     lyricsTranscriber: lyricsTranscriber,
+                    force: force
+                )
+            }
+
+            for index in records.indices {
+                try Task.checkCancellation()
+                records[index].object = try applyDerivedAudioMetadata(
+                    record: records[index],
+                    datasetDirectory: datasetDirectory,
                     force: force
                 )
             }
@@ -460,10 +471,124 @@ final class LocalDatasetEnrichmentService: ObservableObject {
             "stems": stems.reduce(into: [String: Any]()) { result, item in
                 result[item.key] = [
                     "file": relativePath(for: item.value, from: datasetDirectory),
-                    "analysis": analyzeAudioFile(item.value),
+                    "analysis": analyzeAudioFile(item.value, role: item.key),
                 ]
             },
         ]
+    }
+
+    nonisolated private static func applyDerivedAudioMetadata(
+        record: LocalDatasetCaptionRecord,
+        datasetDirectory: URL,
+        force: Bool
+    ) throws -> [String: Any] {
+        let refreshedAnalyses = try refreshCachedStemAnalysisIfNeeded(
+            record: record.object,
+            datasetDirectory: datasetDirectory,
+            force: force
+        )
+        let instrumentalAnalysis = refreshedAnalyses[.instrumental]
+            ?? stemAnalysis(for: .instrumental, in: record.object, datasetDirectory: datasetDirectory)
+        let vocalAnalysis = refreshedAnalyses[.vocals]
+            ?? stemAnalysis(for: .vocals, in: record.object, datasetDirectory: datasetDirectory)
+
+        var updated = record.object
+        var analysis = updated["analysis"] as? [String: Any] ?? [:]
+
+        if missingBPM(in: updated, analysis: analysis),
+           let bpm = preferredBPM(instrumental: instrumentalAnalysis, vocal: vocalAnalysis, existingAnalysis: analysis) {
+            updated["bpm"] = bpm
+            analysis["bpm"] = bpm
+            analysis["tempo_bpm_estimate"] = bpm
+            analysis["bpm_status"] = "estimated_from_stems"
+            analysis["bpm_source"] = bpmSource(instrumental: instrumentalAnalysis, vocal: vocalAnalysis) ?? "stem_analysis"
+        } else if !missingBPM(in: updated, analysis: analysis), stringValue(analysis["bpm_status"]) == nil {
+            analysis["bpm_status"] = "available_from_metadata"
+        }
+
+        if missingKey(in: updated, analysis: analysis),
+           let key = preferredKey(instrumental: instrumentalAnalysis, existingAnalysis: analysis) {
+            updated["key"] = key
+            updated["keyscale"] = key
+            analysis["key"] = key
+            analysis["keyscale"] = key
+            analysis["key_status"] = stringValue(instrumentalAnalysis?["key_status"]) ?? "estimated_from_audio"
+            analysis["key_source"] = stringValue(instrumentalAnalysis?["key_source"]) ?? "native-dsp-instrumental"
+            if let confidence = doubleValue(instrumentalAnalysis?["key_confidence"]) {
+                analysis["key_confidence"] = confidence
+            }
+            if let runnerUp = stringValue(instrumentalAnalysis?["key_runner_up"]) {
+                analysis["key_runner_up"] = runnerUp
+            }
+        } else if !missingKey(in: updated, analysis: analysis), stringValue(analysis["key_status"]) == nil {
+            analysis["key_status"] = "available_from_metadata"
+        }
+
+        if !analysis.isEmpty {
+            updated["analysis"] = analysis
+        }
+
+        let clipURL = resolve(record.file, relativeTo: datasetDirectory)
+        var sidecar = readJSONObject(from: clipURL.deletingPathExtension().appendingPathExtension("json")) ?? [:]
+        sidecar["analysis"] = analysis
+        if let bpm = updated["bpm"] {
+            sidecar["bpm"] = bpm
+        }
+        if let key = updated["key"] {
+            sidecar["key"] = key
+            sidecar["keyscale"] = updated["keyscale"] ?? key
+        }
+        if let separation = updated["separation"] {
+            sidecar["separation"] = separation
+        }
+        try writeJSONObject(sidecar, to: clipURL.deletingPathExtension().appendingPathExtension("json"))
+
+        return updated
+    }
+
+    nonisolated private static func refreshCachedStemAnalysisIfNeeded(
+        record: [String: Any],
+        datasetDirectory: URL,
+        force: Bool
+    ) throws -> [StemBundleRole: [String: Any]] {
+        guard let separation = record["separation"] as? [String: Any],
+              let separationFile = separation["separation_file"] as? String,
+              !separationFile.isEmpty else {
+            return [:]
+        }
+
+        let separationURL = resolve(separationFile, relativeTo: datasetDirectory)
+        guard var payload = readJSONObject(from: separationURL),
+              var stems = payload["stems"] as? [String: Any] else {
+            return [:]
+        }
+
+        var changed = false
+        var analyses: [StemBundleRole: [String: Any]] = [:]
+        for role in StemBundleRole.allCases {
+            guard var stem = stems[role.assetKey] as? [String: Any] else { continue }
+            let filePath = stringValue(stem["file"]) ?? stemPath(for: role, in: record)
+            guard let filePath else { continue }
+
+            let stemURL = resolve(filePath, relativeTo: datasetDirectory)
+            guard FileManager.default.fileExists(atPath: stemURL.path(percentEncoded: false)) else { continue }
+
+            var analysis = stem["analysis"] as? [String: Any] ?? [:]
+            if shouldRefreshStemAnalysis(analysis, role: role, force: force) {
+                let refreshed = analyzeAudioFile(stemURL, role: role.assetKey)
+                analysis = mergeAudioAnalysis(existing: analysis, refreshed: refreshed, force: force)
+                stem["analysis"] = analysis
+                stems[role.assetKey] = stem
+                changed = true
+            }
+            analyses[role] = analysis
+        }
+
+        if changed {
+            payload["stems"] = stems
+            try writeJSONObject(payload, to: separationURL)
+        }
+        return analyses
     }
 
     nonisolated private static func writeStemTrainingBundle(
@@ -614,10 +739,12 @@ final class LocalDatasetEnrichmentService: ObservableObject {
 
         var analysis = manifest["analysis"] as? [String: Any] ?? [:]
         let keyValues = keyMetadataValues(in: captions)
-        analysis["enabled"] = result.bpmEstimateCount > 0
-        analysis["status"] = result.bpmEstimateCount > 0 ? "stem_analysis_available" : (analysis["status"] ?? "not_run")
+        let keyStatus = keyMetadataStatus(in: captions)
+        let hasAnalysis = result.bpmEstimateCount > 0 || result.keyEstimateCount > 0
+        analysis["enabled"] = hasAnalysis
+        analysis["status"] = hasAnalysis ? "stem_analysis_available" : (analysis["status"] ?? "not_run")
         analysis["bpm_status"] = result.bpmEstimateCount > 0 ? "estimated_from_stems" : "not_run"
-        analysis["key_status"] = !keyValues.isEmpty ? "available_from_metadata" : "not_run"
+        analysis["key_status"] = keyStatus
         if let averageBPM = result.averageBPM {
             analysis["stem_tempo_bpm"] = [
                 "average": averageBPM,
@@ -648,7 +775,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
             "transcription_status": transcriptionStatus(for: result),
             "transcribed_clip_count": result.transcribedClipCount,
             "bpm_status": result.bpmEstimateCount > 0 ? "estimated_from_stems" : "not_run",
-            "key_status": !keyValues.isEmpty ? "available_from_metadata" : "not_run",
+            "key_status": keyStatus,
         ]
 
         try writeJSONObject(manifest, to: manifestURL)
@@ -665,6 +792,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         let averageBPM = bpmEstimates.isEmpty
             ? nil
             : rounded(bpmEstimates.reduce(0, +) / Double(bpmEstimates.count), places: 1)
+        let keyValues = keyMetadataValues(in: captions)
 
         return LocalDatasetEnrichmentResult(
             datasetDirectory: datasetDirectory,
@@ -681,6 +809,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
             ),
             bpmEstimateCount: bpmEstimates.count,
             averageBPM: averageBPM,
+            keyEstimateCount: keyValues.count,
             transcribedClipCount: transcribedClipCount
         )
     }
@@ -767,7 +896,22 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         })
     }
 
-    nonisolated private static func analyzeAudioFile(_ url: URL) -> [String: Any] {
+    nonisolated private static func keyMetadataStatus(in captions: [[String: Any]]) -> String {
+        guard !keyMetadataValues(in: captions).isEmpty else {
+            return "not_run"
+        }
+
+        let hasNativeEstimate = captions.contains { record in
+            guard let analysis = record["analysis"] as? [String: Any] else { return false }
+            if stringValue(analysis["key_status"]) == "estimated_from_audio" {
+                return true
+            }
+            return stringValue(analysis["key_source"])?.contains("native-dsp") == true
+        }
+        return hasNativeEstimate ? "estimated_from_audio" : "available_from_metadata"
+    }
+
+    nonisolated static func analyzeAudioFile(_ url: URL, role: String? = nil) -> [String: Any] {
         var object: [String: Any] = [
             "format": url.pathExtension.lowercased().isEmpty ? "unknown" : url.pathExtension.lowercased(),
             "metadata_status": "not_collected",
@@ -790,11 +934,110 @@ final class LocalDatasetEnrichmentService: ObservableObject {
             if let bpm = estimateTempoBPM(from: url) {
                 object["tempo_bpm_estimate"] = bpm
             }
+            if role?.lowercased() != "vocals",
+               let keyEstimate = estimateKeyScale(from: url) {
+                object["key"] = keyEstimate.keyscale
+                object["keyscale"] = keyEstimate.keyscale
+                object["key_status"] = "estimated_from_audio"
+                object["key_source"] = "native-dsp-\(role ?? "audio")"
+                object["key_confidence"] = keyEstimate.confidence
+                object["key_tonic"] = keyEstimate.tonic
+                object["key_mode"] = keyEstimate.mode
+                if let runnerUp = keyEstimate.runnerUp {
+                    object["key_runner_up"] = runnerUp
+                }
+            }
         } catch {
             object["metadata_status"] = "unreadable_audio_header"
             object["metadata_error"] = error.localizedDescription
         }
         return object
+    }
+
+    nonisolated private static func shouldRefreshStemAnalysis(
+        _ analysis: [String: Any],
+        role: StemBundleRole,
+        force: Bool
+    ) -> Bool {
+        if force { return true }
+        if doubleValue(analysis["tempo_bpm_estimate"]) == nil {
+            return true
+        }
+        if role == .instrumental,
+           stringValue(analysis["key"]) == nil,
+           stringValue(analysis["keyscale"]) == nil {
+            return true
+        }
+        return false
+    }
+
+    nonisolated private static func mergeAudioAnalysis(
+        existing: [String: Any],
+        refreshed: [String: Any],
+        force: Bool
+    ) -> [String: Any] {
+        var merged = existing
+        for (key, value) in refreshed where force || merged[key] == nil {
+            merged[key] = value
+        }
+        return merged
+    }
+
+    nonisolated private static func missingBPM(
+        in record: [String: Any],
+        analysis: [String: Any]
+    ) -> Bool {
+        doubleValue(record["bpm"]) == nil &&
+            doubleValue(analysis["bpm"]) == nil &&
+            doubleValue(analysis["tempo_bpm_estimate"]) == nil
+    }
+
+    nonisolated private static func missingKey(
+        in record: [String: Any],
+        analysis: [String: Any]
+    ) -> Bool {
+        stringValue(record["key"]) == nil &&
+            stringValue(record["keyscale"]) == nil &&
+            stringValue(analysis["key"]) == nil &&
+            stringValue(analysis["keyscale"]) == nil
+    }
+
+    nonisolated private static func preferredBPM(
+        instrumental: [String: Any]?,
+        vocal: [String: Any]?,
+        existingAnalysis: [String: Any]
+    ) -> Double? {
+        [
+            instrumental?["tempo_bpm_estimate"],
+            instrumental?["bpm"],
+            existingAnalysis["tempo_bpm_estimate"],
+            existingAnalysis["bpm"],
+            vocal?["tempo_bpm_estimate"],
+            vocal?["bpm"],
+        ].compactMap(doubleValue).first
+    }
+
+    nonisolated private static func bpmSource(
+        instrumental: [String: Any]?,
+        vocal: [String: Any]?
+    ) -> String? {
+        if doubleValue(instrumental?["tempo_bpm_estimate"]) != nil || doubleValue(instrumental?["bpm"]) != nil {
+            return stringValue(instrumental?["bpm_source"]) ?? "instrumental_stem"
+        }
+        if doubleValue(vocal?["tempo_bpm_estimate"]) != nil || doubleValue(vocal?["bpm"]) != nil {
+            return stringValue(vocal?["bpm_source"]) ?? "vocal_stem"
+        }
+        return nil
+    }
+
+    nonisolated private static func preferredKey(
+        instrumental: [String: Any]?,
+        existingAnalysis: [String: Any]
+    ) -> String? {
+        stringValue(instrumental?["keyscale"])
+            ?? stringValue(instrumental?["key"])
+            ?? stringValue(existingAnalysis["keyscale"])
+            ?? stringValue(existingAnalysis["key"])
     }
 
     nonisolated private static func estimateTempoBPM(from url: URL) -> Double? {
@@ -832,20 +1075,157 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         let maxLag = min(centered.count - 1, Int((60.0 / 50.0) * envelopeRate))
         guard minLag < maxLag else { return nil }
 
-        var bestLag = minLag
-        var bestScore = 0.0
-        for lag in minLag...maxLag {
+        func autocorrelationScore(for lag: Int) -> Double {
             var score = 0.0
             for i in lag..<centered.count {
                 score += centered[i] * centered[i - lag]
             }
+            return score
+        }
+
+        var bestLag = minLag
+        var bestScore = 0.0
+        for lag in minLag...maxLag {
+            let score = autocorrelationScore(for: lag)
             if score > bestScore {
                 bestScore = score
                 bestLag = lag
             }
         }
         guard bestScore > 0 else { return nil }
-        return rounded(60.0 * envelopeRate / Double(bestLag), places: 1)
+
+        var selectedLag = bestLag
+        let selectedBPM = 60.0 * envelopeRate / Double(selectedLag)
+        if selectedBPM < 70 {
+            let doubleTimeLag = max(minLag, bestLag / 2)
+            if doubleTimeLag < bestLag {
+                let doubleTimeScore = autocorrelationScore(for: doubleTimeLag)
+                if doubleTimeScore >= bestScore * 0.45 {
+                    selectedLag = doubleTimeLag
+                }
+            }
+        } else if selectedBPM > 160 {
+            let halfTimeLag = min(maxLag, bestLag * 2)
+            if halfTimeLag > bestLag {
+                let halfTimeScore = autocorrelationScore(for: halfTimeLag)
+                if halfTimeScore >= bestScore * 0.45 {
+                    selectedLag = halfTimeLag
+                }
+            }
+        }
+        return rounded(60.0 * envelopeRate / Double(selectedLag), places: 1)
+    }
+
+    nonisolated private static func estimateKeyScale(from url: URL) -> AudioKeyScaleEstimate? {
+        guard let sampleBuffer = try? monoSamples(from: url) else { return nil }
+        let samples = sampleBuffer.samples
+        guard samples.count >= 4_096 else { return nil }
+
+        let frameSize = 4_096
+        let hopSize = 2_048
+        guard let dft = try? vDSP.DiscreteFourierTransform<Float>(
+            count: frameSize,
+            direction: .forward,
+            transformType: .complexComplex,
+            ofType: Float.self
+        ) else {
+            return nil
+        }
+
+        let sampleRate = sampleBuffer.sampleRate
+        let noteNames = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+        let majorProfile = normalizedProfile([6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88])
+        let minorProfile = normalizedProfile([6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17])
+        var window = [Float](repeating: 0, count: frameSize)
+        vDSP_hann_window(&window, vDSP_Length(frameSize), Int32(vDSP_HANN_NORM))
+
+        var chroma = [Double](repeating: 0, count: 12)
+        var inputReal = [Float](repeating: 0, count: frameSize)
+        var inputImaginary = [Float](repeating: 0, count: frameSize)
+        var outputReal = [Float](repeating: 0, count: frameSize)
+        var outputImaginary = [Float](repeating: 0, count: frameSize)
+        var start = 0
+        while start + frameSize <= samples.count {
+            for index in 0..<frameSize {
+                inputReal[index] = samples[start + index] * window[index]
+            }
+            dft.transform(
+                inputReal: inputReal,
+                inputImaginary: inputImaginary,
+                outputReal: &outputReal,
+                outputImaginary: &outputImaginary
+            )
+
+            for bin in 1..<(frameSize / 2) {
+                let frequency = Double(bin) * sampleRate / Double(frameSize)
+                guard frequency >= 41.0, frequency <= 4_200.0 else { continue }
+                let midi = Int((69.0 + 12.0 * log2(frequency / 440.0)).rounded())
+                guard midi >= 28, midi <= 108 else { continue }
+                let real = Double(outputReal[bin])
+                let imaginary = Double(outputImaginary[bin])
+                let magnitude = sqrt((real * real) + (imaginary * imaginary))
+                guard magnitude.isFinite, magnitude > 0 else { continue }
+                let pitchClass = ((midi % 12) + 12) % 12
+                chroma[pitchClass] += log1p(magnitude)
+            }
+            start += hopSize
+        }
+
+        let chromaTotal = chroma.reduce(0, +)
+        guard chromaTotal > 0.001 else { return nil }
+        let normalizedChroma = normalizedProfile(chroma)
+
+        var candidates: [(tonic: Int, mode: String, score: Double)] = []
+        for tonic in 0..<12 {
+            candidates.append((
+                tonic: tonic,
+                mode: "major",
+                score: keyProfileScore(chroma: normalizedChroma, profile: majorProfile, tonic: tonic)
+            ))
+            candidates.append((
+                tonic: tonic,
+                mode: "minor",
+                score: keyProfileScore(chroma: normalizedChroma, profile: minorProfile, tonic: tonic)
+            ))
+        }
+        candidates.sort { $0.score > $1.score }
+        guard let best = candidates.first else { return nil }
+        let runnerUp = candidates.dropFirst().first
+        let confidence = max(0, min(1, (best.score - (runnerUp?.score ?? 0)) / max(abs(best.score), 0.001)))
+        guard confidence >= 0.015 else { return nil }
+
+        let tonic = noteNames[best.tonic]
+        let runnerUpLabel = runnerUp.map { "\(noteNames[$0.tonic]) \($0.mode)" }
+        return AudioKeyScaleEstimate(
+            keyscale: "\(tonic) \(best.mode)",
+            confidence: rounded(confidence, places: 3),
+            tonic: tonic,
+            mode: best.mode,
+            runnerUp: runnerUpLabel
+        )
+    }
+
+    nonisolated private static func normalizedProfile(_ values: [Double]) -> [Double] {
+        guard !values.isEmpty else { return [] }
+        let mean = values.reduce(0, +) / Double(values.count)
+        let centered = values.map { $0 - mean }
+        let norm = sqrt(centered.reduce(0) { $0 + ($1 * $1) })
+        guard norm > 0 else { return centered }
+        return centered.map { $0 / norm }
+    }
+
+    nonisolated private static func keyProfileScore(
+        chroma: [Double],
+        profile: [Double],
+        tonic: Int
+    ) -> Double {
+        guard chroma.count == 12, profile.count == 12 else { return 0 }
+        var score = 0.0
+        for pitchClass in 0..<12 {
+            let interval = (pitchClass - tonic + 12) % 12
+            score += chroma[pitchClass] * profile[interval]
+        }
+        return score
     }
 
     nonisolated private static func monoSamples(from url: URL) throws -> (samples: [Float], sampleRate: Double) {
@@ -1231,6 +1611,14 @@ actor LyricsTranscriptionService: DatasetLyricsTranscribing, DatasetLyricsTransc
 private struct LocalDatasetCaptionRecord {
     var object: [String: Any]
     let file: String
+}
+
+private struct AudioKeyScaleEstimate {
+    let keyscale: String
+    let confidence: Double
+    let tonic: String
+    let mode: String
+    let runnerUp: String?
 }
 
 private enum StemBundleRole: CaseIterable {

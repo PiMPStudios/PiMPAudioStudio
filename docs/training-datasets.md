@@ -65,7 +65,7 @@ Native Demucs model selection can be overridden with `ANVIL_DEMUCS_MODEL_NAME`; 
 
 Enrichment also transcribes each generated `vocals.wav` with native `speech-swift` Qwen3-ASR. The quality path uses `Qwen3-ASR-1.7B` plus `Qwen3-ForcedAligner-0.6B` for word timestamps, then writes `lyrics.txt`, `lyrics.timed.json`, and `lyrics.lrc` next to the stem files. Those transcripts are copied into `captions.json` and `training_bundle_vocals.json`; instrumental bundles keep lyrics empty.
 
-Enrichment preserves separation/transcription metadata when captions are edited and records a local BPM estimate from stem audio. Imported or manually reviewed key/keyscale metadata is reflected as `available_from_metadata`; standalone local key detection is still pending.
+Enrichment preserves separation/transcription metadata when captions are edited, promotes local stem tempo estimates into each clip's BPM field, and estimates instrumental key/keyscale with native DSP analysis. Imported or manually reviewed BPM/key metadata is preserved as metadata-backed review data instead of being overwritten by the automatic estimates.
 
 ## Train From JSON
 

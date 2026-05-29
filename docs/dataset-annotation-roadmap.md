@@ -469,7 +469,7 @@ Do the low-risk Anvil-native work first:
 
 1. Add the annotation metadata fields and raw-output sidecar conventions. Status: package schema, clip provenance, manifest summaries, and raw lyric artifact paths are now in place.
 2. Build the dataset review/editor UI. Status: the current review workspace edits metadata, imports sidecars, gates training on approval, and writes review backups before save.
-3. Add ACE-compatible sidecar import/export for `.lyrics.txt`, `.caption.txt`, per-track `.json`, and BPM/key `.csv`. Status: import and export are wired; key/keyscale metadata is reflected as metadata-backed analysis status, while standalone DSP key detection remains pending.
+3. Add ACE-compatible sidecar import/export for `.lyrics.txt`, `.caption.txt`, per-track `.json`, and BPM/key `.csv`. Status: import and export are wired; Enrich Dataset now fills missing BPM/key fields from native stem analysis while preserving imported or manually reviewed metadata.
 4. Keep current native Demucs plus Qwen3-ASR as default. Status: default local enrichment remains native Swift/MLX and tags Qwen lyric output as `native-qwen3-asr`.
 5. Add ACE official captioner/transcriber as a remote backend target. Status: provider-neutral `remote_job.json` / `result.json` schema is now defined; actual ACE annotation worker and provider adapters remain future work.
 6. Add LoKR as an experimental Training tab that reuses the same preprocessed tensors as LoRA. Status: the LoKR tab now lists reviewed packages and cache readiness, and bundle-based preprocessing now writes sample-level safetensors plus `index.json`; the native LoKR optimizer/training loop remains future work.

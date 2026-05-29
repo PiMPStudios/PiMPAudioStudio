@@ -842,6 +842,7 @@ enum TrainingDatasetPackageWriter {
         )
         let bpmEstimates = stemBPMEstimates(in: captions, outputDirectory: outputDirectory)
         let keyValues = keyMetadataValues(in: captions)
+        let keyStatus = keyMetadataStatus(in: captions)
         let hasDerivedMetadata = separatedClipCount > 0 || transcribedClipCount > 0 ||
             vocalBundleExists || instrumentalBundleExists || !bpmEstimates.isEmpty ||
             !keyValues.isEmpty || approvedClipCount(in: captions) > 0
@@ -918,10 +919,11 @@ enum TrainingDatasetPackageWriter {
         manifest["annotation"] = annotation
 
         var analysis = manifest["analysis"] as? [String: Any] ?? [:]
-        analysis["enabled"] = !bpmEstimates.isEmpty
-        analysis["status"] = !bpmEstimates.isEmpty ? "stem_analysis_available" : (analysis["status"] ?? "not_run")
+        let hasAnalysis = !bpmEstimates.isEmpty || !keyValues.isEmpty
+        analysis["enabled"] = hasAnalysis
+        analysis["status"] = hasAnalysis ? "stem_analysis_available" : (analysis["status"] ?? "not_run")
         analysis["bpm_status"] = !bpmEstimates.isEmpty ? "estimated_from_stems" : "not_run"
-        analysis["key_status"] = !keyValues.isEmpty ? "available_from_metadata" : "not_run"
+        analysis["key_status"] = keyStatus
         if !bpmEstimates.isEmpty {
             analysis["stem_tempo_bpm"] = [
                 "average": rounded(bpmEstimates.reduce(0, +) / Double(bpmEstimates.count), places: 1),
@@ -959,7 +961,7 @@ enum TrainingDatasetPackageWriter {
             ),
             "transcribed_clip_count": transcribedClipCount,
             "bpm_status": !bpmEstimates.isEmpty ? "estimated_from_stems" : "not_run",
-            "key_status": !keyValues.isEmpty ? "available_from_metadata" : "not_run",
+            "key_status": keyStatus,
         ]
 
         try writeJSONObject(manifest, to: manifestURL)
@@ -1167,6 +1169,21 @@ enum TrainingDatasetPackageWriter {
             }
             return nil
         })
+    }
+
+    private static func keyMetadataStatus(in captions: [[String: Any]]) -> String {
+        guard !keyMetadataValues(in: captions).isEmpty else {
+            return "not_run"
+        }
+
+        let hasNativeEstimate = captions.contains { record in
+            guard let analysis = record["analysis"] as? [String: Any] else { return false }
+            if stringValue(analysis["key_status"]) == "estimated_from_audio" {
+                return true
+            }
+            return stringValue(analysis["key_source"])?.contains("native-dsp") == true
+        }
+        return hasNativeEstimate ? "estimated_from_audio" : "available_from_metadata"
     }
 
     private static func doubleValue(_ value: Any?) -> Double? {
