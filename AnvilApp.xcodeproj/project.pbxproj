@@ -53,6 +53,7 @@
 		66E9184590022F8F6F653BC1 /* PresetStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD2CA362A1B0531F8B13B8DD /* PresetStore.swift */; };
 		6D5694C7B23B8F968AB61C86 /* SimpleDSP.swift in Sources */ = {isa = PBXBuildFile; fileRef = 681D2127C0D042836B2A1EC5 /* SimpleDSP.swift */; };
 		6E8631F6B78C8B22F7EB1EDD /* LyricWriterManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37D2A8CEE5C195E55D979DF2 /* LyricWriterManager.swift */; };
+		6F841D01177E48E8877214E3 /* RemoteTrainingJob.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B0E6341C4264D6E9D1954C1 /* RemoteTrainingJob.swift */; };
 		7036BAF017D1AD46A18B15AD /* ClaudeLyricWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = C61D0DB6E1E91085513A8234 /* ClaudeLyricWriter.swift */; };
 		742DF97FBE5C44F1D33EAE98 /* LocalDatasetEnrichmentService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A72A2E2315EA23F0C947FC92 /* LocalDatasetEnrichmentService.swift */; };
 		75B24388D0F1EDB6F271D54A /* WaveformView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D61C5398208345CF997BA86 /* WaveformView.swift */; };
@@ -181,6 +182,7 @@
 		9D65878AD15AC1C5B83D82A2 /* TrainingSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingSheet.swift; sourceTree = "<group>"; };
 		9E46D5718C7768D91073FCEE /* AnvilAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AnvilAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		9F48405E290FB7817733FDD4 /* GenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationService.swift; sourceTree = "<group>"; };
+		9B0E6341C4264D6E9D1954C1 /* RemoteTrainingJob.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteTrainingJob.swift; sourceTree = "<group>"; };
 		A594BD4883E8061AEA451F27 /* AudioPlayerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayerService.swift; sourceTree = "<group>"; };
 		A6565EEB7B74316E2EBDE33C /* DatasetReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatasetReviewView.swift; sourceTree = "<group>"; };
 		A72A2E2315EA23F0C947FC92 /* LocalDatasetEnrichmentService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalDatasetEnrichmentService.swift; sourceTree = "<group>"; };
@@ -295,6 +297,7 @@
 				FD2CA362A1B0531F8B13B8DD /* PresetStore.swift */,
 				17140A0355CED442DB2B2EDE /* PromptEnhancer.swift */,
 				AC937EB07AD49BE1C4368F68 /* ProviderAccessStore.swift */,
+				9B0E6341C4264D6E9D1954C1 /* RemoteTrainingJob.swift */,
 				CCFDE36CECAA5A75A45571D5 /* SFXGenerationService.swift */,
 				7EC4A8B06E55930149BAC8ED /* SFXModelManager.swift */,
 				861E433991EA4514A90A9BA0 /* SourceSeparationService.swift */,
@@ -631,6 +634,7 @@
 				ACC46C8E03A2B746A4B88BB8 /* PresetsView.swift in Sources */,
 				24501B4A9D924AC672E9EA00 /* PromptEnhancer.swift in Sources */,
 				8EA964E344DB8F5363EBCEB9 /* ProviderAccessStore.swift in Sources */,
+				6F841D01177E48E8877214E3 /* RemoteTrainingJob.swift in Sources */,
 				E112BB2C15BD04D59A6B0FA7 /* Resampler.swift in Sources */,
 				F14A826EBFBE8B00266D4BF5 /* ReverbControlView.swift in Sources */,
 				149D0F7AA4A61FF4806E28E0 /* SFXGenerationService.swift in Sources */,

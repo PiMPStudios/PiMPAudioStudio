@@ -344,6 +344,7 @@ DEMON is not primarily a dataset-builder reference. It is more useful as a futur
 
 ### Phase 4: Remote GPU Annotation/Training
 
+- Define a provider-neutral remote worker contract before provider API integration.
 - Extend `remote_training_package.json` to advertise annotation jobs as well as training jobs.
 - Add provider settings for RunPod/DigitalOcean:
   - API token storage in Keychain
@@ -470,7 +471,7 @@ Do the low-risk Anvil-native work first:
 2. Build the dataset review/editor UI. Status: the current review workspace edits metadata, imports sidecars, gates training on approval, and writes review backups before save.
 3. Add ACE-compatible sidecar import/export for `.lyrics.txt`, `.caption.txt`, per-track `.json`, and BPM/key `.csv`. Status: import and export are wired; key/keyscale metadata is reflected as metadata-backed analysis status, while standalone DSP key detection remains pending.
 4. Keep current native Demucs plus Qwen3-ASR as default. Status: default local enrichment remains native Swift/MLX and tags Qwen lyric output as `native-qwen3-asr`.
-5. Add ACE official captioner/transcriber as a remote backend target. Status: still future work; keep it explicit/optional and likely remote-first because the official models are large.
+5. Add ACE official captioner/transcriber as a remote backend target. Status: provider-neutral `remote_job.json` / `result.json` schema is now defined; actual ACE annotation worker and provider adapters remain future work.
 6. Add LoKR as an experimental Training tab that reuses the same preprocessed tensors as LoRA. Status: the LoKR tab now lists reviewed packages and cache readiness, and bundle-based preprocessing now writes sample-level safetensors plus `index.json`; the native LoKR optimizer/training loop remains future work.
 7. Use StemForge as a workflow/UX reference for LoKR, snapshots, A/B adapter comparison, and remote training monitoring.
 8. Treat DEMON as a later Generate/Edit/Training audition reference for automation curves, live adapter controls, session snapshots, and MCP command coverage.

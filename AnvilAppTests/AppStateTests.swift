@@ -440,6 +440,50 @@ private func silentWAVData(sampleRate: Int = 22_050, channels: Int = 1, frameCou
     #expect(includedPaths.contains("preprocess_cache.json"))
     #expect(includedPaths.contains("training_bundle_vocals.json"))
     #expect(includedPaths.contains("training_bundle_instrumental.json"))
+    let workerContract = remoteJSON?["worker_contract"] as? [String: Any]
+    #expect(workerContract?["job_descriptor"] as? String == "remote_job.json")
+    #expect(workerContract?["result_descriptor"] as? String == "remote_artifacts/result.json")
+    #expect(workerContract?["logs_file"] as? String == "remote_artifacts/logs.jsonl")
+    #expect(workerContract?["metrics_file"] as? String == "remote_artifacts/metrics.jsonl")
+
+    let descriptor = try RemoteTrainingJobCodec.decoder.decode(
+        RemoteTrainingPackageDescriptor.self,
+        from: remoteData
+    )
+    let job = RemoteTrainingJobRequest.makeTemplate(
+        from: descriptor,
+        jobID: "job-test-1",
+        createdAt: Date(timeIntervalSince1970: 0),
+        maxRuntimeSeconds: 7_200,
+        maxCostUSD: 12.50
+    )
+    #expect(job.anvilRemoteJobVersion == "1.0")
+    #expect(job.task == .trainLoRA)
+    #expect(job.package.entryBundle == "training_bundle_full_mix.json")
+    #expect(job.package.selectedBundle.name == "full_mix")
+    #expect(job.training?.adapterMode == .lora)
+    #expect(job.training?.baseModelID == "ace-step-xl-sft")
+    #expect(job.runtime.gpuClass == "h100_or_h200")
+    #expect(job.runtime.maxRuntimeSeconds == 7_200)
+    #expect(job.runtime.maxCostUSD == 12.50)
+    #expect(job.outputs.resultFile == "remote_artifacts/result.json")
+    #expect(job.safety.uploadRequiresUserApproval)
+    #expect(job.safety.writeProviderSecretsToPackage == false)
+
+    let encodedJob = try RemoteTrainingJobCodec.encoder.encode(job)
+    let decodedJob = try RemoteTrainingJobCodec.decoder.decode(RemoteTrainingJobRequest.self, from: encodedJob)
+    #expect(decodedJob.jobID == "job-test-1")
+    #expect(decodedJob.package.copyRules.include.contains("preprocessed/**"))
+
+    let lokrJob = RemoteTrainingJobRequest.makeTemplate(
+        from: descriptor,
+        task: .trainLoKR,
+        selectedBundleName: "instrumental",
+        jobID: "job-test-2",
+        createdAt: Date(timeIntervalSince1970: 0)
+    )
+    #expect(lokrJob.training?.adapterMode == .lokr)
+    #expect(lokrJob.package.selectedBundle.name == "instrumental")
 
     let manifestData = try Data(contentsOf: datasetDir.appendingPathComponent("dataset_manifest.json"))
     let manifestJSON = try JSONSerialization.jsonObject(with: manifestData) as? [String: Any]

@@ -92,3 +92,5 @@ Use **Export Zip** from the Datasets review workspace after clips are approved. 
 The initial package is full-mix only. After local enrichment, the same package can also include `stems/`, `training_bundle_vocals.json`, and `training_bundle_instrumental.json`; remote workers should pick the bundle that matches the intended training target.
 
 Remote packages include `preprocess_cache.json`, `annotations/**`, and `preprocessed/**` in their copy rules. Local bundle preprocessing can now populate `preprocessed/<bundle>/samples/*.safetensors` plus `index.json`; remote workers should read or write the same cache shape instead of inventing provider-specific tensor layouts.
+
+Remote launch requests use the provider-neutral shape in [remote-worker-contract.md](remote-worker-contract.md). In short, Anvil should generate a `remote_job.json`, provider adapters should launch a worker without changing that schema, and workers should return `remote_artifacts/result.json`, `logs.jsonl`, `metrics.jsonl`, checkpoints, and final adapter artifacts in the standard layout.
