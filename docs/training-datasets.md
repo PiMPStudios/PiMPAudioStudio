@@ -4,7 +4,7 @@ Anvil can build and import local LoRA training datasets without a cloud service.
 
 ## Build From Local Files
 
-Use **LoRA Adapters > From Local Files...** to slice local audio into a package under:
+Use **Build > Datasets > From Local Files...** to slice local audio into a package under:
 
 ```text
 <Output Directory>/TrainingDatasets/<source>_local_<timestamp>/
@@ -27,7 +27,7 @@ Readable audio headers are recorded when AVFoundation can open the source/clip. 
 
 ## Local Enrichment
 
-After a local-file package is built, use **Enrich Dataset** in the result view to enrich that package in place. AnvilApp owns this workflow directly; it does not call or require any sibling repo.
+After a local-file package is built, open it from **Build > Datasets** and use **Enrich Dataset** in the review workspace to enrich that package in place. AnvilApp owns this workflow directly; it does not call or require any sibling repo.
 
 The enrichment backend is native Swift/MLX Demucs via `demucs-mlx-swift`, using `htdemucs` in vocals-plus-instrumental mode. AnvilApp writes `stems/`, `separation.json`, `training_bundle_vocals.json`, `training_bundle_instrumental.json`, refreshed manifest metadata, and package validation itself.
 
@@ -39,7 +39,7 @@ Enrichment preserves separation/transcription metadata when captions are edited 
 
 ## Train From JSON
 
-Use **LoRA Adapters > Train from Files... > Add audio files or JSON...** when you already have a packaged dataset.
+Use **Build > Training > Train from Files... > Add audio files or JSON...** when you already have a packaged dataset. From the Datasets review workspace, **Open in Training** imports the selected package directly once blockers are cleared.
 
 Recommended JSON entry points:
 
@@ -52,7 +52,7 @@ The training sheet reports how many files were imported from JSON, how many incl
 
 ## Remote Package Shape
 
-The exported zip keeps the package root intact. Remote workers should:
+Use **Export Zip** from the Datasets review workspace after clips are approved. The exported zip keeps the package root intact. Remote workers should:
 
 1. Unzip the package.
 2. Read `remote_training_package.json`.

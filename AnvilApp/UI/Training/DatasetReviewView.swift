@@ -14,6 +14,7 @@ struct DatasetReviewView: View {
     @State private var notice: String?
     @State private var errorMessage: String?
     @State private var isSaving = false
+    @State private var isExporting = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -96,6 +97,15 @@ struct DatasetReviewView: View {
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
             .disabled(document?.hasUnsavedChanges != true || isBusy)
+
+            Button {
+                exportPackage()
+            } label: {
+                Label("Export Zip", systemImage: "square.and.arrow.up")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(document?.isTrainingReady != true || isBusy)
         }
         .padding()
     }
@@ -428,7 +438,7 @@ struct DatasetReviewView: View {
     }
 
     private var isBusy: Bool {
-        enrichment.phase.isRunning || isSaving
+        enrichment.phase.isRunning || isSaving || isExporting
     }
 
     private func binding<T>(_ index: Int, _ keyPath: WritableKeyPath<DatasetClipReview, T>) -> Binding<T> {
@@ -557,6 +567,34 @@ struct DatasetReviewView: View {
             }
             let files = try TrainingDatasetPackageEditor.importedFiles(for: current)
             onOpenInTraining(files)
+        } catch {
+            notice = nil
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func exportPackage() {
+        guard let current = document else { return }
+        if current.hasUnsavedChanges, !saveDocument() {
+            return
+        }
+
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.zip]
+        panel.canCreateDirectories = true
+        panel.nameFieldStringValue = "\(datasetDirectory.lastPathComponent).zip"
+        guard panel.runModal() == .OK, let destination = panel.url else { return }
+
+        isExporting = true
+        defer { isExporting = false }
+
+        do {
+            let archiveURL = try TrainingDatasetPackageWriter.exportPackageArchive(
+                outputDirectory: datasetDirectory,
+                to: destination
+            )
+            notice = "Package exported to \(archiveURL.lastPathComponent)."
+            onPackageUpdated()
         } catch {
             notice = nil
             errorMessage = error.localizedDescription
