@@ -29,6 +29,7 @@ Anvil runs diffusion-based audio models entirely on-device using Apple Silicon G
 - **On-Device Training** — Flow-matching training loop with AdamW optimizer, cosine LR scheduling, gradient accumulation
 - **Configurable Targets** — Self-attention, cross-attention, MLP injection with per-layer control
 - **Checkpoint/Resume** — Save and restore training state mid-session
+- **Training Dataset Packages** — Slice local files into package manifests, export remote-ready zips, and import Anvil/anvil-audio-v2 JSON bundles with vocal transcripts
 - **Adapter Management** — Rename, delete, export, merge (weighted interpolation of two adapters)
 - **Community Sharing** — Browse and download community adapters from a curated manifest; import any adapter from HuggingFace
 - **Multi-Adapter Stacking** — Apply up to 3 LoRA adapters simultaneously with real-time strength sliders (Inject-All architecture)
@@ -122,6 +123,7 @@ AnvilApp/                 App source
 Spikes/
   MCPServerSDKSpike/      Isolated Swift MCP SDK server transport spike
 docs/
+  training-datasets.md      Local dataset package build/import workflow
   mcp-local.md              Local MCP endpoint usage and curl smoke examples
   mcp-standards-roadmap.md  Standards-first MCP + Swift 6 migration direction
   superpowers/specs/      Design specifications per phase
