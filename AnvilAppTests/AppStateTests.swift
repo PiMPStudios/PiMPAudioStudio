@@ -3,6 +3,44 @@ import Foundation
 @testable import AnvilApp
 @testable import AnvilCore
 
+private func silentWAVData(sampleRate: Int = 22_050, channels: Int = 1, frameCount: Int = 2_205) -> Data {
+    let bitsPerSample = 16
+    let blockAlign = channels * bitsPerSample / 8
+    let byteRate = sampleRate * blockAlign
+    let dataSize = frameCount * blockAlign
+    var data = Data()
+
+    func appendString(_ value: String) {
+        data.append(Data(value.utf8))
+    }
+
+    func appendUInt16(_ value: UInt16) {
+        var littleEndian = value.littleEndian
+        withUnsafeBytes(of: &littleEndian) { data.append(contentsOf: $0) }
+    }
+
+    func appendUInt32(_ value: UInt32) {
+        var littleEndian = value.littleEndian
+        withUnsafeBytes(of: &littleEndian) { data.append(contentsOf: $0) }
+    }
+
+    appendString("RIFF")
+    appendUInt32(UInt32(36 + dataSize))
+    appendString("WAVE")
+    appendString("fmt ")
+    appendUInt32(16)
+    appendUInt16(1)
+    appendUInt16(UInt16(channels))
+    appendUInt32(UInt32(sampleRate))
+    appendUInt32(UInt32(byteRate))
+    appendUInt16(UInt16(blockAlign))
+    appendUInt16(UInt16(bitsPerSample))
+    appendString("data")
+    appendUInt32(UInt32(dataSize))
+    data.append(Data(repeating: 0, count: dataSize))
+    return data
+}
+
 @Test @MainActor func appStateDetectsIncompleteSetup() async {
     let tempDir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
     let registry = ModelRegistry(baseDirectory: tempDir)
@@ -176,6 +214,61 @@ import Foundation
     #expect(providerTargets.contains("runpod"))
     #expect(providerTargets.contains("digitalocean_gpu"))
     #expect(remoteJSON?["default_bundle"] as? String == "training_bundle_full_mix.json")
+
+    let manifestData = try Data(contentsOf: datasetDir.appendingPathComponent("dataset_manifest.json"))
+    let manifestJSON = try JSONSerialization.jsonObject(with: manifestData) as? [String: Any]
+    let audioJSON = manifestJSON?["audio"] as? [String: Any]
+    #expect(audioJSON?["metadata_status"] as? String == "audio_properties_unavailable")
+    #expect(audioJSON?["format"] as? String == "m4a")
+
+    let sourceJSON = manifestJSON?["source"] as? [String: Any]
+    let sourceFilesJSON = sourceJSON?["files"] as? [[String: Any]]
+    #expect(sourceFilesJSON?.first?["file_name"] as? String == "source.wav")
+    #expect((sourceFilesJSON?.first?["byte_size"] as? NSNumber)?.intValue == 6)
+
+    let clipsJSON = manifestJSON?["clips"] as? [[String: Any]]
+    let clipAudioJSON = clipsJSON?.first?["audio"] as? [String: Any]
+    #expect(clipAudioJSON?["format"] as? String == "m4a")
+    #expect(clipAudioJSON?["metadata_status"] as? String == "unreadable_audio_header")
+    #expect((clipAudioJSON?["byte_size"] as? NSNumber)?.intValue == 4)
+}
+
+@Test func localDatasetPackageWriterReadsAudioHeadersWhenAvailable() throws {
+    let datasetDir = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let clipsDir = datasetDir.appendingPathComponent("clips", isDirectory: true)
+    try FileManager.default.createDirectory(at: clipsDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: datasetDir) }
+
+    let sourceURL = datasetDir.appendingPathComponent("source.wav")
+    let clipURL = clipsDir.appendingPathComponent("f001_clip_001.wav")
+    try silentWAVData(sampleRate: 22_050, channels: 1, frameCount: 2_205).write(to: sourceURL)
+    try silentWAVData(sampleRate: 22_050, channels: 1, frameCount: 2_205).write(to: clipURL)
+
+    try TrainingDatasetPackageWriter.writeLocalPackage(
+        outputDirectory: datasetDir,
+        clips: [TrainingImportedFile(url: clipURL, description: "readable wav")],
+        sourceFiles: [sourceURL],
+        config: LocalFilesDatasetConfig(clipLength: 30, clipsPerTrack: 1, maxTotalClips: 1),
+        styleTemplate: "",
+        createdAt: Date(timeIntervalSince1970: 0)
+    )
+
+    let manifestData = try Data(contentsOf: datasetDir.appendingPathComponent("dataset_manifest.json"))
+    let manifestJSON = try JSONSerialization.jsonObject(with: manifestData) as? [String: Any]
+    let audioJSON = manifestJSON?["audio"] as? [String: Any]
+    let clipsJSON = manifestJSON?["clips"] as? [[String: Any]]
+    let clipAudioJSON = clipsJSON?.first?["audio"] as? [String: Any]
+
+    #expect(audioJSON?["metadata_status"] as? String == "audio_properties_collected")
+    #expect(audioJSON?["format"] as? String == "wav")
+    #expect((audioJSON?["sample_rate"] as? NSNumber)?.intValue == 22_050)
+    #expect((audioJSON?["channels"] as? NSNumber)?.intValue == 1)
+    #expect(clipAudioJSON?["metadata_status"] as? String == "ok")
+    #expect((clipAudioJSON?["sample_rate"] as? NSNumber)?.intValue == 22_050)
+    #expect((clipAudioJSON?["channels"] as? NSNumber)?.intValue == 1)
+    let duration = (clipAudioJSON?["duration_seconds"] as? NSNumber)?.doubleValue ?? 0
+    #expect(abs(duration - 0.1) < 0.001)
 }
 
 @Test func localDatasetPackageValidationReportsMissingClipFiles() throws {

@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 
 struct TrainingDatasetPackageValidationResult: Equatable {
@@ -45,6 +46,43 @@ enum TrainingDatasetPackageWriter {
     static let remotePackageFileName = "remote_training_package.json"
     static let validationReportFileName = "package_validation.json"
 
+    private struct AudioFileMetadata {
+        let format: String
+        let byteSize: Int64?
+        let durationSeconds: Double?
+        let sampleRate: Int?
+        let channels: Int?
+        let frameCount: Int64?
+        let status: String
+        let errorDescription: String?
+
+        var jsonObject: [String: Any] {
+            var object: [String: Any] = [
+                "format": format,
+                "metadata_status": status,
+            ]
+            if let byteSize {
+                object["byte_size"] = byteSize
+            }
+            if let durationSeconds {
+                object["duration_seconds"] = seconds(durationSeconds)
+            }
+            if let sampleRate {
+                object["sample_rate"] = sampleRate
+            }
+            if let channels {
+                object["channels"] = channels
+            }
+            if let frameCount {
+                object["frame_count"] = frameCount
+            }
+            if let errorDescription, !errorDescription.isEmpty {
+                object["metadata_error"] = errorDescription
+            }
+            return object
+        }
+    }
+
     static func writeLocalPackage(
         outputDirectory: URL,
         clips: [TrainingImportedFile],
@@ -60,11 +98,14 @@ enum TrainingDatasetPackageWriter {
             to: outputDirectory
         )
 
+        let clipAudioMetadata = audioMetadataByPath(for: clips.map(\.url))
+        let sourceAudioMetadata = audioMetadataByPath(for: sourceFiles)
         let clipEntries = packageClips(
             from: clips,
             sourceFiles: sourceFiles,
             outputDirectory: outputDirectory,
-            config: config
+            config: config,
+            audioMetadata: clipAudioMetadata
         )
         let createdAtString = ISO8601DateFormatter().string(from: createdAt)
         let trimmedStyle = styleTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -78,6 +119,8 @@ enum TrainingDatasetPackageWriter {
                 outputDirectory: outputDirectory,
                 clips: clipEntries,
                 sourceFiles: sourceFiles,
+                clipAudioMetadata: clips.map { clipAudioMetadata[normalizedFilePath($0.url)] ?? fallbackAudioMetadata(for: $0.url) },
+                sourceAudioMetadata: sourceAudioMetadata,
                 config: config,
                 styleTemplate: trimmedStyle,
                 createdAt: createdAtString
@@ -208,29 +251,36 @@ enum TrainingDatasetPackageWriter {
         outputDirectory: URL,
         clips: [[String: Any]],
         sourceFiles: [URL],
+        clipAudioMetadata: [AudioFileMetadata],
+        sourceAudioMetadata: [String: AudioFileMetadata],
         config: LocalFilesDatasetConfig,
         styleTemplate: String,
         createdAt: String
     ) -> [String: Any] {
-        [
+        let audioSummary = audioSummary(
+            from: clipAudioMetadata,
+            clipCount: clips.count,
+            fallbackClipLength: config.clipLength
+        )
+        return [
             "anvil_dataset_version": "1.0",
             "name": outputDirectory.lastPathComponent,
             "created_at": createdAt,
             "source": [
                 "kind": "local_files",
-                "files": sourceFiles.map { ["file_name": $0.lastPathComponent] },
+                "files": sourceFiles.map {
+                    sourceFileMetadata(
+                        for: $0,
+                        metadata: sourceAudioMetadata[normalizedFilePath($0)]
+                    )
+                },
             ],
             "caption_mode": styleTemplate.isEmpty ? "filename" : "style_template",
             "style_hint": styleTemplate,
             "clip_count": clips.count,
             "clip_length_seconds": seconds(config.clipLength),
             "estimated_total_seconds": seconds(Double(clips.count) * config.clipLength),
-            "audio": [
-                "format": "m4a",
-                "role": "full_mix",
-                "sample_rate": 0,
-                "channels": 0,
-            ],
+            "audio": audioSummary,
             "separation": [
                 "enabled": false,
                 "status": "not_run",
@@ -242,7 +292,10 @@ enum TrainingDatasetPackageWriter {
             ],
             "analysis": [
                 "enabled": false,
-                "status": "not_run",
+                "status": audioSummary["metadata_status"] as? String ?? "audio_properties_unavailable",
+                "audio_properties": audioSummary["metadata_status"] as? String ?? "audio_properties_unavailable",
+                "bpm_status": "not_run",
+                "key_status": "not_run",
             ],
             "training": [
                 "default_bundle": trainingBundleFileName,
@@ -313,7 +366,7 @@ enum TrainingDatasetPackageWriter {
                 "expected_gpu_class": "h100_or_h200",
             ],
             "notes": [
-                "This first package is local-file/full-mix only; stem separation, transcription, BPM, and key analysis have not been run.",
+                "This first package is local-file/full-mix only; readable audio header metadata is included, but stem separation, transcription, BPM, and key analysis have not been run.",
                 "Remote workers should copy the package root intact and resolve clip assets relative to the selected bundle file.",
             ],
         ]
@@ -323,11 +376,13 @@ enum TrainingDatasetPackageWriter {
         from clips: [TrainingImportedFile],
         sourceFiles: [URL],
         outputDirectory: URL,
-        config: LocalFilesDatasetConfig
+        config: LocalFilesDatasetConfig,
+        audioMetadata: [String: AudioFileMetadata]
     ) -> [[String: Any]] {
         clips.enumerated().map { index, clip in
             let relativePath = relativeClipPath(for: clip.url, from: outputDirectory)
             let caption = normalizedCaption(for: clip)
+            let metadata = audioMetadata[normalizedFilePath(clip.url)] ?? fallbackAudioMetadata(for: clip.url)
             return [
                 "id": String(format: "clip_%04d", index + 1),
                 "file": relativePath,
@@ -345,12 +400,127 @@ enum TrainingDatasetPackageWriter {
                 "analysis": [
                     "status": "not_run",
                 ],
-                "clip_length_seconds": seconds(config.clipLength),
+                "audio": metadata.jsonObject,
+                "clip_length_seconds": metadata.durationSeconds.map(seconds) ?? seconds(config.clipLength),
                 "source": sourceMetadata(for: clip.url, sourceFiles: sourceFiles),
                 "tags": [],
                 "negative_tags": [],
             ]
         }
+    }
+
+    private static func audioMetadataByPath(for urls: [URL]) -> [String: AudioFileMetadata] {
+        var metadata: [String: AudioFileMetadata] = [:]
+        for url in urls {
+            metadata[normalizedFilePath(url)] = audioMetadata(for: url)
+        }
+        return metadata
+    }
+
+    private static func audioMetadata(for url: URL) -> AudioFileMetadata {
+        let format = audioFormat(for: url)
+        let byteSize = fileByteSize(for: url)
+        guard FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) else {
+            return AudioFileMetadata(
+                format: format,
+                byteSize: byteSize,
+                durationSeconds: nil,
+                sampleRate: nil,
+                channels: nil,
+                frameCount: nil,
+                status: "missing_file",
+                errorDescription: nil
+            )
+        }
+
+        do {
+            let audioFile = try AVAudioFile(forReading: url)
+            let sampleRate = audioFile.fileFormat.sampleRate
+            let frameCount = Int64(audioFile.length)
+            return AudioFileMetadata(
+                format: format,
+                byteSize: byteSize,
+                durationSeconds: sampleRate > 0 ? Double(audioFile.length) / sampleRate : nil,
+                sampleRate: sampleRate > 0 ? Int(sampleRate.rounded()) : nil,
+                channels: Int(audioFile.fileFormat.channelCount),
+                frameCount: frameCount,
+                status: "ok",
+                errorDescription: nil
+            )
+        } catch {
+            return AudioFileMetadata(
+                format: format,
+                byteSize: byteSize,
+                durationSeconds: nil,
+                sampleRate: nil,
+                channels: nil,
+                frameCount: nil,
+                status: "unreadable_audio_header",
+                errorDescription: error.localizedDescription
+            )
+        }
+    }
+
+    private static func fallbackAudioMetadata(for url: URL) -> AudioFileMetadata {
+        AudioFileMetadata(
+            format: audioFormat(for: url),
+            byteSize: fileByteSize(for: url),
+            durationSeconds: nil,
+            sampleRate: nil,
+            channels: nil,
+            frameCount: nil,
+            status: "not_collected",
+            errorDescription: nil
+        )
+    }
+
+    private static func audioSummary(
+        from metadata: [AudioFileMetadata],
+        clipCount: Int,
+        fallbackClipLength: TimeInterval
+    ) -> [String: Any] {
+        let formats = sortedUnique(metadata.map(\.format).filter { !$0.isEmpty })
+        let sampleRates = sortedUnique(metadata.compactMap(\.sampleRate))
+        let channelCounts = sortedUnique(metadata.compactMap(\.channels))
+        let durations = metadata.compactMap(\.durationSeconds)
+        let byteSizes = metadata.compactMap(\.byteSize)
+        let collectedCount = metadata.filter { $0.status == "ok" }.count
+        let status: String
+        if metadata.isEmpty || collectedCount == 0 {
+            status = "audio_properties_unavailable"
+        } else if collectedCount == metadata.count {
+            status = "audio_properties_collected"
+        } else {
+            status = "partial_audio_properties"
+        }
+
+        var durationSummary: [String: Any] = [
+            "estimated_total_seconds": seconds(Double(clipCount) * fallbackClipLength),
+            "known_count": durations.count,
+        ]
+        if !durations.isEmpty {
+            let total = durations.reduce(0, +)
+            durationSummary["known_total_seconds"] = seconds(total)
+            durationSummary["min_seconds"] = seconds(durations.min() ?? 0)
+            durationSummary["max_seconds"] = seconds(durations.max() ?? 0)
+            durationSummary["average_seconds"] = seconds(total / Double(durations.count))
+        }
+
+        var summary: [String: Any] = [
+            "format": formats.count == 1 ? formats[0] : formats.first ?? "m4a",
+            "role": "full_mix",
+            "sample_rate": sampleRates.count == 1 ? sampleRates[0] : 0,
+            "channels": channelCounts.count == 1 ? channelCounts[0] : 0,
+            "formats": formats,
+            "sample_rates": sampleRates,
+            "channel_counts": channelCounts,
+            "duration_seconds": durationSummary,
+            "metadata_status": status,
+        ]
+        if !byteSizes.isEmpty {
+            summary["total_byte_size"] = byteSizes.reduce(Int64(0), +)
+        }
+        return summary
     }
 
     private static func normalizedCaption(for clip: TrainingImportedFile) -> String {
@@ -369,6 +539,17 @@ enum TrainingDatasetPackageWriter {
             metadata["file_name"] = source
         }
         return metadata
+    }
+
+    private static func sourceFileMetadata(for url: URL, metadata: AudioFileMetadata?) -> [String: Any] {
+        var object: [String: Any] = [
+            "file_name": url.lastPathComponent,
+        ]
+        let audio = metadata ?? fallbackAudioMetadata(for: url)
+        for (key, value) in audio.jsonObject {
+            object[key] = value
+        }
+        return object
     }
 
     private static func sourceFileName(for clipURL: URL, sourceFiles: [URL]) -> String? {
@@ -402,6 +583,27 @@ enum TrainingDatasetPackageWriter {
             path.append("/")
         }
         return path
+    }
+
+    private static func normalizedFilePath(_ url: URL) -> String {
+        url.standardizedFileURL.path
+    }
+
+    private static func audioFormat(for url: URL) -> String {
+        let format = url.pathExtension.lowercased()
+        return format.isEmpty ? "unknown" : format
+    }
+
+    private static func fileByteSize(for url: URL) -> Int64? {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path(percentEncoded: false)),
+              let size = attributes[.size] as? NSNumber else {
+            return nil
+        }
+        return size.int64Value
+    }
+
+    private static func sortedUnique<T: Comparable & Hashable>(_ values: [T]) -> [T] {
+        Array(Set(values)).sorted()
     }
 
     private static func seconds(_ value: TimeInterval) -> Double {
