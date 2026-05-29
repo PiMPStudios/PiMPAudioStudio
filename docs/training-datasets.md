@@ -12,7 +12,7 @@ Use **LoRA Adapters > From Local Files...** to slice local audio into a package 
 
 The package contains:
 
-- `clips/` - generated training clips.
+- `clips/` - generated training clips. WAV/PCM is the default and recommended format; M4A remains available as a compact option for quick tests.
 - `captions.json` - clip captions for audio-dir style tooling.
 - `dataset_config.json` - generic audio-directory training config.
 - `dataset_manifest.json` - full package metadata, source file list, clip list, audio header metadata, and package status.

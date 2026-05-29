@@ -193,6 +193,21 @@ struct LocalFilesImportSheet: View {
                         .disabled(builder.phase.isRunning)
                         .frame(maxWidth: 130)
                 }
+                LabeledContent("Clip Format") {
+                    Picker("Clip Format", selection: $config.clipFormat) {
+                        ForEach(LocalDatasetClipFormat.allCases) { format in
+                            Text(format.displayName).tag(format)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .disabled(builder.phase.isRunning)
+                    .frame(maxWidth: 160)
+                }
+                Text(config.clipFormat.helpText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding(10)
             .background(.quaternary.opacity(0.3))

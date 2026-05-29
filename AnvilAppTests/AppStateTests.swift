@@ -358,6 +358,42 @@ private func silentWAVData(sampleRate: Int = 22_050, channels: Int = 1, frameCou
     #expect(abs(duration - 0.1) < 0.001)
 }
 
+@Test @MainActor func localFilesDatasetBuilderWritesWAVClipsByDefault() async throws {
+    let tempRoot = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+    let sourceURL = tempRoot.appendingPathComponent("source.wav")
+    try silentWAVData(sampleRate: 22_050, channels: 1, frameCount: 6_615).write(to: sourceURL)
+
+    let result = try await LocalFilesDatasetBuilder.run(
+        sourceFiles: [sourceURL],
+        config: LocalFilesDatasetConfig(clipLength: 0.1, clipsPerTrack: 2, maxTotalClips: 2),
+        outputBase: tempRoot,
+        styleTemplate: "lossless training test",
+        onPhase: { _ in }
+    )
+
+    #expect(result.clipCount == 2)
+    #expect(result.clips.allSatisfy { $0.url.pathExtension == "wav" })
+
+    let validation = TrainingDatasetPackageWriter.validatePackage(at: result.outputDirectory)
+    #expect(validation.isValid)
+    #expect(validation.importableClipCount == 2)
+
+    let bundleURL = result.outputDirectory.appendingPathComponent("training_bundle_full_mix.json")
+    let imported = try TrainingDatasetImporter.importFiles(from: bundleURL)
+    #expect(imported.count == 2)
+    #expect(imported.allSatisfy { $0.url.pathExtension == "wav" })
+
+    let manifestData = try Data(contentsOf: result.outputDirectory.appendingPathComponent("dataset_manifest.json"))
+    let manifestJSON = try JSONSerialization.jsonObject(with: manifestData) as? [String: Any]
+    let audioJSON = manifestJSON?["audio"] as? [String: Any]
+    #expect(audioJSON?["format"] as? String == "wav")
+    #expect(audioJSON?["metadata_status"] as? String == "audio_properties_collected")
+}
+
 @Test func localDatasetPackageValidationReportsMissingClipFiles() throws {
     let datasetDir = FileManager.default.temporaryDirectory
         .appendingPathComponent(UUID().uuidString, isDirectory: true)

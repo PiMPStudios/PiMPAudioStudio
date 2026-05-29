@@ -1,9 +1,34 @@
+import AVFoundation
 import Foundation
+
+enum LocalDatasetClipFormat: String, CaseIterable, Hashable, Identifiable {
+    case wav
+    case m4a
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .wav: return "WAV"
+        case .m4a: return "M4A"
+        }
+    }
+
+    var helpText: String {
+        switch self {
+        case .wav:
+            return "Lossless PCM clips. Recommended for training quality."
+        case .m4a:
+            return "Compact AAC clips. Useful for quick tests or smaller packages."
+        }
+    }
+}
 
 struct LocalFilesDatasetConfig {
     var clipLength: TimeInterval = 35
     var clipsPerTrack: Int = 8
     var maxTotalClips: Int = 40
+    var clipFormat: LocalDatasetClipFormat = .wav
 }
 
 struct LocalFilesDatasetResult {
@@ -74,6 +99,7 @@ enum LocalFilesImportPhase: Equatable {
 enum LocalFilesDatasetError: LocalizedError {
     case noFilesSelected
     case noClipsProduced
+    case audioBufferCreationFailed
 
     var errorDescription: String? {
         switch self {
@@ -81,6 +107,8 @@ enum LocalFilesDatasetError: LocalizedError {
             return "Select at least one local audio file."
         case .noClipsProduced:
             return "No clips were produced from the selected files."
+        case .audioBufferCreationFailed:
+            return "Could not allocate an audio buffer for the selected file."
         }
     }
 }
@@ -129,7 +157,7 @@ final class LocalFilesDatasetBuilder: ObservableObject {
         task = nil
     }
 
-    static func run(
+    nonisolated static func run(
         sourceFiles: [URL],
         sourceDirectories: [URL] = [],
         config: LocalFilesDatasetConfig,
@@ -170,7 +198,7 @@ final class LocalFilesDatasetBuilder: ObservableObject {
 
             do {
                 let remaining = config.maxTotalClips - allClips.count
-                let chunks = try await YouTubeDatasetBuilder.chunkAudio(
+                let chunks = try await chunkAudio(
                     from: sourceURL,
                     title: title,
                     videoIndex: idx + 1,
@@ -178,7 +206,7 @@ final class LocalFilesDatasetBuilder: ObservableObject {
                     maxClips: min(config.clipsPerTrack, remaining),
                     styleTemplate: trimmedStyle,
                     outputDirectory: clipsDir,
-                    filenamePrefix: "f"
+                    clipFormat: config.clipFormat
                 )
                 allClips.append(contentsOf: chunks.map {
                     TrainingImportedFile(url: $0.url, description: $0.caption)
@@ -202,13 +230,147 @@ final class LocalFilesDatasetBuilder: ObservableObject {
         return LocalFilesDatasetResult(outputDirectory: outputDir, clips: allClips)
     }
 
-    private static func datasetFolderTag(for url: URL?) -> String {
+    nonisolated private static func chunkAudio(
+        from sourceURL: URL,
+        title: String,
+        videoIndex: Int,
+        clipLength: TimeInterval,
+        maxClips: Int,
+        styleTemplate: String,
+        outputDirectory: URL,
+        clipFormat: LocalDatasetClipFormat
+    ) async throws -> [(url: URL, caption: String)] {
+        switch clipFormat {
+        case .wav:
+            return try chunkAudioToWAV(
+                from: sourceURL,
+                title: title,
+                videoIndex: videoIndex,
+                clipLength: clipLength,
+                maxClips: maxClips,
+                styleTemplate: styleTemplate,
+                outputDirectory: outputDirectory
+            )
+        case .m4a:
+            return try await YouTubeDatasetBuilder.chunkAudio(
+                from: sourceURL,
+                title: title,
+                videoIndex: videoIndex,
+                clipLength: clipLength,
+                maxClips: maxClips,
+                styleTemplate: styleTemplate,
+                outputDirectory: outputDirectory,
+                filenamePrefix: "f"
+            )
+        }
+    }
+
+    nonisolated private static func chunkAudioToWAV(
+        from sourceURL: URL,
+        title: String,
+        videoIndex: Int,
+        clipLength: TimeInterval,
+        maxClips: Int,
+        styleTemplate: String,
+        outputDirectory: URL
+    ) throws -> [(url: URL, caption: String)] {
+        let sourceFile = try AVAudioFile(forReading: sourceURL)
+        let format = sourceFile.processingFormat
+        let sampleRate = format.sampleRate
+        let totalFrames = sourceFile.length
+        guard sampleRate > 0, totalFrames > 0 else { return [] }
+
+        let totalSeconds = Double(totalFrames) / sampleRate
+        let framesPerClip = max(1, AVAudioFramePosition((clipLength * sampleRate).rounded(.down)))
+        let clipCount = totalSeconds <= clipLength
+            ? 1
+            : min(maxClips, Int(totalFrames / framesPerClip))
+        guard clipCount > 0 else { return [] }
+
+        var clips: [(url: URL, caption: String)] = []
+        for i in 0..<clipCount {
+            try Task.checkCancellation()
+            let startFrame = AVAudioFramePosition(i) * framesPerClip
+            let frameCount = min(framesPerClip, totalFrames - startFrame)
+            guard frameCount > 0 else { continue }
+
+            let dest = outputDirectory.appendingPathComponent(
+                clipFilename(prefix: "f", sourceIndex: videoIndex, clipIndex: i + 1, extension: "wav")
+            )
+            try writeWAVSegment(
+                from: sourceFile,
+                format: format,
+                startFrame: startFrame,
+                frameCount: frameCount,
+                to: dest
+            )
+
+            let caption = styleTemplate.isEmpty
+                ? (clipCount > 1 ? "\(title) (clip \(i + 1))" : title)
+                : styleTemplate
+            clips.append((url: dest, caption: caption))
+        }
+        return clips
+    }
+
+    nonisolated private static func writeWAVSegment(
+        from sourceFile: AVAudioFile,
+        format: AVAudioFormat,
+        startFrame: AVAudioFramePosition,
+        frameCount: AVAudioFramePosition,
+        to dest: URL
+    ) throws {
+        if FileManager.default.fileExists(atPath: dest.path(percentEncoded: false)) {
+            try FileManager.default.removeItem(at: dest)
+        }
+
+        let outputFile = try AVAudioFile(forWriting: dest, settings: format.settings)
+        sourceFile.framePosition = startFrame
+
+        var framesRemaining = frameCount
+        let maxBufferFrames: AVAudioFrameCount = 262_144
+        while framesRemaining > 0 {
+            try Task.checkCancellation()
+            let framesToRead = AVAudioFrameCount(min(Int64(maxBufferFrames), framesRemaining))
+            guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: framesToRead) else {
+                throw LocalFilesDatasetError.audioBufferCreationFailed
+            }
+
+            try sourceFile.read(into: buffer, frameCount: framesToRead)
+            guard buffer.frameLength > 0 else { break }
+            try outputFile.write(from: buffer)
+            framesRemaining -= AVAudioFramePosition(buffer.frameLength)
+        }
+    }
+
+    nonisolated private static func clipFilename(
+        prefix: String,
+        sourceIndex: Int,
+        clipIndex: Int,
+        extension fileExtension: String
+    ) -> String {
+        let source = String(format: "%03d", sourceIndex)
+        let clip = String(format: "%03d", clipIndex)
+        return "\(prefix)\(source)_clip_\(clip).\(fileExtension)"
+    }
+
+    nonisolated private static func datasetFolderTag(for url: URL?) -> String {
         let name = url?.deletingPathExtension().lastPathComponent ?? "local-dataset"
-        let sanitized = YouTubeDatasetBuilder.sanitizeName(name)
+        let sanitized = sanitizeDatasetName(name)
         return sanitized.isEmpty ? "local-dataset" : sanitized
     }
 
-    private static func timestampTag() -> String {
+    nonisolated private static func sanitizeDatasetName(_ input: String) -> String {
+        let clean = input
+            .replacingOccurrences(of: "[^a-zA-Z0-9 \\-]", with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespaces)
+            .replacingOccurrences(of: " +", with: "-", options: .regularExpression)
+        return String(clean.prefix(40))
+            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+            .lowercased()
+    }
+
+    nonisolated private static func timestampTag() -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd-HHmmss"
