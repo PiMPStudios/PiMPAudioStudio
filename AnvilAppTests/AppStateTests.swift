@@ -141,6 +141,93 @@ private func silentWAVData(sampleRate: Int = 22_050, channels: Int = 1, frameCou
     #expect(files[0].lyrics.isEmpty)
 }
 
+@Test func trainingDatasetImporterUsesAdjacentCaptionsForDatasetConfig() throws {
+    let datasetDir = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let clipsDir = datasetDir.appendingPathComponent("clips", isDirectory: true)
+    try FileManager.default.createDirectory(at: clipsDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: datasetDir) }
+
+    let clipURL = clipsDir.appendingPathComponent("clip_0001.wav")
+    try Data("stub".utf8).write(to: clipURL)
+
+    let captionsJSON = """
+    [
+      {
+        "file": "clips/clip_0001.wav",
+        "caption": "smoky blues full mix",
+        "transcription": { "text": "ignore full mix lyric" }
+      }
+    ]
+    """
+    try Data(captionsJSON.utf8).write(to: datasetDir.appendingPathComponent("captions.json"))
+
+    let configJSON = """
+    {
+      "dataset_type": "audio_dir",
+      "datasets": [
+        { "path": "clips" }
+      ]
+    }
+    """
+    let configURL = datasetDir.appendingPathComponent("dataset_config.json")
+    try Data(configJSON.utf8).write(to: configURL)
+
+    let files = try TrainingDatasetImporter.importFiles(from: configURL)
+
+    #expect(files.count == 1)
+    #expect(files[0].url.path == clipURL.path)
+    #expect(files[0].description == "smoky blues full mix")
+    #expect(files[0].lyrics.isEmpty)
+}
+
+@Test func trainingDatasetImporterUsesDatasetConfigCaptionFileForVocalLyrics() throws {
+    let datasetDir = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let stemDir = datasetDir
+        .appendingPathComponent("stems", isDirectory: true)
+        .appendingPathComponent("clip_0001", isDirectory: true)
+    let metadataDir = datasetDir.appendingPathComponent("metadata", isDirectory: true)
+    try FileManager.default.createDirectory(at: stemDir, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: metadataDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: datasetDir) }
+
+    let vocalURL = stemDir.appendingPathComponent("vocals.wav")
+    try Data("stub".utf8).write(to: vocalURL)
+
+    let captionsJSON = """
+    [
+      {
+        "file": "stems/clip_0001/vocals.wav",
+        "prompt": "dark blues vocal stem",
+        "transcription": { "text": "I kept singing in the dark" }
+      }
+    ]
+    """
+    try Data(captionsJSON.utf8).write(to: metadataDir.appendingPathComponent("captions.json"))
+
+    let configJSON = """
+    {
+      "dataset_type": "audio_dir",
+      "datasets": [
+        {
+          "path": "stems",
+          "caption_file": "metadata/captions.json"
+        }
+      ]
+    }
+    """
+    let configURL = datasetDir.appendingPathComponent("dataset_config.json")
+    try Data(configJSON.utf8).write(to: configURL)
+
+    let files = try TrainingDatasetImporter.importFiles(from: configURL)
+
+    #expect(files.count == 1)
+    #expect(files[0].url.path == vocalURL.path)
+    #expect(files[0].description == "dark blues vocal stem")
+    #expect(files[0].lyrics == "I kept singing in the dark")
+}
+
 @Test func trainingManifestDecodesImportedFilesWithoutLyrics() throws {
     let json = """
     {

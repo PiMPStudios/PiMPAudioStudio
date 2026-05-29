@@ -21,6 +21,7 @@ struct TrainingSheet: View {
     @State private var showingFileImporter: Bool = false
     @State private var showingStopConfirmation: Bool = false
     @State private var importErrorMessage: String?
+    @State private var importStatusMessage: String?
 
     init(
         selectedEntries: [HistoryEntry],
@@ -203,6 +204,11 @@ struct TrainingSheet: View {
                     .buttonStyle(.borderless)
                     .font(.caption)
                     .disabled(isCheckpointResume)
+                }
+                if let importStatusMessage {
+                    Label(importStatusMessage, systemImage: "checkmark.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
                 if let importErrorMessage {
                     Label(importErrorMessage, systemImage: "exclamationmark.triangle")
@@ -509,19 +515,75 @@ struct TrainingSheet: View {
 
     private func importSelectedFiles(_ urls: [URL]) {
         importErrorMessage = nil
+        importStatusMessage = nil
+        var importedJSONCount = 0
+        var importedAudioCount = 0
+        var lyricCount = 0
+        var duplicateCount = 0
 
         for url in urls {
             if url.pathExtension.lowercased() == "json" {
                 do {
                     let imported = try TrainingDatasetImporter.importFiles(from: url)
-                    importedFiles.append(contentsOf: imported)
+                    let result = appendImportedFiles(imported)
+                    importedJSONCount += result.added
+                    duplicateCount += result.duplicates
+                    lyricCount += imported.filter { !$0.lyrics.isEmpty }.count
                 } catch {
                     importErrorMessage = error.localizedDescription
                 }
             } else {
-                importedFiles.append(TrainingImportedFile(url: url, description: ""))
+                let result = appendImportedFiles([TrainingImportedFile(url: url, description: "")])
+                importedAudioCount += result.added
+                duplicateCount += result.duplicates
             }
         }
+
+        importStatusMessage = importSummary(
+            jsonCount: importedJSONCount,
+            audioCount: importedAudioCount,
+            lyricCount: lyricCount,
+            duplicateCount: duplicateCount
+        )
+    }
+
+    private func appendImportedFiles(_ files: [TrainingImportedFile]) -> (added: Int, duplicates: Int) {
+        var seen = Set(importedFiles.map { $0.url.standardizedFileURL.path })
+        var added = 0
+        var duplicates = 0
+
+        for file in files {
+            if seen.insert(file.url.standardizedFileURL.path).inserted {
+                importedFiles.append(file)
+                added += 1
+            } else {
+                duplicates += 1
+            }
+        }
+
+        return (added, duplicates)
+    }
+
+    private func importSummary(
+        jsonCount: Int,
+        audioCount: Int,
+        lyricCount: Int,
+        duplicateCount: Int
+    ) -> String? {
+        guard jsonCount > 0 || audioCount > 0 || duplicateCount > 0 else { return nil }
+
+        var parts: [String] = []
+        if jsonCount > 0 {
+            let lyricSuffix = lyricCount > 0 ? ", \(lyricCount) with lyrics" : ""
+            parts.append("Imported \(jsonCount) from JSON\(lyricSuffix)")
+        }
+        if audioCount > 0 {
+            parts.append("Added \(audioCount) audio file\(audioCount == 1 ? "" : "s")")
+        }
+        if duplicateCount > 0 {
+            parts.append("Skipped \(duplicateCount) duplicate\(duplicateCount == 1 ? "" : "s")")
+        }
+        return parts.joined(separator: ". ")
     }
 }
 

@@ -58,6 +58,11 @@ enum TrainingDatasetImportError: LocalizedError {
 }
 
 enum TrainingDatasetImporter {
+    private struct CaptionEntry {
+        let description: String?
+        let lyrics: String?
+    }
+
     static func importFiles(from jsonURL: URL) throws -> [TrainingImportedFile] {
         let didStartAccessing = jsonURL.startAccessingSecurityScopedResource()
         defer {
@@ -73,7 +78,11 @@ enum TrainingDatasetImporter {
 
         let imported: [TrainingImportedFile]
         if let clips = object as? [[String: Any]] {
-            imported = files(from: clips, include: [], baseDirectory: jsonBaseDirectory)
+            imported = files(
+                from: clips,
+                include: includeList(from: [:], fileName: fileName),
+                baseDirectory: jsonBaseDirectory
+            )
         } else if let dict = object as? [String: Any] {
             imported = try files(from: dict, baseDirectory: jsonBaseDirectory, fileName: fileName)
         } else {
@@ -92,9 +101,10 @@ enum TrainingDatasetImporter {
         fileName: String
     ) throws -> [TrainingImportedFile] {
         if let clips = dict["clips"] as? [[String: Any]] {
-            let include = (dict["include"] as? [String]) ?? []
+            let include = includeList(from: dict, fileName: fileName)
             let datasetBase = datasetBaseDirectory(from: dict, fallback: baseDirectory)
-            return files(from: clips, include: include, baseDirectory: datasetBase)
+            let enrichedClips = clipsByApplyingTopLevelSeparation(clips, from: dict)
+            return files(from: enrichedClips, include: include, baseDirectory: datasetBase)
         }
 
         if let datasets = dict["datasets"] as? [[String: Any]] {
@@ -132,12 +142,21 @@ enum TrainingDatasetImporter {
         datasets: [[String: Any]],
         baseDirectory: URL
     ) -> [TrainingImportedFile] {
-        let supportedExtensions = Set(["wav", "m4a", "mp3", "aiff", "aif", "aac", "flac", "ogg", "opus"])
+        let supportedExtensions = Set(["wav", "m4a", "mp3", "aiff", "aif", "aac", "flac", "ogg", "opus", "webm"])
+        let defaultCaptionLookup = captionLookup(
+            at: baseDirectory.appendingPathComponent("captions.json"),
+            baseDirectory: baseDirectory
+        )
         var imported: [TrainingImportedFile] = []
 
         for dataset in datasets {
             guard let path = dataset["path"] as? String else { continue }
             let directory = resolve(path, relativeTo: baseDirectory)
+            let captions = captionsForDatasetConfig(
+                dataset,
+                baseDirectory: baseDirectory,
+                defaultLookup: defaultCaptionLookup
+            )
             guard let enumerator = FileManager.default.enumerator(
                 at: directory,
                 includingPropertiesForKeys: nil,
@@ -146,14 +165,172 @@ enum TrainingDatasetImporter {
 
             for case let fileURL as URL in enumerator {
                 guard supportedExtensions.contains(fileURL.pathExtension.lowercased()) else { continue }
+                let captionEntry = captionEntry(
+                    for: fileURL,
+                    datasetDirectory: directory,
+                    baseDirectory: baseDirectory,
+                    lookup: captions
+                )
                 imported.append(TrainingImportedFile(
                     url: fileURL,
-                    description: fileURL.deletingPathExtension().lastPathComponent
+                    description: captionEntry?.description ?? fileURL.deletingPathExtension().lastPathComponent,
+                    lyrics: shouldUseLyrics(for: fileURL.path(percentEncoded: false), include: [])
+                        ? captionEntry?.lyrics ?? ""
+                        : ""
                 ))
             }
         }
 
         return imported.sorted { $0.url.path < $1.url.path }
+    }
+
+    private static func captionsForDatasetConfig(
+        _ dataset: [String: Any],
+        baseDirectory: URL,
+        defaultLookup: [String: CaptionEntry]
+    ) -> [String: CaptionEntry] {
+        guard let captionPath = dataset["caption_file"] as? String, !captionPath.isEmpty else {
+            return defaultLookup
+        }
+        return captionLookup(at: resolve(captionPath, relativeTo: baseDirectory), baseDirectory: baseDirectory)
+    }
+
+    private static func captionEntry(
+        for fileURL: URL,
+        datasetDirectory: URL,
+        baseDirectory: URL,
+        lookup: [String: CaptionEntry]
+    ) -> CaptionEntry? {
+        for key in captionLookupKeys(for: fileURL, datasetDirectory: datasetDirectory, baseDirectory: baseDirectory) {
+            if let entry = lookup[key] {
+                return entry
+            }
+        }
+        return nil
+    }
+
+    private static func captionLookup(
+        at url: URL,
+        baseDirectory: URL
+    ) -> [String: CaptionEntry] {
+        guard FileManager.default.fileExists(atPath: url.path(percentEncoded: false)),
+              let data = try? Data(contentsOf: url),
+              let object = try? JSONSerialization.jsonObject(with: data) else {
+            return [:]
+        }
+
+        if let clips = object as? [[String: Any]] {
+            return captionLookup(from: clips, baseDirectory: baseDirectory)
+        }
+
+        if let dict = object as? [String: Any] {
+            if let clips = dict["clips"] as? [[String: Any]] {
+                return captionLookup(from: clips, baseDirectory: baseDirectory)
+            }
+            return captionLookup(from: dict, baseDirectory: baseDirectory)
+        }
+
+        return [:]
+    }
+
+    private static func captionLookup(
+        from clips: [[String: Any]],
+        baseDirectory: URL
+    ) -> [String: CaptionEntry] {
+        var lookup: [String: CaptionEntry] = [:]
+        for clip in clips {
+            guard let path = firstString(clip, keys: ["file", "path", "audio"]) else { continue }
+            addCaptionEntry(
+                CaptionEntry(description: firstString(clip, keys: ["prompt", "caption"]), lyrics: transcript(from: clip)),
+                path: path,
+                baseDirectory: baseDirectory,
+                to: &lookup
+            )
+        }
+        return lookup
+    }
+
+    private static func captionLookup(
+        from dict: [String: Any],
+        baseDirectory: URL
+    ) -> [String: CaptionEntry] {
+        var lookup: [String: CaptionEntry] = [:]
+        for (path, value) in dict {
+            if let caption = value as? String {
+                addCaptionEntry(
+                    CaptionEntry(description: caption, lyrics: nil),
+                    path: path,
+                    baseDirectory: baseDirectory,
+                    to: &lookup
+                )
+            } else if let clip = value as? [String: Any] {
+                addCaptionEntry(
+                    CaptionEntry(description: firstString(clip, keys: ["prompt", "caption"]), lyrics: transcript(from: clip)),
+                    path: path,
+                    baseDirectory: baseDirectory,
+                    to: &lookup
+                )
+            }
+        }
+        return lookup
+    }
+
+    private static func addCaptionEntry(
+        _ entry: CaptionEntry,
+        path: String,
+        baseDirectory: URL,
+        to lookup: inout [String: CaptionEntry]
+    ) {
+        for key in captionLookupKeys(for: path, baseDirectory: baseDirectory) {
+            lookup[key] = entry
+        }
+    }
+
+    private static func includeList(from dict: [String: Any], fileName: String) -> [String] {
+        if let include = dict["include"] as? [String], !include.isEmpty {
+            return include
+        }
+        let lowerName = fileName.lowercased()
+        if lowerName.contains("vocal") || lowerName.contains("voice") {
+            return ["vocals"]
+        }
+        if lowerName.contains("instrumental") || lowerName.contains("backing") {
+            return ["instrumental"]
+        }
+        if lowerName.contains("full_mix") || lowerName.contains("full-mix") {
+            return ["full_mix"]
+        }
+        return []
+    }
+
+    private static func clipsByApplyingTopLevelSeparation(
+        _ clips: [[String: Any]],
+        from dict: [String: Any]
+    ) -> [[String: Any]] {
+        guard let separation = dict["separation"] as? [String: Any],
+              let separationClips = separation["clips"] as? [[String: Any]] else {
+            return clips
+        }
+
+        var separationByFile: [String: [String: Any]] = [:]
+        for clip in separationClips {
+            guard let file = firstString(clip, keys: ["file"]) else { continue }
+            separationByFile[file] = clip
+        }
+        return clips.map { clip in
+            guard clip["separation"] == nil,
+                  let file = firstString(clip, keys: ["file"]),
+                  let separationClip = separationByFile[file],
+                  let stems = separationClip["stems"] as? [String: Any] else {
+                return clip
+            }
+            var enriched = clip
+            enriched["separation"] = [
+                "stems": stems,
+                "separation_file": separationClip["separation_file"] as? String ?? "",
+            ]
+            return enriched
+        }
     }
 
     private static func datasetBaseDirectory(from dict: [String: Any], fallback: URL) -> URL {
@@ -200,11 +377,13 @@ enum TrainingDatasetImporter {
                 keys.append(contentsOf: ["vocals", "voice", "vocal"])
             case "instrumental", "instrumentals", "music", "backing":
                 keys.append(contentsOf: ["instrumental", "instrumentals", "music", "backing"])
+            case "full_mix", "fullmix", "full mix", "mix":
+                keys.append(contentsOf: ["full_mix", "fullmix", "mix"])
             default:
                 keys.append(item)
             }
         }
-        keys.append(contentsOf: ["file", "audio"])
+        keys.append(contentsOf: ["full_mix", "file", "audio"])
         var seen = Set<String>()
         return keys.filter { seen.insert($0).inserted }
     }
@@ -254,5 +433,47 @@ enum TrainingDatasetImporter {
             return URL(fileURLWithPath: expanded).standardizedFileURL
         }
         return baseDirectory.appendingPathComponent(expanded).standardizedFileURL
+    }
+
+    private static func captionLookupKeys(
+        for path: String,
+        baseDirectory: URL
+    ) -> [String] {
+        let cleanedPath = path.hasPrefix("./") ? String(path.dropFirst(2)) : path
+        let resolved = resolve(cleanedPath, relativeTo: baseDirectory)
+        return uniqueStrings([
+            path,
+            cleanedPath,
+            resolved.path(percentEncoded: false),
+            URL(fileURLWithPath: cleanedPath).lastPathComponent,
+        ])
+    }
+
+    private static func captionLookupKeys(
+        for fileURL: URL,
+        datasetDirectory: URL,
+        baseDirectory: URL
+    ) -> [String] {
+        uniqueStrings([
+            fileURL.standardizedFileURL.path,
+            relativePath(for: fileURL, from: baseDirectory),
+            relativePath(for: fileURL, from: datasetDirectory),
+            fileURL.lastPathComponent,
+        ].compactMap { $0 })
+    }
+
+    private static func relativePath(for url: URL, from baseDirectory: URL) -> String? {
+        var basePath = baseDirectory.standardizedFileURL.path
+        if !basePath.hasSuffix("/") {
+            basePath.append("/")
+        }
+        let filePath = url.standardizedFileURL.path
+        guard filePath.hasPrefix(basePath) else { return nil }
+        return String(filePath.dropFirst(basePath.count))
+    }
+
+    private static func uniqueStrings(_ values: [String]) -> [String] {
+        var seen = Set<String>()
+        return values.filter { !$0.isEmpty && seen.insert($0).inserted }
     }
 }
