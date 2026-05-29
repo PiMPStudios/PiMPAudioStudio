@@ -124,6 +124,8 @@ Spikes/
   MCPServerSDKSpike/      Isolated Swift MCP SDK server transport spike
 docs/
   training-datasets.md      Local dataset package build/import workflow
+  dataset-annotation-roadmap.md
+                             Future annotation backends and dataset editor ideas
   mcp-local.md              Local MCP endpoint usage and curl smoke examples
   mcp-standards-roadmap.md  Standards-first MCP + Swift 6 migration direction
   superpowers/specs/      Design specifications per phase
