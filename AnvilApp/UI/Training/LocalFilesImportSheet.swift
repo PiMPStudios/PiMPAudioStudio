@@ -15,7 +15,6 @@ struct LocalFilesImportSheet: View {
     @State private var config = LocalFilesDatasetConfig()
     @State private var editableClips: [TrainingImportedFile] = []
     @State private var showingFileImporter = false
-    @State private var showingFolderImporter = false
     @State private var sourceNotice: String?
     @State private var packageSummary: String?
     @State private var isExportingPackage = false
@@ -53,15 +52,8 @@ struct LocalFilesImportSheet: View {
         ) { result in
             if case .success(let urls) = result {
                 appendAudioFiles(urls)
-            }
-        }
-        .fileImporter(
-            isPresented: $showingFolderImporter,
-            allowedContentTypes: [.folder],
-            allowsMultipleSelection: true
-        ) { result in
-            if case .success(let urls) = result {
-                appendFolders(urls)
+            } else if case .failure(let error) = result {
+                sourceNotice = "Could not add audio files: \(error.localizedDescription)"
             }
         }
         .onChange(of: builder.phase) { _, newPhase in
@@ -100,7 +92,7 @@ struct LocalFilesImportSheet: View {
                     .font(.subheadline)
                     .fontWeight(.semibold)
                 Spacer()
-                Button("Add Folder...") { showingFolderImporter = true }
+                Button("Add Folder...") { openFolderPanel() }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                     .disabled(builder.phase.isRunning)
@@ -447,6 +439,19 @@ struct LocalFilesImportSheet: View {
         } catch {
             sourceNotice = error.localizedDescription
         }
+    }
+
+    private func openFolderPanel() {
+        let panel = NSOpenPanel()
+        panel.title = "Add Audio Folder"
+        panel.prompt = "Open"
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = true
+        panel.canCreateDirectories = false
+
+        guard panel.runModal() == .OK else { return }
+        appendFolders(panel.urls)
     }
 
     private func appendAudioFiles(_ urls: [URL]) {
