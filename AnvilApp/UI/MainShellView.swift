@@ -414,10 +414,15 @@ private struct BuildDatasetsView: View {
 
 private struct BuildTrainingView: View {
     @EnvironmentObject private var trainingService: TrainingService
+    @EnvironmentObject private var outputManager: OutputDirectoryManager
 
     @State private var selectedTrainingMode: BuildTrainingMode = .lora
     @State private var trainingPresentation: TrainingPresentation?
     @State private var showingStopConfirmation = false
+    @State private var remotePackages: [DatasetPackageSummary] = []
+    @State private var selectedRemotePackageID: String?
+    @State private var remoteNotice: String?
+    @State private var isExportingRemotePackage = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -443,6 +448,14 @@ private struct BuildTrainingView: View {
                 Text("Training has made progress. Save a checkpoint so you can resume this adapter later.")
             } else {
                 Text("No training step has completed yet. Progress will be lost.")
+            }
+        }
+        .onChange(of: outputManager.directory) { _, _ in
+            refreshRemotePackages()
+        }
+        .onChange(of: selectedTrainingMode) { _, mode in
+            if mode == .remote {
+                refreshRemotePackages()
             }
         }
     }
@@ -488,7 +501,7 @@ private struct BuildTrainingView: View {
         case .lokr:
             statusMessage("LoKr Training", message: "Not available yet.", systemImage: "slider.horizontal.3", color: .secondary)
         case .remote:
-            statusMessage("Remote Training", message: "Not available yet.", systemImage: "cloud", color: .secondary)
+            remoteWorkspace
         }
     }
 
@@ -580,6 +593,165 @@ private struct BuildTrainingView: View {
             return false
         default:
             return true
+        }
+    }
+
+    private var selectedRemotePackage: DatasetPackageSummary? {
+        guard let selectedRemotePackageID else { return nil }
+        return remotePackages.first { $0.id == selectedRemotePackageID }
+    }
+
+    private var remoteWorkspace: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 10) {
+                Text("\(remotePackages.count) package\(remotePackages.count == 1 ? "" : "s")")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                Button {
+                    refreshRemotePackages()
+                } label: {
+                    Label("Refresh", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+
+                Button {
+                    openRemotePackageFolder()
+                } label: {
+                    Label("Finder", systemImage: "folder")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(selectedRemotePackage == nil)
+
+                Button {
+                    exportRemotePackage()
+                } label: {
+                    Label("Export Zip", systemImage: "square.and.arrow.up")
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .disabled(selectedRemotePackage == nil || isExportingRemotePackage)
+            }
+            .padding()
+
+            Divider()
+
+            if remotePackages.isEmpty {
+                statusMessage(
+                    "No Dataset Packages",
+                    message: "Build or open a dataset package before exporting a remote GPU training archive.",
+                    systemImage: "tray",
+                    color: .secondary
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                List(selection: $selectedRemotePackageID) {
+                    ForEach(remotePackages) { package in
+                        remotePackageRow(package)
+                            .tag(package.id)
+                    }
+                }
+                .listStyle(.inset)
+            }
+
+            if let remoteNotice {
+                Divider()
+                Text(remoteNotice)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .padding()
+            }
+        }
+        .onAppear(perform: refreshRemotePackages)
+    }
+
+    private func remotePackageRow(_ package: DatasetPackageSummary) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: package.isValid ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                .foregroundStyle(package.isValid ? .green : .orange)
+                .frame(width: 18)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(package.name)
+                    .font(.callout)
+                    .fontWeight(.medium)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                HStack(spacing: 8) {
+                    Text("\(package.clipCount) clips")
+                    Text(package.enrichmentStatus)
+                    if package.transcriptionStatus != "not_run" {
+                        Text("lyrics \(package.transcriptionStatus)")
+                    }
+                    if package.bpmStatus != "not_run" {
+                        Text("bpm \(package.bpmStatus)")
+                    }
+                    if package.keyStatus != "not_run" {
+                        Text("key \(package.keyStatus)")
+                    }
+                }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Text(package.isValid ? "Ready" : "Review")
+                .font(.caption2)
+                .foregroundStyle(package.isValid ? .green : .orange)
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func refreshRemotePackages() {
+        guard let outputDirectory = outputManager.directory else {
+            remotePackages = []
+            selectedRemotePackageID = nil
+            return
+        }
+
+        remotePackages = TrainingDatasetPackageEditor.listPackages(in: outputDirectory)
+        if let selectedRemotePackageID,
+           remotePackages.contains(where: { $0.id == selectedRemotePackageID }) {
+            return
+        }
+        selectedRemotePackageID = remotePackages.first?.id
+    }
+
+    private func openRemotePackageFolder() {
+        guard let package = selectedRemotePackage else { return }
+        NSWorkspace.shared.open(package.directory)
+    }
+
+    private func exportRemotePackage() {
+        guard let package = selectedRemotePackage else { return }
+
+        do {
+            let document = try TrainingDatasetPackageEditor.loadPackage(at: package.directory)
+            guard document.isTrainingReady else {
+                remoteNotice = "Package needs dataset review before export: \(document.blockerCount) blocker\(document.blockerCount == 1 ? "" : "s")."
+                return
+            }
+
+            let panel = NSSavePanel()
+            panel.allowedContentTypes = [.zip]
+            panel.canCreateDirectories = true
+            panel.nameFieldStringValue = "\(package.directory.lastPathComponent).zip"
+            guard panel.runModal() == .OK, let destination = panel.url else { return }
+
+            isExportingRemotePackage = true
+            defer { isExportingRemotePackage = false }
+
+            let archiveURL = try TrainingDatasetPackageWriter.exportPackageArchive(
+                outputDirectory: package.directory,
+                to: destination
+            )
+            remoteNotice = "Package exported to \(archiveURL.path(percentEncoded: false))."
+            refreshRemotePackages()
+        } catch {
+            remoteNotice = error.localizedDescription
         }
     }
 

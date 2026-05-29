@@ -52,7 +52,7 @@ The training sheet reports how many files were imported from JSON, how many incl
 
 ## Remote Package Shape
 
-Use **Export Zip** from the Datasets review workspace after clips are approved. The exported zip keeps the package root intact. Remote workers should:
+Use **Export Zip** from the Datasets review workspace after clips are approved. The same reviewed packages are also available under **Build > Training > Remote GPU** for export-focused handoff. The exported zip keeps the package root intact. Remote workers should:
 
 1. Unzip the package.
 2. Read `remote_training_package.json`.
