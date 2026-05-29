@@ -19,13 +19,23 @@ struct AdapterPicker: View {
         return AdapterRegistry.compatibleAdapters(for: activeModelCategory)
     }
 
+    private var normalizedSelection: Binding<String?> {
+        Binding(
+            get: {
+                guard let selectedAdapterID else { return nil }
+                return adapters.contains(where: { $0.id == selectedAdapterID }) ? selectedAdapterID : nil
+            },
+            set: { selectedAdapterID = $0 }
+        )
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("LoRA Adapter")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            Picker("LoRA Adapter", selection: $selectedAdapterID) {
+            Picker("LoRA Adapter", selection: normalizedSelection) {
                 Text("None").tag(String?.none)
                 ForEach(adapters) { adapter in
                     HStack {
@@ -41,19 +51,26 @@ struct AdapterPicker: View {
         }
         .onChange(of: activeModelCategory) { _, _ in
             adapterListVersion += 1
-            if let selected = selectedAdapterID,
-               !adapters.contains(where: { $0.id == selected }) {
-                selectedAdapterID = nil
-            }
+            normalizeSelection()
         }
         .onAppear {
             adapterListVersion += 1
+            normalizeSelection()
         }
         .onReceive(NotificationCenter.default.publisher(for: .adapterRegistryDidChange)) { _ in
             adapterListVersion += 1
+            normalizeSelection()
         }
         .onReceive(trainingService.$state) { newState in
             if case .complete = newState { adapterListVersion += 1 }
+            normalizeSelection()
+        }
+    }
+
+    private func normalizeSelection() {
+        if let selected = selectedAdapterID,
+           !adapters.contains(where: { $0.id == selected }) {
+            selectedAdapterID = nil
         }
     }
 }

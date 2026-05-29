@@ -511,15 +511,7 @@ struct GenerateView: View {
                 applyXLAdapterRecipeIfNeeded(id: newValue)
             }
             .onAppear {
-                stackManager.setPrimaryStrength(Float(persistedAdapterStrength))
-                if !persistedAdapterID.isEmpty {
-                    selectedAdapterID = persistedAdapterID
-                    generationService.selectedAdapterID = persistedAdapterID
-                    syncPrimaryAdapter(id: persistedAdapterID)
-                    applyXLAdapterRecipeIfNeeded(id: persistedAdapterID)
-                } else {
-                    syncPrimaryAdapter(id: nil)
-                }
+                restorePersistedAdapterSelection()
             }
 
             if selectedAdapterID != nil {
@@ -749,6 +741,34 @@ struct GenerateView: View {
         stackManager.setPrimary(adapter)
     }
 
+    private func restorePersistedAdapterSelection() {
+        stackManager.setPrimaryStrength(Float(persistedAdapterStrength))
+
+        guard !persistedAdapterID.isEmpty,
+              let adapter = compatibleAdapter(id: persistedAdapterID) else {
+            clearPrimaryAdapterSelection()
+            return
+        }
+
+        selectedAdapterID = adapter.id
+        generationService.selectedAdapterID = adapter.id
+        syncPrimaryAdapter(id: adapter.id)
+        applyXLAdapterRecipeIfNeeded(id: adapter.id)
+    }
+
+    private func clearPrimaryAdapterSelection() {
+        selectedAdapterID = nil
+        persistedAdapterID = ""
+        generationService.selectedAdapterID = nil
+        syncPrimaryAdapter(id: nil)
+    }
+
+    private func compatibleAdapter(id: String?) -> LoRAAdapter? {
+        guard let id, !id.isEmpty else { return nil }
+        return AdapterRegistry.compatibleAdapters(for: .aceStepDiT)
+            .first(where: { $0.id == id })
+    }
+
     private func applyMCPAdapterSelection(_ notification: Notification) {
         guard let payload = notification.userInfo?["adapters"] as? [[String: Any]] else {
             return
@@ -873,12 +893,13 @@ struct GenerateView: View {
         precision = preset.precision
         stepsOverrideText = preset.stepsOverride
         shiftOverride = preset.shiftOverride
-        selectedAdapterID = preset.adapterID
-        persistedAdapterID = preset.adapterID ?? ""
-        generationService.selectedAdapterID = preset.adapterID
+        let adapterID = compatibleAdapter(id: preset.adapterID)?.id
+        selectedAdapterID = adapterID
+        persistedAdapterID = adapterID ?? ""
+        generationService.selectedAdapterID = adapterID
         stackManager.setPrimaryStrength(Float(preset.adapterStrength))
         persistedAdapterStrength = preset.adapterStrength
-        syncPrimaryAdapter(id: preset.adapterID)
+        syncPrimaryAdapter(id: adapterID)
         coverStrength = preset.coverStrength
 
         // Shared parameters
