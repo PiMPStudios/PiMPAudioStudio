@@ -353,6 +353,21 @@ enum TrainingDatasetPackageWriter {
             try FileManager.default.removeItem(at: destinationURL)
         }
 
+        let stagingRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("AnvilPackageExport-\(UUID().uuidString)", isDirectory: true)
+        let stagedPackageDirectory = stagingRoot.appendingPathComponent(outputDirectory.lastPathComponent, isDirectory: true)
+        try FileManager.default.createDirectory(at: stagedPackageDirectory, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: stagingRoot)
+        }
+
+        for relativePath in exportPackageRelativePaths(outputDirectory: outputDirectory) {
+            let sourceURL = outputDirectory.appendingPathComponent(relativePath)
+            guard FileManager.default.fileExists(atPath: sourceURL.path(percentEncoded: false)) else { continue }
+            let destination = stagedPackageDirectory.appendingPathComponent(relativePath)
+            try copyArchiveItem(from: sourceURL, to: destination)
+        }
+
         let process = Process()
         let stderr = Pipe()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
@@ -360,7 +375,11 @@ enum TrainingDatasetPackageWriter {
             "-c",
             "-k",
             "--keepParent",
-            outputDirectory.path,
+            "--norsrc",
+            "--noextattr",
+            "--noqtn",
+            "--noacl",
+            stagedPackageDirectory.path,
             destinationURL.path,
         ]
         process.standardError = stderr
@@ -375,6 +394,80 @@ enum TrainingDatasetPackageWriter {
         }
 
         return destinationURL
+    }
+
+    private static func exportPackageRelativePaths(outputDirectory: URL) -> [String] {
+        let remoteURL = outputDirectory.appendingPathComponent(remotePackageFileName)
+        let remotePackage = readJSONObject(from: remoteURL)
+        let copyRules = remotePackage?["copy_rules"] as? [String: Any]
+        let include = copyRules?["include"] as? [String]
+        let paths = include?.compactMap(exportRootPath(from:)) ?? defaultArchiveIncludePaths()
+        return sortedUnique(paths)
+    }
+
+    private static func exportRootPath(from includeRule: String) -> String? {
+        let trimmed = includeRule.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        if trimmed.hasSuffix("/**") {
+            return String(trimmed.dropLast(3))
+        }
+        return trimmed
+    }
+
+    private static func defaultArchiveIncludePaths() -> [String] {
+        [
+            "clips",
+            "stems",
+            "annotations",
+            "preprocessed",
+            captionsFileName,
+            datasetConfigFileName,
+            datasetManifestFileName,
+            trainingBundleFileName,
+            fullMixBundleFileName,
+            vocalBundleFileName,
+            instrumentalBundleFileName,
+            remotePackageFileName,
+            validationReportFileName,
+            preprocessCacheFileName,
+        ]
+    }
+
+    private static func copyArchiveItem(from sourceURL: URL, to destinationURL: URL) throws {
+        let name = sourceURL.lastPathComponent
+        guard shouldIncludeArchiveItem(named: name) else { return }
+
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: sourceURL.path(percentEncoded: false), isDirectory: &isDirectory) else {
+            return
+        }
+
+        if isDirectory.boolValue {
+            try FileManager.default.createDirectory(at: destinationURL, withIntermediateDirectories: true)
+            let children = try FileManager.default.contentsOfDirectory(
+                at: sourceURL,
+                includingPropertiesForKeys: [.isDirectoryKey],
+                options: []
+            )
+            for child in children {
+                guard shouldIncludeArchiveItem(named: child.lastPathComponent) else { continue }
+                try copyArchiveItem(from: child, to: destinationURL.appendingPathComponent(child.lastPathComponent))
+            }
+        } else {
+            try FileManager.default.createDirectory(
+                at: destinationURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
+        }
+    }
+
+    private static func shouldIncludeArchiveItem(named name: String) -> Bool {
+        guard !name.isEmpty else { return false }
+        if name == ".DS_Store" { return false }
+        if name.hasPrefix("._") { return false }
+        if name == reviewBackupsDirectoryName { return false }
+        return true
     }
 
     private static func datasetConfig() -> [String: Any] {

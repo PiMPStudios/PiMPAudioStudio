@@ -89,6 +89,28 @@ private func pcm16WAVData(sampleRate: Int = 22_050, samples: [Float]) -> Data {
     return data
 }
 
+private func zipEntries(in archiveURL: URL) throws -> [String] {
+    let process = Process()
+    let stdout = Pipe()
+    let stderr = Pipe()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/zipinfo")
+    process.arguments = ["-1", archiveURL.path(percentEncoded: false)]
+    process.standardOutput = stdout
+    process.standardError = stderr
+    try process.run()
+    process.waitUntilExit()
+    if process.terminationStatus != 0 {
+        let error = String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        throw NSError(
+            domain: "AnvilAppTests.ZipInfo",
+            code: Int(process.terminationStatus),
+            userInfo: [NSLocalizedDescriptionKey: error]
+        )
+    }
+    let output = String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+    return output.split(separator: "\n").map(String.init)
+}
+
 @Test @MainActor func appStateDetectsIncompleteSetup() async {
     let tempDir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
     let registry = ModelRegistry(baseDirectory: tempDir)
@@ -522,6 +544,28 @@ private func pcm16WAVData(sampleRate: Int = 22_050, samples: [Float]) -> Data {
     let decodedJob = try RemoteTrainingJobCodec.decoder.decode(RemoteTrainingJobRequest.self, from: encodedJob)
     #expect(decodedJob.jobID == "job-test-1")
     #expect(decodedJob.package.copyRules.include.contains("preprocessed/**"))
+
+    let backupDirectory = datasetDir
+        .appendingPathComponent("review_backups", isDirectory: true)
+        .appendingPathComponent("old-save", isDirectory: true)
+    try FileManager.default.createDirectory(at: backupDirectory, withIntermediateDirectories: true)
+    try Data("backup".utf8).write(to: backupDirectory.appendingPathComponent("captions.json"))
+    try Data("appledouble".utf8).write(to: clipsDir.appendingPathComponent("._f001_clip_001.m4a"))
+    try Data("finder".utf8).write(to: datasetDir.appendingPathComponent(".DS_Store"))
+
+    let archiveURL = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString)
+        .appendingPathExtension("zip")
+    defer { try? FileManager.default.removeItem(at: archiveURL) }
+    try TrainingDatasetPackageWriter.exportPackageArchive(outputDirectory: datasetDir, to: archiveURL)
+    let archiveEntries = try zipEntries(in: archiveURL)
+    let archiveRoot = "\(datasetDir.lastPathComponent)/"
+    #expect(archiveEntries.contains("\(archiveRoot)captions.json"))
+    #expect(archiveEntries.contains("\(archiveRoot)clips/f001_clip_001.m4a"))
+    #expect(archiveEntries.contains("\(archiveRoot)preprocessed/full_mix/index.json"))
+    #expect(!archiveEntries.contains { $0.contains("/review_backups/") })
+    #expect(!archiveEntries.contains { $0.components(separatedBy: "/").last?.hasPrefix("._") == true })
+    #expect(!archiveEntries.contains { $0.components(separatedBy: "/").last == ".DS_Store" })
 
     let lokrJob = RemoteTrainingJobRequest.makeTemplate(
         from: descriptor,
