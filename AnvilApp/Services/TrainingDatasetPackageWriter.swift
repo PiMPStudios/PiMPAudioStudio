@@ -1,5 +1,41 @@
 import Foundation
 
+struct TrainingDatasetPackageValidationResult: Equatable {
+    let packageDirectory: URL
+    let checkedAt: String
+    let clipCount: Int
+    let importableClipCount: Int
+    let missingPackageFiles: [String]
+    let missingClipFiles: [String]
+    let errors: [String]
+
+    var isValid: Bool {
+        missingPackageFiles.isEmpty && missingClipFiles.isEmpty && errors.isEmpty && clipCount > 0
+    }
+
+    var summary: String {
+        if isValid {
+            return "\(clipCount) clips validated for package export."
+        }
+        let issueCount = missingPackageFiles.count + missingClipFiles.count + errors.count
+        return "\(issueCount) package issue\(issueCount == 1 ? "" : "s") found."
+    }
+}
+
+enum TrainingDatasetPackageError: LocalizedError {
+    case invalidPackage(String)
+    case exportFailed(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidPackage(let message):
+            return "Dataset package is not ready to export: \(message)"
+        case .exportFailed(let message):
+            return "Dataset package export failed: \(message)"
+        }
+    }
+}
+
 enum TrainingDatasetPackageWriter {
     static let captionsFileName = "captions.json"
     static let datasetConfigFileName = "dataset_config.json"
@@ -7,6 +43,7 @@ enum TrainingDatasetPackageWriter {
     static let trainingBundleFileName = "training_bundle.json"
     static let fullMixBundleFileName = "training_bundle_full_mix.json"
     static let remotePackageFileName = "remote_training_package.json"
+    static let validationReportFileName = "package_validation.json"
 
     static func writeLocalPackage(
         outputDirectory: URL,
@@ -59,6 +96,97 @@ enum TrainingDatasetPackageWriter {
             ),
             to: outputDirectory.appendingPathComponent(remotePackageFileName)
         )
+
+        let validation = validatePackage(at: outputDirectory, checkedAt: createdAt)
+        try writeValidationReport(validation, to: outputDirectory)
+    }
+
+    static func validatePackage(
+        at outputDirectory: URL,
+        checkedAt: Date = Date()
+    ) -> TrainingDatasetPackageValidationResult {
+        let checkedAtString = ISO8601DateFormatter().string(from: checkedAt)
+        let requiredFiles = [
+            captionsFileName,
+            datasetConfigFileName,
+            datasetManifestFileName,
+            trainingBundleFileName,
+            fullMixBundleFileName,
+            remotePackageFileName,
+        ]
+        let missingPackageFiles = requiredFiles.filter {
+            !FileManager.default.fileExists(atPath: outputDirectory.appendingPathComponent($0).path)
+        }
+
+        let bundleURL = outputDirectory.appendingPathComponent(fullMixBundleFileName)
+        let bundle = readJSONObject(from: bundleURL)
+        let clips = bundle?["clips"] as? [[String: Any]] ?? []
+        let datasetBase = datasetBaseDirectory(from: bundle, fallback: outputDirectory)
+        let missingClipFiles = clips.compactMap { clip -> String? in
+            guard let path = selectedAudioPath(from: clip) else {
+                return "missing audio path"
+            }
+            let audioURL = resolve(path, relativeTo: datasetBase)
+            return FileManager.default.fileExists(atPath: audioURL.path(percentEncoded: false)) ? nil : path
+        }
+
+        var errors: [String] = []
+        if bundle == nil {
+            errors.append("\(fullMixBundleFileName) is missing or invalid JSON.")
+        }
+        if clips.isEmpty {
+            errors.append("\(fullMixBundleFileName) does not contain any clips.")
+        }
+
+        let importableClipCount = (try? TrainingDatasetImporter.importFiles(from: bundleURL).count) ?? 0
+        if importableClipCount != clips.count {
+            errors.append("\(importableClipCount) of \(clips.count) clips are importable by the training importer.")
+        }
+
+        return TrainingDatasetPackageValidationResult(
+            packageDirectory: outputDirectory,
+            checkedAt: checkedAtString,
+            clipCount: clips.count,
+            importableClipCount: importableClipCount,
+            missingPackageFiles: missingPackageFiles,
+            missingClipFiles: missingClipFiles,
+            errors: errors
+        )
+    }
+
+    @discardableResult
+    static func exportPackageArchive(outputDirectory: URL, to destinationURL: URL) throws -> URL {
+        let validation = validatePackage(at: outputDirectory)
+        guard validation.isValid else {
+            throw TrainingDatasetPackageError.invalidPackage(validation.summary)
+        }
+
+        if FileManager.default.fileExists(atPath: destinationURL.path) {
+            try FileManager.default.removeItem(at: destinationURL)
+        }
+
+        let process = Process()
+        let stderr = Pipe()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+        process.arguments = [
+            "-c",
+            "-k",
+            "--keepParent",
+            outputDirectory.path,
+            destinationURL.path,
+        ]
+        process.standardError = stderr
+        try process.run()
+        process.waitUntilExit()
+
+        guard process.terminationStatus == 0 else {
+            let data = stderr.fileHandleForReading.readDataToEndOfFile()
+            let message = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let detail = message?.isEmpty == false ? message ?? "" : "ditto exited with status \(process.terminationStatus)"
+            throw TrainingDatasetPackageError.exportFailed(detail)
+        }
+
+        return destinationURL
     }
 
     private static func datasetConfig() -> [String: Any] {
@@ -174,6 +302,7 @@ enum TrainingDatasetPackageWriter {
                     trainingBundleFileName,
                     fullMixBundleFileName,
                     remotePackageFileName,
+                    validationReportFileName,
                 ],
                 "exclude": [],
             ],
@@ -279,6 +408,24 @@ enum TrainingDatasetPackageWriter {
         (value * 1000).rounded() / 1000
     }
 
+    private static func writeValidationReport(
+        _ validation: TrainingDatasetPackageValidationResult,
+        to outputDirectory: URL
+    ) throws {
+        let object: [String: Any] = [
+            "anvil_package_validation_version": "1.0",
+            "checked_at": validation.checkedAt,
+            "is_valid": validation.isValid,
+            "summary": validation.summary,
+            "clip_count": validation.clipCount,
+            "importable_clip_count": validation.importableClipCount,
+            "missing_package_files": validation.missingPackageFiles,
+            "missing_clip_files": validation.missingClipFiles,
+            "errors": validation.errors,
+        ]
+        try writeJSONObject(object, to: outputDirectory.appendingPathComponent(validationReportFileName))
+    }
+
     private static func writeCaptionsFile(clips: [(url: URL, caption: String)], to outputDir: URL) throws {
         let entries = clips.map {
             [
@@ -297,5 +444,38 @@ enum TrainingDatasetPackageWriter {
     private static func writeJSONObjectArray(_ object: [[String: Any]], to url: URL) throws {
         let data = try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys])
         try data.write(to: url, options: .atomic)
+    }
+
+    private static func readJSONObject(from url: URL) -> [String: Any]? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+    }
+
+    private static func datasetBaseDirectory(from dict: [String: Any]?, fallback: URL) -> URL {
+        guard let datasetDir = dict?["dataset_dir"] as? String, !datasetDir.isEmpty else {
+            return fallback
+        }
+        return resolve(datasetDir, relativeTo: fallback)
+    }
+
+    private static func selectedAudioPath(from clip: [String: Any]) -> String? {
+        if let assets = clip["assets"] as? [String: Any],
+           let fullMix = assets["full_mix"] as? String {
+            return fullMix
+        }
+        for key in ["file", "path", "audio"] {
+            if let value = clip[key] as? String, !value.isEmpty {
+                return value
+            }
+        }
+        return nil
+    }
+
+    private static func resolve(_ path: String, relativeTo baseDirectory: URL) -> URL {
+        let expanded = (path as NSString).expandingTildeInPath
+        if expanded.hasPrefix("/") {
+            return URL(fileURLWithPath: expanded).standardizedFileURL
+        }
+        return baseDirectory.appendingPathComponent(expanded).standardizedFileURL
     }
 }

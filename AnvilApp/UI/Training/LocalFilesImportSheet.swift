@@ -17,6 +17,8 @@ struct LocalFilesImportSheet: View {
     @State private var showingFileImporter = false
     @State private var showingFolderImporter = false
     @State private var sourceNotice: String?
+    @State private var packageSummary: String?
+    @State private var isExportingPackage = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -63,7 +65,10 @@ struct LocalFilesImportSheet: View {
             }
         }
         .onChange(of: builder.phase) { _, newPhase in
-            if case .complete = newPhase { editableClips = builder.resultClips }
+            if case .complete(let dir, _) = newPhase {
+                editableClips = builder.resultClips
+                refreshPackageSummary(for: dir)
+            }
         }
     }
 
@@ -295,11 +300,26 @@ struct LocalFilesImportSheet: View {
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
+                    Button {
+                        exportPackage(from: dir)
+                    } label: {
+                        Label("Export Package...", systemImage: "archivebox")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(isExportingPackage)
                 }
             }
             .padding(10)
             .background(.green.opacity(0.08))
             .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            if let packageSummary {
+                Text(packageSummary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
 
             Text("Review and edit captions below. The package manifest and training bundles are refreshed when opened.")
                 .font(.caption)
@@ -399,6 +419,34 @@ struct LocalFilesImportSheet: View {
             config: config,
             styleTemplate: styleTemplate
         )
+        refreshPackageSummary(for: dir)
+    }
+
+    private func refreshPackageSummary(for dir: URL) {
+        packageSummary = TrainingDatasetPackageWriter.validatePackage(at: dir).summary
+    }
+
+    private func exportPackage(from dir: URL) {
+        persistCaptions()
+
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.zip]
+        panel.canCreateDirectories = true
+        panel.nameFieldStringValue = "\(dir.lastPathComponent).zip"
+        guard panel.runModal() == .OK, let destination = panel.url else { return }
+
+        isExportingPackage = true
+        defer { isExportingPackage = false }
+
+        do {
+            let archiveURL = try TrainingDatasetPackageWriter.exportPackageArchive(
+                outputDirectory: dir,
+                to: destination
+            )
+            sourceNotice = "Package exported to \(archiveURL.lastPathComponent)."
+        } catch {
+            sourceNotice = error.localizedDescription
+        }
     }
 
     private func appendAudioFiles(_ urls: [URL]) {

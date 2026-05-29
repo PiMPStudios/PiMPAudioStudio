@@ -151,10 +151,16 @@ import Foundation
         "training_bundle.json",
         "training_bundle_full_mix.json",
         "remote_training_package.json",
+        "package_validation.json",
     ] {
         let fileURL = datasetDir.appendingPathComponent(fileName)
         #expect(FileManager.default.fileExists(atPath: fileURL.path))
     }
+
+    let validation = TrainingDatasetPackageWriter.validatePackage(at: datasetDir)
+    #expect(validation.isValid)
+    #expect(validation.clipCount == 1)
+    #expect(validation.importableClipCount == 1)
 
     let imported = try TrainingDatasetImporter.importFiles(
         from: datasetDir.appendingPathComponent("training_bundle_full_mix.json")
@@ -170,6 +176,36 @@ import Foundation
     #expect(providerTargets.contains("runpod"))
     #expect(providerTargets.contains("digitalocean_gpu"))
     #expect(remoteJSON?["default_bundle"] as? String == "training_bundle_full_mix.json")
+}
+
+@Test func localDatasetPackageValidationReportsMissingClipFiles() throws {
+    let datasetDir = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let clipsDir = datasetDir.appendingPathComponent("clips", isDirectory: true)
+    try FileManager.default.createDirectory(at: clipsDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: datasetDir) }
+
+    let sourceURL = datasetDir.appendingPathComponent("source.wav")
+    let clipURL = clipsDir.appendingPathComponent("f001_clip_001.m4a")
+    try Data("source".utf8).write(to: sourceURL)
+    try Data("clip".utf8).write(to: clipURL)
+
+    try TrainingDatasetPackageWriter.writeLocalPackage(
+        outputDirectory: datasetDir,
+        clips: [TrainingImportedFile(url: clipURL, description: "dark blues full mix")],
+        sourceFiles: [sourceURL],
+        config: LocalFilesDatasetConfig(clipLength: 30, clipsPerTrack: 1, maxTotalClips: 1),
+        styleTemplate: "dark blues full mix",
+        createdAt: Date(timeIntervalSince1970: 0)
+    )
+    try FileManager.default.removeItem(at: clipURL)
+
+    let validation = TrainingDatasetPackageWriter.validatePackage(at: datasetDir)
+
+    #expect(!validation.isValid)
+    #expect(validation.clipCount == 1)
+    #expect(validation.importableClipCount == 0)
+    #expect(validation.missingClipFiles == ["clips/f001_clip_001.m4a"])
 }
 
 @Test func localAudioFileDiscoveryFindsNestedSupportedAudioFiles() throws {
