@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct LocalFilesImportSheet: View {
     @EnvironmentObject private var outputManager: OutputDirectoryManager
@@ -9,10 +10,13 @@ struct LocalFilesImportSheet: View {
     @StateObject private var builder = LocalFilesDatasetBuilder()
 
     @State private var selectedFiles: [URL] = []
+    @State private var selectedFolders: [URL] = []
     @State private var styleTemplate = ""
     @State private var config = LocalFilesDatasetConfig()
     @State private var editableClips: [TrainingImportedFile] = []
     @State private var showingFileImporter = false
+    @State private var showingFolderImporter = false
+    @State private var sourceNotice: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -46,9 +50,16 @@ struct LocalFilesImportSheet: View {
             allowsMultipleSelection: true
         ) { result in
             if case .success(let urls) = result {
-                for url in urls where !selectedFiles.contains(url) {
-                    selectedFiles.append(url)
-                }
+                appendAudioFiles(urls)
+            }
+        }
+        .fileImporter(
+            isPresented: $showingFolderImporter,
+            allowedContentTypes: [.folder],
+            allowsMultipleSelection: true
+        ) { result in
+            if case .success(let urls) = result {
+                appendFolders(urls)
             }
         }
         .onChange(of: builder.phase) { _, newPhase in
@@ -84,6 +95,10 @@ struct LocalFilesImportSheet: View {
                     .font(.subheadline)
                     .fontWeight(.semibold)
                 Spacer()
+                Button("Add Folder...") { showingFolderImporter = true }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(builder.phase.isRunning)
                 Button("Add Audio Files...") { showingFileImporter = true }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
@@ -122,8 +137,14 @@ struct LocalFilesImportSheet: View {
                     }
                 }
                 .padding(10)
-                .background(.quaternary.opacity(0.3))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .background(.quaternary.opacity(0.3))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+
+            if let sourceNotice {
+                Text(sourceNotice)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -362,6 +383,7 @@ struct LocalFilesImportSheet: View {
         let template = styleTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
         builder.start(
             sourceFiles: selectedFiles,
+            sourceDirectories: selectedFolders,
             config: config,
             outputBase: outputBase,
             styleTemplate: template
@@ -377,5 +399,35 @@ struct LocalFilesImportSheet: View {
             config: config,
             styleTemplate: styleTemplate
         )
+    }
+
+    private func appendAudioFiles(_ urls: [URL]) {
+        let audioURLs = urls.filter { LocalAudioFileDiscovery.supportedExtensions.contains($0.pathExtension.lowercased()) }
+        let originalCount = selectedFiles.count
+        selectedFiles = mergedURLs(selectedFiles, with: audioURLs)
+        let addedCount = selectedFiles.count - originalCount
+        sourceNotice = addedCount == 0
+            ? "Selected audio files were already in the list."
+            : "\(addedCount) audio file\(addedCount == 1 ? "" : "s") added."
+    }
+
+    private func appendFolders(_ urls: [URL]) {
+        selectedFolders = mergedURLs(selectedFolders, with: urls)
+        let discovered = LocalAudioFileDiscovery.audioFiles(in: urls)
+        let originalCount = selectedFiles.count
+        selectedFiles = mergedURLs(selectedFiles, with: discovered)
+        let addedCount = selectedFiles.count - originalCount
+        sourceNotice = addedCount == 0
+            ? "No new audio files were found in the selected folder\(urls.count == 1 ? "" : "s")."
+            : "\(addedCount) audio file\(addedCount == 1 ? "" : "s") added from folder\(urls.count == 1 ? "" : "s")."
+    }
+
+    private func mergedURLs(_ existing: [URL], with incoming: [URL]) -> [URL] {
+        var seen = Set(existing.map { $0.standardizedFileURL.path })
+        var merged = existing
+        for url in incoming where seen.insert(url.standardizedFileURL.path).inserted {
+            merged.append(url)
+        }
+        return merged
     }
 }

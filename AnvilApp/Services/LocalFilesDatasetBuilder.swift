@@ -12,6 +12,53 @@ struct LocalFilesDatasetResult {
     var clipCount: Int { clips.count }
 }
 
+enum LocalAudioFileDiscovery {
+    static let supportedExtensions = Set(["aac", "aif", "aiff", "flac", "m4a", "mp3", "ogg", "opus", "wav", "webm"])
+
+    static func audioFiles(in directories: [URL]) -> [URL] {
+        directories.flatMap { audioFiles(in: $0) }.deduplicatedByFilePath()
+    }
+
+    static func audioFiles(in directory: URL) -> [URL] {
+        let didStartAccessing = directory.startAccessingSecurityScopedResource()
+        defer {
+            if didStartAccessing {
+                directory.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        let keys: [URLResourceKey] = [.isRegularFileKey]
+        guard let enumerator = FileManager.default.enumerator(
+            at: directory,
+            includingPropertiesForKeys: keys,
+            options: [.skipsHiddenFiles, .skipsPackageDescendants]
+        ) else {
+            return []
+        }
+
+        var files: [URL] = []
+        for case let fileURL as URL in enumerator {
+            guard supportedExtensions.contains(fileURL.pathExtension.lowercased()) else { continue }
+            let values = try? fileURL.resourceValues(forKeys: Set(keys))
+            guard values?.isRegularFile != false else { continue }
+            files.append(fileURL)
+        }
+
+        return files.sorted { lhs, rhs in
+            lhs.path.localizedStandardCompare(rhs.path) == .orderedAscending
+        }
+    }
+}
+
+private extension Array where Element == URL {
+    func deduplicatedByFilePath() -> [URL] {
+        var seen = Set<String>()
+        return filter { url in
+            seen.insert(url.standardizedFileURL.path).inserted
+        }
+    }
+}
+
 enum LocalFilesImportPhase: Equatable {
     case idle
     case chunking(index: Int, total: Int, name: String)
@@ -47,6 +94,7 @@ final class LocalFilesDatasetBuilder: ObservableObject {
 
     func start(
         sourceFiles: [URL],
+        sourceDirectories: [URL] = [],
         config: LocalFilesDatasetConfig,
         outputBase: URL,
         styleTemplate: String = ""
@@ -60,6 +108,7 @@ final class LocalFilesDatasetBuilder: ObservableObject {
             do {
                 let result = try await Self.run(
                     sourceFiles: sourceFiles,
+                    sourceDirectories: sourceDirectories,
                     config: config,
                     outputBase: outputBase,
                     styleTemplate: styleTemplate,
@@ -82,12 +131,18 @@ final class LocalFilesDatasetBuilder: ObservableObject {
 
     static func run(
         sourceFiles: [URL],
+        sourceDirectories: [URL] = [],
         config: LocalFilesDatasetConfig,
         outputBase: URL,
         styleTemplate: String = "",
         onPhase: @escaping (LocalFilesImportPhase) async -> Void
     ) async throws -> LocalFilesDatasetResult {
         guard !sourceFiles.isEmpty else { throw LocalFilesDatasetError.noFilesSelected }
+
+        let scopedDirectories = sourceDirectories.filter { $0.startAccessingSecurityScopedResource() }
+        defer {
+            scopedDirectories.forEach { $0.stopAccessingSecurityScopedResource() }
+        }
 
         let folderTag = datasetFolderTag(for: sourceFiles.first)
         let outputDir = outputBase

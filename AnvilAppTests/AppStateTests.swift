@@ -172,6 +172,30 @@ import Foundation
     #expect(remoteJSON?["default_bundle"] as? String == "training_bundle_full_mix.json")
 }
 
+@Test func localAudioFileDiscoveryFindsNestedSupportedAudioFiles() throws {
+    let rootDir = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let nestedDir = rootDir.appendingPathComponent("nested", isDirectory: true)
+    try FileManager.default.createDirectory(at: nestedDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: rootDir) }
+
+    let wavURL = rootDir.appendingPathComponent("take-a.wav")
+    let m4aURL = nestedDir.appendingPathComponent("take-b.m4a")
+    let ignoredURL = nestedDir.appendingPathComponent("notes.txt")
+    try Data("wav".utf8).write(to: wavURL)
+    try Data("m4a".utf8).write(to: m4aURL)
+    try Data("notes".utf8).write(to: ignoredURL)
+
+    let discovered = LocalAudioFileDiscovery.audioFiles(in: [rootDir])
+    let paths = discovered.map { $0.standardizedFileURL.path }
+    let expectedPaths = [
+        wavURL.standardizedFileURL.path,
+        m4aURL.standardizedFileURL.path,
+    ].sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+
+    #expect(paths == expectedPaths)
+}
+
 @Test func lyricSanitizerRemovesCommentaryAndChordPrefixes() {
     let raw = """
     Here's a 140-second ambient blues-inspired soundscape with a slow tempo.
