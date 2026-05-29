@@ -438,37 +438,102 @@ private func silentWAVData(sampleRate: Int = 22_050, channels: Int = 1, frameCou
     #expect((bundleClip?["separation"] as? [String: Any])?["mode"] as? String == "instrumental")
 }
 
-@Test func localDatasetEnrichmentCommandPlanExportsStemBundles() {
-    let datasetDir = URL(fileURLWithPath: "/tmp/anvil dataset", isDirectory: true)
-    let executable = URL(fileURLWithPath: "/tools/anvil")
+@Test func localDatasetEnrichmentUsesAudioSeparatorDirectly() {
+    let executable = URL(fileURLWithPath: "/tools/audio-separator")
+    let input = URL(fileURLWithPath: "/tmp/local package/clips/clip 1.wav")
+    let output = URL(fileURLWithPath: "/tmp/local package/stems/clip 1", isDirectory: true)
 
-    let commands = LocalDatasetEnrichmentService.commandPlan(
-        datasetDirectory: datasetDir,
+    let command = LocalDatasetEnrichmentService.separatorCommand(
         executableURL: executable,
-        force: true
+        inputURL: input,
+        outputDirectory: output
     )
 
-    #expect(commands.count == 3)
-    #expect(commands[0].step == .separatingStems)
-    #expect(commands[0].arguments.contains("--force"))
-    #expect(commands[0].arguments == [
-        "dataset",
-        "separate",
-        "/tmp/anvil dataset",
-        "--mode",
-        "instrumental",
-        "--backend",
-        "audio-separator",
-        "--output-format",
-        "wav",
-        "--force",
+    #expect(command.step == .separatingStems)
+    #expect(command.executableURL.path == "/tools/audio-separator")
+    #expect(command.arguments == [
+        "/tmp/local package/clips/clip 1.wav",
+        "--output_dir",
+        "/tmp/local package/stems/clip 1",
+        "--output_format",
+        "WAV",
     ])
-    #expect(commands[1].step == .exportingVocalsBundle)
-    #expect(commands[1].arguments.contains("vocals"))
-    #expect(commands[1].arguments.contains("/tmp/anvil dataset/training_bundle_vocals.json"))
-    #expect(commands[2].step == .exportingInstrumentalBundle)
-    #expect(commands[2].arguments.contains("instrumental"))
-    #expect(commands[2].arguments.contains("/tmp/anvil dataset/training_bundle_instrumental.json"))
+    #expect(command.executableURL.lastPathComponent == "audio-separator")
+}
+
+@Test func localDatasetEnrichmentExportsStemBundlesNatively() throws {
+    let datasetDir = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let clipsDir = datasetDir.appendingPathComponent("clips", isDirectory: true)
+    let stemsDir = datasetDir
+        .appendingPathComponent("stems", isDirectory: true)
+        .appendingPathComponent("f001_clip_001", isDirectory: true)
+    try FileManager.default.createDirectory(at: clipsDir, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: stemsDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: datasetDir) }
+
+    let clipURL = clipsDir.appendingPathComponent("f001_clip_001.wav")
+    let vocalURL = stemsDir.appendingPathComponent("vocals.wav")
+    let instrumentalURL = stemsDir.appendingPathComponent("instrumental.wav")
+    try Data("clip".utf8).write(to: clipURL)
+    try Data("vocals".utf8).write(to: vocalURL)
+    try Data("instrumental".utf8).write(to: instrumentalURL)
+
+    let separationJSON = """
+    {
+      "stems": {
+        "vocals": {
+          "file": "stems/f001_clip_001/vocals.wav",
+          "analysis": { "tempo_bpm_estimate": 72 }
+        },
+        "instrumental": {
+          "file": "stems/f001_clip_001/instrumental.wav",
+          "analysis": { "tempo_bpm_estimate": 72 }
+        }
+      }
+    }
+    """
+    try Data(separationJSON.utf8).write(to: stemsDir.appendingPathComponent("separation.json"))
+
+    let captionsJSON = """
+    [
+      {
+        "file": "clips/f001_clip_001.wav",
+        "caption": "dark blues stem package",
+        "transcription": { "status": "complete", "text": "I keep singing low" },
+        "separation": {
+          "mode": "instrumental",
+          "stems": {
+            "vocals": "stems/f001_clip_001/vocals.wav",
+            "instrumental": "stems/f001_clip_001/instrumental.wav"
+          },
+          "separation_file": "stems/f001_clip_001/separation.json"
+        }
+      }
+    ]
+    """
+    try Data(captionsJSON.utf8).write(to: datasetDir.appendingPathComponent("captions.json"))
+
+    let counts = try LocalDatasetEnrichmentService.exportStemTrainingBundles(datasetDirectory: datasetDir)
+
+    #expect(counts.vocalCount == 1)
+    #expect(counts.instrumentalCount == 1)
+
+    let vocalImported = try TrainingDatasetImporter.importFiles(
+        from: datasetDir.appendingPathComponent("training_bundle_vocals.json")
+    )
+    #expect(vocalImported.count == 1)
+    #expect(vocalImported[0].url.path == vocalURL.path)
+    #expect(vocalImported[0].description == "dark blues stem package")
+    #expect(vocalImported[0].lyrics == "I keep singing low")
+
+    let instrumentalImported = try TrainingDatasetImporter.importFiles(
+        from: datasetDir.appendingPathComponent("training_bundle_instrumental.json")
+    )
+    #expect(instrumentalImported.count == 1)
+    #expect(instrumentalImported[0].url.path == instrumentalURL.path)
+    #expect(instrumentalImported[0].description == "dark blues stem package")
+    #expect(instrumentalImported[0].lyrics.isEmpty)
 }
 
 @Test @MainActor func localFilesDatasetBuilderWritesWAVClipsByDefault() async throws {

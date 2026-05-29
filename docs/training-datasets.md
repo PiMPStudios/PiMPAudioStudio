@@ -27,17 +27,13 @@ Readable audio headers are recorded when AVFoundation can open the source/clip. 
 
 ## Local Enrichment
 
-After a local-file package is built, use **Separate Stems** in the result view to run the local Anvil audio CLI against that package. The first enrichment pass runs:
+After a local-file package is built, use **Separate Stems** in the result view to enrich that package in place. AnvilApp owns this workflow directly; it does not call or require any sibling repo.
 
-```text
-anvil dataset separate <package> --mode instrumental --backend audio-separator --output-format wav
-anvil dataset export-training-bundle <package> --include vocals --output <package>/training_bundle_vocals.json --strict
-anvil dataset export-training-bundle <package> --include instrumental --output <package>/training_bundle_instrumental.json --strict
-```
+The enrichment pass shells out only to the `audio-separator` executable for the actual source-separation step. AnvilApp then writes `stems/`, `separation.json`, `training_bundle_vocals.json`, `training_bundle_instrumental.json`, refreshed manifest metadata, and package validation itself.
 
-The app looks for `anvil` on PATH, `ANVIL_AUDIO_CLI`, or the sibling `../anvil-audio-v2/.venv/bin/anvil` checkout. If the isolated `audio-separator` tool exists at `~/.cache/anvil-audio/tools/audio-separator/bin/audio-separator`, the app passes it through as `ANVIL_AUDIO_SEPARATOR_BIN`.
+The app looks for `audio-separator` on PATH or at `ANVIL_AUDIO_SEPARATOR_BIN`.
 
-Enrichment writes `stems/`, refreshes `dataset_manifest.json`, preserves separation/transcription metadata when captions are edited, and records any stem BPM estimates emitted by `anvil-audio-v2`. Vocal transcription and musical key analysis are still represented as package status fields; they remain pending until standalone local commands are wired.
+Enrichment preserves separation/transcription metadata when captions are edited and records a local BPM estimate from stem audio. Vocal transcription and musical key analysis are still represented as package status fields; they remain pending until standalone local implementations are wired.
 
 ## Train From JSON
 
