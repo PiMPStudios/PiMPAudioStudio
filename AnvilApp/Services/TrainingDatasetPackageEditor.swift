@@ -54,6 +54,14 @@ struct DatasetClipReview: Identifiable {
     var assets: [String: String]
     var caption: String
     var lyrics: String
+    var captionSource: String
+    var lyricsSource: String
+    var annotationBackend: String
+    var annotationModelID: String
+    var annotationModelRevision: String
+    var rawCaptionOutputFile: String
+    var rawLyricsOutputFile: String
+    var reviewStatus: String
     var bpm: String
     var key: String
     var language: String
@@ -96,14 +104,16 @@ struct DatasetClipReview: Identifiable {
         object["assets"] = assets
         object["caption"] = trimmedCaption
         object["prompt"] = trimmedCaption
+        object["caption_source"] = trimmedCaption.isEmpty ? "none" : (captionSource.isEmpty ? "manual" : captionSource)
         object["lyrics"] = trimmedLyrics
+        object["lyrics_source"] = trimmedLyrics.isEmpty ? "none" : (lyricsSource.isEmpty ? "manual" : lyricsSource)
         object["transcript"] = trimmedLyrics
 
         var transcription = object["transcription"] as? [String: Any] ?? [:]
         transcription["text"] = trimmedLyrics
         transcription["status"] = trimmedLyrics.isEmpty ? "missing" : "manual_reviewed"
         if !trimmedLyrics.isEmpty {
-            transcription["source"] = "dataset_review"
+            transcription["source"] = lyricsSource.isEmpty ? "dataset_review" : lyricsSource
         }
         object["transcription"] = transcription
 
@@ -139,8 +149,33 @@ struct DatasetClipReview: Identifiable {
         object["notes"] = trimmedNotes
         object["analysis"] = analysis
 
+        let persistedReviewStatus = isApproved ? "approved" : (reviewStatus.isEmpty ? "needs_review" : reviewStatus)
+        var rawOutputs = (object["annotation"] as? [String: Any])?["raw_output_files"] as? [String: Any] ?? [:]
+        if !rawCaptionOutputFile.isEmpty {
+            rawOutputs["caption"] = rawCaptionOutputFile
+        }
+        if !rawLyricsOutputFile.isEmpty {
+            rawOutputs["lyrics"] = rawLyricsOutputFile
+        }
+        object["annotation"] = [
+            "schema_version": TrainingDatasetPackageWriter.annotationSchemaVersion,
+            "updated_at": ISO8601DateFormatter().string(from: updatedAt),
+            "annotation_backend": annotationBackend.isEmpty ? "manual" : annotationBackend,
+            "annotation_backend_version": "",
+            "caption_source": trimmedCaption.isEmpty ? "none" : (captionSource.isEmpty ? "manual" : captionSource),
+            "lyrics_source": trimmedLyrics.isEmpty ? "none" : (lyricsSource.isEmpty ? "manual" : lyricsSource),
+            "model_id": annotationModelID,
+            "model_revision": annotationModelRevision,
+            "language": trimmedLanguage,
+            "caption_present": !trimmedCaption.isEmpty,
+            "lyrics_present": !trimmedLyrics.isEmpty,
+            "review_status": persistedReviewStatus,
+            "raw_output_files": rawOutputs,
+        ]
+
         object["training_review"] = [
             "approved": isApproved,
+            "status": persistedReviewStatus,
             "updated_at": ISO8601DateFormatter().string(from: updatedAt),
             "notes": trimmedNotes,
         ]
@@ -183,6 +218,9 @@ private struct SidecarFields {
     var timeSignature: String?
     var role: String?
     var notes: String?
+    var captionSource: String?
+    var lyricsSource: String?
+    var metadataSource: String?
 }
 
 enum TrainingDatasetPackageEditor {
@@ -230,7 +268,13 @@ enum TrainingDatasetPackageEditor {
     }
 
     static func save(_ document: DatasetPackageDocument) throws {
-        let records = document.clips.map { $0.persistedObject() }
+        let updatedAt = Date()
+        _ = try TrainingDatasetPackageWriter.createReviewBackup(
+            at: document.directory,
+            reason: "dataset-review-save",
+            createdAt: updatedAt
+        )
+        let records = document.clips.map { $0.persistedObject(updatedAt: updatedAt) }
         try writeJSONArray(records, to: document.directory.appendingPathComponent(TrainingDatasetPackageWriter.captionsFileName))
         try TrainingDatasetPackageWriter.refreshTrainingBundles(at: document.directory)
 
@@ -348,16 +392,41 @@ enum TrainingDatasetPackageEditor {
         let id = firstString(object, keys: ["id"]) ?? (!file.isEmpty ? file : "clip_\(index + 1)")
         let analysis = object["analysis"] as? [String: Any] ?? [:]
         let transcription = object["transcription"] as? [String: Any] ?? [:]
+        let annotation = object["annotation"] as? [String: Any] ?? [:]
+        let rawOutputFiles = annotation["raw_output_files"] as? [String: Any] ?? [:]
         let trainingReview = object["training_review"] as? [String: Any] ?? [:]
         let audio = object["audio"] as? [String: Any] ?? [:]
+        let caption = firstString(object, keys: ["caption", "prompt"]) ?? ""
+        let lyrics = firstString(object, keys: ["lyrics", "transcript"])
+            ?? firstString(transcription, keys: ["text"])
+            ?? ""
+        let reviewStatus = firstString(annotation, keys: ["review_status"])
+            ?? firstString(trainingReview, keys: ["status"])
+            ?? "needs_review"
+        let isApproved = boolValue(trainingReview["approved"]) ?? (reviewStatus == "approved")
         return DatasetClipReview(
             id: id,
             file: file,
             assets: assets,
-            caption: firstString(object, keys: ["caption", "prompt"]) ?? "",
-            lyrics: firstString(object, keys: ["lyrics", "transcript"])
-                ?? firstString(transcription, keys: ["text"])
+            caption: caption,
+            lyrics: lyrics,
+            captionSource: firstString(object, keys: ["caption_source"])
+                ?? firstString(annotation, keys: ["caption_source"])
+                ?? (caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "none" : "manual"),
+            lyricsSource: firstString(object, keys: ["lyrics_source"])
+                ?? firstString(annotation, keys: ["lyrics_source"])
+                ?? firstString(transcription, keys: ["source"])
+                ?? (lyrics.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "none" : "manual"),
+            annotationBackend: firstString(annotation, keys: ["annotation_backend"])
+                ?? firstString(transcription, keys: ["backend"])
+                ?? "manual",
+            annotationModelID: firstString(annotation, keys: ["model_id"])
+                ?? firstString(transcription, keys: ["model"])
                 ?? "",
+            annotationModelRevision: firstString(annotation, keys: ["model_revision"]) ?? "",
+            rawCaptionOutputFile: firstString(rawOutputFiles, keys: ["caption"]) ?? "",
+            rawLyricsOutputFile: firstString(rawOutputFiles, keys: ["lyrics"]) ?? "",
+            reviewStatus: reviewStatus,
             bpm: stringValue(object["bpm"])
                 ?? stringValue(analysis["bpm"])
                 ?? stringValue(analysis["tempo_bpm_estimate"])
@@ -369,7 +438,7 @@ enum TrainingDatasetPackageEditor {
             timeSignature: firstString(object, keys: ["timesignature", "time_signature"]) ?? "",
             role: firstString(object, keys: ["role"]) ?? inferredRole(from: assets),
             notes: firstString(object, keys: ["notes"]) ?? firstString(trainingReview, keys: ["notes"]) ?? "",
-            isApproved: boolValue(trainingReview["approved"]) ?? false,
+            isApproved: isApproved,
             durationSeconds: doubleValue(object["clip_length_seconds"]) ?? doubleValue(audio["duration_seconds"]),
             audioStatus: firstString(audio, keys: ["metadata_status"]) ?? "unknown",
             separationStatus: separationStatus(from: object, datasetDirectory: datasetDirectory),
@@ -424,6 +493,16 @@ enum TrainingDatasetPackageEditor {
             fields.role = firstString(json, keys: ["role"]) ?? fields.role
             fields.notes = firstString(json, keys: ["notes"]) ?? fields.notes
         }
+        if fields.caption != nil {
+            fields.captionSource = "sidecar"
+        }
+        if fields.lyrics != nil {
+            fields.lyricsSource = "sidecar"
+        }
+        if fields.bpm != nil || fields.key != nil || fields.language != nil ||
+            fields.timeSignature != nil || fields.role != nil || fields.notes != nil {
+            fields.metadataSource = "sidecar"
+        }
         return fields
     }
 
@@ -449,7 +528,10 @@ enum TrainingDatasetPackageEditor {
                     language: firstCSV(row, keys: ["language", "lang"]),
                     timeSignature: firstCSV(row, keys: ["timesignature", "time_signature", "meter"]),
                     role: firstCSV(row, keys: ["role"]),
-                    notes: firstCSV(row, keys: ["notes"])
+                    notes: firstCSV(row, keys: ["notes"]),
+                    captionSource: firstCSV(row, keys: ["caption", "prompt"]) == nil ? nil : "csv",
+                    lyricsSource: firstCSV(row, keys: ["lyrics", "transcript"]) == nil ? nil : "csv",
+                    metadataSource: "csv"
                 )
                 for key in lookupKeys(for: path, datasetDirectory: datasetDirectory) {
                     lookup[key] = fields
@@ -693,7 +775,10 @@ private extension SidecarFields {
             language: other.language ?? language,
             timeSignature: other.timeSignature ?? timeSignature,
             role: other.role ?? role,
-            notes: other.notes ?? notes
+            notes: other.notes ?? notes,
+            captionSource: other.captionSource ?? captionSource,
+            lyricsSource: other.lyricsSource ?? lyricsSource,
+            metadataSource: other.metadataSource ?? metadataSource
         )
     }
 }
@@ -701,15 +786,41 @@ private extension SidecarFields {
 private extension DatasetClipReview {
     mutating func apply(fields: SidecarFields) -> Int {
         var changed = 0
-        changed += update(&caption, with: fields.caption)
-        changed += update(&lyrics, with: fields.lyrics)
+        let captionChanged = update(&caption, with: fields.caption)
+        if captionChanged > 0 {
+            captionSource = fields.captionSource ?? "sidecar"
+            annotationBackend = backendName(for: fields.captionSource)
+        }
+        changed += captionChanged
+
+        let lyricsChanged = update(&lyrics, with: fields.lyrics)
+        if lyricsChanged > 0 {
+            lyricsSource = fields.lyricsSource ?? "sidecar"
+            annotationBackend = backendName(for: fields.lyricsSource)
+        }
+        changed += lyricsChanged
+
         changed += update(&bpm, with: fields.bpm)
         changed += update(&key, with: fields.key)
         changed += update(&language, with: fields.language)
         changed += update(&timeSignature, with: fields.timeSignature)
         changed += update(&role, with: fields.role)
         changed += update(&notes, with: fields.notes)
+        if changed > 0 && !isApproved {
+            reviewStatus = "needs_review"
+        }
         return changed
+    }
+
+    private func backendName(for source: String?) -> String {
+        switch source {
+        case "csv":
+            return "metadata_csv"
+        case "sidecar":
+            return "sidecar_import"
+        default:
+            return source ?? "manual"
+        }
     }
 
     private func update(_ field: inout String, with value: String?) -> Int {

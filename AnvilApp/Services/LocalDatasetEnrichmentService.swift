@@ -233,6 +233,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
             records: records,
             role: .instrumental
         )
+        try TrainingDatasetPackageWriter.refreshPreprocessCacheManifest(at: datasetDirectory)
         return (vocalCount, instrumentalCount)
     }
 
@@ -359,9 +360,36 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         assets["lyrics_lrc"] = relativePath(for: transcription.lrcURL, from: datasetDirectory)
         updated["assets"] = assets
 
+        let lyricsSource = transcription.source == "qwen3-asr" ? "native-qwen3-asr" : transcription.source
+        updated["lyrics_source"] = transcription.text.isEmpty ? "none" : lyricsSource
+        if updated["caption_source"] == nil {
+            updated["caption_source"] = promptText(from: updated).isEmpty ? "none" : "manual"
+        }
+
+        var rawOutputs = (updated["annotation"] as? [String: Any])?["raw_output_files"] as? [String: Any] ?? [:]
+        rawOutputs["lyrics"] = relativePath(for: transcription.lyricsURL, from: datasetDirectory)
+        rawOutputs["timed_lyrics"] = relativePath(for: transcription.timedLyricsURL, from: datasetDirectory)
+        rawOutputs["lyrics_lrc"] = relativePath(for: transcription.lrcURL, from: datasetDirectory)
+        var annotation = updated["annotation"] as? [String: Any] ?? [:]
+        annotation["schema_version"] = TrainingDatasetPackageWriter.annotationSchemaVersion
+        annotation["updated_at"] = ISO8601DateFormatter().string(from: Date())
+        annotation["annotation_backend"] = transcription.backend
+        annotation["caption_source"] = updated["caption_source"] as? String ?? "manual"
+        annotation["lyrics_source"] = updated["lyrics_source"] as? String ?? "none"
+        annotation["model_id"] = transcription.model
+        annotation["model_revision"] = annotation["model_revision"] ?? ""
+        annotation["aligner_model"] = transcription.alignerModel ?? ""
+        annotation["language"] = annotation["language"] ?? ""
+        annotation["caption_present"] = !promptText(from: updated).isEmpty
+        annotation["lyrics_present"] = !transcription.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        annotation["review_status"] = annotation["review_status"] ?? "needs_review"
+        annotation["raw_output_files"] = rawOutputs
+        updated["annotation"] = annotation
+
         let clipURL = resolve(record.file, relativeTo: datasetDirectory)
         var sidecar = readJSONObject(from: clipURL.deletingPathExtension().appendingPathExtension("json")) ?? [:]
         sidecar["transcription"] = payload
+        sidecar["annotation"] = annotation
         try writeJSONObject(sidecar, to: clipURL.deletingPathExtension().appendingPathExtension("json"))
 
         return updated
@@ -452,11 +480,29 @@ final class LocalDatasetEnrichmentService: ObservableObject {
 
             let prompt = promptText(from: record)
             let transcript = transcriptionText(from: record)
+            let annotation = record["annotation"] as? [String: Any] ?? [:]
+            let captionSource = stringValue(record["caption_source"])
+                ?? stringValue(annotation["caption_source"])
+                ?? (prompt.isEmpty ? "none" : "manual")
+            let sourceLyrics = stringValue(record["lyrics_source"])
+                ?? stringValue(annotation["lyrics_source"])
+                ?? stringValue((record["transcription"] as? [String: Any])?["source"])
+                ?? "transcript"
+            let bundleLyrics = role == .vocals ? transcript : ""
+            let bundleLyricsSource = role == .vocals
+                ? (transcript.isEmpty ? "none" : sourceLyrics)
+                : role.trainingLyricsSource
             var assets = record["assets"] as? [String: Any] ?? [:]
             assets[role.assetKey] = stemPath
             if let file = record["file"] as? String {
                 assets["full_mix"] = file
             }
+            var clipAnnotation = annotation
+            clipAnnotation["schema_version"] = TrainingDatasetPackageWriter.annotationSchemaVersion
+            clipAnnotation["caption_source"] = captionSource
+            clipAnnotation["lyrics_source"] = bundleLyrics.isEmpty ? "none" : bundleLyricsSource
+            clipAnnotation["caption_present"] = !prompt.isEmpty
+            clipAnnotation["lyrics_present"] = !bundleLyrics.isEmpty
 
             var clip: [String: Any] = [
                 "id": record["id"] as? String ?? String(format: "clip_%04d", index + 1),
@@ -464,13 +510,16 @@ final class LocalDatasetEnrichmentService: ObservableObject {
                 "assets": assets,
                 "caption": prompt,
                 "prompt": prompt,
-                "lyrics": role == .vocals ? transcript : "",
-                "lyrics_source": role == .vocals && !transcript.isEmpty ? "transcript" : role.trainingLyricsSource,
+                "caption_source": captionSource,
+                "lyrics": bundleLyrics,
+                "lyrics_source": bundleLyricsSource,
                 "transcript": transcript,
                 "transcription": record["transcription"] as? [String: Any] ?? [
                     "status": transcript.isEmpty ? "not_run" : "complete",
                     "text": transcript,
                 ],
+                "annotation_schema_version": TrainingDatasetPackageWriter.annotationSchemaVersion,
+                "annotation": clipAnnotation,
                 "analysis": stemAnalysis(for: role, in: record, datasetDirectory: datasetDirectory) ?? [:],
                 "source": [
                     "kind": "local_file",
@@ -492,6 +541,8 @@ final class LocalDatasetEnrichmentService: ObservableObject {
             "include": [role.includeName],
             "training_lyrics": role.trainingLyrics,
             "training_lyrics_source": role.trainingLyricsSource,
+            "annotation_schema_version": TrainingDatasetPackageWriter.annotationSchemaVersion,
+            "preprocess_cache": TrainingDatasetPackageWriter.preprocessCacheFileName,
             "clip_count": clips.count,
             "clips": clips,
         ]
@@ -548,6 +599,19 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         }
         manifest["transcription"] = transcription
 
+        var annotation = manifest["annotation"] as? [String: Any] ?? [:]
+        annotation["schema_version"] = TrainingDatasetPackageWriter.annotationSchemaVersion
+        annotation["updated_at"] = now
+        annotation["status"] = annotationStatus(in: captions)
+        annotation["approved_clip_count"] = approvedClipCount(in: captions)
+        annotation["caption_sources"] = sortedUniqueStrings(captions.compactMap {
+            stringValue($0["caption_source"]) ?? stringValue(($0["annotation"] as? [String: Any])?["caption_source"])
+        })
+        annotation["lyrics_sources"] = sortedUniqueStrings(captions.compactMap {
+            stringValue($0["lyrics_source"]) ?? stringValue(($0["annotation"] as? [String: Any])?["lyrics_source"])
+        })
+        manifest["annotation"] = annotation
+
         var analysis = manifest["analysis"] as? [String: Any] ?? [:]
         analysis["enabled"] = result.bpmEstimateCount > 0
         analysis["status"] = result.bpmEstimateCount > 0 ? "stem_analysis_available" : (analysis["status"] ?? "not_run")
@@ -567,6 +631,8 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         training["vocal_bundle"] = TrainingDatasetPackageWriter.vocalBundleFileName
         training["instrumental_bundle"] = TrainingDatasetPackageWriter.instrumentalBundleFileName
         training["dataset_config"] = TrainingDatasetPackageWriter.datasetConfigFileName
+        training["preprocess_cache"] = TrainingDatasetPackageWriter.preprocessCacheFileName
+        training["preprocess_cache_status"] = "declared"
         manifest["training"] = training
 
         manifest["enrichment"] = [
@@ -582,6 +648,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         ]
 
         try writeJSONObject(manifest, to: manifestURL)
+        try TrainingDatasetPackageWriter.refreshPreprocessCacheManifest(at: datasetDirectory)
     }
 
     nonisolated private static func inspectResult(datasetDirectory: URL) -> LocalDatasetEnrichmentResult {
@@ -879,6 +946,61 @@ final class LocalDatasetEnrichmentService: ObservableObject {
             return Double(string)
         }
         return nil
+    }
+
+    nonisolated private static func stringValue(_ value: Any?) -> String? {
+        switch value {
+        case let string as String:
+            let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        case let number as NSNumber:
+            return number.stringValue
+        case let double as Double:
+            return String(double)
+        case let int as Int:
+            return String(int)
+        default:
+            return nil
+        }
+    }
+
+    nonisolated private static func boolValue(_ value: Any?) -> Bool? {
+        switch value {
+        case let bool as Bool:
+            return bool
+        case let number as NSNumber:
+            return number.boolValue
+        case let string as String:
+            return ["true", "yes", "1"].contains(string.lowercased())
+        default:
+            return nil
+        }
+    }
+
+    nonisolated private static func annotationStatus(in captions: [[String: Any]]) -> String {
+        guard !captions.isEmpty else { return "empty" }
+        let approved = approvedClipCount(in: captions)
+        if approved == captions.count {
+            return "reviewed"
+        }
+        if approved > 0 {
+            return "partial_review"
+        }
+        return "manual_review_required"
+    }
+
+    nonisolated private static func approvedClipCount(in captions: [[String: Any]]) -> Int {
+        captions.filter { record in
+            if let trainingReview = record["training_review"] as? [String: Any],
+               boolValue(trainingReview["approved"]) == true {
+                return true
+            }
+            if let annotation = record["annotation"] as? [String: Any],
+               stringValue(annotation["review_status"]) == "approved" {
+                return true
+            }
+            return false
+        }.count
     }
 
     nonisolated private static func rounded(_ value: Double, places: Int) -> Double {

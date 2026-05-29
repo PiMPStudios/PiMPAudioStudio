@@ -466,12 +466,12 @@ The important product move is to estimate job size before upload and show a "max
 
 Do the low-risk Anvil-native work first:
 
-1. Add the annotation metadata fields and raw-output sidecar conventions.
-2. Build the dataset review/editor UI.
-3. Add ACE-compatible sidecar import/export for `.lyrics.txt`, `.caption.txt`, per-track `.json`, and BPM/key `.csv`.
-4. Keep current native Demucs plus Qwen3-ASR as default.
+1. Add the annotation metadata fields and raw-output sidecar conventions. Status: package schema, clip provenance, manifest summaries, and raw lyric artifact paths are now in place.
+2. Build the dataset review/editor UI. Status: the current review workspace edits metadata, imports sidecars, gates training on approval, and writes review backups before save.
+3. Add ACE-compatible sidecar import/export for `.lyrics.txt`, `.caption.txt`, per-track `.json`, and BPM/key `.csv`. Status: import is wired; export remains a later compatibility pass.
+4. Keep current native Demucs plus Qwen3-ASR as default. Status: default local enrichment remains native Swift/MLX and tags Qwen lyric output as `native-qwen3-asr`.
 5. Add ACE official captioner/transcriber as a remote backend target.
-6. Add LoKR as an experimental Training tab that reuses the same preprocessed tensors as LoRA.
+6. Add LoKR as an experimental Training tab that reuses the same preprocessed tensors as LoRA. Status: packages now write an adapter-agnostic `preprocess_cache.json` contract for LoRA/LoKR reuse; tensor persistence is still future work.
 7. Use StemForge as a workflow/UX reference for LoKR, snapshots, A/B adapter comparison, and remote training monitoring.
 8. Treat DEMON as a later Generate/Edit/Training audition reference for automation curves, live adapter controls, session snapshots, and MCP command coverage.
 9. Use Awesome ACE-Step as the ongoing radar for zero-Python runtimes, style-tag UX, DAW/export ideas, workflow graphs, and remote worker references.

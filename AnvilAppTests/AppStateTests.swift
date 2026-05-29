@@ -262,6 +262,8 @@ private func silentWAVData(sampleRate: Int = 22_050, channels: Int = 1, frameCou
     #expect(changed >= 5)
     #expect(document.clips[0].caption == "smoky minor key blues trio")
     #expect(document.clips[0].lyrics == "I found the groove after midnight")
+    #expect(document.clips[0].captionSource == "sidecar")
+    #expect(document.clips[0].lyricsSource == "sidecar")
     #expect(document.clips[0].bpm == "78")
     #expect(document.clips[0].key == "E minor")
     #expect(document.clips[0].language == "en")
@@ -273,8 +275,32 @@ private func silentWAVData(sampleRate: Int = 22_050, channels: Int = 1, frameCou
     #expect(reloaded.clips[0].isApproved)
     #expect(reloaded.clips[0].caption == "smoky minor key blues trio")
     #expect(reloaded.clips[0].lyrics == "I found the groove after midnight")
+    #expect(reloaded.clips[0].captionSource == "sidecar")
+    #expect(reloaded.clips[0].lyricsSource == "sidecar")
+    #expect(reloaded.clips[0].reviewStatus == "approved")
     #expect(reloaded.clips[0].timeSignature == "4/4")
     #expect(reloaded.isTrainingReady)
+
+    let backupRoot = datasetDir.appendingPathComponent("review_backups", isDirectory: true)
+    let backups = try FileManager.default.contentsOfDirectory(
+        at: backupRoot,
+        includingPropertiesForKeys: nil
+    )
+    #expect(backups.count == 1)
+    #expect(FileManager.default.fileExists(atPath: backups[0].appendingPathComponent("captions.json").path))
+
+    let captionsData = try Data(contentsOf: datasetDir.appendingPathComponent("captions.json"))
+    let captions = try JSONSerialization.jsonObject(with: captionsData) as? [[String: Any]]
+    let annotation = captions?.first?["annotation"] as? [String: Any]
+    #expect(annotation?["caption_source"] as? String == "sidecar")
+    #expect(annotation?["lyrics_source"] as? String == "sidecar")
+    #expect(annotation?["review_status"] as? String == "approved")
+
+    let preprocessData = try Data(contentsOf: datasetDir.appendingPathComponent("preprocess_cache.json"))
+    let preprocess = try JSONSerialization.jsonObject(with: preprocessData) as? [String: Any]
+    let adapterModes = preprocess?["adapter_modes"] as? [String] ?? []
+    #expect(adapterModes.contains("lora"))
+    #expect(adapterModes.contains("lokr"))
 }
 
 @Test func trainingManifestDecodesImportedFilesWithoutLyrics() throws {
@@ -326,6 +352,7 @@ private func silentWAVData(sampleRate: Int = 22_050, channels: Int = 1, frameCou
         "training_bundle_full_mix.json",
         "remote_training_package.json",
         "package_validation.json",
+        "preprocess_cache.json",
     ] {
         let fileURL = datasetDir.appendingPathComponent(fileName)
         #expect(FileManager.default.fileExists(atPath: fileURL.path))
@@ -358,6 +385,9 @@ private func silentWAVData(sampleRate: Int = 22_050, channels: Int = 1, frameCou
     let copyRules = remoteJSON?["copy_rules"] as? [String: Any]
     let includedPaths = copyRules?["include"] as? [String] ?? []
     #expect(includedPaths.contains("stems/**"))
+    #expect(includedPaths.contains("annotations/**"))
+    #expect(includedPaths.contains("preprocessed/**"))
+    #expect(includedPaths.contains("preprocess_cache.json"))
     #expect(includedPaths.contains("training_bundle_vocals.json"))
     #expect(includedPaths.contains("training_bundle_instrumental.json"))
 
@@ -366,6 +396,10 @@ private func silentWAVData(sampleRate: Int = 22_050, channels: Int = 1, frameCou
     let audioJSON = manifestJSON?["audio"] as? [String: Any]
     #expect(audioJSON?["metadata_status"] as? String == "audio_properties_unavailable")
     #expect(audioJSON?["format"] as? String == "m4a")
+    let annotationJSON = manifestJSON?["annotation"] as? [String: Any]
+    #expect(annotationJSON?["schema_version"] as? String == "1.0")
+    let trainingJSON = manifestJSON?["training"] as? [String: Any]
+    #expect(trainingJSON?["preprocess_cache"] as? String == "preprocess_cache.json")
 
     let sourceJSON = manifestJSON?["source"] as? [String: Any]
     let sourceFilesJSON = sourceJSON?["files"] as? [[String: Any]]
@@ -443,8 +477,16 @@ private func silentWAVData(sampleRate: Int = 22_050, channels: Int = 1, frameCou
       {
         "file": "clips/f001_clip_001.wav",
         "caption": "old caption",
+        "caption_source": "manual",
         "transcript": "I keep the line",
+        "lyrics_source": "native-qwen3-asr",
         "transcription": { "status": "complete", "text": "I keep the line" },
+        "annotation": {
+          "schema_version": "1.0",
+          "caption_source": "manual",
+          "lyrics_source": "native-qwen3-asr",
+          "review_status": "needs_review"
+        },
         "analysis": { "tempo_bpm_estimate": 72 },
         "separation": {
           "mode": "instrumental",
@@ -473,6 +515,10 @@ private func silentWAVData(sampleRate: Int = 22_050, channels: Int = 1, frameCou
     let record = captions?.first
     #expect(record?["caption"] as? String == "new caption")
     #expect(record?["transcript"] as? String == "I keep the line")
+    #expect(record?["caption_source"] as? String == "manual")
+    #expect(record?["lyrics_source"] as? String == "native-qwen3-asr")
+    let preservedAnnotation = record?["annotation"] as? [String: Any]
+    #expect(preservedAnnotation?["lyrics_source"] as? String == "native-qwen3-asr")
     let transcription = record?["transcription"] as? [String: Any]
     #expect(transcription?["text"] as? String == "I keep the line")
     let separation = record?["separation"] as? [String: Any]
@@ -583,6 +629,13 @@ private func silentWAVData(sampleRate: Int = 22_050, channels: Int = 1, frameCou
     let training = manifest?["training"] as? [String: Any]
     #expect(training?["vocal_bundle"] as? String == "training_bundle_vocals.json")
     #expect(training?["instrumental_bundle"] as? String == "training_bundle_instrumental.json")
+    #expect(training?["preprocess_cache"] as? String == "preprocess_cache.json")
+    let annotation = manifest?["annotation"] as? [String: Any]
+    #expect(annotation?["status"] as? String == "manual_review_required")
+
+    let preprocessData = try Data(contentsOf: datasetDir.appendingPathComponent("preprocess_cache.json"))
+    let preprocess = try JSONSerialization.jsonObject(with: preprocessData) as? [String: Any]
+    #expect(preprocess?["status"] as? String == "ready_for_preprocess")
 }
 
 @Test func localDatasetEnrichmentUsesNativeDemucsOnly() {
@@ -683,6 +736,10 @@ private func silentWAVData(sampleRate: Int = 22_050, channels: Int = 1, frameCou
     #expect(transcription?["backend"] as? String == "test-qwen3-asr")
     #expect(transcription?["model"] as? String == "fake-qwen3-asr")
     #expect(transcription?["lyrics_file"] as? String == "stems/f001_clip_001/lyrics.txt")
+    #expect(record?["lyrics_source"] as? String == "native-qwen3-asr")
+    let annotation = record?["annotation"] as? [String: Any]
+    #expect(annotation?["lyrics_source"] as? String == "native-qwen3-asr")
+    #expect(annotation?["model_id"] as? String == "fake-qwen3-asr")
     let assets = record?["assets"] as? [String: Any]
     #expect(assets?["timed_lyrics"] as? String == "stems/f001_clip_001/lyrics.timed.json")
 
@@ -698,6 +755,9 @@ private func silentWAVData(sampleRate: Int = 22_050, channels: Int = 1, frameCou
     #expect(manifestTranscription?["status"] as? String == "complete")
     let models = manifestTranscription?["models"] as? [String] ?? []
     #expect(models.contains("fake-qwen3-asr"))
+    let manifestAnnotation = manifest?["annotation"] as? [String: Any]
+    let lyricSources = manifestAnnotation?["lyrics_sources"] as? [String] ?? []
+    #expect(lyricSources.contains("native-qwen3-asr"))
 }
 
 @Test func localDatasetEnrichmentExportsStemBundlesNatively() throws {
@@ -765,6 +825,11 @@ private func silentWAVData(sampleRate: Int = 22_050, channels: Int = 1, frameCou
     #expect(vocalImported[0].url.path == vocalURL.path)
     #expect(vocalImported[0].description == "dark blues stem package")
     #expect(vocalImported[0].lyrics == "I keep singing low")
+    let vocalBundleData = try Data(contentsOf: datasetDir.appendingPathComponent("training_bundle_vocals.json"))
+    let vocalBundle = try JSONSerialization.jsonObject(with: vocalBundleData) as? [String: Any]
+    #expect(vocalBundle?["preprocess_cache"] as? String == "preprocess_cache.json")
+    let vocalClips = vocalBundle?["clips"] as? [[String: Any]] ?? []
+    #expect(vocalClips.first?["annotation_schema_version"] as? String == "1.0")
 
     let instrumentalImported = try TrainingDatasetImporter.importFiles(
         from: datasetDir.appendingPathComponent("training_bundle_instrumental.json")
@@ -1004,7 +1069,7 @@ private actor FakeDatasetLyricsTranscriber: DatasetLyricsTranscribing, DatasetLy
 
         return DatasetLyricsTranscriptionArtifact(
             text: "I keep singing low",
-            source: "test",
+            source: "qwen3-asr",
             backend: "test-qwen3-asr",
             model: "fake-qwen3-asr",
             alignerModel: "fake-aligner",

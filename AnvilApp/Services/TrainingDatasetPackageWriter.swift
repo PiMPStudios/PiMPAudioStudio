@@ -38,6 +38,8 @@ enum TrainingDatasetPackageError: LocalizedError {
 }
 
 enum TrainingDatasetPackageWriter {
+    static let annotationSchemaVersion = "1.0"
+    static let preprocessCacheVersion = "1.0"
     static let captionsFileName = "captions.json"
     static let datasetConfigFileName = "dataset_config.json"
     static let datasetManifestFileName = "dataset_manifest.json"
@@ -47,6 +49,8 @@ enum TrainingDatasetPackageWriter {
     static let instrumentalBundleFileName = "training_bundle_instrumental.json"
     static let remotePackageFileName = "remote_training_package.json"
     static let validationReportFileName = "package_validation.json"
+    static let preprocessCacheFileName = "preprocess_cache.json"
+    static let reviewBackupsDirectoryName = "review_backups"
 
     private struct AudioFileMetadata {
         let format: String
@@ -136,6 +140,7 @@ enum TrainingDatasetPackageWriter {
         let bundle = trainingBundle(clips: clipEntries, createdAt: createdAtString)
         try writeJSONObject(bundle, to: outputDirectory.appendingPathComponent(trainingBundleFileName))
         try writeJSONObject(bundle, to: outputDirectory.appendingPathComponent(fullMixBundleFileName))
+        try refreshPreprocessCacheManifest(at: outputDirectory, createdAt: createdAt)
         try writeJSONObject(
             remotePackageDescriptor(
                 outputDirectory: outputDirectory,
@@ -224,7 +229,105 @@ enum TrainingDatasetPackageWriter {
         let bundle = trainingBundle(clips: captions, createdAt: updatedAtString)
         try writeJSONObject(bundle, to: outputDirectory.appendingPathComponent(trainingBundleFileName))
         try writeJSONObject(bundle, to: outputDirectory.appendingPathComponent(fullMixBundleFileName))
+        try refreshPreprocessCacheManifest(at: outputDirectory, createdAt: updatedAt)
         try refreshValidationReport(at: outputDirectory, checkedAt: updatedAt)
+    }
+
+    @discardableResult
+    static func createReviewBackup(
+        at outputDirectory: URL,
+        reason: String,
+        createdAt: Date = Date()
+    ) throws -> URL? {
+        let timestamp = compactTimestamp(createdAt)
+        var backupDirectory = outputDirectory
+            .appendingPathComponent(reviewBackupsDirectoryName, isDirectory: true)
+            .appendingPathComponent("\(timestamp)_\(slug(reason))", isDirectory: true)
+        if FileManager.default.fileExists(atPath: backupDirectory.path(percentEncoded: false)) {
+            backupDirectory = outputDirectory
+                .appendingPathComponent(reviewBackupsDirectoryName, isDirectory: true)
+                .appendingPathComponent("\(timestamp)_\(slug(reason))_\(UUID().uuidString.prefix(8))", isDirectory: true)
+        }
+
+        let filesToCopy = [
+            captionsFileName,
+            datasetManifestFileName,
+            trainingBundleFileName,
+            fullMixBundleFileName,
+            vocalBundleFileName,
+            instrumentalBundleFileName,
+            validationReportFileName,
+            preprocessCacheFileName,
+        ].filter {
+            FileManager.default.fileExists(
+                atPath: outputDirectory.appendingPathComponent($0).path(percentEncoded: false)
+            )
+        }
+
+        guard !filesToCopy.isEmpty else { return nil }
+        try FileManager.default.createDirectory(at: backupDirectory, withIntermediateDirectories: true)
+        for file in filesToCopy {
+            try FileManager.default.copyItem(
+                at: outputDirectory.appendingPathComponent(file),
+                to: backupDirectory.appendingPathComponent(file)
+            )
+        }
+        try writeJSONObject(
+            [
+                "anvil_review_backup_version": "1.0",
+                "created_at": ISO8601DateFormatter().string(from: createdAt),
+                "reason": reason,
+                "files": filesToCopy,
+            ],
+            to: backupDirectory.appendingPathComponent("backup_manifest.json")
+        )
+        return backupDirectory
+    }
+
+    static func refreshPreprocessCacheManifest(
+        at outputDirectory: URL,
+        createdAt: Date = Date()
+    ) throws {
+        let createdAtString = ISO8601DateFormatter().string(from: createdAt)
+        let manifests = [
+            preprocessBundleEntry(
+                name: "full_mix",
+                bundleFileName: fullMixBundleFileName,
+                cacheDirectory: "preprocessed/full_mix",
+                outputDirectory: outputDirectory
+            ),
+            preprocessBundleEntry(
+                name: "vocals",
+                bundleFileName: vocalBundleFileName,
+                cacheDirectory: "preprocessed/vocals",
+                outputDirectory: outputDirectory
+            ),
+            preprocessBundleEntry(
+                name: "instrumental",
+                bundleFileName: instrumentalBundleFileName,
+                cacheDirectory: "preprocessed/instrumental",
+                outputDirectory: outputDirectory
+            ),
+        ]
+
+        let manifest: [String: Any] = [
+            "anvil_preprocess_cache_version": preprocessCacheVersion,
+            "created_at": createdAtString,
+            "updated_at": createdAtString,
+            "dataset_dir": ".",
+            "dataset_manifest": datasetManifestFileName,
+            "cache_root": "preprocessed",
+            "adapter_modes": ["lora", "lokr"],
+            "status": manifests.contains { ($0["status"] as? String) == "ready_for_preprocess" }
+                ? "ready_for_preprocess"
+                : "waiting_for_bundles",
+            "bundles": manifests,
+            "notes": [
+                "This manifest is adapter-agnostic: LoRA and LoKR should reuse the same encoded audio and conditioning tensors when native tensor persistence is wired.",
+                "Cache entries are declared before tensors exist so remote workers and future local preprocess steps share one contract.",
+            ],
+        ]
+        try writeJSONObject(manifest, to: outputDirectory.appendingPathComponent(preprocessCacheFileName))
     }
 
     @discardableResult
@@ -320,6 +423,14 @@ enum TrainingDatasetPackageWriter {
                 "enabled": false,
                 "status": "not_run",
             ],
+            "annotation": [
+                "schema_version": annotationSchemaVersion,
+                "status": "manual_review_required",
+                "default_backend": "manual",
+                "caption_sources": ["manual", "sidecar", "native", "ace-step-captioner", "remote"],
+                "lyrics_sources": ["none", "manual", "sidecar", "native-qwen3-asr", "ace-step-transcriber", "remote"],
+                "review_gate": "manual_approval_required",
+            ],
             "analysis": [
                 "enabled": false,
                 "status": audioSummary["metadata_status"] as? String ?? "audio_properties_unavailable",
@@ -331,6 +442,8 @@ enum TrainingDatasetPackageWriter {
                 "default_bundle": trainingBundleFileName,
                 "full_mix_bundle": fullMixBundleFileName,
                 "dataset_config": datasetConfigFileName,
+                "preprocess_cache": preprocessCacheFileName,
+                "preprocess_cache_status": "declared",
             ],
             "remote_packaging": [
                 "status": "ready_for_upload",
@@ -349,6 +462,8 @@ enum TrainingDatasetPackageWriter {
             "include": ["full_mix"],
             "training_lyrics": "[Instrumental]",
             "training_lyrics_source": "constant",
+            "annotation_schema_version": annotationSchemaVersion,
+            "preprocess_cache": preprocessCacheFileName,
             "clip_count": clips.count,
             "clips": clips,
         ]
@@ -392,10 +507,13 @@ enum TrainingDatasetPackageWriter {
                 ],
             ],
             "provider_targets": ["runpod", "digitalocean_gpu"],
+            "preprocess_cache": preprocessCacheFileName,
             "copy_rules": [
                 "include": [
                     "clips/**",
                     "stems/**",
+                    "annotations/**",
+                    "preprocessed/**",
                     captionsFileName,
                     datasetConfigFileName,
                     datasetManifestFileName,
@@ -405,12 +523,14 @@ enum TrainingDatasetPackageWriter {
                     instrumentalBundleFileName,
                     remotePackageFileName,
                     validationReportFileName,
+                    preprocessCacheFileName,
                 ],
                 "exclude": [],
             ],
             "worker_contract": [
                 "resolve_relative_paths_from": "package_root",
                 "entry_bundle": fullMixBundleFileName,
+                "preprocess_cache": preprocessCacheFileName,
                 "secrets_required": [],
                 "expected_gpu_class": "h100_or_h200",
             ],
@@ -441,12 +561,28 @@ enum TrainingDatasetPackageWriter {
                 ],
                 "caption": caption,
                 "prompt": caption,
+                "caption_source": caption.isEmpty ? "none" : "manual",
                 "lyrics": "",
+                "lyrics_source": "none",
                 "transcript": "",
                 "transcription": [
                     "status": "not_run",
                     "text": "",
                 ],
+                "annotation": annotationMetadata(
+                    captionSource: caption.isEmpty ? "none" : "manual",
+                    lyricsSource: "none",
+                    backend: "manual",
+                    modelID: "",
+                    modelRevision: "",
+                    language: "",
+                    caption: caption,
+                    lyrics: "",
+                    reviewStatus: "needs_review",
+                    rawCaptionOutputFile: "",
+                    rawLyricsOutputFile: "",
+                    updatedAt: Date()
+                ),
                 "analysis": [
                     "status": "not_run",
                 ],
@@ -691,7 +827,10 @@ enum TrainingDatasetPackageWriter {
         let bpmEstimates = stemBPMEstimates(in: captions, outputDirectory: outputDirectory)
         let hasDerivedMetadata = separatedClipCount > 0 || transcribedClipCount > 0 ||
             vocalBundleExists || instrumentalBundleExists || !bpmEstimates.isEmpty
-        guard hasDerivedMetadata else { return }
+        guard hasDerivedMetadata else {
+            try refreshPreprocessCacheManifest(at: outputDirectory, createdAt: updatedAt)
+            return
+        }
 
         let updatedAtString = ISO8601DateFormatter().string(from: updatedAt)
 
@@ -745,6 +884,21 @@ enum TrainingDatasetPackageWriter {
         }
         manifest["transcription"] = transcription
 
+        var annotation = manifest["annotation"] as? [String: Any] ?? [:]
+        annotation["schema_version"] = annotationSchemaVersion
+        annotation["updated_at"] = updatedAtString
+        annotation["status"] = annotationStatus(in: captions)
+        annotation["approved_clip_count"] = approvedClipCount(in: captions)
+        annotation["caption_sources"] = sortedUnique(captions.compactMap {
+            stringValue($0["caption_source"])
+                ?? stringValue(($0["annotation"] as? [String: Any])?["caption_source"])
+        })
+        annotation["lyrics_sources"] = sortedUnique(captions.compactMap {
+            stringValue($0["lyrics_source"])
+                ?? stringValue(($0["annotation"] as? [String: Any])?["lyrics_source"])
+        })
+        manifest["annotation"] = annotation
+
         var analysis = manifest["analysis"] as? [String: Any] ?? [:]
         analysis["enabled"] = !bpmEstimates.isEmpty
         analysis["status"] = !bpmEstimates.isEmpty ? "stem_analysis_available" : (analysis["status"] ?? "not_run")
@@ -762,6 +916,8 @@ enum TrainingDatasetPackageWriter {
         training["default_bundle"] = trainingBundleFileName
         training["full_mix_bundle"] = fullMixBundleFileName
         training["dataset_config"] = datasetConfigFileName
+        training["preprocess_cache"] = preprocessCacheFileName
+        training["preprocess_cache_status"] = "declared"
         if vocalBundleExists {
             training["vocal_bundle"] = vocalBundleFileName
         }
@@ -786,11 +942,122 @@ enum TrainingDatasetPackageWriter {
         ]
 
         try writeJSONObject(manifest, to: manifestURL)
+        try refreshPreprocessCacheManifest(at: outputDirectory, createdAt: updatedAt)
     }
 
     private static func derivedStatus(completed: Int, total: Int) -> String {
         guard completed > 0 else { return "not_run" }
         return completed >= total ? "complete" : "partial"
+    }
+
+    private static func preprocessBundleEntry(
+        name: String,
+        bundleFileName: String,
+        cacheDirectory: String,
+        outputDirectory: URL
+    ) -> [String: Any] {
+        let bundleURL = outputDirectory.appendingPathComponent(bundleFileName)
+        let bundle = readJSONObject(from: bundleURL)
+        let clips = bundle?["clips"] as? [[String: Any]] ?? []
+        let include = bundle?["include"] as? [String] ?? [name]
+        let exists = FileManager.default.fileExists(atPath: bundleURL.path(percentEncoded: false))
+        return [
+            "name": name,
+            "bundle": bundleFileName,
+            "include": include,
+            "cache_dir": cacheDirectory,
+            "clip_count": clips.count,
+            "status": exists && !clips.isEmpty ? "ready_for_preprocess" : "waiting_for_bundle",
+            "fingerprint": preprocessFingerprint(bundleFileName: bundleFileName, clips: clips),
+            "tensor_files": [
+                "latents": "\(cacheDirectory)/latents.safetensors",
+                "conditioning": "\(cacheDirectory)/conditioning.safetensors",
+                "index": "\(cacheDirectory)/index.json",
+            ],
+        ]
+    }
+
+    private static func preprocessFingerprint(bundleFileName: String, clips: [[String: Any]]) -> String {
+        let parts = clips.map { clip in
+            [
+                stringValue(clip["id"]) ?? "",
+                selectedAudioPath(from: clip) ?? "",
+                stringValue(clip["caption"]) ?? stringValue(clip["prompt"]) ?? "",
+                stringValue(clip["lyrics"]) ?? stringValue(clip["transcript"]) ?? "",
+            ].joined(separator: "|")
+        }
+        let input = ([bundleFileName] + parts).joined(separator: "\n")
+        var hash: UInt64 = 1_469_598_103_934_665_603
+        for byte in input.utf8 {
+            hash ^= UInt64(byte)
+            hash &*= 1_099_511_628_211
+        }
+        return String(format: "%016llx", hash)
+    }
+
+    private static func annotationMetadata(
+        captionSource: String,
+        lyricsSource: String,
+        backend: String,
+        modelID: String,
+        modelRevision: String,
+        language: String,
+        caption: String,
+        lyrics: String,
+        reviewStatus: String,
+        rawCaptionOutputFile: String,
+        rawLyricsOutputFile: String,
+        updatedAt: Date
+    ) -> [String: Any] {
+        var rawOutputs: [String: Any] = [:]
+        if !rawCaptionOutputFile.isEmpty {
+            rawOutputs["caption"] = rawCaptionOutputFile
+        }
+        if !rawLyricsOutputFile.isEmpty {
+            rawOutputs["lyrics"] = rawLyricsOutputFile
+        }
+
+        return [
+            "schema_version": annotationSchemaVersion,
+            "updated_at": ISO8601DateFormatter().string(from: updatedAt),
+            "annotation_backend": backend,
+            "annotation_backend_version": "",
+            "caption_source": captionSource,
+            "lyrics_source": lyricsSource,
+            "model_id": modelID,
+            "model_revision": modelRevision,
+            "language": language,
+            "caption_present": !caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            "lyrics_present": !lyrics.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            "review_status": reviewStatus,
+            "raw_output_files": rawOutputs,
+        ]
+    }
+
+    private static func annotationStatus(in captions: [[String: Any]]) -> String {
+        guard !captions.isEmpty else { return "empty" }
+        let approved = approvedClipCount(in: captions)
+        if approved == captions.count {
+            return "reviewed"
+        }
+        if approved > 0 {
+            return "partial_review"
+        }
+        return "manual_review_required"
+    }
+
+    private static func approvedClipCount(in captions: [[String: Any]]) -> Int {
+        captions.filter { record in
+            if let trainingReview = record["training_review"] as? [String: Any],
+               boolValue(trainingReview["approved"]) == true {
+                return true
+            }
+            if let annotation = record["annotation"] as? [String: Any],
+               stringValue(annotation["review_status"]) == "approved" {
+                return true
+            }
+            return false
+        }.count
     }
 
     private static func hasExistingStem(
@@ -872,6 +1139,22 @@ enum TrainingDatasetPackageWriter {
         }
     }
 
+    private static func stringValue(_ value: Any?) -> String? {
+        switch value {
+        case let string as String:
+            let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        case let number as NSNumber:
+            return number.stringValue
+        case let double as Double:
+            return String(double)
+        case let int as Int:
+            return String(int)
+        default:
+            return nil
+        }
+    }
+
     private static func rounded(_ value: Double, places: Int) -> Double {
         let scale = pow(10.0, Double(places))
         return (value * scale).rounded() / scale
@@ -879,6 +1162,22 @@ enum TrainingDatasetPackageWriter {
 
     private static func seconds(_ value: TimeInterval) -> Double {
         (value * 1000).rounded() / 1000
+    }
+
+    private static func compactTimestamp(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyyMMdd_HHmmss"
+        return formatter.string(from: date)
+    }
+
+    private static func slug(_ string: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
+        let scalars = string.lowercased().unicodeScalars.map { scalar -> Character in
+            allowed.contains(scalar) ? Character(scalar) : "-"
+        }
+        let collapsed = String(scalars).split(separator: "-").joined(separator: "-")
+        return collapsed.isEmpty ? "snapshot" : collapsed
     }
 
     private static func writeValidationReport(
@@ -929,7 +1228,10 @@ enum TrainingDatasetPackageWriter {
         guard let existing else { return }
         for key in [
             "analysis",
+            "annotation",
+            "caption_source",
             "lyrics",
+            "lyrics_source",
             "negative_tags",
             "separation",
             "tags",
@@ -958,6 +1260,19 @@ enum TrainingDatasetPackageWriter {
     private static func readJSONArray(from url: URL) -> [[String: Any]] {
         guard let data = try? Data(contentsOf: url) else { return [] }
         return (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] ?? []
+    }
+
+    private static func boolValue(_ value: Any?) -> Bool? {
+        switch value {
+        case let bool as Bool:
+            return bool
+        case let number as NSNumber:
+            return number.boolValue
+        case let string as String:
+            return ["true", "yes", "1"].contains(string.lowercased())
+        default:
+            return nil
+        }
     }
 
     private static func datasetBaseDirectory(from dict: [String: Any]?, fallback: URL) -> URL {

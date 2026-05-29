@@ -22,8 +22,16 @@ The package contains:
 - `training_bundle_instrumental.json` - optional instrumental-stem bundle written after local enrichment.
 - `remote_training_package.json` - provider-neutral descriptor for future RunPod/DigitalOcean GPU workers.
 - `package_validation.json` - validation result written at package time.
+- `preprocess_cache.json` - adapter-agnostic cache manifest declaring the bundle fingerprints and future tensor locations shared by LoRA and LoKR preprocessing.
+- `review_backups/` - timestamped snapshots of package JSON written before review saves.
 
 Readable audio headers are recorded when AVFoundation can open the source/clip. Invalid stubs or unsupported headers do not fail the package; they are marked with `metadata_status`.
+
+## Annotation Provenance
+
+Each clip record carries `caption_source`, `lyrics_source`, and an `annotation` object with the schema version, backend/model identifiers, language, raw artifact paths, and review status. Manual edits in the review workspace are marked as manual, imported sidecars are marked as sidecar/CSV sources, and native Qwen3-ASR lyric output is marked as `native-qwen3-asr`.
+
+Saving from the review workspace writes a backup first, then refreshes `captions.json`, the training bundles, validation, manifest annotation summaries, and `preprocess_cache.json`.
 
 ## Local Enrichment
 
@@ -60,3 +68,5 @@ Use **Export Zip** from the Datasets review workspace after clips are approved. 
 4. Resolve clip paths relative to the selected bundle's `dataset_dir`.
 
 The initial package is full-mix only. After local enrichment, the same package can also include `stems/`, `training_bundle_vocals.json`, and `training_bundle_instrumental.json`; remote workers should pick the bundle that matches the intended training target.
+
+Remote packages include `preprocess_cache.json`, `annotations/**`, and `preprocessed/**` in their copy rules. The tensor files are not written yet; the manifest is the stable contract so a local or remote preprocess stage can fill the cache later without changing the package shape.

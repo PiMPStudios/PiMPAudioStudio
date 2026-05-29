@@ -281,7 +281,7 @@ struct DatasetReviewView: View {
                     .truncationMode(.middle)
             }
             Spacer()
-            Toggle("Approved", isOn: binding(index, \.isApproved))
+            Toggle("Approved", isOn: approvedBinding(index))
                 .toggleStyle(.checkbox)
         }
     }
@@ -335,10 +335,13 @@ struct DatasetReviewView: View {
                 .fontWeight(.semibold)
 
             VStack(alignment: .leading, spacing: 6) {
-                Text("Caption")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                TextEditor(text: binding(index, \.caption))
+                HStack(spacing: 6) {
+                    Text("Caption")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    sourceBadge(document!.clips[index].captionSource)
+                }
+                TextEditor(text: captionBinding(index))
                     .font(.callout)
                     .frame(minHeight: 70)
                     .scrollContentBackground(.hidden)
@@ -347,10 +350,13 @@ struct DatasetReviewView: View {
             }
 
             VStack(alignment: .leading, spacing: 6) {
-                Text("Lyrics / Transcript")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                TextEditor(text: binding(index, \.lyrics))
+                HStack(spacing: 6) {
+                    Text("Lyrics / Transcript")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    sourceBadge(document!.clips[index].lyricsSource)
+                }
+                TextEditor(text: lyricsBinding(index))
                     .font(.callout)
                     .frame(minHeight: 110)
                     .scrollContentBackground(.hidden)
@@ -415,6 +421,53 @@ struct DatasetReviewView: View {
                         .foregroundStyle(.secondary)
                     Text(clip.transcriptionStatus)
                 }
+                GridRow {
+                    Text("Review")
+                        .foregroundStyle(.secondary)
+                    Text(clip.reviewStatus.isEmpty ? "needs_review" : clip.reviewStatus)
+                }
+                GridRow {
+                    Text("Caption Source")
+                        .foregroundStyle(.secondary)
+                    Text(clip.captionSource.isEmpty ? "unknown" : clip.captionSource)
+                }
+                GridRow {
+                    Text("Lyrics Source")
+                        .foregroundStyle(.secondary)
+                    Text(clip.lyricsSource.isEmpty ? "unknown" : clip.lyricsSource)
+                }
+                GridRow {
+                    Text("Annotation")
+                        .foregroundStyle(.secondary)
+                    Text(clip.annotationBackend.isEmpty ? "manual" : clip.annotationBackend)
+                }
+                if !clip.annotationModelID.isEmpty {
+                    GridRow {
+                        Text("Model")
+                            .foregroundStyle(.secondary)
+                        Text(clip.annotationModelID)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                }
+                if !clip.rawCaptionOutputFile.isEmpty {
+                    GridRow {
+                        Text("Raw Caption")
+                            .foregroundStyle(.secondary)
+                        Text(clip.rawCaptionOutputFile)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                }
+                if !clip.rawLyricsOutputFile.isEmpty {
+                    GridRow {
+                        Text("Raw Lyrics")
+                            .foregroundStyle(.secondary)
+                        Text(clip.rawLyricsOutputFile)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                }
                 ForEach(clip.assets.keys.sorted(), id: \.self) { key in
                     GridRow {
                         Text(key)
@@ -451,6 +504,43 @@ struct DatasetReviewView: View {
         )
     }
 
+    private func captionBinding(_ index: Int) -> Binding<String> {
+        Binding(
+            get: { document!.clips[index].caption },
+            set: { value in
+                document!.clips[index].caption = value
+                document!.clips[index].captionSource = value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "none" : "manual"
+                document!.clips[index].annotationBackend = "manual"
+                document!.clips[index].reviewStatus = document!.clips[index].isApproved ? "approved" : "needs_review"
+                document!.hasUnsavedChanges = true
+            }
+        )
+    }
+
+    private func lyricsBinding(_ index: Int) -> Binding<String> {
+        Binding(
+            get: { document!.clips[index].lyrics },
+            set: { value in
+                document!.clips[index].lyrics = value
+                document!.clips[index].lyricsSource = value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "none" : "manual"
+                document!.clips[index].annotationBackend = "manual"
+                document!.clips[index].reviewStatus = document!.clips[index].isApproved ? "approved" : "needs_review"
+                document!.hasUnsavedChanges = true
+            }
+        )
+    }
+
+    private func approvedBinding(_ index: Int) -> Binding<Bool> {
+        Binding(
+            get: { document!.clips[index].isApproved },
+            set: { value in
+                document!.clips[index].isApproved = value
+                document!.clips[index].reviewStatus = value ? "approved" : "needs_review"
+                document!.hasUnsavedChanges = true
+            }
+        )
+    }
+
     private func field(_ label: String, text: Binding<String>) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label)
@@ -482,6 +572,25 @@ struct DatasetReviewView: View {
             .padding(.vertical, 2)
             .background(color.opacity(0.12))
             .clipShape(Capsule())
+    }
+
+    private func sourceBadge(_ text: String) -> some View {
+        let source = text.isEmpty ? "unknown" : text
+        let color: Color = {
+            switch source {
+            case "manual", "dataset_review":
+                return .blue
+            case "sidecar", "csv":
+                return .teal
+            case "native-qwen3-asr", "ace-step-transcriber", "ace-step-captioner":
+                return .purple
+            case "none":
+                return .secondary
+            default:
+                return .orange
+            }
+        }()
+        return badge(source, color: color)
     }
 
     private func statusMessage(_ title: String, message: String?, systemImage: String, color: Color) -> some View {
@@ -524,7 +633,7 @@ struct DatasetReviewView: View {
         defer { isSaving = false }
         do {
             try TrainingDatasetPackageEditor.save(current)
-            notice = "Dataset saved."
+            notice = "Dataset saved with review backup."
             loadDocument()
             onPackageUpdated()
             return true
