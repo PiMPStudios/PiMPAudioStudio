@@ -327,6 +327,38 @@ final class TrainingService: ObservableObject {
         return false
     }
 
+    func activeBaseModelDisplayName() async -> String {
+        guard let spec = await registry.activeSpec(for: .aceStepDiT) else {
+            return "ACE-Step DiT (not selected)"
+        }
+        return Self.baseModelDisplayName(for: spec)
+    }
+
+    nonisolated static func baseModelDisplayName(for spec: ModelSpec) -> String {
+        let fingerprint = [
+            spec.id,
+            spec.displayName,
+            spec.huggingFaceRepo,
+            spec.variantFamily ?? "",
+        ]
+        .joined(separator: " ")
+        .lowercased()
+
+        if fingerprint.contains("xl") {
+            return fingerprint.contains("sft") ? "ACE-Step XL SFT" : "ACE-Step XL"
+        }
+        if fingerprint.contains("sft") {
+            return "ACE-Step SFT"
+        }
+        if fingerprint.contains("turbo") {
+            return "ACE-Step Turbo"
+        }
+        if fingerprint.contains("base") || fingerprint.contains("full") {
+            return "ACE-Step Full"
+        }
+        return spec.displayName
+    }
+
     // MARK: - Private
 
     private static func adapterID(from adapterName: String) -> String {

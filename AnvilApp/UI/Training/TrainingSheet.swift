@@ -61,6 +61,7 @@ struct TrainingSheet: View {
     @State private var importedFiles: [TrainingImportedFile]
     @State private var showingFileImporter: Bool = false
     @State private var showingStopConfirmation: Bool = false
+    @State private var baseModelDisplayName: String = "ACE-Step DiT"
     @State private var importErrorMessage: String?
     @State private var importStatusMessage: String?
 
@@ -84,8 +85,8 @@ struct TrainingSheet: View {
         }
     }
 
-    private let rankOptions = [8, 16, 32]
-    private let epochOptions = [5, 10, 20, 50]
+    private let rankOptions = [8, 16, 32, 64]
+    private let epochOptions = [5, 10, 20, 50, 75, 100]
     private let accumOptions = [1, 2, 4, 8]
 
     var body: some View {
@@ -120,6 +121,12 @@ struct TrainingSheet: View {
         .frame(minWidth: 500, minHeight: 500)
         .onAppear {
             trainingService.resetToIdle()
+        }
+        .task {
+            await refreshBaseModelDisplayName()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .modelRegistryDidChange)) { _ in
+            Task { await refreshBaseModelDisplayName() }
         }
         .fileImporter(
             isPresented: $showingFileImporter,
@@ -271,7 +278,7 @@ struct TrainingSheet: View {
                         .disabled(isCheckpointResume)
                 }
                 LabeledContent("Base Model") {
-                    Text("ACE-Step DiT (active)")
+                    Text(baseModelDisplayName)
                         .foregroundStyle(.secondary)
                 }
                 LabeledContent("Rank") {
@@ -552,6 +559,13 @@ struct TrainingSheet: View {
             config: config,
             resumeAdapterID: resumeAdapterID
         )
+    }
+
+    private func refreshBaseModelDisplayName() async {
+        let name = await trainingService.activeBaseModelDisplayName()
+        await MainActor.run {
+            baseModelDisplayName = name
+        }
     }
 
     private func importSelectedFiles(_ urls: [URL]) {

@@ -541,6 +541,28 @@ private func silentWAVData(sampleRate: Int = 22_050, channels: Int = 1, frameCou
     #expect(DemucsMLXSourceSeparator.defaultModelName == "htdemucs")
 }
 
+@Test func trainingBaseModelLabelNamesActiveAceVariant() {
+    let xlSFT = ModelSpec(
+        id: "ace-step-dit-xl-sft",
+        displayName: "ACE-Step v1.5 XL SFT",
+        huggingFaceRepo: "ACE-Step/acestep-v15-xl-sft",
+        files: [],
+        category: .aceStepDiT,
+        variantFamily: "ace-step-1.5-xl"
+    )
+    let turbo = ModelSpec(
+        id: "ace-step-dit-turbo",
+        displayName: "ACE-Step v1.5 Turbo",
+        huggingFaceRepo: "ACE-Step/Ace-Step1.5",
+        files: [],
+        category: .aceStepDiT,
+        variantFamily: "ace-step-1.5"
+    )
+
+    #expect(TrainingService.baseModelDisplayName(for: xlSFT) == "ACE-Step XL SFT")
+    #expect(TrainingService.baseModelDisplayName(for: turbo) == "ACE-Step Turbo")
+}
+
 @Test func localDatasetEnrichmentTranscribesCachedVocalStems() async throws {
     let datasetDir = FileManager.default.temporaryDirectory
         .appendingPathComponent(UUID().uuidString, isDirectory: true)

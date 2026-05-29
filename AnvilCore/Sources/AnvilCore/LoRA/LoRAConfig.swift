@@ -31,7 +31,7 @@ public enum TargetLayer: String, Codable, CaseIterable, Sendable, Hashable {
 
 /// Configuration for LoRA adapter training and injection.
 public struct LoRAConfig: Codable, Sendable, Equatable, Hashable {
-    /// Low-rank dimension. Higher = more expressive, more memory. Typical: 8, 16, 32.
+    /// Low-rank dimension. Higher = more expressive, more memory. Typical: 8, 16, 32, 64.
     public var rank: Int
 
     /// Scaling factor. The adapter contribution is scaled by alpha/rank.
