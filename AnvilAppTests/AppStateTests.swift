@@ -281,6 +281,11 @@ private func silentWAVData(sampleRate: Int = 22_050, channels: Int = 1, frameCou
     #expect(reloaded.clips[0].timeSignature == "4/4")
     #expect(reloaded.isTrainingReady)
 
+    let reviewedManifestData = try Data(contentsOf: datasetDir.appendingPathComponent("dataset_manifest.json"))
+    let reviewedManifest = try JSONSerialization.jsonObject(with: reviewedManifestData) as? [String: Any]
+    let reviewedAnalysis = reviewedManifest?["analysis"] as? [String: Any]
+    #expect(reviewedAnalysis?["key_status"] as? String == "available_from_metadata")
+
     let backupRoot = datasetDir.appendingPathComponent("review_backups", isDirectory: true)
     let backups = try FileManager.default.contentsOfDirectory(
         at: backupRoot,
@@ -295,6 +300,23 @@ private func silentWAVData(sampleRate: Int = 22_050, channels: Int = 1, frameCou
     #expect(annotation?["caption_source"] as? String == "sidecar")
     #expect(annotation?["lyrics_source"] as? String == "sidecar")
     #expect(annotation?["review_status"] as? String == "approved")
+
+    let exported = try TrainingDatasetPackageEditor.exportSidecars(from: reloaded)
+    #expect(exported == 1)
+    let exportedCaption = try String(
+        contentsOf: clipsDir.appendingPathComponent("clip_0001.caption.txt"),
+        encoding: .utf8
+    )
+    #expect(exportedCaption == "smoky minor key blues trio")
+    let exportedJSONData = try Data(contentsOf: clipsDir.appendingPathComponent("clip_0001.json"))
+    let exportedJSON = try JSONSerialization.jsonObject(with: exportedJSONData) as? [String: Any]
+    #expect(exportedJSON?["keyscale"] as? String == "E minor")
+    let metadataCSV = try String(
+        contentsOf: datasetDir.appendingPathComponent("metadata.csv"),
+        encoding: .utf8
+    )
+    #expect(metadataCSV.contains("clips/clip_0001.wav"))
+    #expect(metadataCSV.contains("E minor"))
 
     let preprocessData = try Data(contentsOf: datasetDir.appendingPathComponent("preprocess_cache.json"))
     let preprocess = try JSONSerialization.jsonObject(with: preprocessData) as? [String: Any]
@@ -370,6 +392,34 @@ private func silentWAVData(sampleRate: Int = 22_050, channels: Int = 1, frameCou
     #expect(imported[0].url.path == clipURL.path)
     #expect(imported[0].description == "dark blues full mix")
     #expect(imported[0].lyrics.isEmpty)
+    #expect(imported[0].preprocessCache?.bundleName == "full_mix")
+    #expect(imported[0].preprocessCache?.sampleFile.contains("preprocessed/full_mix/samples") == true)
+
+    let cacheIndexURL = datasetDir.appendingPathComponent("preprocessed/full_mix/index.json")
+    try FileManager.default.createDirectory(
+        at: cacheIndexURL.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+    )
+    try """
+    {
+      "anvil_preprocess_index_version": "1.0",
+      "entries": [
+        {
+          "clip_id": "f001_clip_001",
+          "file": "preprocessed/full_mix/samples/f001_clip_001.safetensors"
+        }
+      ]
+    }
+    """.write(to: cacheIndexURL, atomically: true, encoding: .utf8)
+    try TrainingDatasetPackageWriter.refreshPreprocessCacheManifest(at: datasetDir)
+
+    let refreshedPreprocessData = try Data(contentsOf: datasetDir.appendingPathComponent("preprocess_cache.json"))
+    let refreshedPreprocess = try JSONSerialization.jsonObject(with: refreshedPreprocessData) as? [String: Any]
+    #expect(refreshedPreprocess?["status"] as? String == "partial")
+    let refreshedBundles = refreshedPreprocess?["bundles"] as? [[String: Any]] ?? []
+    let fullMixBundle = refreshedBundles.first { ($0["name"] as? String) == "full_mix" }
+    #expect(fullMixBundle?["status"] as? String == "complete")
+    #expect((fullMixBundle?["cached_clip_count"] as? NSNumber)?.intValue == 1)
 
     let remoteData = try Data(contentsOf: datasetDir.appendingPathComponent("remote_training_package.json"))
     let remoteJSON = try JSONSerialization.jsonObject(with: remoteData) as? [String: Any]
@@ -583,6 +633,7 @@ private func silentWAVData(sampleRate: Int = 22_050, channels: Int = 1, frameCou
       {
         "file": "clips/f001_clip_001.wav",
         "caption": "dark blues",
+        "keyscale": "E minor",
         "lyrics": "I keep singing low",
         "transcript": "I keep singing low",
         "transcription": {
@@ -623,6 +674,7 @@ private func silentWAVData(sampleRate: Int = 22_050, channels: Int = 1, frameCou
     #expect(models.contains("fake-qwen3-asr"))
     let analysis = manifest?["analysis"] as? [String: Any]
     #expect(analysis?["bpm_status"] as? String == "estimated_from_stems")
+    #expect(analysis?["key_status"] as? String == "available_from_metadata")
     let enrichment = manifest?["enrichment"] as? [String: Any]
     #expect(enrichment?["status"] as? String == "complete")
     #expect((enrichment?["separated_clip_count"] as? NSNumber)?.intValue == 1)

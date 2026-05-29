@@ -22,7 +22,7 @@ The package contains:
 - `training_bundle_instrumental.json` - optional instrumental-stem bundle written after local enrichment.
 - `remote_training_package.json` - provider-neutral descriptor for future RunPod/DigitalOcean GPU workers.
 - `package_validation.json` - validation result written at package time.
-- `preprocess_cache.json` - adapter-agnostic cache manifest declaring the bundle fingerprints and future tensor locations shared by LoRA and LoKR preprocessing.
+- `preprocess_cache.json` - adapter-agnostic cache manifest tracking bundle fingerprints, cache status, and sample-level tensor locations shared by LoRA and LoKR preprocessing.
 - `review_backups/` - timestamped snapshots of package JSON written before review saves.
 
 Readable audio headers are recorded when AVFoundation can open the source/clip. Invalid stubs or unsupported headers do not fail the package; they are marked with `metadata_status`.
@@ -32,6 +32,28 @@ Readable audio headers are recorded when AVFoundation can open the source/clip. 
 Each clip record carries `caption_source`, `lyrics_source`, and an `annotation` object with the schema version, backend/model identifiers, language, raw artifact paths, and review status. Manual edits in the review workspace are marked as manual, imported sidecars are marked as sidecar/CSV sources, and native Qwen3-ASR lyric output is marked as `native-qwen3-asr`.
 
 Saving from the review workspace writes a backup first, then refreshes `captions.json`, the training bundles, validation, manifest annotation summaries, and `preprocess_cache.json`.
+
+Use **Export Sidecars** in the review workspace to write reviewed metadata back beside the audio files in ACE-compatible formats:
+
+- `{filename}.caption.txt`
+- `{filename}.lyrics.txt`
+- `{filename}.json`
+- package-level `metadata.csv`
+
+The exported JSON carries caption, prompt, lyrics, transcript, BPM, keyscale, language, time signature, role, notes, source fields, and the current annotation provenance block.
+
+## Preprocess Cache
+
+Training from an Anvil dataset bundle now fills the package cache instead of only declaring it. When a clip is preprocessed, Anvil writes a sample-level `.safetensors` file and updates a bundle index:
+
+```text
+preprocessed/<bundle>/samples/<clip>_<fingerprint>.safetensors
+preprocessed/<bundle>/index.json
+```
+
+The cache key includes the bundle file, bundle name, clip id, source audio path, prompt, and lyrics, so prompt or lyric edits produce a different sample artifact. `preprocess_cache.json` reports each bundle as `ready_for_preprocess`, `partial`, `complete`, or `waiting_for_bundle`.
+
+The current cache is sample-level training data. It is the shared handoff for later LoRA/LoKR reuse and remote workers, while a fuller clip-level tensor cache can still be added later if we want more random-window variation across repeated runs.
 
 ## Local Enrichment
 
@@ -43,7 +65,7 @@ Native Demucs model selection can be overridden with `ANVIL_DEMUCS_MODEL_NAME`; 
 
 Enrichment also transcribes each generated `vocals.wav` with native `speech-swift` Qwen3-ASR. The quality path uses `Qwen3-ASR-1.7B` plus `Qwen3-ForcedAligner-0.6B` for word timestamps, then writes `lyrics.txt`, `lyrics.timed.json`, and `lyrics.lrc` next to the stem files. Those transcripts are copied into `captions.json` and `training_bundle_vocals.json`; instrumental bundles keep lyrics empty.
 
-Enrichment preserves separation/transcription metadata when captions are edited and records a local BPM estimate from stem audio. Musical key analysis is still represented as a package status field and remains pending until a standalone local implementation is wired.
+Enrichment preserves separation/transcription metadata when captions are edited and records a local BPM estimate from stem audio. Imported or manually reviewed key/keyscale metadata is reflected as `available_from_metadata`; standalone local key detection is still pending.
 
 ## Train From JSON
 
@@ -69,4 +91,4 @@ Use **Export Zip** from the Datasets review workspace after clips are approved. 
 
 The initial package is full-mix only. After local enrichment, the same package can also include `stems/`, `training_bundle_vocals.json`, and `training_bundle_instrumental.json`; remote workers should pick the bundle that matches the intended training target.
 
-Remote packages include `preprocess_cache.json`, `annotations/**`, and `preprocessed/**` in their copy rules. The tensor files are not written yet; the manifest is the stable contract so a local or remote preprocess stage can fill the cache later without changing the package shape.
+Remote packages include `preprocess_cache.json`, `annotations/**`, and `preprocessed/**` in their copy rules. Local bundle preprocessing can now populate `preprocessed/<bundle>/samples/*.safetensors` plus `index.json`; remote workers should read or write the same cache shape instead of inventing provider-specific tensor layouts.

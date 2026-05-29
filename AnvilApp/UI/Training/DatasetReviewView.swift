@@ -81,6 +81,15 @@ struct DatasetReviewView: View {
             .disabled(document == nil || isBusy)
 
             Button {
+                exportSidecars()
+            } label: {
+                Label("Export Sidecars", systemImage: "square.and.arrow.up.on.square")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(document == nil || isBusy)
+
+            Button {
                 markAllApproved()
             } label: {
                 Label("Approve All", systemImage: "checkmark.seal")
@@ -651,6 +660,17 @@ struct DatasetReviewView: View {
         notice = changed == 0
             ? "No matching sidecar metadata was found."
             : "Imported \(changed) sidecar field\(changed == 1 ? "" : "s"). Review, then save."
+    }
+
+    private func exportSidecars() {
+        guard let current = document else { return }
+        do {
+            let count = try TrainingDatasetPackageEditor.exportSidecars(from: current)
+            notice = "Exported sidecars for \(count) clip\(count == 1 ? "" : "s")."
+        } catch {
+            notice = nil
+            errorMessage = error.localizedDescription
+        }
     }
 
     private func markAllApproved() {

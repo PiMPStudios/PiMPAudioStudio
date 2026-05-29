@@ -8,17 +8,27 @@ struct TrainingImportedFile: Codable, Hashable, Sendable {
     var description: String
     /// Optional lyric/transcript conditioning, used mainly for vocal stem datasets.
     var lyrics: String
+    /// Optional reusable preprocess cache target, present when imported from an
+    /// Anvil dataset bundle that declares `preprocess_cache.json`.
+    var preprocessCache: TrainingPreprocessCacheReference?
 
-    init(url: URL, description: String, lyrics: String = "") {
+    init(
+        url: URL,
+        description: String,
+        lyrics: String = "",
+        preprocessCache: TrainingPreprocessCacheReference? = nil
+    ) {
         self.url = url
         self.description = description
         self.lyrics = lyrics
+        self.preprocessCache = preprocessCache
     }
 
     enum CodingKeys: String, CodingKey {
         case url
         case description
         case lyrics
+        case preprocessCache
     }
 
     init(from decoder: Decoder) throws {
@@ -26,6 +36,74 @@ struct TrainingImportedFile: Codable, Hashable, Sendable {
         url = try container.decode(URL.self, forKey: .url)
         description = try container.decode(String.self, forKey: .description)
         lyrics = try container.decodeIfPresent(String.self, forKey: .lyrics) ?? ""
+        preprocessCache = try container.decodeIfPresent(TrainingPreprocessCacheReference.self, forKey: .preprocessCache)
+    }
+}
+
+struct TrainingPreprocessCacheReference: Codable, Hashable, Sendable {
+    var datasetDirectory: URL
+    var bundleFileName: String
+    var bundleName: String
+    var cacheDirectory: String
+    var clipID: String
+    var sourceAudioPath: String
+    var fingerprint: String
+
+    var indexFile: String {
+        "\(cacheDirectory)/index.json"
+    }
+
+    var sampleFile: String {
+        "\(cacheDirectory)/samples/\(sampleFileName)"
+    }
+
+    var sampleFileName: String {
+        "\(Self.slug(clipID))_\(String(fingerprint.prefix(12))).safetensors"
+    }
+
+    init(
+        datasetDirectory: URL,
+        bundleFileName: String,
+        bundleName: String,
+        cacheDirectory: String,
+        clipID: String,
+        sourceAudioPath: String,
+        prompt: String,
+        lyrics: String
+    ) {
+        self.datasetDirectory = datasetDirectory
+        self.bundleFileName = bundleFileName
+        self.bundleName = bundleName
+        self.cacheDirectory = cacheDirectory
+        self.clipID = clipID
+        self.sourceAudioPath = sourceAudioPath
+        self.fingerprint = Self.fingerprint([
+            bundleFileName,
+            bundleName,
+            clipID,
+            sourceAudioPath,
+            prompt,
+            lyrics,
+        ])
+    }
+
+    private static func fingerprint(_ parts: [String]) -> String {
+        let input = parts.joined(separator: "\n")
+        var hash: UInt64 = 1_469_598_103_934_665_603
+        for byte in input.utf8 {
+            hash ^= UInt64(byte)
+            hash &*= 1_099_511_628_211
+        }
+        return String(format: "%016llx", hash)
+    }
+
+    private static func slug(_ value: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
+        let scalars = value.lowercased().unicodeScalars.map { scalar -> Character in
+            allowed.contains(scalar) ? Character(scalar) : "-"
+        }
+        let collapsed = String(scalars).split(separator: "-").joined(separator: "-")
+        return collapsed.isEmpty ? "clip" : collapsed
     }
 }
 
@@ -104,7 +182,18 @@ enum TrainingDatasetImporter {
             let include = includeList(from: dict, fileName: fileName)
             let datasetBase = datasetBaseDirectory(from: dict, fallback: baseDirectory)
             let enrichedClips = clipsByApplyingTopLevelSeparation(clips, from: dict)
-            return files(from: enrichedClips, include: include, baseDirectory: datasetBase)
+            let cacheContext = preprocessCacheContext(
+                from: dict,
+                fileName: fileName,
+                packageDirectory: baseDirectory,
+                include: include
+            )
+            return files(
+                from: enrichedClips,
+                include: include,
+                baseDirectory: datasetBase,
+                cacheContext: cacheContext
+            )
         }
 
         if let datasets = dict["datasets"] as? [[String: Any]] {
@@ -117,7 +206,8 @@ enum TrainingDatasetImporter {
     private static func files(
         from clips: [[String: Any]],
         include: [String],
-        baseDirectory: URL
+        baseDirectory: URL,
+        cacheContext: PreprocessCacheContext? = nil
     ) -> [TrainingImportedFile] {
         clips.compactMap { clip in
             guard let audioPath = selectedAudioPath(from: clip, include: include) else {
@@ -134,8 +224,71 @@ enum TrainingDatasetImporter {
             let lyrics = shouldUseLyrics(for: audioPath, include: include)
                 ? transcript(from: clip)
                 : ""
-            return TrainingImportedFile(url: audioURL, description: description, lyrics: lyrics)
+            let clipID = firstString(clip, keys: ["id"])
+                ?? URL(fileURLWithPath: audioPath).deletingPathExtension().lastPathComponent
+            let cache = cacheContext.map {
+                TrainingPreprocessCacheReference(
+                    datasetDirectory: $0.packageDirectory,
+                    bundleFileName: $0.bundleFileName,
+                    bundleName: $0.bundleName,
+                    cacheDirectory: $0.cacheDirectory,
+                    clipID: clipID,
+                    sourceAudioPath: audioPath,
+                    prompt: description,
+                    lyrics: lyrics
+                )
+            }
+            return TrainingImportedFile(
+                url: audioURL,
+                description: description,
+                lyrics: lyrics,
+                preprocessCache: cache
+            )
         }
+    }
+
+    private struct PreprocessCacheContext {
+        let packageDirectory: URL
+        let bundleFileName: String
+        let bundleName: String
+        let cacheDirectory: String
+    }
+
+    private static func preprocessCacheContext(
+        from dict: [String: Any],
+        fileName: String,
+        packageDirectory: URL,
+        include: [String]
+    ) -> PreprocessCacheContext? {
+        let declaresCache = firstString(dict, keys: ["preprocess_cache"]) != nil ||
+            firstString(dict, keys: ["anvil_training_bundle_version"]) != nil ||
+            fileName.lowercased().hasPrefix("training_bundle")
+        guard declaresCache else { return nil }
+        let bundleName = bundleCacheName(include: include, fileName: fileName)
+        return PreprocessCacheContext(
+            packageDirectory: packageDirectory,
+            bundleFileName: fileName,
+            bundleName: bundleName,
+            cacheDirectory: "preprocessed/\(bundleName)"
+        )
+    }
+
+    private static func bundleCacheName(include: [String], fileName: String) -> String {
+        let normalized = include.map { $0.lowercased() }
+        if normalized.contains(where: { ["vocal", "vocals", "voice", "voices"].contains($0) }) {
+            return "vocals"
+        }
+        if normalized.contains(where: { ["instrumental", "instrumentals", "music", "backing"].contains($0) }) {
+            return "instrumental"
+        }
+        let lowerName = fileName.lowercased()
+        if lowerName.contains("vocal") {
+            return "vocals"
+        }
+        if lowerName.contains("instrumental") {
+            return "instrumental"
+        }
+        return "full_mix"
     }
 
     private static func filesFromDatasetConfig(

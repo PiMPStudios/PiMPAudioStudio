@@ -289,6 +289,84 @@ enum TrainingDatasetPackageEditor {
     }
 
     @discardableResult
+    static func exportSidecars(from document: DatasetPackageDocument) throws -> Int {
+        var exportedCount = 0
+        var csvRows = [[
+            "file",
+            "caption",
+            "lyrics",
+            "bpm",
+            "keyscale",
+            "language",
+            "timesignature",
+            "role",
+            "notes",
+        ]]
+
+        for clip in document.clips {
+            guard let audioURL = clip.audioURL(relativeTo: document.directory) else { continue }
+            let stemURL = audioURL.deletingPathExtension()
+            let caption = clip.caption.trimmingCharacters(in: .whitespacesAndNewlines)
+            let lyrics = clip.lyrics.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            if !caption.isEmpty {
+                try caption.write(
+                    to: stemURL.appendingPathExtension("caption.txt"),
+                    atomically: true,
+                    encoding: .utf8
+                )
+            }
+            if !lyrics.isEmpty {
+                try lyrics.write(
+                    to: stemURL.appendingPathExtension("lyrics.txt"),
+                    atomically: true,
+                    encoding: .utf8
+                )
+            }
+
+            var sidecar = readJSONObject(from: stemURL.appendingPathExtension("json")) ?? [:]
+            sidecar["caption"] = caption
+            sidecar["prompt"] = caption
+            sidecar["lyrics"] = lyrics
+            sidecar["transcript"] = lyrics
+            sidecar["bpm"] = clip.bpm.trimmingCharacters(in: .whitespacesAndNewlines)
+            sidecar["keyscale"] = clip.key.trimmingCharacters(in: .whitespacesAndNewlines)
+            sidecar["language"] = clip.language.trimmingCharacters(in: .whitespacesAndNewlines)
+            sidecar["timesignature"] = clip.timeSignature.trimmingCharacters(in: .whitespacesAndNewlines)
+            sidecar["role"] = clip.role.trimmingCharacters(in: .whitespacesAndNewlines)
+            sidecar["notes"] = clip.notes.trimmingCharacters(in: .whitespacesAndNewlines)
+            sidecar["caption_source"] = clip.captionSource
+            sidecar["lyrics_source"] = clip.lyricsSource
+            sidecar["annotation"] = clip.persistedObject()["annotation"]
+            try writeJSONObject(sidecar, to: stemURL.appendingPathExtension("json"))
+
+            csvRows.append([
+                clip.file,
+                caption,
+                lyrics,
+                clip.bpm,
+                clip.key,
+                clip.language,
+                clip.timeSignature,
+                clip.role,
+                clip.notes,
+            ])
+            exportedCount += 1
+        }
+
+        let csv = csvRows
+            .map { row in row.map(csvEscape).joined(separator: ",") }
+            .joined(separator: "\n") + "\n"
+        try csv.write(
+            to: document.directory.appendingPathComponent("metadata.csv"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        return exportedCount
+    }
+
+    @discardableResult
     static func importSidecars(into document: inout DatasetPackageDocument) -> Int {
         let csvFields = csvSidecarFields(in: document.directory)
         var changedFields = 0
@@ -667,6 +745,11 @@ enum TrainingDatasetPackageEditor {
         try data.write(to: url, options: .atomic)
     }
 
+    private static func writeJSONObject(_ object: [String: Any], to url: URL) throws {
+        let data = try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys])
+        try data.write(to: url, options: .atomic)
+    }
+
     private static func isDirectory(_ url: URL) -> Bool {
         (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
     }
@@ -762,6 +845,13 @@ enum TrainingDatasetPackageEditor {
     private static func unique(_ values: [String]) -> [String] {
         var seen = Set<String>()
         return values.filter { !$0.isEmpty && seen.insert($0).inserted }
+    }
+
+    private static func csvEscape(_ value: String) -> String {
+        if value.contains(",") || value.contains("\"") || value.contains("\n") || value.contains("\r") {
+            return "\"\(value.replacingOccurrences(of: "\"", with: "\"\""))\""
+        }
+        return value
     }
 }
 

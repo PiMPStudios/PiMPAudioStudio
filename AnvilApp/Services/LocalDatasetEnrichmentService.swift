@@ -613,15 +613,19 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         manifest["annotation"] = annotation
 
         var analysis = manifest["analysis"] as? [String: Any] ?? [:]
+        let keyValues = keyMetadataValues(in: captions)
         analysis["enabled"] = result.bpmEstimateCount > 0
         analysis["status"] = result.bpmEstimateCount > 0 ? "stem_analysis_available" : (analysis["status"] ?? "not_run")
         analysis["bpm_status"] = result.bpmEstimateCount > 0 ? "estimated_from_stems" : "not_run"
-        analysis["key_status"] = "not_run"
+        analysis["key_status"] = !keyValues.isEmpty ? "available_from_metadata" : "not_run"
         if let averageBPM = result.averageBPM {
             analysis["stem_tempo_bpm"] = [
                 "average": averageBPM,
                 "estimate_count": result.bpmEstimateCount,
             ]
+        }
+        if !keyValues.isEmpty {
+            analysis["keys"] = keyValues
         }
         manifest["analysis"] = analysis
 
@@ -644,7 +648,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
             "transcription_status": transcriptionStatus(for: result),
             "transcribed_clip_count": result.transcribedClipCount,
             "bpm_status": result.bpmEstimateCount > 0 ? "estimated_from_stems" : "not_run",
-            "key_status": "not_run",
+            "key_status": !keyValues.isEmpty ? "available_from_metadata" : "not_run",
         ]
 
         try writeJSONObject(manifest, to: manifestURL)
@@ -749,6 +753,18 @@ final class LocalDatasetEnrichmentService: ObservableObject {
                     .flatMap { doubleValue($0["tempo_bpm_estimate"]) }
             }
         }
+    }
+
+    nonisolated private static func keyMetadataValues(in captions: [[String: Any]]) -> [String] {
+        sortedUniqueStrings(captions.compactMap { record in
+            if let key = stringValue(record["key"]) ?? stringValue(record["keyscale"]) {
+                return key
+            }
+            if let analysis = record["analysis"] as? [String: Any] {
+                return stringValue(analysis["key"]) ?? stringValue(analysis["keyscale"])
+            }
+            return nil
+        })
     }
 
     nonisolated private static func analyzeAudioFile(_ url: URL) -> [String: Any] {

@@ -190,7 +190,8 @@ final class TrainingService: ObservableObject {
                         audioURL: imported.url,
                         prompt: imported.description,
                         lyrics: imported.lyrics,
-                        duration: 0
+                        duration: 0,
+                        cache: imported.preprocessCache
                     )
                     samples.append(sample)
                     self.state = .preparingDataset(
@@ -409,8 +410,14 @@ final class TrainingService: ObservableObject {
         audioURL: URL,
         prompt: String,
         lyrics: String,
-        duration: TimeInterval
+        duration: TimeInterval,
+        cache: TrainingPreprocessCacheReference? = nil
     ) async throws -> TrainingSample {
+        if let cache,
+           let cachedSample = try? TrainingPreprocessCacheStore.load(reference: cache) {
+            return cachedSample
+        }
+
         // Load + resample to 48 kHz stereo → [1, pcmFrames, 2] NLC layout.
         // AudioFileLoader replaces the previous hand-rolled WAV parser which:
         //   (a) produced wrong shape [1, 1, N] instead of [1, frames, 2], and
@@ -453,12 +460,23 @@ final class TrainingService: ObservableObject {
         arraysToMaterialize.append(frozenEncoderMask)
         eval(arraysToMaterialize)
 
-        return TrainingSample(
+        let sample = TrainingSample(
             latent: frozenLatent,
             encoderStates: frozenEncoderStates,
             contextLatents: frozenContextLatents,
             encoderMask: frozenEncoderMask
         )
+
+        if let cache {
+            do {
+                try TrainingPreprocessCacheStore.save(sample: sample, reference: cache)
+                try TrainingDatasetPackageWriter.refreshPreprocessCacheManifest(at: cache.datasetDirectory)
+            } catch {
+                print("[TrainingService] failed to save preprocess cache: \(error.localizedDescription)")
+            }
+        }
+
+        return sample
     }
 
     private static func trainingWindow(
@@ -479,6 +497,127 @@ final class TrainingService: ObservableObject {
             latent[0..., start..<end, 0...],
             contextLatents[0..., start..<end, 0...]
         )
+    }
+}
+
+enum TrainingPreprocessCacheStore {
+    static let version = "1.0"
+
+    static func load(reference: TrainingPreprocessCacheReference) throws -> TrainingSample? {
+        let didStartAccessing = reference.datasetDirectory.startAccessingSecurityScopedResource()
+        defer {
+            if didStartAccessing {
+                reference.datasetDirectory.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        let sampleURL = reference.datasetDirectory.appendingPathComponent(reference.sampleFile)
+        guard FileManager.default.fileExists(atPath: sampleURL.path(percentEncoded: false)) else {
+            return nil
+        }
+        let arrays = try MLX.loadArrays(url: sampleURL)
+        guard let latent = arrays["latent"],
+              let encoderStates = arrays["encoder_states"],
+              let contextLatents = arrays["context_latents"] else {
+            return nil
+        }
+        return TrainingSample(
+            latent: latent,
+            encoderStates: encoderStates,
+            contextLatents: contextLatents,
+            encoderMask: arrays["encoder_mask"]
+        )
+    }
+
+    static func save(sample: TrainingSample, reference: TrainingPreprocessCacheReference) throws {
+        let didStartAccessing = reference.datasetDirectory.startAccessingSecurityScopedResource()
+        defer {
+            if didStartAccessing {
+                reference.datasetDirectory.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        let sampleURL = reference.datasetDirectory.appendingPathComponent(reference.sampleFile)
+        try FileManager.default.createDirectory(
+            at: sampleURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+
+        var arrays: [String: MLXArray] = [
+            "latent": sample.latent,
+            "encoder_states": sample.encoderStates,
+            "context_latents": sample.contextLatents,
+        ]
+        if let encoderMask = sample.encoderMask {
+            arrays["encoder_mask"] = encoderMask
+        }
+
+        try MLX.save(
+            arrays: arrays,
+            metadata: [
+                "anvil_preprocess_sample_version": version,
+                "bundle": reference.bundleFileName,
+                "bundle_name": reference.bundleName,
+                "clip_id": reference.clipID,
+                "source_audio": reference.sourceAudioPath,
+                "fingerprint": reference.fingerprint,
+            ],
+            url: sampleURL
+        )
+        try updateIndex(reference: reference, sample: sample)
+    }
+
+    private static func updateIndex(
+        reference: TrainingPreprocessCacheReference,
+        sample: TrainingSample
+    ) throws {
+        let indexURL = reference.datasetDirectory.appendingPathComponent(reference.indexFile)
+        try FileManager.default.createDirectory(
+            at: indexURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+
+        var index = readJSONObject(from: indexURL) ?? [
+            "anvil_preprocess_index_version": version,
+            "bundle": reference.bundleFileName,
+            "bundle_name": reference.bundleName,
+            "cache_dir": reference.cacheDirectory,
+            "entries": [],
+        ]
+        var entries = index["entries"] as? [[String: Any]] ?? []
+        entries.removeAll {
+            ($0["clip_id"] as? String) == reference.clipID ||
+                ($0["fingerprint"] as? String) == reference.fingerprint
+        }
+        entries.append([
+            "clip_id": reference.clipID,
+            "source_audio": reference.sourceAudioPath,
+            "file": reference.sampleFile,
+            "fingerprint": reference.fingerprint,
+            "created_at": ISO8601DateFormatter().string(from: Date()),
+            "shapes": [
+                "latent": sample.latent.shape,
+                "encoder_states": sample.encoderStates.shape,
+                "context_latents": sample.contextLatents.shape,
+                "encoder_mask": sample.encoderMask?.shape ?? [],
+            ],
+        ])
+        index["anvil_preprocess_index_version"] = version
+        index["updated_at"] = ISO8601DateFormatter().string(from: Date())
+        index["entries"] = entries.sorted {
+            ($0["clip_id"] as? String ?? "") < ($1["clip_id"] as? String ?? "")
+        }
+        try writeJSONObject(index, to: indexURL)
+    }
+
+    private static func readJSONObject(from url: URL) -> [String: Any]? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+    }
+
+    private static func writeJSONObject(_ object: [String: Any], to url: URL) throws {
+        let data = try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys])
+        try data.write(to: url, options: .atomic)
     }
 }
 

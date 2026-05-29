@@ -310,6 +310,20 @@ enum TrainingDatasetPackageWriter {
             ),
         ]
 
+        let statuses = manifests.compactMap { $0["status"] as? String }
+        let nonWaitingStatuses = statuses.filter { $0 != "waiting_for_bundle" }
+        let manifestStatus: String
+        if statuses.contains("ready_for_preprocess") {
+            manifestStatus = "ready_for_preprocess"
+        } else if statuses.contains("partial") ||
+            (!nonWaitingStatuses.isEmpty && nonWaitingStatuses.count < statuses.count) {
+            manifestStatus = "partial"
+        } else if !nonWaitingStatuses.isEmpty && nonWaitingStatuses.allSatisfy({ $0 == "complete" }) {
+            manifestStatus = "complete"
+        } else {
+            manifestStatus = "waiting_for_bundles"
+        }
+
         let manifest: [String: Any] = [
             "anvil_preprocess_cache_version": preprocessCacheVersion,
             "created_at": createdAtString,
@@ -318,9 +332,7 @@ enum TrainingDatasetPackageWriter {
             "dataset_manifest": datasetManifestFileName,
             "cache_root": "preprocessed",
             "adapter_modes": ["lora", "lokr"],
-            "status": manifests.contains { ($0["status"] as? String) == "ready_for_preprocess" }
-                ? "ready_for_preprocess"
-                : "waiting_for_bundles",
+            "status": manifestStatus,
             "bundles": manifests,
             "notes": [
                 "This manifest is adapter-agnostic: LoRA and LoKR should reuse the same encoded audio and conditioning tensors when native tensor persistence is wired.",
@@ -825,8 +837,10 @@ enum TrainingDatasetPackageWriter {
             atPath: outputDirectory.appendingPathComponent(instrumentalBundleFileName).path(percentEncoded: false)
         )
         let bpmEstimates = stemBPMEstimates(in: captions, outputDirectory: outputDirectory)
+        let keyValues = keyMetadataValues(in: captions)
         let hasDerivedMetadata = separatedClipCount > 0 || transcribedClipCount > 0 ||
-            vocalBundleExists || instrumentalBundleExists || !bpmEstimates.isEmpty
+            vocalBundleExists || instrumentalBundleExists || !bpmEstimates.isEmpty ||
+            !keyValues.isEmpty || approvedClipCount(in: captions) > 0
         guard hasDerivedMetadata else {
             try refreshPreprocessCacheManifest(at: outputDirectory, createdAt: updatedAt)
             return
@@ -903,12 +917,15 @@ enum TrainingDatasetPackageWriter {
         analysis["enabled"] = !bpmEstimates.isEmpty
         analysis["status"] = !bpmEstimates.isEmpty ? "stem_analysis_available" : (analysis["status"] ?? "not_run")
         analysis["bpm_status"] = !bpmEstimates.isEmpty ? "estimated_from_stems" : "not_run"
-        analysis["key_status"] = "not_run"
+        analysis["key_status"] = !keyValues.isEmpty ? "available_from_metadata" : "not_run"
         if !bpmEstimates.isEmpty {
             analysis["stem_tempo_bpm"] = [
                 "average": rounded(bpmEstimates.reduce(0, +) / Double(bpmEstimates.count), places: 1),
                 "estimate_count": bpmEstimates.count,
             ]
+        }
+        if !keyValues.isEmpty {
+            analysis["keys"] = keyValues
         }
         manifest["analysis"] = analysis
 
@@ -938,7 +955,7 @@ enum TrainingDatasetPackageWriter {
             ),
             "transcribed_clip_count": transcribedClipCount,
             "bpm_status": !bpmEstimates.isEmpty ? "estimated_from_stems" : "not_run",
-            "key_status": "not_run",
+            "key_status": !keyValues.isEmpty ? "available_from_metadata" : "not_run",
         ]
 
         try writeJSONObject(manifest, to: manifestURL)
@@ -961,18 +978,32 @@ enum TrainingDatasetPackageWriter {
         let clips = bundle?["clips"] as? [[String: Any]] ?? []
         let include = bundle?["include"] as? [String] ?? [name]
         let exists = FileManager.default.fileExists(atPath: bundleURL.path(percentEncoded: false))
+        let indexFile = "\(cacheDirectory)/index.json"
+        let index = readJSONObject(from: outputDirectory.appendingPathComponent(indexFile))
+        let cachedEntries = index?["entries"] as? [[String: Any]] ?? []
+        let cachedCount = cachedEntries.count
+        let status: String
+        if exists, !clips.isEmpty, cachedCount >= clips.count {
+            status = "complete"
+        } else if exists, !clips.isEmpty, cachedCount > 0 {
+            status = "partial"
+        } else if exists, !clips.isEmpty {
+            status = "ready_for_preprocess"
+        } else {
+            status = "waiting_for_bundle"
+        }
         return [
             "name": name,
             "bundle": bundleFileName,
             "include": include,
             "cache_dir": cacheDirectory,
             "clip_count": clips.count,
-            "status": exists && !clips.isEmpty ? "ready_for_preprocess" : "waiting_for_bundle",
+            "cached_clip_count": cachedCount,
+            "status": status,
             "fingerprint": preprocessFingerprint(bundleFileName: bundleFileName, clips: clips),
             "tensor_files": [
-                "latents": "\(cacheDirectory)/latents.safetensors",
-                "conditioning": "\(cacheDirectory)/conditioning.safetensors",
-                "index": "\(cacheDirectory)/index.json",
+                "samples": "\(cacheDirectory)/samples/*.safetensors",
+                "index": indexFile,
             ],
         ]
     }
@@ -1120,6 +1151,18 @@ enum TrainingDatasetPackageWriter {
                 return doubleValue(analysis["tempo_bpm_estimate"])
             }
         }
+    }
+
+    private static func keyMetadataValues(in captions: [[String: Any]]) -> [String] {
+        sortedUnique(captions.compactMap { record in
+            if let key = stringValue(record["key"]) ?? stringValue(record["keyscale"]) {
+                return key
+            }
+            if let analysis = record["analysis"] as? [String: Any] {
+                return stringValue(analysis["key"]) ?? stringValue(analysis["keyscale"])
+            }
+            return nil
+        })
     }
 
     private static func doubleValue(_ value: Any?) -> Double? {

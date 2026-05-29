@@ -454,7 +454,7 @@ private struct BuildTrainingView: View {
             refreshRemotePackages()
         }
         .onChange(of: selectedTrainingMode) { _, mode in
-            if mode == .remote {
+            if mode == .remote || mode == .lokr {
                 refreshRemotePackages()
             }
         }
@@ -499,7 +499,7 @@ private struct BuildTrainingView: View {
         case .lora:
             loraWorkspace
         case .lokr:
-            statusMessage("LoKr Training", message: "Not available yet.", systemImage: "slider.horizontal.3", color: .secondary)
+            lokrWorkspace
         case .remote:
             remoteWorkspace
         }
@@ -599,6 +599,63 @@ private struct BuildTrainingView: View {
     private var selectedRemotePackage: DatasetPackageSummary? {
         guard let selectedRemotePackageID else { return nil }
         return remotePackages.first { $0.id == selectedRemotePackageID }
+    }
+
+    private var lokrWorkspace: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 10) {
+                Text("\(remotePackages.count) package\(remotePackages.count == 1 ? "" : "s")")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                Button {
+                    refreshRemotePackages()
+                } label: {
+                    Label("Refresh", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+
+                Button {
+                    openRemotePackageFolder()
+                } label: {
+                    Label("Finder", systemImage: "folder")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(selectedRemotePackage == nil)
+            }
+            .padding()
+
+            Divider()
+
+            if remotePackages.isEmpty {
+                statusMessage(
+                    "No Dataset Packages",
+                    message: "Build or open a reviewed dataset package before testing LoKR training.",
+                    systemImage: "tray",
+                    color: .secondary
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                List(selection: $selectedRemotePackageID) {
+                    ForEach(remotePackages) { package in
+                        lokrPackageRow(package)
+                            .tag(package.id)
+                    }
+                }
+                .listStyle(.inset)
+            }
+
+            Divider()
+            Text("Experimental LoKR uses the same reviewed package and `preprocess_cache.json` contract as LoRA. The native LoKR trainer is still pending.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding()
+        }
+        .onAppear(perform: refreshRemotePackages)
     }
 
     private var remoteWorkspace: some View {
@@ -703,6 +760,45 @@ private struct BuildTrainingView: View {
                 .foregroundStyle(package.isValid ? .green : .orange)
         }
         .padding(.vertical, 4)
+    }
+
+    private func lokrPackageRow(_ package: DatasetPackageSummary) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: package.isValid ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                .foregroundStyle(package.isValid ? .green : .orange)
+                .frame(width: 18)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(package.name)
+                    .font(.callout)
+                    .fontWeight(.medium)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                HStack(spacing: 8) {
+                    Text("\(package.clipCount) clips")
+                    Text("cache \(preprocessCacheStatus(for: package))")
+                    if package.keyStatus != "not_run" {
+                        Text("key \(package.keyStatus)")
+                    }
+                }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Text(package.isValid ? "Ready" : "Review")
+                .font(.caption2)
+                .foregroundStyle(package.isValid ? .green : .orange)
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func preprocessCacheStatus(for package: DatasetPackageSummary) -> String {
+        let url = package.directory.appendingPathComponent(TrainingDatasetPackageWriter.preprocessCacheFileName)
+        guard let data = try? Data(contentsOf: url),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let status = json["status"] as? String else {
+            return "missing"
+        }
+        return status
     }
 
     private func refreshRemotePackages() {
@@ -829,7 +925,7 @@ private enum BuildTrainingMode: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .lora: return "LoRA"
-        case .lokr: return "LoKr"
+        case .lokr: return "LoKR"
         case .remote: return "Remote GPU"
         }
     }
