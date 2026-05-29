@@ -8,6 +8,7 @@ struct LocalFilesImportSheet: View {
     var onOpenInTraining: ([TrainingImportedFile]) -> Void
 
     @StateObject private var builder = LocalFilesDatasetBuilder()
+    @StateObject private var enrichment = LocalDatasetEnrichmentService()
 
     @State private var selectedFiles: [URL] = []
     @State private var selectedFolders: [URL] = []
@@ -59,7 +60,13 @@ struct LocalFilesImportSheet: View {
         .onChange(of: builder.phase) { _, newPhase in
             if case .complete(let dir, _) = newPhase {
                 editableClips = builder.resultClips
+                enrichment.reset()
                 refreshPackageSummary(for: dir)
+            }
+        }
+        .onChange(of: enrichment.phase) { _, newPhase in
+            if case .complete(let result) = newPhase {
+                refreshPackageSummary(for: result.datasetDirectory)
             }
         }
     }
@@ -80,7 +87,7 @@ struct LocalFilesImportSheet: View {
             Button("Close") { dismiss() }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
-                .disabled(builder.phase.isRunning)
+                .disabled(isBusy)
         }
         .padding(16)
     }
@@ -95,11 +102,11 @@ struct LocalFilesImportSheet: View {
                 Button("Add Folder...") { openFolderPanel() }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
-                    .disabled(builder.phase.isRunning)
+                    .disabled(isBusy)
                 Button("Add Audio Files...") { showingFileImporter = true }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
-                    .disabled(builder.phase.isRunning)
+                    .disabled(isBusy)
             }
 
             if selectedFiles.isEmpty {
@@ -129,7 +136,7 @@ struct LocalFilesImportSheet: View {
                                     .foregroundStyle(.secondary)
                             }
                             .buttonStyle(.borderless)
-                            .disabled(builder.phase.isRunning)
+                            .disabled(isBusy)
                         }
                     }
                 }
@@ -153,7 +160,7 @@ struct LocalFilesImportSheet: View {
                 .fontWeight(.semibold)
             TextField("dark blues, slow tempo, minor key, atmospheric guitar", text: $styleTemplate)
                 .textFieldStyle(.roundedBorder)
-                .disabled(builder.phase.isRunning)
+                .disabled(isBusy)
             Text("Applied to every clip as its training caption. Leave blank to use file names.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -171,7 +178,7 @@ struct LocalFilesImportSheet: View {
                     HStack(spacing: 8) {
                         Slider(value: $config.clipLength, in: 15...60, step: 5)
                             .frame(maxWidth: 160)
-                            .disabled(builder.phase.isRunning)
+                            .disabled(isBusy)
                         Text("\(Int(config.clipLength))s")
                             .monospacedDigit()
                             .frame(width: 34, alignment: .trailing)
@@ -179,18 +186,18 @@ struct LocalFilesImportSheet: View {
                     }
                 }
                 LabeledContent("Clips per File") {
-                    Stepper("\(config.clipsPerTrack)",
-                            value: $config.clipsPerTrack,
-                            in: 1...20)
-                        .disabled(builder.phase.isRunning)
+                        Stepper("\(config.clipsPerTrack)",
+                                value: $config.clipsPerTrack,
+                                in: 1...20)
+                        .disabled(isBusy)
                         .frame(maxWidth: 130)
                 }
                 LabeledContent("Max Total Clips") {
-                    Stepper("\(config.maxTotalClips)",
-                            value: $config.maxTotalClips,
-                            in: 5...200,
-                            step: 5)
-                        .disabled(builder.phase.isRunning)
+                        Stepper("\(config.maxTotalClips)",
+                                value: $config.maxTotalClips,
+                                in: 5...200,
+                                step: 5)
+                        .disabled(isBusy)
                         .frame(maxWidth: 130)
                 }
                 LabeledContent("Clip Format") {
@@ -201,7 +208,7 @@ struct LocalFilesImportSheet: View {
                     }
                     .labelsHidden()
                     .pickerStyle(.segmented)
-                    .disabled(builder.phase.isRunning)
+                    .disabled(isBusy)
                     .frame(maxWidth: 160)
                 }
                 Text(config.clipFormat.helpText)
@@ -307,6 +314,7 @@ struct LocalFilesImportSheet: View {
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
+                    .disabled(enrichment.phase.isRunning)
                     Button {
                         exportPackage(from: dir)
                     } label: {
@@ -315,12 +323,23 @@ struct LocalFilesImportSheet: View {
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
-                    .disabled(isExportingPackage)
+                    .disabled(isExportingPackage || enrichment.phase.isRunning)
+                    Button {
+                        startEnrichment(from: dir)
+                    } label: {
+                        Label("Separate Stems", systemImage: "waveform.path.ecg")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .disabled(enrichment.phase.isRunning || isExportingPackage)
                 }
             }
             .padding(10)
             .background(.green.opacity(0.08))
             .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            enrichmentStatusSection
 
             if let packageSummary {
                 Text(packageSummary)
@@ -378,7 +397,7 @@ struct LocalFilesImportSheet: View {
         HStack {
             Button("Cancel") { dismiss() }
                 .buttonStyle(.bordered)
-                .disabled(builder.phase.isRunning)
+                .disabled(isBusy)
 
             Spacer()
 
@@ -391,18 +410,81 @@ struct LocalFilesImportSheet: View {
                 Button("Stop", role: .destructive) { builder.cancel() }
                     .buttonStyle(.bordered)
             case .complete:
-                Button("Open in Training") {
-                    persistCaptions()
-                    onOpenInTraining(editableClips)
+                if enrichment.phase.isRunning {
+                    Button("Stop Enrichment", role: .destructive) {
+                        enrichment.cancel()
+                    }
+                    .buttonStyle(.bordered)
+                } else {
+                    Button("Open in Training") {
+                        persistCaptions()
+                        onOpenInTraining(editableClips)
+                    }
+                    .buttonStyle(.borderedProminent)
                 }
-                .buttonStyle(.borderedProminent)
             }
         }
         .padding(16)
     }
 
+    @ViewBuilder
+    private var enrichmentStatusSection: some View {
+        switch enrichment.phase {
+        case .idle:
+            EmptyView()
+        case .running(let step):
+            HStack(spacing: 10) {
+                ProgressView()
+                    .controlSize(.small)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(step.title)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                    Text("This may take a while for larger clip sets.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+            .padding(10)
+            .background(.blue.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        case .complete(let result):
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                    .padding(.top, 1)
+                Text(result.summary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            .padding(10)
+            .background(.green.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        case .failed(let message):
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                    .padding(.top, 1)
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                Spacer()
+            }
+            .padding(10)
+            .background(.orange.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+    }
+
+    private var isBusy: Bool {
+        builder.phase.isRunning || enrichment.phase.isRunning
+    }
+
     private var canStart: Bool {
-        !selectedFiles.isEmpty && outputManager.directory != nil
+        !selectedFiles.isEmpty && outputManager.directory != nil && !isBusy
     }
 
     private func startImport() {
@@ -427,6 +509,11 @@ struct LocalFilesImportSheet: View {
             styleTemplate: styleTemplate
         )
         refreshPackageSummary(for: dir)
+    }
+
+    private func startEnrichment(from dir: URL) {
+        persistCaptions()
+        enrichment.enrich(datasetDirectory: dir)
     }
 
     private func refreshPackageSummary(for dir: URL) {

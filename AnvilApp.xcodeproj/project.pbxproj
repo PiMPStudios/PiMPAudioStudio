@@ -18,6 +18,7 @@
 		149D0F7AA4A61FF4806E28E0 /* SFXGenerationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCFDE36CECAA5A75A45571D5 /* SFXGenerationService.swift */; };
 		195C4C2F3C08CE060C136194 /* LyricWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FEC311D281782C3E6E6FBF6 /* LyricWriter.swift */; };
 		1884D938D10C4CFA9EAA5D04 /* LocalFilesDatasetBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CFD141C51F946C0B0D5AA6B /* LocalFilesDatasetBuilder.swift */; };
+		1A95C8A7D2B64A79A84C5E31 /* LocalDatasetEnrichmentService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9271C64B5D4E47A7BB8C7A19 /* LocalDatasetEnrichmentService.swift */; };
 		1A51019FA31EB11E9D2DFD4D /* ACEStepGenerationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A68785FD9393563F70F224C /* ACEStepGenerationService.swift */; };
 		1D4AB4D1E19703F0C2C9CA6F /* GenerationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F48405E290FB7817733FDD4 /* GenerationService.swift */; };
 		23312C22747B23B6F7645DCA /* PitchShiftControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A037C24F391D586BD629293 /* PitchShiftControlView.swift */; };
@@ -175,6 +176,7 @@
 		9AA36FD1A3879D2885265598 /* AnvilApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AnvilApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		9D65878AD15AC1C5B83D82A2 /* TrainingSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingSheet.swift; sourceTree = "<group>"; };
 		9CFD141C51F946C0B0D5AA6B /* LocalFilesDatasetBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalFilesDatasetBuilder.swift; sourceTree = "<group>"; };
+		9271C64B5D4E47A7BB8C7A19 /* LocalDatasetEnrichmentService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalDatasetEnrichmentService.swift; sourceTree = "<group>"; };
 		C2A99A33F6D1438D98BE6221 /* TrainingDatasetPackageWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingDatasetPackageWriter.swift; sourceTree = "<group>"; };
 		9E46D5718C7768D91073FCEE /* AnvilAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AnvilAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		9F48405E290FB7817733FDD4 /* GenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationService.swift; sourceTree = "<group>"; };
@@ -281,6 +283,7 @@
 					425D1F125449BC69C0BB220D /* LLMModelManager.swift */,
 					21836E28CF66D31E0B4D6C84 /* LoRACoordinator.swift */,
 					9CFD141C51F946C0B0D5AA6B /* LocalFilesDatasetBuilder.swift */,
+					9271C64B5D4E47A7BB8C7A19 /* LocalDatasetEnrichmentService.swift */,
 					C2A99A33F6D1438D98BE6221 /* TrainingDatasetPackageWriter.swift */,
 					83D2A2817A2C70C01A7E9060 /* OutputDirectoryManager.swift */,
 				17654E4D0E9713010A5AFBC2 /* PEFTKeyRemapper.swift */,
@@ -597,6 +600,7 @@
 					DD80478C2C925BA8B2C0C86D /* LPCFormantShifter.swift in Sources */,
 					C86AC26AEE05C99708CBA2BB /* LiveGenerationTrace.swift in Sources */,
 					1884D938D10C4CFA9EAA5D04 /* LocalFilesDatasetBuilder.swift in Sources */,
+					1A95C8A7D2B64A79A84C5E31 /* LocalDatasetEnrichmentService.swift in Sources */,
 					560969F0EC704B228087B236 /* LocalFilesImportSheet.swift in Sources */,
 					0287F5C870C67463A38138CC /* LoRACoordinator.swift in Sources */,
 					D5795A7B65B4483DB9FC4B12 /* TrainingDatasetPackageWriter.swift in Sources */,

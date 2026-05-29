@@ -301,6 +301,16 @@ private func silentWAVData(sampleRate: Int = 22_050, channels: Int = 1, frameCou
     #expect(providerTargets.contains("runpod"))
     #expect(providerTargets.contains("digitalocean_gpu"))
     #expect(remoteJSON?["default_bundle"] as? String == "training_bundle_full_mix.json")
+    let remoteBundles = remoteJSON?["bundles"] as? [[String: Any]] ?? []
+    let remoteBundleNames = Set(remoteBundles.compactMap { $0["name"] as? String })
+    #expect(remoteBundleNames.contains("full_mix"))
+    #expect(remoteBundleNames.contains("vocals"))
+    #expect(remoteBundleNames.contains("instrumental"))
+    let copyRules = remoteJSON?["copy_rules"] as? [String: Any]
+    let includedPaths = copyRules?["include"] as? [String] ?? []
+    #expect(includedPaths.contains("stems/**"))
+    #expect(includedPaths.contains("training_bundle_vocals.json"))
+    #expect(includedPaths.contains("training_bundle_instrumental.json"))
 
     let manifestData = try Data(contentsOf: datasetDir.appendingPathComponent("dataset_manifest.json"))
     let manifestJSON = try JSONSerialization.jsonObject(with: manifestData) as? [String: Any]
@@ -356,6 +366,109 @@ private func silentWAVData(sampleRate: Int = 22_050, channels: Int = 1, frameCou
     #expect((clipAudioJSON?["channels"] as? NSNumber)?.intValue == 1)
     let duration = (clipAudioJSON?["duration_seconds"] as? NSNumber)?.doubleValue ?? 0
     #expect(abs(duration - 0.1) < 0.001)
+}
+
+@Test func localDatasetPackageWriterPreservesEnrichmentMetadataOnCaptionRefresh() throws {
+    let datasetDir = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let clipsDir = datasetDir.appendingPathComponent("clips", isDirectory: true)
+    try FileManager.default.createDirectory(at: clipsDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: datasetDir) }
+
+    let sourceURL = datasetDir.appendingPathComponent("source.wav")
+    let clipURL = clipsDir.appendingPathComponent("f001_clip_001.wav")
+    try silentWAVData().write(to: sourceURL)
+    try silentWAVData().write(to: clipURL)
+
+    try TrainingDatasetPackageWriter.writeLocalPackage(
+        outputDirectory: datasetDir,
+        clips: [TrainingImportedFile(url: clipURL, description: "old caption")],
+        sourceFiles: [sourceURL],
+        config: LocalFilesDatasetConfig(clipLength: 30, clipsPerTrack: 1, maxTotalClips: 1),
+        styleTemplate: "old caption",
+        createdAt: Date(timeIntervalSince1970: 0)
+    )
+
+    let enrichedCaptions = """
+    [
+      {
+        "file": "clips/f001_clip_001.wav",
+        "caption": "old caption",
+        "transcript": "I keep the line",
+        "transcription": { "status": "complete", "text": "I keep the line" },
+        "analysis": { "tempo_bpm_estimate": 72 },
+        "separation": {
+          "mode": "instrumental",
+          "stems": {
+            "vocals": "stems/f001_clip_001/vocals.wav",
+            "instrumental": "stems/f001_clip_001/instrumental.wav"
+          },
+          "separation_file": "stems/f001_clip_001/separation.json"
+        }
+      }
+    ]
+    """
+    try Data(enrichedCaptions.utf8).write(to: datasetDir.appendingPathComponent("captions.json"))
+
+    try TrainingDatasetPackageWriter.writeLocalPackage(
+        outputDirectory: datasetDir,
+        clips: [TrainingImportedFile(url: clipURL, description: "new caption")],
+        sourceFiles: [sourceURL],
+        config: LocalFilesDatasetConfig(clipLength: 30, clipsPerTrack: 1, maxTotalClips: 1),
+        styleTemplate: "new caption",
+        createdAt: Date(timeIntervalSince1970: 1)
+    )
+
+    let captionsData = try Data(contentsOf: datasetDir.appendingPathComponent("captions.json"))
+    let captions = try JSONSerialization.jsonObject(with: captionsData) as? [[String: Any]]
+    let record = captions?.first
+    #expect(record?["caption"] as? String == "new caption")
+    #expect(record?["transcript"] as? String == "I keep the line")
+    let transcription = record?["transcription"] as? [String: Any]
+    #expect(transcription?["text"] as? String == "I keep the line")
+    let separation = record?["separation"] as? [String: Any]
+    let stems = separation?["stems"] as? [String: Any]
+    #expect(stems?["vocals"] as? String == "stems/f001_clip_001/vocals.wav")
+
+    let bundleData = try Data(contentsOf: datasetDir.appendingPathComponent("training_bundle_full_mix.json"))
+    let bundle = try JSONSerialization.jsonObject(with: bundleData) as? [String: Any]
+    let bundleClips = bundle?["clips"] as? [[String: Any]]
+    let bundleClip = bundleClips?.first
+    #expect(bundleClip?["caption"] as? String == "new caption")
+    #expect((bundleClip?["separation"] as? [String: Any])?["mode"] as? String == "instrumental")
+}
+
+@Test func localDatasetEnrichmentCommandPlanExportsStemBundles() {
+    let datasetDir = URL(fileURLWithPath: "/tmp/anvil dataset", isDirectory: true)
+    let executable = URL(fileURLWithPath: "/tools/anvil")
+
+    let commands = LocalDatasetEnrichmentService.commandPlan(
+        datasetDirectory: datasetDir,
+        executableURL: executable,
+        force: true
+    )
+
+    #expect(commands.count == 3)
+    #expect(commands[0].step == .separatingStems)
+    #expect(commands[0].arguments.contains("--force"))
+    #expect(commands[0].arguments == [
+        "dataset",
+        "separate",
+        "/tmp/anvil dataset",
+        "--mode",
+        "instrumental",
+        "--backend",
+        "audio-separator",
+        "--output-format",
+        "wav",
+        "--force",
+    ])
+    #expect(commands[1].step == .exportingVocalsBundle)
+    #expect(commands[1].arguments.contains("vocals"))
+    #expect(commands[1].arguments.contains("/tmp/anvil dataset/training_bundle_vocals.json"))
+    #expect(commands[2].step == .exportingInstrumentalBundle)
+    #expect(commands[2].arguments.contains("instrumental"))
+    #expect(commands[2].arguments.contains("/tmp/anvil dataset/training_bundle_instrumental.json"))
 }
 
 @Test @MainActor func localFilesDatasetBuilderWritesWAVClipsByDefault() async throws {

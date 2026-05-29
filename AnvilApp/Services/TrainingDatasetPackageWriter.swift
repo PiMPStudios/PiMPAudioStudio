@@ -43,6 +43,8 @@ enum TrainingDatasetPackageWriter {
     static let datasetManifestFileName = "dataset_manifest.json"
     static let trainingBundleFileName = "training_bundle.json"
     static let fullMixBundleFileName = "training_bundle_full_mix.json"
+    static let vocalBundleFileName = "training_bundle_vocals.json"
+    static let instrumentalBundleFileName = "training_bundle_instrumental.json"
     static let remotePackageFileName = "remote_training_package.json"
     static let validationReportFileName = "package_validation.json"
 
@@ -93,9 +95,11 @@ enum TrainingDatasetPackageWriter {
     ) throws {
         try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
 
+        let existingCaptionRecords = captionRecordsByFile(from: outputDirectory)
         try writeCaptionsFile(
             clips: clips.map { (url: $0.url, caption: normalizedCaption(for: $0)) },
-            to: outputDirectory
+            to: outputDirectory,
+            existingRecordsByFile: existingCaptionRecords
         )
 
         let clipAudioMetadata = audioMetadataByPath(for: clips.map(\.url))
@@ -105,7 +109,8 @@ enum TrainingDatasetPackageWriter {
             sourceFiles: sourceFiles,
             outputDirectory: outputDirectory,
             config: config,
-            audioMetadata: clipAudioMetadata
+            audioMetadata: clipAudioMetadata,
+            existingCaptionRecordsByFile: existingCaptionRecords
         )
         let createdAtString = ISO8601DateFormatter().string(from: createdAt)
         let trimmedStyle = styleTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -195,6 +200,14 @@ enum TrainingDatasetPackageWriter {
             missingClipFiles: missingClipFiles,
             errors: errors
         )
+    }
+
+    static func refreshValidationReport(
+        at outputDirectory: URL,
+        checkedAt: Date = Date()
+    ) throws {
+        let validation = validatePackage(at: outputDirectory, checkedAt: checkedAt)
+        try writeValidationReport(validation, to: outputDirectory)
     }
 
     @discardableResult
@@ -344,16 +357,35 @@ enum TrainingDatasetPackageWriter {
                     "training_lyrics": "[Instrumental]",
                     "training_lyrics_source": "constant",
                 ],
+                [
+                    "name": "vocals",
+                    "path": vocalBundleFileName,
+                    "include": ["vocals"],
+                    "training_lyrics": "vocal stem",
+                    "training_lyrics_source": "transcript",
+                    "optional": true,
+                ],
+                [
+                    "name": "instrumental",
+                    "path": instrumentalBundleFileName,
+                    "include": ["instrumental"],
+                    "training_lyrics": "[Instrumental]",
+                    "training_lyrics_source": "constant",
+                    "optional": true,
+                ],
             ],
             "provider_targets": ["runpod", "digitalocean_gpu"],
             "copy_rules": [
                 "include": [
                     "clips/**",
+                    "stems/**",
                     captionsFileName,
                     datasetConfigFileName,
                     datasetManifestFileName,
                     trainingBundleFileName,
                     fullMixBundleFileName,
+                    vocalBundleFileName,
+                    instrumentalBundleFileName,
                     remotePackageFileName,
                     validationReportFileName,
                 ],
@@ -366,7 +398,7 @@ enum TrainingDatasetPackageWriter {
                 "expected_gpu_class": "h100_or_h200",
             ],
             "notes": [
-                "This first package is local-file/full-mix only; readable audio header metadata is included, but stem separation, transcription, BPM, and key analysis have not been run.",
+                "Local-file packages start with full-mix clips. Stem bundles are optional and are written after local enrichment runs.",
                 "Remote workers should copy the package root intact and resolve clip assets relative to the selected bundle file.",
             ],
         ]
@@ -377,13 +409,14 @@ enum TrainingDatasetPackageWriter {
         sourceFiles: [URL],
         outputDirectory: URL,
         config: LocalFilesDatasetConfig,
-        audioMetadata: [String: AudioFileMetadata]
+        audioMetadata: [String: AudioFileMetadata],
+        existingCaptionRecordsByFile: [String: [String: Any]]
     ) -> [[String: Any]] {
         clips.enumerated().map { index, clip in
             let relativePath = relativeClipPath(for: clip.url, from: outputDirectory)
             let caption = normalizedCaption(for: clip)
             let metadata = audioMetadata[normalizedFilePath(clip.url)] ?? fallbackAudioMetadata(for: clip.url)
-            return [
+            var object: [String: Any] = [
                 "id": String(format: "clip_%04d", index + 1),
                 "file": relativePath,
                 "assets": [
@@ -406,6 +439,17 @@ enum TrainingDatasetPackageWriter {
                 "tags": [],
                 "negative_tags": [],
             ]
+            preserveEnrichmentMetadata(
+                from: existingCaptionRecordsByFile[relativePath],
+                into: &object
+            )
+            object["caption"] = caption
+            object["prompt"] = caption
+            object["file"] = relativePath
+            object["assets"] = [
+                "full_mix": relativePath,
+            ]
+            return object
         }
     }
 
@@ -628,14 +672,45 @@ enum TrainingDatasetPackageWriter {
         try writeJSONObject(object, to: outputDirectory.appendingPathComponent(validationReportFileName))
     }
 
-    private static func writeCaptionsFile(clips: [(url: URL, caption: String)], to outputDir: URL) throws {
+    private static func writeCaptionsFile(
+        clips: [(url: URL, caption: String)],
+        to outputDir: URL,
+        existingRecordsByFile: [String: [String: Any]]
+    ) throws {
         let entries = clips.map {
-            [
-                "file": "clips/\($0.url.lastPathComponent)",
-                "caption": $0.caption,
-            ]
+            let file = "clips/\($0.url.lastPathComponent)"
+            var entry = existingRecordsByFile[file] ?? [:]
+            entry["file"] = file
+            entry["caption"] = $0.caption
+            return entry
         }
         try writeJSONObjectArray(entries, to: outputDir.appendingPathComponent(captionsFileName))
+    }
+
+    private static func captionRecordsByFile(from outputDir: URL) -> [String: [String: Any]] {
+        let url = outputDir.appendingPathComponent(captionsFileName)
+        return readJSONArray(from: url).reduce(into: [:]) { records, record in
+            guard let file = record["file"] as? String, !file.isEmpty else { return }
+            records[file] = record
+        }
+    }
+
+    private static func preserveEnrichmentMetadata(
+        from existing: [String: Any]?,
+        into object: inout [String: Any]
+    ) {
+        guard let existing else { return }
+        for key in [
+            "analysis",
+            "lyrics",
+            "negative_tags",
+            "separation",
+            "tags",
+            "transcript",
+            "transcription",
+        ] where existing[key] != nil {
+            object[key] = existing[key]
+        }
     }
 
     private static func writeJSONObject(_ object: [String: Any], to url: URL) throws {
@@ -651,6 +726,11 @@ enum TrainingDatasetPackageWriter {
     private static func readJSONObject(from url: URL) -> [String: Any]? {
         guard let data = try? Data(contentsOf: url) else { return nil }
         return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+    }
+
+    private static func readJSONArray(from url: URL) -> [[String: Any]] {
+        guard let data = try? Data(contentsOf: url) else { return [] }
+        return (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] ?? []
     }
 
     private static func datasetBaseDirectory(from dict: [String: Any]?, fallback: URL) -> URL {
