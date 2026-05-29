@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "AnvilCore",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS("15.0")],
     products: [
         .library(name: "AnvilCore", targets: ["AnvilCore"]),
         .executable(name: "QualityEval", targets: ["QualityEval"]),
@@ -11,7 +11,8 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/ml-explore/mlx-swift", from: "0.21.0"),
-        .package(url: "https://github.com/huggingface/swift-transformers", from: "0.1.12"),
+        .package(url: "https://github.com/huggingface/swift-transformers", from: "1.1.6"),
+        .package(url: "https://github.com/soniqo/speech-swift.git", revision: "72a20dbb142d000b73d395b7bc62599fef8387e2"),
         .package(path: "../Vendor/demucs-mlx-swift"),
     ],
     targets: [
@@ -23,8 +24,11 @@ let package = Package(
                 .product(name: "MLXOptimizers", package: "mlx-swift"),
                 .product(name: "MLXRandom", package: "mlx-swift"),
                 .product(name: "MLXFast", package: "mlx-swift"),
-                .product(name: "Transformers", package: "swift-transformers"),
+                .product(name: "Hub", package: "swift-transformers"),
+                .product(name: "Tokenizers", package: "swift-transformers"),
                 .product(name: "DemucsMLX", package: "demucs-mlx-swift"),
+                .product(name: "Qwen3ASR", package: "speech-swift"),
+                .product(name: "AudioCommon", package: "speech-swift"),
             ]
         ),
         .executableTarget(

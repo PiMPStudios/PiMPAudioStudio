@@ -85,9 +85,9 @@ AnvilCore (Swift Package)
 
 ## Requirements
 
-- macOS 14.0+ (Sonoma)
+- macOS 15.0+ (Sequoia)
 - Apple Silicon (M1 or later) — required for MLX GPU acceleration
-- Xcode 15.4+ to build
+- Xcode 16+ to build
 - ~8 GB RAM minimum (16 GB recommended for generation + training)
 
 ---

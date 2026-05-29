@@ -1,8 +1,10 @@
 import AVFoundation
 import Foundation
+import AnvilCore
 
 enum LocalDatasetEnrichmentStep: String, Equatable {
     case separatingStems
+    case transcribingVocals
     case exportingVocalsBundle
     case exportingInstrumentalBundle
     case refreshingMetadata
@@ -11,6 +13,8 @@ enum LocalDatasetEnrichmentStep: String, Equatable {
         switch self {
         case .separatingStems:
             return "Separating stems"
+        case .transcribingVocals:
+            return "Transcribing vocals"
         case .exportingVocalsBundle:
             return "Exporting vocal bundle"
         case .exportingInstrumentalBundle:
@@ -120,6 +124,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
     nonisolated static func run(
         datasetDirectory: URL,
         force: Bool = false,
+        lyricsTranscriber: any DatasetLyricsTranscribing = LyricsTranscriptionService(),
         onStep: @escaping (LocalDatasetEnrichmentStep) async -> Void
     ) async throws -> LocalDatasetEnrichmentResult {
         let didStartAccessing = datasetDirectory.startAccessingSecurityScopedResource()
@@ -142,6 +147,17 @@ final class LocalDatasetEnrichmentService: ObservableObject {
                 record: records[index],
                 datasetDirectory: datasetDirectory,
                 sourceSeparator: sourceSeparator,
+                force: force
+            )
+        }
+
+        await onStep(.transcribingVocals)
+        for index in records.indices {
+            try Task.checkCancellation()
+            records[index].object = try await transcribeClipVocals(
+                record: records[index],
+                datasetDirectory: datasetDirectory,
+                lyricsTranscriber: lyricsTranscriber,
                 force: force
             )
         }
@@ -259,6 +275,67 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return updated
     }
 
+    nonisolated private static func transcribeClipVocals(
+        record: LocalDatasetCaptionRecord,
+        datasetDirectory: URL,
+        lyricsTranscriber: any DatasetLyricsTranscribing,
+        force: Bool
+    ) async throws -> [String: Any] {
+        guard let vocalPath = stemPath(for: .vocals, in: record.object) else {
+            return record.object
+        }
+        if !force, hasCompletedTranscription(record.object) {
+            return record.object
+        }
+
+        let vocalURL = resolve(vocalPath, relativeTo: datasetDirectory)
+        guard FileManager.default.fileExists(atPath: vocalURL.path(percentEncoded: false)) else {
+            throw LocalDatasetEnrichmentError.missingClip(vocalPath)
+        }
+
+        let outputDirectory = vocalURL.deletingLastPathComponent()
+        let transcription = try await lyricsTranscriber.transcribe(
+            vocalsURL: vocalURL,
+            outputDirectory: outputDirectory,
+            force: force
+        )
+
+        var payload: [String: Any] = [
+            "status": transcription.text.isEmpty ? "empty" : "complete",
+            "text": transcription.text,
+            "source": transcription.source,
+            "backend": transcription.backend,
+            "model": transcription.model,
+            "word_count": transcription.wordCount,
+            "elapsed_seconds": rounded(transcription.elapsedSeconds, places: 3),
+            "lyrics_file": relativePath(for: transcription.lyricsURL, from: datasetDirectory),
+            "timed_lyrics_file": relativePath(for: transcription.timedLyricsURL, from: datasetDirectory),
+            "lrc_file": relativePath(for: transcription.lrcURL, from: datasetDirectory),
+        ]
+        if let alignerModel = transcription.alignerModel {
+            payload["aligner_model"] = alignerModel
+        }
+
+        var updated = record.object
+        updated["lyrics"] = transcription.text
+        updated["transcript"] = transcription.text
+        updated["transcription"] = payload
+        updated["vocal_overlap"] = !transcription.text.isEmpty
+
+        var assets = updated["assets"] as? [String: Any] ?? [:]
+        assets["lyrics"] = relativePath(for: transcription.lyricsURL, from: datasetDirectory)
+        assets["timed_lyrics"] = relativePath(for: transcription.timedLyricsURL, from: datasetDirectory)
+        assets["lyrics_lrc"] = relativePath(for: transcription.lrcURL, from: datasetDirectory)
+        updated["assets"] = assets
+
+        let clipURL = resolve(record.file, relativeTo: datasetDirectory)
+        var sidecar = readJSONObject(from: clipURL.deletingPathExtension().appendingPathExtension("json")) ?? [:]
+        sidecar["transcription"] = payload
+        try writeJSONObject(sidecar, to: clipURL.deletingPathExtension().appendingPathExtension("json"))
+
+        return updated
+    }
+
     nonisolated private static func separatorInputURL(
         clipURL: URL,
         outputDirectory: URL,
@@ -357,6 +434,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
                 "caption": prompt,
                 "prompt": prompt,
                 "lyrics": role == .vocals ? transcript : "",
+                "lyrics_source": role == .vocals && !transcript.isEmpty ? "transcript" : role.trainingLyricsSource,
                 "transcript": transcript,
                 "transcription": record["transcription"] as? [String: Any] ?? [
                     "status": transcript.isEmpty ? "not_run" : "complete",
@@ -397,6 +475,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         let manifestURL = datasetDirectory.appendingPathComponent(TrainingDatasetPackageWriter.datasetManifestFileName)
         var manifest = readJSONObject(from: manifestURL) ?? [:]
         let now = ISO8601DateFormatter().string(from: Date())
+        let captions = readJSONArray(from: datasetDirectory.appendingPathComponent(TrainingDatasetPackageWriter.captionsFileName))
 
         var separation = manifest["separation"] as? [String: Any] ?? [:]
         var availableAssets = ["full_mix"]
@@ -418,6 +497,24 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         transcription["enabled"] = result.transcribedClipCount > 0
         transcription["status"] = transcriptionStatus(for: result)
         transcription["clip_count"] = result.transcribedClipCount
+        transcription["updated_at"] = transcription["updated_at"] ?? now
+        transcription["artifacts"] = [
+            "lyrics.txt",
+            "lyrics.timed.json",
+            "lyrics.lrc",
+        ]
+        let transcriptionModels = sortedUniqueStrings(captions.compactMap { record in
+            (record["transcription"] as? [String: Any])?["model"] as? String
+        })
+        if !transcriptionModels.isEmpty {
+            transcription["models"] = transcriptionModels
+        }
+        let transcriptionBackends = sortedUniqueStrings(captions.compactMap { record in
+            (record["transcription"] as? [String: Any])?["backend"] as? String
+        })
+        if !transcriptionBackends.isEmpty {
+            transcription["backends"] = transcriptionBackends
+        }
         manifest["transcription"] = transcription
 
         var analysis = manifest["analysis"] as? [String: Any] ?? [:]
@@ -448,6 +545,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
             "vocal_bundle": result.vocalBundleExists ? TrainingDatasetPackageWriter.vocalBundleFileName : "",
             "instrumental_bundle": result.instrumentalBundleExists ? TrainingDatasetPackageWriter.instrumentalBundleFileName : "",
             "transcription_status": transcriptionStatus(for: result),
+            "transcribed_clip_count": result.transcribedClipCount,
             "bpm_status": result.bpmEstimateCount > 0 ? "estimated_from_stems" : "not_run",
             "key_status": "not_run",
         ]
@@ -693,6 +791,10 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return "complete"
     }
 
+    nonisolated private static func hasCompletedTranscription(_ record: [String: Any]) -> Bool {
+        !transcriptionText(from: record).isEmpty
+    }
+
     nonisolated private static func readJSONObject(from url: URL) -> [String: Any]? {
         guard let data = try? Data(contentsOf: url) else { return nil }
         return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
@@ -749,6 +851,201 @@ final class LocalDatasetEnrichmentService: ObservableObject {
     }
 
     nonisolated private static func rounded(_ value: Double, places: Int) -> Double {
+        let scale = pow(10, Double(places))
+        return (value * scale).rounded() / scale
+    }
+
+    nonisolated private static func sortedUniqueStrings(_ values: [String]) -> [String] {
+        Array(Set(values.filter { !$0.isEmpty })).sorted()
+    }
+}
+
+struct DatasetLyricsTranscriptionArtifact: Equatable, Sendable {
+    let text: String
+    let source: String
+    let backend: String
+    let model: String
+    let alignerModel: String?
+    let lyricsURL: URL
+    let timedLyricsURL: URL
+    let lrcURL: URL
+    let wordCount: Int
+    let elapsedSeconds: Double
+}
+
+protocol DatasetLyricsTranscribing: Sendable {
+    func transcribe(
+        vocalsURL: URL,
+        outputDirectory: URL,
+        force: Bool
+    ) async throws -> DatasetLyricsTranscriptionArtifact
+}
+
+actor LyricsTranscriptionService: DatasetLyricsTranscribing {
+    private let transcriber: QwenLyricsTranscriber
+    private let options: LyricsTranscriptionOptions
+
+    init(
+        transcriber: QwenLyricsTranscriber = QwenLyricsTranscriber(),
+        options: LyricsTranscriptionOptions = .qualityDataset
+    ) {
+        self.transcriber = transcriber
+        self.options = options
+    }
+
+    func transcribe(
+        vocalsURL: URL,
+        outputDirectory: URL,
+        force: Bool
+    ) async throws -> DatasetLyricsTranscriptionArtifact {
+        try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+
+        let lyricsURL = outputDirectory.appendingPathComponent("lyrics.txt")
+        let timedLyricsURL = outputDirectory.appendingPathComponent("lyrics.timed.json")
+        let lrcURL = outputDirectory.appendingPathComponent("lyrics.lrc")
+        if !force,
+           FileManager.default.fileExists(atPath: lyricsURL.path(percentEncoded: false)),
+           let cachedText = try? String(contentsOf: lyricsURL, encoding: .utf8),
+           !cachedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let text = cachedText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !FileManager.default.fileExists(atPath: timedLyricsURL.path(percentEncoded: false)) {
+                try Self.writeJSONObject(
+                    cachedTimedLyricsPayload(text: text, vocalsURL: vocalsURL),
+                    to: timedLyricsURL
+                )
+            }
+            if !FileManager.default.fileExists(atPath: lrcURL.path(percentEncoded: false)) {
+                try Self.lrcText(from: text).write(to: lrcURL, atomically: true, encoding: .utf8)
+            }
+            return DatasetLyricsTranscriptionArtifact(
+                text: text,
+                source: "cached",
+                backend: QwenLyricsTranscriber.backendName,
+                model: options.modelID,
+                alignerModel: options.alignerModelID,
+                lyricsURL: lyricsURL,
+                timedLyricsURL: timedLyricsURL,
+                lrcURL: lrcURL,
+                wordCount: text.split(whereSeparator: \.isWhitespace).count,
+                elapsedSeconds: 0
+            )
+        }
+
+        let result = try await transcriber.transcribe(audioURL: vocalsURL, options: options)
+        try result.text.write(to: lyricsURL, atomically: true, encoding: .utf8)
+        try Self.writeJSONObject(
+            timedLyricsPayload(result: result, vocalsURL: vocalsURL),
+            to: timedLyricsURL
+        )
+        try Self.lrcText(from: result).write(to: lrcURL, atomically: true, encoding: .utf8)
+
+        return DatasetLyricsTranscriptionArtifact(
+            text: result.text,
+            source: "qwen3-asr",
+            backend: result.backend,
+            model: result.modelID,
+            alignerModel: result.alignerModelID,
+            lyricsURL: lyricsURL,
+            timedLyricsURL: timedLyricsURL,
+            lrcURL: lrcURL,
+            wordCount: result.words.count,
+            elapsedSeconds: result.elapsedSeconds
+        )
+    }
+
+    private func timedLyricsPayload(result: LyricsTranscriptionResult, vocalsURL: URL) -> [String: Any] {
+        var payload: [String: Any] = [
+            "anvil_lyrics_transcription_version": "1.0",
+            "generated_at": ISO8601DateFormatter().string(from: Date()),
+            "source_vocals": vocalsURL.lastPathComponent,
+            "backend": result.backend,
+            "model": result.modelID,
+            "text": result.text,
+            "sample_rate": result.sampleRate,
+            "elapsed_seconds": Self.rounded(result.elapsedSeconds, places: 3),
+            "trim": [
+                "leading_seconds": Self.rounded(result.trim.leadingSeconds, places: 3),
+                "trailing_seconds": Self.rounded(result.trim.trailingSeconds, places: 3),
+            ],
+            "words": result.words.map { word in
+                [
+                    "text": word.text,
+                    "start": Self.rounded(word.startTime, places: 3),
+                    "end": Self.rounded(word.endTime, places: 3),
+                ]
+            },
+        ]
+        if let alignerModelID = result.alignerModelID {
+            payload["aligner_model"] = alignerModelID
+        }
+        return payload
+    }
+
+    private func cachedTimedLyricsPayload(text: String, vocalsURL: URL) -> [String: Any] {
+        [
+            "anvil_lyrics_transcription_version": "1.0",
+            "generated_at": ISO8601DateFormatter().string(from: Date()),
+            "source_vocals": vocalsURL.lastPathComponent,
+            "backend": QwenLyricsTranscriber.backendName,
+            "model": options.modelID,
+            "source": "cached",
+            "text": text,
+            "sample_rate": options.sampleRate,
+            "elapsed_seconds": 0,
+            "trim": [
+                "leading_seconds": 0,
+                "trailing_seconds": 0,
+            ],
+            "words": [],
+        ]
+    }
+
+    private static func lrcText(from result: LyricsTranscriptionResult) -> String {
+        guard !result.words.isEmpty else {
+            let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            return lrcText(from: text)
+        }
+
+        var lines: [String] = []
+        var currentWords: [LyricsTranscriptionWord] = []
+        for word in result.words {
+            currentWords.append(word)
+            let shouldBreak = currentWords.count >= 8 || word.text.range(of: #"[.!?]$"#, options: .regularExpression) != nil
+            if shouldBreak {
+                lines.append(lrcLine(from: currentWords))
+                currentWords.removeAll(keepingCapacity: true)
+            }
+        }
+        if !currentWords.isEmpty {
+            lines.append(lrcLine(from: currentWords))
+        }
+        return lines.joined(separator: "\n") + "\n"
+    }
+
+    private static func lrcText(from text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "" : "[00:00.00]\(trimmed)\n"
+    }
+
+    private static func lrcLine(from words: [LyricsTranscriptionWord]) -> String {
+        let timestamp = lrcTimestamp(words.first?.startTime ?? 0)
+        let text = words.map(\.text).joined(separator: " ")
+        return "[\(timestamp)]\(text)"
+    }
+
+    private static func lrcTimestamp(_ seconds: Double) -> String {
+        let clamped = max(0, seconds)
+        let minutes = Int(clamped / 60)
+        let remaining = clamped - Double(minutes * 60)
+        return String(format: "%02d:%05.2f", minutes, remaining)
+    }
+
+    private static func writeJSONObject(_ object: [String: Any], to url: URL) throws {
+        let data = try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys])
+        try data.write(to: url, options: .atomic)
+    }
+
+    private static func rounded(_ value: Double, places: Int) -> Double {
         let scale = pow(10, Double(places))
         return (value * scale).rounded() / scale
     }

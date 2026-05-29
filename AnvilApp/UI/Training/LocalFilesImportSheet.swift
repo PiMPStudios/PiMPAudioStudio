@@ -327,7 +327,7 @@ struct LocalFilesImportSheet: View {
                     Button {
                         startEnrichment(from: dir)
                     } label: {
-                        Label("Separate Stems", systemImage: "waveform.path.ecg")
+                        Label("Enrich Dataset", systemImage: "waveform.path.ecg")
                             .font(.caption)
                     }
                     .buttonStyle(.borderedProminent)

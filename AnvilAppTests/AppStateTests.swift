@@ -443,6 +443,92 @@ private func silentWAVData(sampleRate: Int = 22_050, channels: Int = 1, frameCou
     #expect(DemucsMLXSourceSeparator.defaultModelName == "htdemucs")
 }
 
+@Test func localDatasetEnrichmentTranscribesCachedVocalStems() async throws {
+    let datasetDir = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let clipsDir = datasetDir.appendingPathComponent("clips", isDirectory: true)
+    let stemsDir = datasetDir
+        .appendingPathComponent("stems", isDirectory: true)
+        .appendingPathComponent("f001_clip_001", isDirectory: true)
+    try FileManager.default.createDirectory(at: clipsDir, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: stemsDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: datasetDir) }
+
+    let clipURL = clipsDir.appendingPathComponent("f001_clip_001.wav")
+    let vocalURL = stemsDir.appendingPathComponent("vocals.wav")
+    let instrumentalURL = stemsDir.appendingPathComponent("instrumental.wav")
+    try silentWAVData().write(to: clipURL)
+    try silentWAVData().write(to: vocalURL)
+    try silentWAVData().write(to: instrumentalURL)
+
+    let separationJSON = """
+    {
+      "stems": {
+        "vocals": {
+          "file": "stems/f001_clip_001/vocals.wav",
+          "analysis": { "tempo_bpm_estimate": 72 }
+        },
+        "instrumental": {
+          "file": "stems/f001_clip_001/instrumental.wav",
+          "analysis": { "tempo_bpm_estimate": 72 }
+        }
+      }
+    }
+    """
+    try Data(separationJSON.utf8).write(to: stemsDir.appendingPathComponent("separation.json"))
+
+    let captionsJSON = """
+    [
+      {
+        "file": "clips/f001_clip_001.wav",
+        "caption": "dark blues stem package",
+        "separation": {
+          "mode": "instrumental",
+          "stems": {
+            "vocals": "stems/f001_clip_001/vocals.wav",
+            "instrumental": "stems/f001_clip_001/instrumental.wav"
+          },
+          "separation_file": "stems/f001_clip_001/separation.json"
+        }
+      }
+    ]
+    """
+    try Data(captionsJSON.utf8).write(to: datasetDir.appendingPathComponent("captions.json"))
+
+    let result = try await LocalDatasetEnrichmentService.run(
+        datasetDirectory: datasetDir,
+        lyricsTranscriber: FakeDatasetLyricsTranscriber(),
+        onStep: { _ in }
+    )
+
+    #expect(result.transcribedClipCount == 1)
+
+    let captionsData = try Data(contentsOf: datasetDir.appendingPathComponent("captions.json"))
+    let captions = try JSONSerialization.jsonObject(with: captionsData) as? [[String: Any]]
+    let record = captions?.first
+    #expect(record?["lyrics"] as? String == "I keep singing low")
+    #expect(record?["transcript"] as? String == "I keep singing low")
+    let transcription = record?["transcription"] as? [String: Any]
+    #expect(transcription?["backend"] as? String == "test-qwen3-asr")
+    #expect(transcription?["model"] as? String == "fake-qwen3-asr")
+    #expect(transcription?["lyrics_file"] as? String == "stems/f001_clip_001/lyrics.txt")
+    let assets = record?["assets"] as? [String: Any]
+    #expect(assets?["timed_lyrics"] as? String == "stems/f001_clip_001/lyrics.timed.json")
+
+    let vocalImported = try TrainingDatasetImporter.importFiles(
+        from: datasetDir.appendingPathComponent("training_bundle_vocals.json")
+    )
+    #expect(vocalImported.count == 1)
+    #expect(vocalImported[0].lyrics == "I keep singing low")
+
+    let manifestData = try Data(contentsOf: datasetDir.appendingPathComponent("dataset_manifest.json"))
+    let manifest = try JSONSerialization.jsonObject(with: manifestData) as? [String: Any]
+    let manifestTranscription = manifest?["transcription"] as? [String: Any]
+    #expect(manifestTranscription?["status"] as? String == "complete")
+    let models = manifestTranscription?["models"] as? [String] ?? []
+    #expect(models.contains("fake-qwen3-asr"))
+}
+
 @Test func localDatasetEnrichmentExportsStemBundlesNatively() throws {
     let datasetDir = FileManager.default.temporaryDirectory
         .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -714,6 +800,44 @@ private func silentWAVData(sampleRate: Int = 22_050, channels: Int = 1, frameCou
     #expect(providerIDs.contains("google"))
     #expect(providerIDs.contains("xai"))
     #expect(!providerIDs.contains("huggingface"))
+}
+
+private struct FakeDatasetLyricsTranscriber: DatasetLyricsTranscribing {
+    func transcribe(
+        vocalsURL: URL,
+        outputDirectory: URL,
+        force: Bool
+    ) async throws -> DatasetLyricsTranscriptionArtifact {
+        let lyricsURL = outputDirectory.appendingPathComponent("lyrics.txt")
+        let timedLyricsURL = outputDirectory.appendingPathComponent("lyrics.timed.json")
+        let lrcURL = outputDirectory.appendingPathComponent("lyrics.lrc")
+        try "I keep singing low".write(to: lyricsURL, atomically: true, encoding: .utf8)
+        try Data("""
+        {
+          "text": "I keep singing low",
+          "words": [
+            { "text": "I", "start": 0.1, "end": 0.2 },
+            { "text": "keep", "start": 0.2, "end": 0.4 },
+            { "text": "singing", "start": 0.4, "end": 0.7 },
+            { "text": "low", "start": 0.7, "end": 1.0 }
+          ]
+        }
+        """.utf8).write(to: timedLyricsURL)
+        try "[00:00.10]I keep singing low\n".write(to: lrcURL, atomically: true, encoding: .utf8)
+
+        return DatasetLyricsTranscriptionArtifact(
+            text: "I keep singing low",
+            source: "test",
+            backend: "test-qwen3-asr",
+            model: "fake-qwen3-asr",
+            alignerModel: "fake-aligner",
+            lyricsURL: lyricsURL,
+            timedLyricsURL: timedLyricsURL,
+            lrcURL: lrcURL,
+            wordCount: 4,
+            elapsedSeconds: 0.25
+        )
+    }
 }
 
 @Test @MainActor func lyricWriterManagerRegistersAuthenticatedCLIBackend() {

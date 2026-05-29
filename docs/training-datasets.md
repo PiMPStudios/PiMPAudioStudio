@@ -27,13 +27,15 @@ Readable audio headers are recorded when AVFoundation can open the source/clip. 
 
 ## Local Enrichment
 
-After a local-file package is built, use **Separate Stems** in the result view to enrich that package in place. AnvilApp owns this workflow directly; it does not call or require any sibling repo.
+After a local-file package is built, use **Enrich Dataset** in the result view to enrich that package in place. AnvilApp owns this workflow directly; it does not call or require any sibling repo.
 
 The enrichment backend is native Swift/MLX Demucs via `demucs-mlx-swift`, using `htdemucs` in vocals-plus-instrumental mode. AnvilApp writes `stems/`, `separation.json`, `training_bundle_vocals.json`, `training_bundle_instrumental.json`, refreshed manifest metadata, and package validation itself.
 
 Native Demucs model selection can be overridden with `ANVIL_DEMUCS_MODEL_NAME`; the optional `ANVIL_DEMUCS_MODEL_DIR` points at a local Demucs MLX model directory. The default model remains `htdemucs`.
 
-Enrichment preserves separation/transcription metadata when captions are edited and records a local BPM estimate from stem audio. Vocal transcription and musical key analysis are still represented as package status fields; they remain pending until standalone local implementations are wired.
+Enrichment also transcribes each generated `vocals.wav` with native `speech-swift` Qwen3-ASR. The quality path uses `Qwen3-ASR-1.7B` plus `Qwen3-ForcedAligner-0.6B` for word timestamps, then writes `lyrics.txt`, `lyrics.timed.json`, and `lyrics.lrc` next to the stem files. Those transcripts are copied into `captions.json` and `training_bundle_vocals.json`; instrumental bundles keep lyrics empty.
+
+Enrichment preserves separation/transcription metadata when captions are edited and records a local BPM estimate from stem audio. Musical key analysis is still represented as a package status field and remains pending until a standalone local implementation is wired.
 
 ## Train From JSON
 
