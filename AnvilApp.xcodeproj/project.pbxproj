@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		0287F5C870C67463A38138CC /* LoRACoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21836E28CF66D31E0B4D6C84 /* LoRACoordinator.swift */; };
 		02E82F62AD60F645D6FBD268 /* TrainingManifest.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3DDAB9A75FD674131701713 /* TrainingManifest.swift */; };
+		D5795A7B65B4483DB9FC4B12 /* TrainingDatasetPackageWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2A99A33F6D1438D98BE6221 /* TrainingDatasetPackageWriter.swift */; };
 		08FA6D81BBE2FA06E3179185 /* EditorService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5902313AD8C62782D012AF11 /* EditorService.swift */; };
 		0AF9779F80608B35F17064E4 /* AnvilAppApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C8FC85EA6F448C8C5B81968 /* AnvilAppApp.swift */; };
 		0B17463D23FF9E5DD313B2B1 /* DSPParameters.swift in Sources */ = {isa = PBXBuildFile; fileRef = B55D5F52868A4CB02AF03430 /* DSPParameters.swift */; };
@@ -174,6 +175,7 @@
 		9AA36FD1A3879D2885265598 /* AnvilApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AnvilApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		9D65878AD15AC1C5B83D82A2 /* TrainingSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingSheet.swift; sourceTree = "<group>"; };
 		9CFD141C51F946C0B0D5AA6B /* LocalFilesDatasetBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalFilesDatasetBuilder.swift; sourceTree = "<group>"; };
+		C2A99A33F6D1438D98BE6221 /* TrainingDatasetPackageWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingDatasetPackageWriter.swift; sourceTree = "<group>"; };
 		9E46D5718C7768D91073FCEE /* AnvilAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AnvilAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		9F48405E290FB7817733FDD4 /* GenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationService.swift; sourceTree = "<group>"; };
 		A594BD4883E8061AEA451F27 /* AudioPlayerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayerService.swift; sourceTree = "<group>"; };
@@ -279,6 +281,7 @@
 					425D1F125449BC69C0BB220D /* LLMModelManager.swift */,
 					21836E28CF66D31E0B4D6C84 /* LoRACoordinator.swift */,
 					9CFD141C51F946C0B0D5AA6B /* LocalFilesDatasetBuilder.swift */,
+					C2A99A33F6D1438D98BE6221 /* TrainingDatasetPackageWriter.swift */,
 					83D2A2817A2C70C01A7E9060 /* OutputDirectoryManager.swift */,
 				17654E4D0E9713010A5AFBC2 /* PEFTKeyRemapper.swift */,
 				FD2CA362A1B0531F8B13B8DD /* PresetStore.swift */,
@@ -596,6 +599,7 @@
 					1884D938D10C4CFA9EAA5D04 /* LocalFilesDatasetBuilder.swift in Sources */,
 					560969F0EC704B228087B236 /* LocalFilesImportSheet.swift in Sources */,
 					0287F5C870C67463A38138CC /* LoRACoordinator.swift in Sources */,
+					D5795A7B65B4483DB9FC4B12 /* TrainingDatasetPackageWriter.swift in Sources */,
 				CAFBB4872C118D7158334B25 /* LocalLyricWriter.swift in Sources */,
 				43C4DCA2E466BC0ADE303135 /* LossCurveView.swift in Sources */,
 				195C4C2F3C08CE060C136194 /* LyricWriter.swift in Sources */,

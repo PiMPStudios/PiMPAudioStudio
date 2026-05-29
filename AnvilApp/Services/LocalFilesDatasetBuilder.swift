@@ -137,9 +137,12 @@ final class LocalFilesDatasetBuilder: ObservableObject {
 
         guard !allClips.isEmpty else { throw LocalFilesDatasetError.noClipsProduced }
 
-        try YouTubeDatasetBuilder.writeCaptionsFile(
-            clips: allClips.map { (url: $0.url, caption: $0.description) },
-            to: outputDir
+        try TrainingDatasetPackageWriter.writeLocalPackage(
+            outputDirectory: outputDir,
+            clips: allClips,
+            sourceFiles: sourceFiles,
+            config: config,
+            styleTemplate: trimmedStyle
         )
         return LocalFilesDatasetResult(outputDirectory: outputDir, clips: allClips)
     }

@@ -251,8 +251,8 @@ enum TrainingDatasetImporter {
     private static func resolve(_ path: String, relativeTo baseDirectory: URL) -> URL {
         let expanded = (path as NSString).expandingTildeInPath
         if expanded.hasPrefix("/") {
-            return URL(fileURLWithPath: expanded)
+            return URL(fileURLWithPath: expanded).standardizedFileURL
         }
-        return baseDirectory.appendingPathComponent(expanded)
+        return baseDirectory.appendingPathComponent(expanded).standardizedFileURL
     }
 }

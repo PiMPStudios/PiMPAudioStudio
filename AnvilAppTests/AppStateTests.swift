@@ -123,6 +123,55 @@ import Foundation
     #expect(manifest.importedFiles[0].lyrics == "")
 }
 
+@Test func localDatasetPackageWriterEmitsImportableFullMixBundle() throws {
+    let datasetDir = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let clipsDir = datasetDir.appendingPathComponent("clips", isDirectory: true)
+    try FileManager.default.createDirectory(at: clipsDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: datasetDir) }
+
+    let sourceURL = datasetDir.appendingPathComponent("source.wav")
+    let clipURL = clipsDir.appendingPathComponent("f001_clip_001.m4a")
+    try Data("source".utf8).write(to: sourceURL)
+    try Data("clip".utf8).write(to: clipURL)
+
+    try TrainingDatasetPackageWriter.writeLocalPackage(
+        outputDirectory: datasetDir,
+        clips: [TrainingImportedFile(url: clipURL, description: "dark blues full mix")],
+        sourceFiles: [sourceURL],
+        config: LocalFilesDatasetConfig(clipLength: 30, clipsPerTrack: 1, maxTotalClips: 1),
+        styleTemplate: "dark blues full mix",
+        createdAt: Date(timeIntervalSince1970: 0)
+    )
+
+    for fileName in [
+        "captions.json",
+        "dataset_config.json",
+        "dataset_manifest.json",
+        "training_bundle.json",
+        "training_bundle_full_mix.json",
+        "remote_training_package.json",
+    ] {
+        let fileURL = datasetDir.appendingPathComponent(fileName)
+        #expect(FileManager.default.fileExists(atPath: fileURL.path))
+    }
+
+    let imported = try TrainingDatasetImporter.importFiles(
+        from: datasetDir.appendingPathComponent("training_bundle_full_mix.json")
+    )
+    #expect(imported.count == 1)
+    #expect(imported[0].url.path == clipURL.path)
+    #expect(imported[0].description == "dark blues full mix")
+    #expect(imported[0].lyrics.isEmpty)
+
+    let remoteData = try Data(contentsOf: datasetDir.appendingPathComponent("remote_training_package.json"))
+    let remoteJSON = try JSONSerialization.jsonObject(with: remoteData) as? [String: Any]
+    let providerTargets = remoteJSON?["provider_targets"] as? [String] ?? []
+    #expect(providerTargets.contains("runpod"))
+    #expect(providerTargets.contains("digitalocean_gpu"))
+    #expect(remoteJSON?["default_bundle"] as? String == "training_bundle_full_mix.json")
+}
+
 @Test func lyricSanitizerRemovesCommentaryAndChordPrefixes() {
     let raw = """
     Here's a 140-second ambient blues-inspired soundscape with a slow tempo.

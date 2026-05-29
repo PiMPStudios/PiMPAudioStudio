@@ -64,7 +64,7 @@ struct LocalFilesImportSheet: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Build Dataset from Local Files")
                     .font(.headline)
-                Text("Slice local audio into training clips and captions.")
+                Text("Slice local audio into a packaged training dataset.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -261,7 +261,7 @@ struct LocalFilesImportSheet: View {
             HStack(spacing: 8) {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundStyle(.green)
-                Text("\(editableClips.count) clips ready for training")
+                Text("\(editableClips.count) clips packaged for training")
                     .font(.callout)
                     .fontWeight(.medium)
                 Spacer()
@@ -280,7 +280,7 @@ struct LocalFilesImportSheet: View {
             .background(.green.opacity(0.08))
             .clipShape(RoundedRectangle(cornerRadius: 8))
 
-            Text("Review and edit captions below. These become the training descriptions for each clip.")
+            Text("Review and edit captions below. The package manifest and training bundles are refreshed when opened.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -370,9 +370,12 @@ struct LocalFilesImportSheet: View {
 
     private func persistCaptions() {
         guard case .complete(let dir, _) = builder.phase else { return }
-        try? YouTubeDatasetBuilder.writeCaptionsFile(
-            clips: editableClips.map { (url: $0.url, caption: $0.description) },
-            to: dir
+        try? TrainingDatasetPackageWriter.writeLocalPackage(
+            outputDirectory: dir,
+            clips: editableClips,
+            sourceFiles: selectedFiles,
+            config: config,
+            styleTemplate: styleTemplate
         )
     }
 }
