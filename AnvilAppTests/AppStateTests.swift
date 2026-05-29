@@ -228,6 +228,55 @@ private func silentWAVData(sampleRate: Int = 22_050, channels: Int = 1, frameCou
     #expect(files[0].lyrics == "I kept singing in the dark")
 }
 
+@Test func datasetPackageEditorImportsSidecarsAndPersistsReview() throws {
+    let datasetDir = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let clipsDir = datasetDir.appendingPathComponent("clips", isDirectory: true)
+    try FileManager.default.createDirectory(at: clipsDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: datasetDir) }
+
+    let clipURL = clipsDir.appendingPathComponent("clip_0001.wav")
+    try silentWAVData().write(to: clipURL)
+
+    try TrainingDatasetPackageWriter.writeLocalPackage(
+        outputDirectory: datasetDir,
+        clips: [TrainingImportedFile(url: clipURL, description: "old caption")],
+        sourceFiles: [clipURL],
+        config: LocalFilesDatasetConfig(),
+        styleTemplate: "old caption"
+    )
+
+    try Data("smoky minor key blues trio".utf8)
+        .write(to: clipsDir.appendingPathComponent("clip_0001.caption.txt"))
+    try Data("[00:01.00]I found the groove after midnight".utf8)
+        .write(to: clipsDir.appendingPathComponent("clip_0001.lyrics.txt"))
+    try Data("""
+    file,bpm,keyscale,language,timesignature
+    clips/clip_0001.wav,78,E minor,en,4/4
+    """.utf8)
+        .write(to: datasetDir.appendingPathComponent("metadata.csv"))
+
+    var document = try TrainingDatasetPackageEditor.loadPackage(at: datasetDir)
+    let changed = TrainingDatasetPackageEditor.importSidecars(into: &document)
+
+    #expect(changed >= 5)
+    #expect(document.clips[0].caption == "smoky minor key blues trio")
+    #expect(document.clips[0].lyrics == "I found the groove after midnight")
+    #expect(document.clips[0].bpm == "78")
+    #expect(document.clips[0].key == "E minor")
+    #expect(document.clips[0].language == "en")
+
+    document.clips[0].isApproved = true
+    try TrainingDatasetPackageEditor.save(document)
+
+    let reloaded = try TrainingDatasetPackageEditor.loadPackage(at: datasetDir)
+    #expect(reloaded.clips[0].isApproved)
+    #expect(reloaded.clips[0].caption == "smoky minor key blues trio")
+    #expect(reloaded.clips[0].lyrics == "I found the groove after midnight")
+    #expect(reloaded.clips[0].timeSignature == "4/4")
+    #expect(reloaded.isTrainingReady)
+}
+
 @Test func trainingManifestDecodesImportedFilesWithoutLyrics() throws {
     let json = """
     {

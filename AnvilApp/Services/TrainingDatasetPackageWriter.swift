@@ -211,6 +211,22 @@ enum TrainingDatasetPackageWriter {
         try writeValidationReport(validation, to: outputDirectory)
     }
 
+    static func refreshTrainingBundles(
+        at outputDirectory: URL,
+        updatedAt: Date = Date()
+    ) throws {
+        let captions = readJSONArray(from: outputDirectory.appendingPathComponent(captionsFileName))
+        guard !captions.isEmpty else {
+            throw TrainingDatasetPackageError.invalidPackage("captions.json does not contain any clips.")
+        }
+
+        let updatedAtString = ISO8601DateFormatter().string(from: updatedAt)
+        let bundle = trainingBundle(clips: captions, createdAt: updatedAtString)
+        try writeJSONObject(bundle, to: outputDirectory.appendingPathComponent(trainingBundleFileName))
+        try writeJSONObject(bundle, to: outputDirectory.appendingPathComponent(fullMixBundleFileName))
+        try refreshValidationReport(at: outputDirectory, checkedAt: updatedAt)
+    }
+
     @discardableResult
     static func exportPackageArchive(outputDirectory: URL, to destinationURL: URL) throws -> URL {
         let validation = validatePackage(at: outputDirectory)

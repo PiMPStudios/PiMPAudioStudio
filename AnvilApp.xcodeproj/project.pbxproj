@@ -25,6 +25,8 @@
 		258BAAA26F15DDE65B1A102A /* AdapterStackManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42E80F772D10C2D7C81E20B9 /* AdapterStackManager.swift */; };
 		25F1A915F6E1EE934E94EB85 /* HistoryEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9311E25D69FC689AE37CAC82 /* HistoryEntry.swift */; };
 		27DE7F8F01BB85695BB201BF /* EditorPromptArea.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1916A6BB44B22E03B8104B2A /* EditorPromptArea.swift */; };
+		28956E0376833B67A69AC525 /* DatasetReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6565EEB7B74316E2EBDE33C /* DatasetReviewView.swift */; };
+		36C7ACBCDB336021D1347982 /* TrainingDatasetPackageEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D65880D2611291A9B95C25F /* TrainingDatasetPackageEditor.swift */; };
 		3794B35AA37A6162B20BA858 /* IntentRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = E400A1E8567A583BF24168D8 /* IntentRouter.swift */; };
 		43C4DCA2E466BC0ADE303135 /* LossCurveView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F28E71656FB093C47B48FBF /* LossCurveView.swift */; };
 		450C29261184285B5166718D /* MLXNN in Frameworks */ = {isa = PBXBuildFile; productRef = 93289BF161E75D15C0045628 /* MLXNN */; };
@@ -123,6 +125,7 @@
 		0817969793777E16A9FE95EE /* AudioFileLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioFileLoader.swift; sourceTree = "<group>"; };
 		0A68785FD9393563F70F224C /* ACEStepGenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ACEStepGenerationService.swift; sourceTree = "<group>"; };
 		0A940D53B825C96B03EC22D9 /* AnvilMCPServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnvilMCPServer.swift; sourceTree = "<group>"; };
+		0D65880D2611291A9B95C25F /* TrainingDatasetPackageEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingDatasetPackageEditor.swift; sourceTree = "<group>"; };
 		0FC7A8B63EFFF96361298608 /* AnvilCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = AnvilCore; path = AnvilCore; sourceTree = SOURCE_ROOT; };
 		127AA276961262D8DFCF37D6 /* GenerationParameters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationParameters.swift; sourceTree = "<group>"; };
 		17140A0355CED442DB2B2EDE /* PromptEnhancer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptEnhancer.swift; sourceTree = "<group>"; };
@@ -179,6 +182,7 @@
 		9E46D5718C7768D91073FCEE /* AnvilAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AnvilAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		9F48405E290FB7817733FDD4 /* GenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationService.swift; sourceTree = "<group>"; };
 		A594BD4883E8061AEA451F27 /* AudioPlayerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayerService.swift; sourceTree = "<group>"; };
+		A6565EEB7B74316E2EBDE33C /* DatasetReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatasetReviewView.swift; sourceTree = "<group>"; };
 		A72A2E2315EA23F0C947FC92 /* LocalDatasetEnrichmentService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalDatasetEnrichmentService.swift; sourceTree = "<group>"; };
 		AC937EB07AD49BE1C4368F68 /* ProviderAccessStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderAccessStore.swift; sourceTree = "<group>"; };
 		ACDBE130986895721B31725F /* HistoryListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryListView.swift; sourceTree = "<group>"; };
@@ -294,6 +298,7 @@
 				CCFDE36CECAA5A75A45571D5 /* SFXGenerationService.swift */,
 				7EC4A8B06E55930149BAC8ED /* SFXModelManager.swift */,
 				861E433991EA4514A90A9BA0 /* SourceSeparationService.swift */,
+				0D65880D2611291A9B95C25F /* TrainingDatasetPackageEditor.swift */,
 				FE398848903C8BAD2EF73BBE /* TrainingDatasetPackageWriter.swift */,
 				C3DDAB9A75FD674131701713 /* TrainingManifest.swift */,
 				DB6E06E2D459E4DE1F42A7B0 /* TrainingService.swift */,
@@ -306,6 +311,7 @@
 		368DE4E4B381CEB2A28C7CCD /* Training */ = {
 			isa = PBXGroup;
 			children = (
+				A6565EEB7B74316E2EBDE33C /* DatasetReviewView.swift */,
 				E88D52FB350A1B4BC0EB1E22 /* LocalFilesImportSheet.swift */,
 				5F28E71656FB093C47B48FBF /* LossCurveView.swift */,
 				9D65878AD15AC1C5B83D82A2 /* TrainingSheet.swift */,
@@ -573,6 +579,7 @@
 				8159452FE0607707CFA3A628 /* DSPPaletteView.swift in Sources */,
 				0B17463D23FF9E5DD313B2B1 /* DSPParameters.swift in Sources */,
 				A449AF199835468C36A25060 /* DSPProcessor.swift in Sources */,
+				28956E0376833B67A69AC525 /* DatasetReviewView.swift in Sources */,
 				13CF74E2ED45EE9086D3FF45 /* DownloadProgressRow.swift in Sources */,
 				F1129794DD5A068B57CDDA23 /* EQControlView.swift in Sources */,
 				B22320D2F9FCADA5391CDB77 /* EditorControlsBar.swift in Sources */,
@@ -631,6 +638,7 @@
 				6D5694C7B23B8F968AB61C86 /* SimpleDSP.swift in Sources */,
 				9F8096781DFC729449C75241 /* SourceSeparationService.swift in Sources */,
 				7B0E4EE87A097F731F9747B7 /* TimeStretchControlView.swift in Sources */,
+				36C7ACBCDB336021D1347982 /* TrainingDatasetPackageEditor.swift in Sources */,
 				4A217081D03D60FF53D21AB7 /* TrainingDatasetPackageWriter.swift in Sources */,
 				02E82F62AD60F645D6FBD268 /* TrainingManifest.swift in Sources */,
 				AE956E4A59A4910BD1A32F57 /* TrainingService.swift in Sources */,

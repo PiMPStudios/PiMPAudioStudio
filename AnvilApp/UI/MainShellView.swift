@@ -1,5 +1,6 @@
 import SwiftUI
 import AnvilCore
+import AppKit
 
 struct MainShellView: View {
     @EnvironmentObject private var appState: AppState
@@ -177,32 +178,57 @@ private struct BuildDatasetsView: View {
 
     @State private var showingYouTubeSheet = false
     @State private var showingLocalFilesSheet = false
+    @State private var packages: [DatasetPackageSummary] = []
+    @State private var selectedPackageID: String?
+    @State private var selectedPackageDirectory: URL?
+    @State private var packageNotice: String?
     @State private var trainingPresentation: TrainingPresentation?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
             Divider()
-            List {
-                Section("Sources") {
-                    Button {
-                        showingLocalFilesSheet = true
-                    } label: {
-                        Label("From Local Files\u{2026}", systemImage: "folder.badge.plus")
+            HSplitView {
+                packageSidebar
+                    .frame(minWidth: 260, idealWidth: 320, maxWidth: 420)
+                if let selectedPackageDirectory {
+                    DatasetReviewView(datasetDirectory: selectedPackageDirectory) { files in
+                        trainingPresentation = TrainingPresentation(files: files)
+                    } onPackageUpdated: {
+                        refreshPackages()
                     }
-                    Button {
-                        showingYouTubeSheet = true
-                    } label: {
-                        Label("From YouTube\u{2026}", systemImage: "play.rectangle")
+                    .id(selectedPackageDirectory.path(percentEncoded: false))
+                } else {
+                    VStack(spacing: 8) {
+                        Image(systemName: "folder.badge.gearshape")
+                            .font(.largeTitle)
+                            .foregroundStyle(.secondary)
+                        Text("Select a Dataset")
+                            .font(.headline)
+                        Text("Build or open a package to review captions, lyrics, BPM, key, stems, and training readiness.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: 420)
                     }
+                    .padding()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
-            .listStyle(.inset)
+        }
+        .onAppear(perform: refreshPackages)
+        .onChange(of: outputManager.directory) { _, _ in refreshPackages() }
+        .onChange(of: showingLocalFilesSheet) { _, isShowing in
+            if !isShowing { refreshPackages() }
+        }
+        .onChange(of: showingYouTubeSheet) { _, isShowing in
+            if !isShowing { refreshPackages() }
         }
         .sheet(isPresented: $showingLocalFilesSheet) {
             LocalFilesImportSheet { files in
                 showingLocalFilesSheet = false
                 DispatchQueue.main.async {
+                    refreshPackages()
                     trainingPresentation = TrainingPresentation(files: files)
                 }
             }
@@ -212,6 +238,7 @@ private struct BuildDatasetsView: View {
             YouTubeImportSheet { files in
                 showingYouTubeSheet = false
                 DispatchQueue.main.async {
+                    refreshPackages()
                     trainingPresentation = TrainingPresentation(files: files)
                 }
             }
@@ -233,8 +260,155 @@ private struct BuildDatasetsView: View {
             Text("Datasets")
                 .font(.headline)
             Spacer()
+            Button {
+                showingLocalFilesSheet = true
+            } label: {
+                Label("From Local Files\u{2026}", systemImage: "folder.badge.plus")
+            }
+            .buttonStyle(.borderedProminent)
+            Button {
+                showingYouTubeSheet = true
+            } label: {
+                Label("From YouTube\u{2026}", systemImage: "play.rectangle")
+            }
+            .buttonStyle(.bordered)
         }
         .padding()
+    }
+
+    private var packageSidebar: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("\(packages.count) package\(packages.count == 1 ? "" : "s")")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button {
+                    openPackageFolder()
+                } label: {
+                    Image(systemName: "folder")
+                }
+                .help("Open dataset package folder")
+                .buttonStyle(.borderless)
+                Button {
+                    refreshPackages()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .help("Refresh packages")
+                .buttonStyle(.borderless)
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 8)
+
+            if let packageNotice {
+                Text(packageNotice)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal)
+                    .padding(.bottom, 6)
+            }
+
+            List(selection: $selectedPackageID) {
+                Section("Packages") {
+                    ForEach(packages) { package in
+                        packageRow(package)
+                            .tag(package.id)
+                    }
+                }
+                Section("Build") {
+                    Button {
+                        showingLocalFilesSheet = true
+                    } label: {
+                        Label("From Local Files\u{2026}", systemImage: "folder.badge.plus")
+                    }
+                    Button {
+                        showingYouTubeSheet = true
+                    } label: {
+                        Label("From YouTube\u{2026}", systemImage: "play.rectangle")
+                    }
+                }
+            }
+            .listStyle(.sidebar)
+            .onChange(of: selectedPackageID) { _, id in
+                selectedPackageDirectory = packages.first(where: { $0.id == id })?.directory
+            }
+        }
+    }
+
+    private func packageRow(_ package: DatasetPackageSummary) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Image(systemName: package.isValid ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                    .foregroundStyle(package.isValid ? .green : .orange)
+                    .frame(width: 16)
+                Text(package.name)
+                    .font(.callout)
+                    .fontWeight(.medium)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            HStack(spacing: 6) {
+                Text("\(package.clipCount) clips")
+                Text(package.enrichmentStatus)
+                if package.transcriptionStatus != "not_run" {
+                    Text("lyrics \(package.transcriptionStatus)")
+                }
+            }
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            Text(package.validationSummary)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func refreshPackages() {
+        guard let outputDirectory = outputManager.directory else {
+            packages = []
+            selectedPackageID = nil
+            selectedPackageDirectory = nil
+            return
+        }
+
+        packages = TrainingDatasetPackageEditor.listPackages(in: outputDirectory)
+        if let selectedPackageID,
+           let selected = packages.first(where: { $0.id == selectedPackageID }) {
+            selectedPackageDirectory = selected.directory
+        } else {
+            selectedPackageID = packages.first?.id
+            selectedPackageDirectory = packages.first?.directory
+        }
+    }
+
+    private func openPackageFolder() {
+        let panel = NSOpenPanel()
+        panel.title = "Open Dataset Package"
+        panel.prompt = "Open"
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = false
+
+        if let outputDirectory = outputManager.directory {
+            panel.directoryURL = outputDirectory.appendingPathComponent("TrainingDatasets", isDirectory: true)
+        }
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            _ = try TrainingDatasetPackageEditor.loadPackage(at: url)
+            let summary = TrainingDatasetPackageEditor.packageSummary(at: url)
+            if !packages.contains(where: { $0.id == summary.id }) {
+                packages.insert(summary, at: 0)
+            }
+            selectedPackageID = summary.id
+            selectedPackageDirectory = url
+            packageNotice = nil
+        } catch {
+            packageNotice = error.localizedDescription
+        }
     }
 }
 
