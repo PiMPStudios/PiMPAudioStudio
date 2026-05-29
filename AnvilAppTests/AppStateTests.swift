@@ -438,6 +438,104 @@ private func silentWAVData(sampleRate: Int = 22_050, channels: Int = 1, frameCou
     #expect((bundleClip?["separation"] as? [String: Any])?["mode"] as? String == "instrumental")
 }
 
+@Test func localDatasetPackageValidationRefreshesDerivedEnrichmentManifestMetadata() throws {
+    let datasetDir = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let clipsDir = datasetDir.appendingPathComponent("clips", isDirectory: true)
+    let stemsDir = datasetDir
+        .appendingPathComponent("stems", isDirectory: true)
+        .appendingPathComponent("f001_clip_001", isDirectory: true)
+    try FileManager.default.createDirectory(at: clipsDir, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: stemsDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: datasetDir) }
+
+    let sourceURL = datasetDir.appendingPathComponent("source.wav")
+    let clipURL = clipsDir.appendingPathComponent("f001_clip_001.wav")
+    let vocalURL = stemsDir.appendingPathComponent("vocals.wav")
+    let instrumentalURL = stemsDir.appendingPathComponent("instrumental.wav")
+    try silentWAVData().write(to: sourceURL)
+    try silentWAVData().write(to: clipURL)
+    try silentWAVData().write(to: vocalURL)
+    try silentWAVData().write(to: instrumentalURL)
+
+    try TrainingDatasetPackageWriter.writeLocalPackage(
+        outputDirectory: datasetDir,
+        clips: [TrainingImportedFile(url: clipURL, description: "dark blues")],
+        sourceFiles: [sourceURL],
+        config: LocalFilesDatasetConfig(clipLength: 30, clipsPerTrack: 1, maxTotalClips: 1),
+        styleTemplate: "dark blues",
+        createdAt: Date(timeIntervalSince1970: 0)
+    )
+
+    let separationJSON = """
+    {
+      "stems": {
+        "vocals": {
+          "file": "stems/f001_clip_001/vocals.wav",
+          "analysis": { "tempo_bpm_estimate": 72 }
+        },
+        "instrumental": {
+          "file": "stems/f001_clip_001/instrumental.wav",
+          "analysis": { "tempo_bpm_estimate": 70 }
+        }
+      }
+    }
+    """
+    try Data(separationJSON.utf8).write(to: stemsDir.appendingPathComponent("separation.json"))
+
+    let captionsJSON = """
+    [
+      {
+        "file": "clips/f001_clip_001.wav",
+        "caption": "dark blues",
+        "lyrics": "I keep singing low",
+        "transcript": "I keep singing low",
+        "transcription": {
+          "status": "complete",
+          "text": "I keep singing low",
+          "backend": "test-qwen3-asr",
+          "model": "fake-qwen3-asr"
+        },
+        "separation": {
+          "mode": "instrumental",
+          "stems": {
+            "vocals": "stems/f001_clip_001/vocals.wav",
+            "instrumental": "stems/f001_clip_001/instrumental.wav"
+          },
+          "separation_file": "stems/f001_clip_001/separation.json"
+        }
+      }
+    ]
+    """
+    try Data(captionsJSON.utf8).write(to: datasetDir.appendingPathComponent("captions.json"))
+    _ = try LocalDatasetEnrichmentService.exportStemTrainingBundles(datasetDirectory: datasetDir)
+
+    try TrainingDatasetPackageWriter.refreshValidationReport(
+        at: datasetDir,
+        checkedAt: Date(timeIntervalSince1970: 1)
+    )
+
+    let manifestData = try Data(contentsOf: datasetDir.appendingPathComponent("dataset_manifest.json"))
+    let manifest = try JSONSerialization.jsonObject(with: manifestData) as? [String: Any]
+    let separation = manifest?["separation"] as? [String: Any]
+    #expect(separation?["status"] as? String == "complete")
+    let availableAssets = separation?["available_assets"] as? [String] ?? []
+    #expect(availableAssets.contains("vocals"))
+    #expect(availableAssets.contains("instrumental"))
+    let transcription = manifest?["transcription"] as? [String: Any]
+    #expect(transcription?["status"] as? String == "complete")
+    let models = transcription?["models"] as? [String] ?? []
+    #expect(models.contains("fake-qwen3-asr"))
+    let analysis = manifest?["analysis"] as? [String: Any]
+    #expect(analysis?["bpm_status"] as? String == "estimated_from_stems")
+    let enrichment = manifest?["enrichment"] as? [String: Any]
+    #expect(enrichment?["status"] as? String == "complete")
+    #expect((enrichment?["separated_clip_count"] as? NSNumber)?.intValue == 1)
+    let training = manifest?["training"] as? [String: Any]
+    #expect(training?["vocal_bundle"] as? String == "training_bundle_vocals.json")
+    #expect(training?["instrumental_bundle"] as? String == "training_bundle_instrumental.json")
+}
+
 @Test func localDatasetEnrichmentUsesNativeDemucsOnly() {
     #expect(DemucsMLXSourceSeparator.backendName == "demucs-mlx-swift")
     #expect(DemucsMLXSourceSeparator.defaultModelName == "htdemucs")
@@ -495,13 +593,15 @@ private func silentWAVData(sampleRate: Int = 22_050, channels: Int = 1, frameCou
     """
     try Data(captionsJSON.utf8).write(to: datasetDir.appendingPathComponent("captions.json"))
 
+    let lyricsTranscriber = FakeDatasetLyricsTranscriber()
     let result = try await LocalDatasetEnrichmentService.run(
         datasetDirectory: datasetDir,
-        lyricsTranscriber: FakeDatasetLyricsTranscriber(),
+        lyricsTranscriber: lyricsTranscriber,
         onStep: { _ in }
     )
 
     #expect(result.transcribedClipCount == 1)
+    #expect(await lyricsTranscriber.evictionCount == 1)
 
     let captionsData = try Data(contentsOf: datasetDir.appendingPathComponent("captions.json"))
     let captions = try JSONSerialization.jsonObject(with: captionsData) as? [[String: Any]]
@@ -802,7 +902,13 @@ private func silentWAVData(sampleRate: Int = 22_050, channels: Int = 1, frameCou
     #expect(!providerIDs.contains("huggingface"))
 }
 
-private struct FakeDatasetLyricsTranscriber: DatasetLyricsTranscribing {
+private actor FakeDatasetLyricsTranscriber: DatasetLyricsTranscribing, DatasetLyricsTranscriptionEvicting {
+    private(set) var evictionCount = 0
+
+    func evictModels() async {
+        evictionCount += 1
+    }
+
     func transcribe(
         vocalsURL: URL,
         outputDirectory: URL,

@@ -671,6 +671,7 @@ final class NativeHTDemucsModel: StemSeparationModel {
         let input = MLXArray(batchData).reshaped([batchSize, channels, frames])
         let output = try graph.forward(input, monitor: monitor)
         MLX.eval(output)
+        Stream.gpu.synchronize()
         return output.asArray(Float.self)
     }
 }

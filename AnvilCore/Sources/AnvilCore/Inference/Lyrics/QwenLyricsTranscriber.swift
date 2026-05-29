@@ -1,5 +1,6 @@
 import Foundation
 import AudioCommon
+import MLX
 import Qwen3ASR
 
 public struct LyricsTranscriptionOptions: Sendable, Equatable {
@@ -109,6 +110,14 @@ public actor QwenLyricsTranscriber {
     private var alignerModelID: String?
 
     public init() {}
+
+    public func evictModels() {
+        asrModel = nil
+        asrModelID = nil
+        aligner = nil
+        alignerModelID = nil
+        Memory.clearCache()
+    }
 
     public func transcribe(
         audioURL: URL,

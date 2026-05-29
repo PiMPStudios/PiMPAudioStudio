@@ -1,6 +1,13 @@
 import AVFoundation
 import Foundation
 import AnvilCore
+import MLX
+import OSLog
+
+private let enrichmentMemoryLogger = Logger(
+    subsystem: "com.pimp.AnvilApp",
+    category: "LocalDatasetEnrichment.memory"
+)
 
 enum LocalDatasetEnrichmentStep: String, Equatable {
     case separatingStems
@@ -134,59 +141,83 @@ final class LocalDatasetEnrichmentService: ObservableObject {
             }
         }
 
-        var records = try loadCaptionRecords(from: datasetDirectory)
         let sourceSeparator = SourceSeparationService()
 
-        await onStep(.separatingStems)
-        for index in records.indices {
-            try Task.checkCancellation()
-            if !force, hasCachedInstrumentalSeparation(record: records[index].object, datasetDirectory: datasetDirectory) {
-                continue
+        do {
+            var records = try loadCaptionRecords(from: datasetDirectory)
+
+            await onStep(.separatingStems)
+            for index in records.indices {
+                try Task.checkCancellation()
+                if !force, hasCachedInstrumentalSeparation(record: records[index].object, datasetDirectory: datasetDirectory) {
+                    continue
+                }
+                records[index].object = try await separateClip(
+                    record: records[index],
+                    datasetDirectory: datasetDirectory,
+                    sourceSeparator: sourceSeparator,
+                    force: force
+                )
             }
-            records[index].object = try await separateClip(
-                record: records[index],
-                datasetDirectory: datasetDirectory,
-                sourceSeparator: sourceSeparator,
-                force: force
-            )
-        }
 
-        await onStep(.transcribingVocals)
-        for index in records.indices {
+            await onStep(.transcribingVocals)
+            for index in records.indices {
+                try Task.checkCancellation()
+                records[index].object = try await transcribeClipVocals(
+                    record: records[index],
+                    datasetDirectory: datasetDirectory,
+                    lyricsTranscriber: lyricsTranscriber,
+                    force: force
+                )
+            }
+
+            try writeJSONObjectArray(
+                records.map(\.object),
+                to: datasetDirectory.appendingPathComponent(TrainingDatasetPackageWriter.captionsFileName)
+            )
+
+            await onStep(.exportingVocalsBundle)
+            _ = try writeStemTrainingBundle(
+                datasetDirectory: datasetDirectory,
+                records: records.map(\.object),
+                role: .vocals
+            )
+
+            await onStep(.exportingInstrumentalBundle)
+            _ = try writeStemTrainingBundle(
+                datasetDirectory: datasetDirectory,
+                records: records.map(\.object),
+                role: .instrumental
+            )
+
             try Task.checkCancellation()
-            records[index].object = try await transcribeClipVocals(
-                record: records[index],
-                datasetDirectory: datasetDirectory,
-                lyricsTranscriber: lyricsTranscriber,
-                force: force
-            )
+            await onStep(.refreshingMetadata)
+            let result = inspectResult(datasetDirectory: datasetDirectory)
+            try refreshDatasetMetadata(datasetDirectory: datasetDirectory, result: result)
+            try TrainingDatasetPackageWriter.refreshValidationReport(at: datasetDirectory)
+            let finalResult = inspectResult(datasetDirectory: datasetDirectory)
+            await evictEnrichmentModels(lyricsTranscriber: lyricsTranscriber)
+            return finalResult
+        } catch {
+            await evictEnrichmentModels(lyricsTranscriber: lyricsTranscriber)
+            throw error
         }
+    }
 
-        try writeJSONObjectArray(
-            records.map(\.object),
-            to: datasetDirectory.appendingPathComponent(TrainingDatasetPackageWriter.captionsFileName)
-        )
+    nonisolated private static func evictEnrichmentModels(
+        lyricsTranscriber: any DatasetLyricsTranscribing
+    ) async {
+        let before = Memory.snapshot()
+        enrichmentMemoryLogger.info("[enrich.evict] before active=\(before.activeMemory) cache=\(before.cacheMemory) peak=\(before.peakMemory)")
 
-        await onStep(.exportingVocalsBundle)
-        _ = try writeStemTrainingBundle(
-            datasetDirectory: datasetDirectory,
-            records: records.map(\.object),
-            role: .vocals
-        )
+        if let evictingTranscriber = lyricsTranscriber as? any DatasetLyricsTranscriptionEvicting {
+            await evictingTranscriber.evictModels()
+        }
+        Memory.clearCache()
 
-        await onStep(.exportingInstrumentalBundle)
-        _ = try writeStemTrainingBundle(
-            datasetDirectory: datasetDirectory,
-            records: records.map(\.object),
-            role: .instrumental
-        )
-
-        try Task.checkCancellation()
-        await onStep(.refreshingMetadata)
-        let result = inspectResult(datasetDirectory: datasetDirectory)
-        try refreshDatasetMetadata(datasetDirectory: datasetDirectory, result: result)
-        try TrainingDatasetPackageWriter.refreshValidationReport(at: datasetDirectory)
-        return inspectResult(datasetDirectory: datasetDirectory)
+        let after = Memory.snapshot()
+        enrichmentMemoryLogger.info("[enrich.evict] after  active=\(after.activeMemory) cache=\(after.cacheMemory) peak=\(after.peakMemory)")
+        enrichmentMemoryLogger.info("[enrich.evict] delta active=-\(before.activeMemory - after.activeMemory) cache=-\(before.cacheMemory - after.cacheMemory)")
     }
 
     @discardableResult
@@ -881,7 +912,11 @@ protocol DatasetLyricsTranscribing: Sendable {
     ) async throws -> DatasetLyricsTranscriptionArtifact
 }
 
-actor LyricsTranscriptionService: DatasetLyricsTranscribing {
+protocol DatasetLyricsTranscriptionEvicting: Sendable {
+    func evictModels() async
+}
+
+actor LyricsTranscriptionService: DatasetLyricsTranscribing, DatasetLyricsTranscriptionEvicting {
     private let transcriber: QwenLyricsTranscriber
     private let options: LyricsTranscriptionOptions
 
@@ -891,6 +926,10 @@ actor LyricsTranscriptionService: DatasetLyricsTranscribing {
     ) {
         self.transcriber = transcriber
         self.options = options
+    }
+
+    func evictModels() async {
+        await transcriber.evictModels()
     }
 
     func transcribe(

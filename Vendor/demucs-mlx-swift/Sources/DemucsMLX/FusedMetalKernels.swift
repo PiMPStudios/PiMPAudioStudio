@@ -18,6 +18,42 @@ let hasMetal: Bool = _hasMetal()
 /// instead of the single-threadgroup Metal kernel (which underutilizes the GPU).
 private let hybridThreshold = 32768
 
+private func kernelNameComponent(for dtype: DType) -> String {
+    String(describing: dtype).replacingOccurrences(of: ".", with: "_")
+}
+
+private func metalKernelSignature(inputs: [MLXArray], outputDTypes: [DType]) -> String {
+    let inputParts = inputs.map { input in
+        let elementCount = input.shape.reduce(1, *)
+        let location = elementCount < 8 ? "c" : "d"
+        return "\(kernelNameComponent(for: input.dtype))_n\(input.ndim)_\(location)"
+    }
+    let outputParts = outputDTypes.map { kernelNameComponent(for: $0) }
+    return (inputParts + ["out"] + outputParts).joined(separator: "_")
+}
+
+private func specializedMetalKernel(
+    baseName: String,
+    inputNames: [String],
+    outputNames: [String],
+    source: String,
+    header: String = "",
+    inputs: [MLXArray],
+    outputDTypes: [DType]
+) -> MLXFast.MLXFastKernel {
+    // MLX's custom-kernel cache is keyed by name, while generated source varies
+    // with the input signature. Keep names source-stable to avoid releasing an
+    // in-flight Metal pipeline under API validation.
+    let signature = metalKernelSignature(inputs: inputs, outputDTypes: outputDTypes)
+    return MLXFast.metalKernel(
+        name: "\(baseName)_\(signature)",
+        inputNames: inputNames,
+        outputNames: outputNames,
+        source: source,
+        header: header
+    )
+}
+
 // MARK: - Fused GLU Kernel
 
 /// Metal source for fused GLU: a * sigmoid(b) where [a, b] = split(x, 2, axis)
@@ -43,20 +79,6 @@ float b = (float)x[row * full_dim + half_dim + col];
 float sig_b = 1.0f / (1.0f + metal::exp(-b));
 out[gid] = (T)(a * sig_b);
 """
-
-nonisolated(unsafe) private var _gluKernel: MLXFast.MLXFastKernel? = nil
-
-private func getGLUKernel() -> MLXFast.MLXFastKernel {
-    if let k = _gluKernel { return k }
-    let k = MLXFast.metalKernel(
-        name: "fused_glu",
-        inputNames: ["x", "params"],
-        outputNames: ["out"],
-        source: gluSource
-    )
-    _gluKernel = k
-    return k
-}
 
 /// Fused GLU: split x in half along axis, compute a * sigmoid(b).
 ///
@@ -92,14 +114,23 @@ func fusedGLU(_ x: MLXArray, axis: Int = 1) -> MLXArray {
     let total = n * half
 
     let params = MLXArray([Int32(total), Int32(half)])
+    let kernelInputs = [x2d.reshaped([-1]), params]
+    let outputDTypes = [x.dtype]
 
-    let resultFlat = getGLUKernel()(
-        [x2d.reshaped([-1]), params],
+    let resultFlat = specializedMetalKernel(
+        baseName: "fused_glu",
+        inputNames: ["x", "params"],
+        outputNames: ["out"],
+        source: gluSource,
+        inputs: kernelInputs,
+        outputDTypes: outputDTypes
+    )(
+        kernelInputs,
         template: [("T", x.dtype)],
         grid: (total, 1, 1),
         threadGroup: (min(256, total), 1, 1),
         outputShapes: [[total]],
-        outputDTypes: [x.dtype]
+        outputDTypes: outputDTypes
     )[0]
 
     var outShape = xT.shape
@@ -214,21 +245,6 @@ for (uint i = tid; i < elems_per_group; i += tg_size) {
 }
 """
 
-nonisolated(unsafe) private var _groupNormGELUKernel: MLXFast.MLXFastKernel? = nil
-
-private func getGroupNormGELUKernel() -> MLXFast.MLXFastKernel {
-    if let k = _groupNormGELUKernel { return k }
-    let k = MLXFast.metalKernel(
-        name: "fused_groupnorm_gelu",
-        inputNames: ["x", "weight", "bias", "eps", "params"],
-        outputNames: ["out"],
-        source: groupNormGELUSource,
-        header: groupNormGELUHeader
-    )
-    _groupNormGELUKernel = k
-    return k
-}
-
 /// Pure-MLX GroupNorm + GELU fallback (no Metal required).
 private func groupNormGELUFallback(
     _ x: MLXArray, weight: MLXArray, bias: MLXArray,
@@ -302,14 +318,24 @@ func fusedGroupNormGELU(
 
     let totalGroups = b * numGroups
     let tg = min(1024, max(32, ((elemsPerGroup + 31) / 32) * 32))
+    let kernelInputs = [xContig, wF32, bF32, epsArr, params]
+    let outputDTypes = [x.dtype]
 
-    let result = getGroupNormGELUKernel()(
-        [xContig, wF32, bF32, epsArr, params],
+    let result = specializedMetalKernel(
+        baseName: "fused_groupnorm_gelu",
+        inputNames: ["x", "weight", "bias", "eps", "params"],
+        outputNames: ["out"],
+        source: groupNormGELUSource,
+        header: groupNormGELUHeader,
+        inputs: kernelInputs,
+        outputDTypes: outputDTypes
+    )(
+        kernelInputs,
         template: [("T", x.dtype)],
         grid: (totalGroups * tg, 1, 1),
         threadGroup: (tg, 1, 1),
         outputShapes: [[b, c, spatialSize]],
-        outputDTypes: [x.dtype]
+        outputDTypes: outputDTypes
     )[0]
 
     return result.reshaped(origShape)
@@ -408,20 +434,6 @@ for (uint i = tid; i < out_epg; i += tg_size) {
 }
 """
 
-nonisolated(unsafe) private var _groupNormGLUKernel: MLXFast.MLXFastKernel? = nil
-
-private func getGroupNormGLUKernel() -> MLXFast.MLXFastKernel {
-    if let k = _groupNormGLUKernel { return k }
-    let k = MLXFast.metalKernel(
-        name: "fused_groupnorm_glu",
-        inputNames: ["x", "weight", "bias", "eps", "params"],
-        outputNames: ["out"],
-        source: groupNormGLUSource
-    )
-    _groupNormGLUKernel = k
-    return k
-}
-
 /// Pure-MLX GroupNorm + GLU fallback (no Metal required).
 private func groupNormGLUFallback(
     _ x: MLXArray, weight: MLXArray, bias: MLXArray,
@@ -508,17 +520,26 @@ func fusedGroupNormGLU(
 
     let totalGroups = b * numGroups
     let tg = min(1024, max(32, ((elemsPerGroup + 31) / 32) * 32))
+    let kernelInputs = [xContig, wF32, bF32, epsArr, params]
+    let outputDTypes = [x.dtype]
 
     var outShape = origShape
     outShape[1] = cHalf
 
-    let result = getGroupNormGLUKernel()(
-        [xContig, wF32, bF32, epsArr, params],
+    let result = specializedMetalKernel(
+        baseName: "fused_groupnorm_glu",
+        inputNames: ["x", "weight", "bias", "eps", "params"],
+        outputNames: ["out"],
+        source: groupNormGLUSource,
+        inputs: kernelInputs,
+        outputDTypes: outputDTypes
+    )(
+        kernelInputs,
         template: [("T", x.dtype)],
         grid: (totalGroups * tg, 1, 1),
         threadGroup: (tg, 1, 1),
         outputShapes: [[b, cHalf, spatialSize]],
-        outputDTypes: [x.dtype]
+        outputDTypes: outputDTypes
     )[0]
 
     return result.reshaped(outShape)
@@ -573,20 +594,6 @@ for (uint k = 0; k < numtaps; k++) {
 out[gid] = (T)(acc * 2.0f);  // Scale by upsample factor
 """
 
-nonisolated(unsafe) private var _resample2xKernel: MLXFast.MLXFastKernel? = nil
-
-private func getResample2xKernel() -> MLXFast.MLXFastKernel {
-    if let k = _resample2xKernel { return k }
-    let k = MLXFast.metalKernel(
-        name: "fused_resample2x",
-        inputNames: ["x", "kernel", "params"],
-        outputNames: ["out"],
-        source: resample2xSource
-    )
-    _resample2xKernel = k
-    return k
-}
-
 /// Metal kernel for downsample by 2: reflect-pad + FIR filter + decimate.
 /// Each thread computes one output sample.
 private let resampleHalfSource = """
@@ -620,20 +627,6 @@ for (uint k = 0; k < numtaps; k++) {
 
 out[gid] = (T)acc;
 """
-
-nonisolated(unsafe) private var _resampleHalfKernel: MLXFast.MLXFastKernel? = nil
-
-private func getResampleHalfKernel() -> MLXFast.MLXFastKernel {
-    if let k = _resampleHalfKernel { return k }
-    let k = MLXFast.metalKernel(
-        name: "fused_resample_half",
-        inputNames: ["x", "kernel", "params"],
-        outputNames: ["out"],
-        source: resampleHalfSource
-    )
-    _resampleHalfKernel = k
-    return k
-}
 
 /// Precomputed 63-tap Hann-windowed sinc lowpass FIR kernel (cutoff=0.25).
 nonisolated(unsafe) private let resampleFIRKernel: MLXArray = {
@@ -699,20 +692,6 @@ denominator = max(denominator, 1e-8f);
 out[gid] = (T)(signal / denominator);
 """
 
-nonisolated(unsafe) private var _istftOverlapAddKernel: MLXFast.MLXFastKernel? = nil
-
-private func getISTFTOverlapAddKernel() -> MLXFast.MLXFastKernel {
-    if let k = _istftOverlapAddKernel { return k }
-    let k = MLXFast.metalKernel(
-        name: "fused_istft_overlap_add",
-        inputNames: ["windowed", "windowSq", "params"],
-        outputNames: ["out"],
-        source: istftOverlapAddSource
-    )
-    _istftOverlapAddKernel = k
-    return k
-}
-
 /// GPU-native iSTFT overlap-add using a fused Metal kernel.
 func metalISTFTOverlapAdd(
     windowed: MLXArray,
@@ -736,14 +715,23 @@ func metalISTFTOverlapAdd(
         Int32(numFrames), Int32(nFFT), Int32(hopLength),
         Int32(rawLength), Int32(targetLength), Int32(centerOffset), Int32(outer)
     ])
+    let kernelInputs = [windowedFlat, windowSqFlat, params]
+    let outputDTypes = [windowed.dtype]
 
-    let resultFlat = getISTFTOverlapAddKernel()(
-        [windowedFlat, windowSqFlat, params],
+    let resultFlat = specializedMetalKernel(
+        baseName: "fused_istft_overlap_add",
+        inputNames: ["windowed", "windowSq", "params"],
+        outputNames: ["out"],
+        source: istftOverlapAddSource,
+        inputs: kernelInputs,
+        outputDTypes: outputDTypes
+    )(
+        kernelInputs,
         template: [("T", windowed.dtype)],
         grid: (total, 1, 1),
         threadGroup: (min(256, total), 1, 1),
         outputShapes: [[total]],
-        outputDTypes: [windowed.dtype]
+        outputDTypes: outputDTypes
     )[0]
 
     return resultFlat.reshaped(finalShape + [targetLength])
@@ -762,14 +750,23 @@ func metalResample2x(_ x: MLXArray) -> MLXArray {
 
     let xFlat = contiguous(x.reshaped([b * c, t]))
     let params = MLXArray([Int32(t), Int32(63), Int32(total)])
+    let kernelInputs = [xFlat, resampleFIRKernel, params]
+    let outputDTypes = [x.dtype]
 
-    let resultFlat = getResample2xKernel()(
-        [xFlat, resampleFIRKernel, params],
+    let resultFlat = specializedMetalKernel(
+        baseName: "fused_resample2x",
+        inputNames: ["x", "kernel", "params"],
+        outputNames: ["out"],
+        source: resample2xSource,
+        inputs: kernelInputs,
+        outputDTypes: outputDTypes
+    )(
+        kernelInputs,
         template: [("T", x.dtype)],
         grid: (total, 1, 1),
         threadGroup: (min(256, total), 1, 1),
         outputShapes: [[b * c * upT]],
-        outputDTypes: [x.dtype]
+        outputDTypes: outputDTypes
     )[0]
 
     return resultFlat.reshaped([b, c, upT])
@@ -786,14 +783,23 @@ func metalResampleHalf(_ x: MLXArray) -> MLXArray {
 
     let xFlat = contiguous(x.reshaped([b * c, t]))
     let params = MLXArray([Int32(t), Int32(63), Int32(total)])
+    let kernelInputs = [xFlat, resampleFIRKernel, params]
+    let outputDTypes = [x.dtype]
 
-    let resultFlat = getResampleHalfKernel()(
-        [xFlat, resampleFIRKernel, params],
+    let resultFlat = specializedMetalKernel(
+        baseName: "fused_resample_half",
+        inputNames: ["x", "kernel", "params"],
+        outputNames: ["out"],
+        source: resampleHalfSource,
+        inputs: kernelInputs,
+        outputDTypes: outputDTypes
+    )(
+        kernelInputs,
         template: [("T", x.dtype)],
         grid: (total, 1, 1),
         threadGroup: (min(256, total), 1, 1),
         outputShapes: [[b * c * outT]],
-        outputDTypes: [x.dtype]
+        outputDTypes: outputDTypes
     )[0]
 
     return resultFlat.reshaped([b, c, outT])

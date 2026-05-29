@@ -206,6 +206,7 @@ enum TrainingDatasetPackageWriter {
         at outputDirectory: URL,
         checkedAt: Date = Date()
     ) throws {
+        try refreshDerivedManifestMetadata(at: outputDirectory, updatedAt: checkedAt)
         let validation = validatePackage(at: outputDirectory, checkedAt: checkedAt)
         try writeValidationReport(validation, to: outputDirectory)
     }
@@ -648,6 +649,216 @@ enum TrainingDatasetPackageWriter {
 
     private static func sortedUnique<T: Comparable & Hashable>(_ values: [T]) -> [T] {
         Array(Set(values)).sorted()
+    }
+
+    private static func refreshDerivedManifestMetadata(
+        at outputDirectory: URL,
+        updatedAt: Date
+    ) throws {
+        let manifestURL = outputDirectory.appendingPathComponent(datasetManifestFileName)
+        guard var manifest = readJSONObject(from: manifestURL) else { return }
+
+        let captions = readJSONArray(from: outputDirectory.appendingPathComponent(captionsFileName))
+        guard !captions.isEmpty else { return }
+
+        let separatedClipCount = captions.filter {
+            hasExistingStem("vocals", in: $0, outputDirectory: outputDirectory) &&
+                hasExistingStem("instrumental", in: $0, outputDirectory: outputDirectory)
+        }.count
+        let transcribedClipCount = captions.filter { !transcriptionText(from: $0).isEmpty }.count
+        let vocalBundleExists = FileManager.default.fileExists(
+            atPath: outputDirectory.appendingPathComponent(vocalBundleFileName).path(percentEncoded: false)
+        )
+        let instrumentalBundleExists = FileManager.default.fileExists(
+            atPath: outputDirectory.appendingPathComponent(instrumentalBundleFileName).path(percentEncoded: false)
+        )
+        let bpmEstimates = stemBPMEstimates(in: captions, outputDirectory: outputDirectory)
+        let hasDerivedMetadata = separatedClipCount > 0 || transcribedClipCount > 0 ||
+            vocalBundleExists || instrumentalBundleExists || !bpmEstimates.isEmpty
+        guard hasDerivedMetadata else { return }
+
+        let updatedAtString = ISO8601DateFormatter().string(from: updatedAt)
+
+        var availableAssets = ["full_mix"]
+        if vocalBundleExists || captions.contains(where: { stemPath("vocals", in: $0) != nil }) {
+            availableAssets.append("vocals")
+        }
+        if instrumentalBundleExists || captions.contains(where: { stemPath("instrumental", in: $0) != nil }) {
+            availableAssets.append("instrumental")
+        }
+
+        var separation = manifest["separation"] as? [String: Any] ?? [:]
+        separation["enabled"] = separatedClipCount > 0
+        separation["status"] = derivedStatus(completed: separatedClipCount, total: captions.count)
+        separation["available_assets"] = availableAssets
+        separation["updated_at"] = updatedAtString
+        if vocalBundleExists {
+            separation["vocal_bundle"] = vocalBundleFileName
+        }
+        if instrumentalBundleExists {
+            separation["instrumental_bundle"] = instrumentalBundleFileName
+        }
+        manifest["separation"] = separation
+
+        var transcription = manifest["transcription"] as? [String: Any] ?? [:]
+        transcription["enabled"] = transcribedClipCount > 0
+        transcription["status"] = derivedStatus(
+            completed: transcribedClipCount,
+            total: separatedClipCount > 0 ? separatedClipCount : captions.count
+        )
+        transcription["clip_count"] = transcribedClipCount
+        transcription["updated_at"] = updatedAtString
+        if transcribedClipCount > 0 {
+            transcription["artifacts"] = [
+                "lyrics.txt",
+                "lyrics.timed.json",
+                "lyrics.lrc",
+            ]
+        }
+        let transcriptionModels = sortedUnique(captions.compactMap {
+            ($0["transcription"] as? [String: Any])?["model"] as? String
+        })
+        if !transcriptionModels.isEmpty {
+            transcription["models"] = transcriptionModels
+        }
+        let transcriptionBackends = sortedUnique(captions.compactMap {
+            ($0["transcription"] as? [String: Any])?["backend"] as? String
+        })
+        if !transcriptionBackends.isEmpty {
+            transcription["backends"] = transcriptionBackends
+        }
+        manifest["transcription"] = transcription
+
+        var analysis = manifest["analysis"] as? [String: Any] ?? [:]
+        analysis["enabled"] = !bpmEstimates.isEmpty
+        analysis["status"] = !bpmEstimates.isEmpty ? "stem_analysis_available" : (analysis["status"] ?? "not_run")
+        analysis["bpm_status"] = !bpmEstimates.isEmpty ? "estimated_from_stems" : "not_run"
+        analysis["key_status"] = "not_run"
+        if !bpmEstimates.isEmpty {
+            analysis["stem_tempo_bpm"] = [
+                "average": rounded(bpmEstimates.reduce(0, +) / Double(bpmEstimates.count), places: 1),
+                "estimate_count": bpmEstimates.count,
+            ]
+        }
+        manifest["analysis"] = analysis
+
+        var training = manifest["training"] as? [String: Any] ?? [:]
+        training["default_bundle"] = trainingBundleFileName
+        training["full_mix_bundle"] = fullMixBundleFileName
+        training["dataset_config"] = datasetConfigFileName
+        if vocalBundleExists {
+            training["vocal_bundle"] = vocalBundleFileName
+        }
+        if instrumentalBundleExists {
+            training["instrumental_bundle"] = instrumentalBundleFileName
+        }
+        manifest["training"] = training
+
+        manifest["enrichment"] = [
+            "updated_at": updatedAtString,
+            "status": derivedStatus(completed: separatedClipCount, total: captions.count),
+            "separated_clip_count": separatedClipCount,
+            "vocal_bundle": vocalBundleExists ? vocalBundleFileName : "",
+            "instrumental_bundle": instrumentalBundleExists ? instrumentalBundleFileName : "",
+            "transcription_status": derivedStatus(
+                completed: transcribedClipCount,
+                total: separatedClipCount > 0 ? separatedClipCount : captions.count
+            ),
+            "transcribed_clip_count": transcribedClipCount,
+            "bpm_status": !bpmEstimates.isEmpty ? "estimated_from_stems" : "not_run",
+            "key_status": "not_run",
+        ]
+
+        try writeJSONObject(manifest, to: manifestURL)
+    }
+
+    private static func derivedStatus(completed: Int, total: Int) -> String {
+        guard completed > 0 else { return "not_run" }
+        return completed >= total ? "complete" : "partial"
+    }
+
+    private static func hasExistingStem(
+        _ role: String,
+        in record: [String: Any],
+        outputDirectory: URL
+    ) -> Bool {
+        guard let path = stemPath(role, in: record) else { return false }
+        return FileManager.default.fileExists(
+            atPath: resolve(path, relativeTo: outputDirectory).path(percentEncoded: false)
+        )
+    }
+
+    private static func stemPath(_ role: String, in record: [String: Any]) -> String? {
+        if let assets = record["assets"] as? [String: Any],
+           let value = assets[role] as? String,
+           !value.isEmpty {
+            return value
+        }
+        guard let separation = record["separation"] as? [String: Any],
+              let stems = separation["stems"] as? [String: Any],
+              let value = stems[role] as? String,
+              !value.isEmpty else {
+            return nil
+        }
+        return value
+    }
+
+    private static func transcriptionText(from record: [String: Any]) -> String {
+        if let transcription = record["transcription"] as? [String: Any],
+           let text = transcription["text"] as? String,
+           !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return text.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        if let transcript = record["transcript"] as? String,
+           !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return ""
+    }
+
+    private static func stemBPMEstimates(
+        in captions: [[String: Any]],
+        outputDirectory: URL
+    ) -> [Double] {
+        captions.flatMap { record -> [Double] in
+            guard let separation = record["separation"] as? [String: Any],
+                  let separationFile = separation["separation_file"] as? String,
+                  !separationFile.isEmpty,
+                  let payload = readJSONObject(from: resolve(separationFile, relativeTo: outputDirectory)),
+                  let stems = payload["stems"] as? [String: Any] else {
+                return []
+            }
+
+            return ["vocals", "instrumental"].compactMap { role in
+                guard let stem = stems[role] as? [String: Any],
+                      let analysis = stem["analysis"] as? [String: Any] else {
+                    return nil
+                }
+                return doubleValue(analysis["tempo_bpm_estimate"])
+            }
+        }
+    }
+
+    private static func doubleValue(_ value: Any?) -> Double? {
+        switch value {
+        case let number as NSNumber:
+            return number.doubleValue
+        case let double as Double:
+            return double
+        case let float as Float:
+            return Double(float)
+        case let int as Int:
+            return Double(int)
+        case let string as String:
+            return Double(string)
+        default:
+            return nil
+        }
+    }
+
+    private static func rounded(_ value: Double, places: Int) -> Double {
+        let scale = pow(10.0, Double(places))
+        return (value * scale).rounded() / scale
     }
 
     private static func seconds(_ value: TimeInterval) -> Double {

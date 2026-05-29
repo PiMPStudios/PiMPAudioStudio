@@ -100,6 +100,7 @@ final class BagOfModels: StemSeparationModel {
         let normalized = result / MLX.maximum(totalArray, MLXArray(Float(1e-8)))
 
         MLX.eval(normalized)
+        Stream.gpu.synchronize()
         return normalized.asArray(Float.self)
     }
 }
