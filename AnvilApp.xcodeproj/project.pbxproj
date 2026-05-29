@@ -9,7 +9,6 @@
 /* Begin PBXBuildFile section */
 		0287F5C870C67463A38138CC /* LoRACoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21836E28CF66D31E0B4D6C84 /* LoRACoordinator.swift */; };
 		02E82F62AD60F645D6FBD268 /* TrainingManifest.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3DDAB9A75FD674131701713 /* TrainingManifest.swift */; };
-		D5795A7B65B4483DB9FC4B12 /* TrainingDatasetPackageWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2A99A33F6D1438D98BE6221 /* TrainingDatasetPackageWriter.swift */; };
 		08FA6D81BBE2FA06E3179185 /* EditorService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5902313AD8C62782D012AF11 /* EditorService.swift */; };
 		0AF9779F80608B35F17064E4 /* AnvilAppApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C8FC85EA6F448C8C5B81968 /* AnvilAppApp.swift */; };
 		0B17463D23FF9E5DD313B2B1 /* DSPParameters.swift in Sources */ = {isa = PBXBuildFile; fileRef = B55D5F52868A4CB02AF03430 /* DSPParameters.swift */; };
@@ -17,8 +16,6 @@
 		13CF74E2ED45EE9086D3FF45 /* DownloadProgressRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3717DC54FFB7427757568719 /* DownloadProgressRow.swift */; };
 		149D0F7AA4A61FF4806E28E0 /* SFXGenerationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCFDE36CECAA5A75A45571D5 /* SFXGenerationService.swift */; };
 		195C4C2F3C08CE060C136194 /* LyricWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FEC311D281782C3E6E6FBF6 /* LyricWriter.swift */; };
-		1884D938D10C4CFA9EAA5D04 /* LocalFilesDatasetBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CFD141C51F946C0B0D5AA6B /* LocalFilesDatasetBuilder.swift */; };
-		1A95C8A7D2B64A79A84C5E31 /* LocalDatasetEnrichmentService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9271C64B5D4E47A7BB8C7A19 /* LocalDatasetEnrichmentService.swift */; };
 		1A51019FA31EB11E9D2DFD4D /* ACEStepGenerationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A68785FD9393563F70F224C /* ACEStepGenerationService.swift */; };
 		1D4AB4D1E19703F0C2C9CA6F /* GenerationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F48405E290FB7817733FDD4 /* GenerationService.swift */; };
 		23312C22747B23B6F7645DCA /* PitchShiftControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A037C24F391D586BD629293 /* PitchShiftControlView.swift */; };
@@ -36,6 +33,8 @@
 		46E9CA01C59050561169A8D7 /* OutputDirectoryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83D2A2817A2C70C01A7E9060 /* OutputDirectoryManager.swift */; };
 		48A20C1FF1ABFEC16D97DDB4 /* MergeSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CB35B71702BA28B8E3D0BEA /* MergeSheet.swift */; };
 		4916F3A44CF74EEE3A4ECA92 /* FirstLaunchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02A386DAC90F5E305529D789 /* FirstLaunchView.swift */; };
+		4A217081D03D60FF53D21AB7 /* TrainingDatasetPackageWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE398848903C8BAD2EF73BBE /* TrainingDatasetPackageWriter.swift */; };
+		4A96C4FE3E23B951B323BE2A /* LocalFilesDatasetBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1132865E629CB5F6E8452BE /* LocalFilesDatasetBuilder.swift */; };
 		4C7D077166CA750B212236F4 /* GenerationState.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7DBBDB86E7D78D2620F5E8F /* GenerationState.swift */; };
 		4D8B4EFFEBCF585D093697FA /* TrainingSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D65878AD15AC1C5B83D82A2 /* TrainingSheet.swift */; };
 		4EFBAEB0CDBBEA54568FEB4C /* GenerateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E45CC9AF495B2B26798981E /* GenerateView.swift */; };
@@ -50,10 +49,10 @@
 		65A8865EEC7DFF72F0979081 /* HuggingFaceImportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 823702D3D9DF8DCBBA0EE034 /* HuggingFaceImportSheet.swift */; };
 		66C0A1E3C6C2D18AA1D8CBA6 /* HistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48050CE43319304DFA74A007 /* HistoryStore.swift */; };
 		66E9184590022F8F6F653BC1 /* PresetStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD2CA362A1B0531F8B13B8DD /* PresetStore.swift */; };
-		560969F0EC704B228087B236 /* LocalFilesImportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FAB6163B419419BBE91922B /* LocalFilesImportSheet.swift */; };
 		6D5694C7B23B8F968AB61C86 /* SimpleDSP.swift in Sources */ = {isa = PBXBuildFile; fileRef = 681D2127C0D042836B2A1EC5 /* SimpleDSP.swift */; };
 		6E8631F6B78C8B22F7EB1EDD /* LyricWriterManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37D2A8CEE5C195E55D979DF2 /* LyricWriterManager.swift */; };
 		7036BAF017D1AD46A18B15AD /* ClaudeLyricWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = C61D0DB6E1E91085513A8234 /* ClaudeLyricWriter.swift */; };
+		742DF97FBE5C44F1D33EAE98 /* LocalDatasetEnrichmentService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A72A2E2315EA23F0C947FC92 /* LocalDatasetEnrichmentService.swift */; };
 		75B24388D0F1EDB6F271D54A /* WaveformView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D61C5398208345CF997BA86 /* WaveformView.swift */; };
 		790A321EE01ED0950724C99F /* XAILyricWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28D04E888E8B1CA2FD709FBB /* XAILyricWriter.swift */; };
 		7967C2D9942886BA8BDB76C8 /* GenerationTraceComparator.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF19DBA581151AFFDF4BC90E /* GenerationTraceComparator.swift */; };
@@ -69,6 +68,7 @@
 		9964ED5991FCA159B1F023D5 /* MCP in Frameworks */ = {isa = PBXBuildFile; productRef = 15228484378D1FE51FA9DE85 /* MCP */; };
 		9A7A055DC9656DAA5DF882B8 /* HistoryListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACDBE130986895721B31725F /* HistoryListView.swift */; };
 		9C244BDC817C2D74FD59F5AC /* AnvilCommandFacade.swift in Sources */ = {isa = PBXBuildFile; fileRef = 042E257C28E49A42245142DD /* AnvilCommandFacade.swift */; };
+		9F8096781DFC729449C75241 /* SourceSeparationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 861E433991EA4514A90A9BA0 /* SourceSeparationService.swift */; };
 		A449AF199835468C36A25060 /* DSPProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF5771DD0C0A4C5B33796024 /* DSPProcessor.swift */; };
 		A5490BBF991663BE0AC5926F /* PEFTKeyRemapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17654E4D0E9713010A5AFBC2 /* PEFTKeyRemapper.swift */; };
 		A7E26898FC333EE4A7BCF31A /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CF1F6196D3D92EA32ADB3A2 /* AppState.swift */; };
@@ -93,6 +93,7 @@
 		DAA7B569BBC02A9E6CA2E2A0 /* WSOLAProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E305347B027706CE2B6AA495 /* WSOLAProcessor.swift */; };
 		DD80478C2C925BA8B2C0C86D /* LPCFormantShifter.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8DF5DC29E2962E4C179358B /* LPCFormantShifter.swift */; };
 		DF2D166EE6DD3C6316440052 /* APIKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31DBE7D85D080CAF25072FA6 /* APIKeyStore.swift */; };
+		DF40756294841EE10D165EC4 /* LocalFilesImportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E88D52FB350A1B4BC0EB1E22 /* LocalFilesImportSheet.swift */; };
 		E112BB2C15BD04D59A6B0FA7 /* Resampler.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4D0D4171C6C7051D0FF1370 /* Resampler.swift */; };
 		E33C664871E94A263A99D3C7 /* GenerationMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 307BD0549C5B69069502E9CF /* GenerationMode.swift */; };
 		E4DA8688465EB8FA34CCBEBB /* PlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 365332BC76DADA203FF86C03 /* PlayerView.swift */; };
@@ -166,7 +167,7 @@
 		83660A831B3C8EA635656CC1 /* YouTubeImportSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouTubeImportSheet.swift; sourceTree = "<group>"; };
 		83D2A2817A2C70C01A7E9060 /* OutputDirectoryManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutputDirectoryManager.swift; sourceTree = "<group>"; };
 		84554118ADCDC786CACDA7A2 /* LiveGenerationTrace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveGenerationTrace.swift; sourceTree = "<group>"; };
-		8FAB6163B419419BBE91922B /* LocalFilesImportSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalFilesImportSheet.swift; sourceTree = "<group>"; };
+		861E433991EA4514A90A9BA0 /* SourceSeparationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceSeparationService.swift; sourceTree = "<group>"; };
 		86328139176C2912FBB1F878 /* CommunityBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommunityBrowserView.swift; sourceTree = "<group>"; };
 		86892F4AB6D7FD9C6D4DFF8E /* AdapterPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdapterPicker.swift; sourceTree = "<group>"; };
 		8D07375021EF6E02E8B129F8 /* GenerationPreset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationPreset.swift; sourceTree = "<group>"; };
@@ -175,12 +176,10 @@
 		961052C73550551009127288 /* OpenAILyricWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAILyricWriter.swift; sourceTree = "<group>"; };
 		9AA36FD1A3879D2885265598 /* AnvilApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AnvilApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		9D65878AD15AC1C5B83D82A2 /* TrainingSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingSheet.swift; sourceTree = "<group>"; };
-		9CFD141C51F946C0B0D5AA6B /* LocalFilesDatasetBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalFilesDatasetBuilder.swift; sourceTree = "<group>"; };
-		9271C64B5D4E47A7BB8C7A19 /* LocalDatasetEnrichmentService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalDatasetEnrichmentService.swift; sourceTree = "<group>"; };
-		C2A99A33F6D1438D98BE6221 /* TrainingDatasetPackageWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingDatasetPackageWriter.swift; sourceTree = "<group>"; };
 		9E46D5718C7768D91073FCEE /* AnvilAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AnvilAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		9F48405E290FB7817733FDD4 /* GenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationService.swift; sourceTree = "<group>"; };
 		A594BD4883E8061AEA451F27 /* AudioPlayerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayerService.swift; sourceTree = "<group>"; };
+		A72A2E2315EA23F0C947FC92 /* LocalDatasetEnrichmentService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalDatasetEnrichmentService.swift; sourceTree = "<group>"; };
 		AC937EB07AD49BE1C4368F68 /* ProviderAccessStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderAccessStore.swift; sourceTree = "<group>"; };
 		ACDBE130986895721B31725F /* HistoryListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryListView.swift; sourceTree = "<group>"; };
 		AFD40C51FF29EFB9FBC96950 /* PresetsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetsView.swift; sourceTree = "<group>"; };
@@ -189,6 +188,7 @@
 		B8D733ED07D2A51F14F5BA8A /* ReverbControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReverbControlView.swift; sourceTree = "<group>"; };
 		BA236B769F73F3B386B47BE9 /* GenerationRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationRequest.swift; sourceTree = "<group>"; };
 		BF551D645B08F52E213E05E2 /* EditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorView.swift; sourceTree = "<group>"; };
+		C1132865E629CB5F6E8452BE /* LocalFilesDatasetBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalFilesDatasetBuilder.swift; sourceTree = "<group>"; };
 		C19D86DC2C8F635DB0E2C2A4 /* ProviderAccessStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderAccessStoreTests.swift; sourceTree = "<group>"; };
 		C22F20118A466836344B2D08 /* DSPPaletteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DSPPaletteView.swift; sourceTree = "<group>"; };
 		C3DDAB9A75FD674131701713 /* TrainingManifest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingManifest.swift; sourceTree = "<group>"; };
@@ -204,6 +204,7 @@
 		E305347B027706CE2B6AA495 /* WSOLAProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WSOLAProcessor.swift; sourceTree = "<group>"; };
 		E400A1E8567A583BF24168D8 /* IntentRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentRouter.swift; sourceTree = "<group>"; };
 		E47D5033905544ECC34C19D0 /* EditorControlsBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorControlsBar.swift; sourceTree = "<group>"; };
+		E88D52FB350A1B4BC0EB1E22 /* LocalFilesImportSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalFilesImportSheet.swift; sourceTree = "<group>"; };
 		F4D0D4171C6C7051D0FF1370 /* Resampler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Resampler.swift; sourceTree = "<group>"; };
 		F74E890D6F0523EBED6C11AD /* GeminiLyricWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeminiLyricWriter.swift; sourceTree = "<group>"; };
 		F7DBBDB86E7D78D2620F5E8F /* GenerationState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationState.swift; sourceTree = "<group>"; };
@@ -212,6 +213,7 @@
 		FC923278BD1DFB05336E01E3 /* AppStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStateTests.swift; sourceTree = "<group>"; };
 		FD2CA362A1B0531F8B13B8DD /* PresetStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetStore.swift; sourceTree = "<group>"; };
 		FD89E89C12A5ED0A47624551 /* YouTubeDatasetBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouTubeDatasetBuilder.swift; sourceTree = "<group>"; };
+		FE398848903C8BAD2EF73BBE /* TrainingDatasetPackageWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingDatasetPackageWriter.swift; sourceTree = "<group>"; };
 		FF9A603BF062A10905588D07 /* AdapterStackView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdapterStackView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -280,18 +282,19 @@
 				9F48405E290FB7817733FDD4 /* GenerationService.swift */,
 				48050CE43319304DFA74A007 /* HistoryStore.swift */,
 				E400A1E8567A583BF24168D8 /* IntentRouter.swift */,
-					425D1F125449BC69C0BB220D /* LLMModelManager.swift */,
-					21836E28CF66D31E0B4D6C84 /* LoRACoordinator.swift */,
-					9CFD141C51F946C0B0D5AA6B /* LocalFilesDatasetBuilder.swift */,
-					9271C64B5D4E47A7BB8C7A19 /* LocalDatasetEnrichmentService.swift */,
-					C2A99A33F6D1438D98BE6221 /* TrainingDatasetPackageWriter.swift */,
-					83D2A2817A2C70C01A7E9060 /* OutputDirectoryManager.swift */,
+				425D1F125449BC69C0BB220D /* LLMModelManager.swift */,
+				A72A2E2315EA23F0C947FC92 /* LocalDatasetEnrichmentService.swift */,
+				C1132865E629CB5F6E8452BE /* LocalFilesDatasetBuilder.swift */,
+				21836E28CF66D31E0B4D6C84 /* LoRACoordinator.swift */,
+				83D2A2817A2C70C01A7E9060 /* OutputDirectoryManager.swift */,
 				17654E4D0E9713010A5AFBC2 /* PEFTKeyRemapper.swift */,
 				FD2CA362A1B0531F8B13B8DD /* PresetStore.swift */,
 				17140A0355CED442DB2B2EDE /* PromptEnhancer.swift */,
 				AC937EB07AD49BE1C4368F68 /* ProviderAccessStore.swift */,
 				CCFDE36CECAA5A75A45571D5 /* SFXGenerationService.swift */,
 				7EC4A8B06E55930149BAC8ED /* SFXModelManager.swift */,
+				861E433991EA4514A90A9BA0 /* SourceSeparationService.swift */,
+				FE398848903C8BAD2EF73BBE /* TrainingDatasetPackageWriter.swift */,
 				C3DDAB9A75FD674131701713 /* TrainingManifest.swift */,
 				DB6E06E2D459E4DE1F42A7B0 /* TrainingService.swift */,
 				FD89E89C12A5ED0A47624551 /* YouTubeDatasetBuilder.swift */,
@@ -302,11 +305,11 @@
 		};
 		368DE4E4B381CEB2A28C7CCD /* Training */ = {
 			isa = PBXGroup;
-				children = (
-					5F28E71656FB093C47B48FBF /* LossCurveView.swift */,
-					8FAB6163B419419BBE91922B /* LocalFilesImportSheet.swift */,
-					9D65878AD15AC1C5B83D82A2 /* TrainingSheet.swift */,
-					83660A831B3C8EA635656CC1 /* YouTubeImportSheet.swift */,
+			children = (
+				E88D52FB350A1B4BC0EB1E22 /* LocalFilesImportSheet.swift */,
+				5F28E71656FB093C47B48FBF /* LossCurveView.swift */,
+				9D65878AD15AC1C5B83D82A2 /* TrainingSheet.swift */,
+				83660A831B3C8EA635656CC1 /* YouTubeImportSheet.swift */,
 			);
 			path = Training;
 			sourceTree = "<group>";
@@ -595,15 +598,14 @@
 				66C0A1E3C6C2D18AA1D8CBA6 /* HistoryStore.swift in Sources */,
 				65A8865EEC7DFF72F0979081 /* HuggingFaceImportSheet.swift in Sources */,
 				F45C62DEE5C2FF96E6CD04D3 /* IntelligenceSettingsView.swift in Sources */,
-					3794B35AA37A6162B20BA858 /* IntentRouter.swift in Sources */,
-					A95BEFD1EEEBDE89CB239B8A /* LLMModelManager.swift in Sources */,
-					DD80478C2C925BA8B2C0C86D /* LPCFormantShifter.swift in Sources */,
-					C86AC26AEE05C99708CBA2BB /* LiveGenerationTrace.swift in Sources */,
-					1884D938D10C4CFA9EAA5D04 /* LocalFilesDatasetBuilder.swift in Sources */,
-					1A95C8A7D2B64A79A84C5E31 /* LocalDatasetEnrichmentService.swift in Sources */,
-					560969F0EC704B228087B236 /* LocalFilesImportSheet.swift in Sources */,
-					0287F5C870C67463A38138CC /* LoRACoordinator.swift in Sources */,
-					D5795A7B65B4483DB9FC4B12 /* TrainingDatasetPackageWriter.swift in Sources */,
+				3794B35AA37A6162B20BA858 /* IntentRouter.swift in Sources */,
+				A95BEFD1EEEBDE89CB239B8A /* LLMModelManager.swift in Sources */,
+				DD80478C2C925BA8B2C0C86D /* LPCFormantShifter.swift in Sources */,
+				C86AC26AEE05C99708CBA2BB /* LiveGenerationTrace.swift in Sources */,
+				0287F5C870C67463A38138CC /* LoRACoordinator.swift in Sources */,
+				742DF97FBE5C44F1D33EAE98 /* LocalDatasetEnrichmentService.swift in Sources */,
+				4A96C4FE3E23B951B323BE2A /* LocalFilesDatasetBuilder.swift in Sources */,
+				DF40756294841EE10D165EC4 /* LocalFilesImportSheet.swift in Sources */,
 				CAFBB4872C118D7158334B25 /* LocalLyricWriter.swift in Sources */,
 				43C4DCA2E466BC0ADE303135 /* LossCurveView.swift in Sources */,
 				195C4C2F3C08CE060C136194 /* LyricWriter.swift in Sources */,
@@ -627,7 +629,9 @@
 				149D0F7AA4A61FF4806E28E0 /* SFXGenerationService.swift in Sources */,
 				987D32242043555415D62524 /* SFXModelManager.swift in Sources */,
 				6D5694C7B23B8F968AB61C86 /* SimpleDSP.swift in Sources */,
+				9F8096781DFC729449C75241 /* SourceSeparationService.swift in Sources */,
 				7B0E4EE87A097F731F9747B7 /* TimeStretchControlView.swift in Sources */,
+				4A217081D03D60FF53D21AB7 /* TrainingDatasetPackageWriter.swift in Sources */,
 				02E82F62AD60F645D6FBD268 /* TrainingManifest.swift in Sources */,
 				AE956E4A59A4910BD1A32F57 /* TrainingService.swift in Sources */,
 				4D8B4EFFEBCF585D093697FA /* TrainingSheet.swift in Sources */,

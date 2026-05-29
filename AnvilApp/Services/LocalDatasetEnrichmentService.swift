@@ -167,11 +167,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         }
 
         var records = try loadCaptionRecords(from: datasetDirectory)
-        let needsSeparator = force || records.contains {
-            !hasCachedInstrumentalSeparation(record: $0.object, datasetDirectory: datasetDirectory)
-        }
-        let separatorURL = needsSeparator ? try resolveAudioSeparatorExecutableURL() : nil
-        let separatorVersion = separatorURL.flatMap { audioSeparatorVersion(executableURL: $0) } ?? "cached"
+        let sourceSeparator = SourceSeparationService()
 
         await onStep(.separatingStems)
         for index in records.indices {
@@ -179,14 +175,10 @@ final class LocalDatasetEnrichmentService: ObservableObject {
             if !force, hasCachedInstrumentalSeparation(record: records[index].object, datasetDirectory: datasetDirectory) {
                 continue
             }
-            guard let separatorURL else {
-                throw LocalDatasetEnrichmentError.missingAudioSeparatorCLI
-            }
             records[index].object = try await separateClip(
                 record: records[index],
                 datasetDirectory: datasetDirectory,
-                separatorURL: separatorURL,
-                separatorVersion: separatorVersion,
+                sourceSeparator: sourceSeparator,
                 force: force
             )
         }
@@ -239,51 +231,29 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         inputURL: URL,
         outputDirectory: URL
     ) -> LocalDatasetEnrichmentCommand {
-        LocalDatasetEnrichmentCommand(
-            step: .separatingStems,
+        ExternalAudioSeparatorSourceSeparator.command(
             executableURL: executableURL,
-            arguments: [
-                inputURL.path,
-                "--output_dir",
-                outputDirectory.path,
-                "--output_format",
-                "WAV",
-            ]
+            inputURL: inputURL,
+            outputDirectory: outputDirectory
         )
     }
 
     nonisolated static func resolveAudioSeparatorExecutableURL(
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) throws -> URL {
-        for url in candidateAudioSeparatorExecutableURLs(environment: environment)
-            where FileManager.default.isExecutableFile(atPath: url.path) {
-            return url
-        }
-        throw LocalDatasetEnrichmentError.missingAudioSeparatorCLI
+        try ExternalAudioSeparatorSourceSeparator.resolveExecutableURL(environment: environment)
     }
 
     nonisolated static func candidateAudioSeparatorExecutableURLs(
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> [URL] {
-        var candidates: [URL] = []
-        if let configured = environment["ANVIL_AUDIO_SEPARATOR_BIN"]?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !configured.isEmpty {
-            candidates.append(URL(fileURLWithPath: (configured as NSString).expandingTildeInPath))
-        }
-
-        let searchPath = separatorSearchPath(environment: environment)
-        candidates.append(contentsOf: searchPath.map {
-            URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath)
-                .appendingPathComponent("audio-separator")
-        })
-        return candidates.deduplicatedByPath()
+        ExternalAudioSeparatorSourceSeparator.candidateExecutableURLs(environment: environment)
     }
 
     nonisolated private static func separateClip(
         record: LocalDatasetCaptionRecord,
         datasetDirectory: URL,
-        separatorURL: URL,
-        separatorVersion: String,
+        sourceSeparator: SourceSeparationService,
         force: Bool
     ) async throws -> [String: Any] {
         let clipURL = resolve(record.file, relativeTo: datasetDirectory)
@@ -305,38 +275,23 @@ final class LocalDatasetEnrichmentService: ObservableObject {
             outputDirectory: outputDirectory,
             force: force
         )
-        let tempOutputDirectory = outputDirectory.appendingPathComponent(".audio_separator_tmp", isDirectory: true)
-        if FileManager.default.fileExists(atPath: tempOutputDirectory.path) {
-            try FileManager.default.removeItem(at: tempOutputDirectory)
-        }
-        try FileManager.default.createDirectory(at: tempOutputDirectory, withIntermediateDirectories: true)
 
         let startedAt = Date()
-        let command = separatorCommand(
-            executableURL: separatorURL,
+        let separation = try await sourceSeparator.separate(
             inputURL: input.url,
-            outputDirectory: tempOutputDirectory
+            outputDirectory: outputDirectory,
+            force: force
         )
-        let runner = LocalDatasetCapturedProcess(
-            command: command,
-            environment: separatorEnvironment(separatorURL: separatorURL)
-        )
-        _ = try await runner.run()
-
-        let copiedStems = try canonicalizeStemOutputs(
-            from: tempOutputDirectory,
-            to: outputDirectory
-        )
-        try? FileManager.default.removeItem(at: tempOutputDirectory)
-
         let elapsed = Date().timeIntervalSince(startedAt)
-        let warnings = input.warning.map { [$0] } ?? []
+        let warnings = (input.warning.map { [$0] } ?? []) + separation.warnings
         let payload = separationPayload(
             datasetDirectory: datasetDirectory,
             sourceClip: record.file,
-            backendVersion: separatorVersion,
+            backend: separation.backend,
+            backendVersion: separation.backendVersion,
+            model: separation.model,
             elapsedSeconds: elapsed,
-            stems: copiedStems,
+            stems: separation.stems,
             warnings: warnings
         )
         let separationURL = outputDirectory.appendingPathComponent("separation.json")
@@ -347,11 +302,11 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         try writeJSONObject(sidecar, to: clipURL.deletingPathExtension().appendingPathExtension("json"))
 
         var updated = record.object
-        let stemPaths = copiedStems.mapValues { relativePath(for: $0, from: datasetDirectory) }
+        let stemPaths = separation.stems.mapValues { relativePath(for: $0, from: datasetDirectory) }
         updated["separation"] = [
             "mode": "instrumental",
-            "backend": "audio-separator",
-            "model": "auto",
+            "backend": separation.backend,
+            "model": separation.model,
             "stems": stemPaths,
             "separation_file": relativePath(for: separationURL, from: datasetDirectory),
             "cached": false,
@@ -406,59 +361,12 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         }
     }
 
-    nonisolated private static func canonicalizeStemOutputs(
-        from tempOutputDirectory: URL,
-        to outputDirectory: URL
-    ) throws -> [String: URL] {
-        let files = (try? FileManager.default.contentsOfDirectory(
-            at: tempOutputDirectory,
-            includingPropertiesForKeys: [.isRegularFileKey],
-            options: [.skipsHiddenFiles]
-        )) ?? []
-
-        guard let vocals = findStemFile(named: "vocals", in: files),
-              let instrumental = findStemFile(named: "instrumental", in: files) else {
-            let names = files.map(\.lastPathComponent).joined(separator: ", ")
-            throw LocalDatasetEnrichmentError.noStemOutput(names.isEmpty ? "no files were written" : names)
-        }
-
-        let targets = [
-            "vocals": outputDirectory.appendingPathComponent("vocals.wav"),
-            "instrumental": outputDirectory.appendingPathComponent("instrumental.wav"),
-        ]
-        try copyStem(vocals, to: targets["vocals"]!)
-        try copyStem(instrumental, to: targets["instrumental"]!)
-        return targets
-    }
-
-    nonisolated private static func findStemFile(named stem: String, in files: [URL]) -> URL? {
-        let aliases: [String]
-        switch stem {
-        case "vocals":
-            aliases = ["vocals", "vocal", "voice"]
-        case "instrumental":
-            aliases = ["instrumental", "inst", "no_vocals", "no-vocals"]
-        default:
-            aliases = [stem]
-        }
-
-        return files.first { file in
-            let base = file.deletingPathExtension().lastPathComponent.lowercased()
-            return aliases.contains { base.contains($0) }
-        }
-    }
-
-    nonisolated private static func copyStem(_ source: URL, to target: URL) throws {
-        if FileManager.default.fileExists(atPath: target.path) {
-            try FileManager.default.removeItem(at: target)
-        }
-        try FileManager.default.copyItem(at: source, to: target)
-    }
-
     nonisolated private static func separationPayload(
         datasetDirectory: URL,
         sourceClip: String,
+        backend: String,
         backendVersion: String,
+        model: String,
         elapsedSeconds: TimeInterval,
         stems: [String: URL],
         warnings: [String]
@@ -466,9 +374,9 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         [
             "anvil_dataset_version": "1.0",
             "generated_at": ISO8601DateFormatter().string(from: Date()),
-            "backend": "audio-separator",
+            "backend": backend,
             "backend_version": backendVersion,
-            "model": "auto",
+            "model": model,
             "mode": "instrumental",
             "source_clip": sourceClip,
             "elapsed_seconds": rounded(elapsedSeconds, places: 3),
@@ -846,55 +754,6 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return "complete"
     }
 
-    nonisolated private static func audioSeparatorVersion(executableURL: URL) -> String? {
-        let process = Process()
-        let pipe = Pipe()
-        process.executableURL = executableURL
-        process.arguments = ["--version"]
-        process.standardOutput = pipe
-        process.standardError = Pipe()
-        process.environment = separatorEnvironment(separatorURL: executableURL)
-        do {
-            try process.run()
-            process.waitUntilExit()
-        } catch {
-            return nil
-        }
-        guard process.terminationStatus == 0 else { return nil }
-        return String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    nonisolated private static func separatorEnvironment(
-        separatorURL: URL,
-        base: [String: String] = ProcessInfo.processInfo.environment
-    ) -> [String: String] {
-        var environment = base
-        environment["PATH"] = ([separatorURL.deletingLastPathComponent().path] + separatorSearchPath(environment: base))
-            .deduplicated()
-            .joined(separator: ":")
-        environment["PYTHONUNBUFFERED"] = "1"
-        environment["NO_COLOR"] = "1"
-        environment["CLICOLOR"] = "0"
-        environment["TERM"] = "dumb"
-        return environment
-    }
-
-    nonisolated private static func separatorSearchPath(environment: [String: String]) -> [String] {
-        let pathParts = (environment["PATH"] ?? "")
-            .split(separator: ":")
-            .map(String.init)
-        return [
-            "/opt/homebrew/bin",
-            "/usr/local/bin",
-            "/opt/local/bin",
-            "/usr/bin",
-            "/bin",
-            "/usr/sbin",
-            "/sbin",
-        ] + pathParts
-    }
-
     nonisolated private static func readJSONObject(from url: URL) -> [String: Any]? {
         guard let data = try? Data(contentsOf: url) else { return nil }
         return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
@@ -1004,7 +863,7 @@ private enum StemBundleRole: CaseIterable {
     }
 }
 
-private final class LocalDatasetCapturedProcess: @unchecked Sendable {
+final class LocalDatasetCapturedProcess: @unchecked Sendable {
     private let process = Process()
     private let stdout = Pipe()
     private let stderr = Pipe()
@@ -1156,21 +1015,5 @@ private final class LocalDatasetCapturedProcess: @unchecked Sendable {
         }
 
         continuation?.resume(throwing: CancellationError())
-    }
-}
-
-private extension Array where Element == URL {
-    func deduplicatedByPath() -> [URL] {
-        var seen = Set<String>()
-        return filter { url in
-            seen.insert(url.standardizedFileURL.path).inserted
-        }
-    }
-}
-
-private extension Array where Element == String {
-    func deduplicated() -> [String] {
-        var seen = Set<String>()
-        return filter { seen.insert($0).inserted }
     }
 }

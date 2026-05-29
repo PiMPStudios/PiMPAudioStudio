@@ -438,7 +438,12 @@ private func silentWAVData(sampleRate: Int = 22_050, channels: Int = 1, frameCou
     #expect((bundleClip?["separation"] as? [String: Any])?["mode"] as? String == "instrumental")
 }
 
-@Test func localDatasetEnrichmentUsesAudioSeparatorDirectly() {
+@Test func localDatasetEnrichmentPrefersNativeDemucsWithAudioSeparatorFallback() {
+    #expect(SourceSeparationService.defaultBackends == [.nativeDemucs, .externalAudioSeparator])
+    #expect(DemucsMLXSourceSeparator.defaultModelName == "htdemucs")
+}
+
+@Test func localDatasetEnrichmentAudioSeparatorFallbackUsesDirectCLI() {
     let executable = URL(fileURLWithPath: "/tools/audio-separator")
     let input = URL(fileURLWithPath: "/tmp/local package/clips/clip 1.wav")
     let output = URL(fileURLWithPath: "/tmp/local package/stems/clip 1", isDirectory: true)

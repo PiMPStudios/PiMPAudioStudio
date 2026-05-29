@@ -12,6 +12,7 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/ml-explore/mlx-swift", from: "0.21.0"),
         .package(url: "https://github.com/huggingface/swift-transformers", from: "0.1.12"),
+        .package(path: "../Vendor/demucs-mlx-swift"),
     ],
     targets: [
         .target(
@@ -23,6 +24,7 @@ let package = Package(
                 .product(name: "MLXRandom", package: "mlx-swift"),
                 .product(name: "MLXFast", package: "mlx-swift"),
                 .product(name: "Transformers", package: "swift-transformers"),
+                .product(name: "DemucsMLX", package: "demucs-mlx-swift"),
             ]
         ),
         .executableTarget(
