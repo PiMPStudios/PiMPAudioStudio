@@ -29,7 +29,7 @@ Readable audio headers are recorded when AVFoundation can open the source/clip. 
 
 ## Annotation Provenance
 
-Each clip record carries `caption_source`, `lyrics_source`, and an `annotation` object with the schema version, backend/model identifiers, language, raw artifact paths, and review status. Manual edits in the review workspace are marked as manual, imported sidecars are marked as sidecar/CSV sources, and native Qwen3-ASR lyric output is marked as `native-qwen3-asr`.
+Each clip record carries `caption_source`, `lyrics_source`, and an `annotation` object with the schema version, backend/model identifiers, language, raw artifact paths, and review status. Manual edits in the review workspace are marked as manual, imported sidecars are marked as sidecar/CSV sources, native metadata captions are marked as `native`, and native Qwen3-ASR lyric output is marked as `native-qwen3-asr`.
 
 Saving from the review workspace writes a backup first, then refreshes `captions.json`, the training bundles, validation, manifest annotation summaries, and `preprocess_cache.json`.
 
@@ -65,7 +65,9 @@ Native Demucs model selection can be overridden with `ANVIL_DEMUCS_MODEL_NAME`; 
 
 Enrichment also transcribes each generated `vocals.wav` with native `speech-swift` Qwen3-ASR. The quality path uses `Qwen3-ASR-1.7B` plus `Qwen3-ForcedAligner-0.6B` for word timestamps, then writes `lyrics.txt`, `lyrics.timed.json`, and `lyrics.lrc` next to the stem files. Those transcripts are copied into `captions.json` and `training_bundle_vocals.json`; instrumental bundles keep lyrics empty.
 
-Enrichment preserves separation/transcription metadata when captions are edited, promotes local stem tempo estimates into each clip's BPM field, and estimates instrumental key/keyscale with native DSP analysis. Imported or manually reviewed BPM/key metadata is preserved as metadata-backed review data instead of being overwritten by the automatic estimates.
+Enrichment preserves separation/transcription metadata when captions are edited, promotes local stem tempo estimates into each clip's BPM field, and estimates instrumental key/keyscale with native DSP analysis. It also upgrades local-builder/manual captions into deterministic native metadata captions using the original caption seed plus BPM, key, vocal/transcript presence, and stem role context. Imported sidecar/CSV/remote captions are preserved instead of being overwritten by this automatic pass.
+
+The native captioner is metadata-based, not a full audio-language model. It gives useful training prompts immediately while keeping the local package workflow zero-Python; heavier ACE-Step captioner integration remains a future optional backend.
 
 ## Train From JSON
 

@@ -13,6 +13,7 @@ private let enrichmentMemoryLogger = Logger(
 enum LocalDatasetEnrichmentStep: String, Equatable {
     case separatingStems
     case transcribingVocals
+    case generatingCaptions
     case exportingVocalsBundle
     case exportingInstrumentalBundle
     case refreshingMetadata
@@ -23,6 +24,8 @@ enum LocalDatasetEnrichmentStep: String, Equatable {
             return "Separating stems"
         case .transcribingVocals:
             return "Transcribing vocals"
+        case .generatingCaptions:
+            return "Generating metadata captions"
         case .exportingVocalsBundle:
             return "Exporting vocal bundle"
         case .exportingInstrumentalBundle:
@@ -54,6 +57,7 @@ struct LocalDatasetEnrichmentResult: Equatable {
     let averageBPM: Double?
     let keyEstimateCount: Int
     let transcribedClipCount: Int
+    let autoCaptionedClipCount: Int
 
     var summary: String {
         var parts: [String] = []
@@ -71,6 +75,9 @@ struct LocalDatasetEnrichmentResult: Equatable {
         }
         parts.append(transcribedClipCount > 0 ? "\(transcribedClipCount) transcript\(transcribedClipCount == 1 ? "" : "s") found" : "transcription pending")
         parts.append(keyEstimateCount > 0 ? "\(keyEstimateCount) key estimate\(keyEstimateCount == 1 ? "" : "s")" : "key analysis pending")
+        if autoCaptionedClipCount > 0 {
+            parts.append("\(autoCaptionedClipCount) auto caption\(autoCaptionedClipCount == 1 ? "" : "s")")
+        }
         return parts.joined(separator: "; ") + "."
     }
 }
@@ -176,6 +183,16 @@ final class LocalDatasetEnrichmentService: ObservableObject {
             for index in records.indices {
                 try Task.checkCancellation()
                 records[index].object = try applyDerivedAudioMetadata(
+                    record: records[index],
+                    datasetDirectory: datasetDirectory,
+                    force: force
+                )
+            }
+
+            await onStep(.generatingCaptions)
+            for index in records.indices {
+                try Task.checkCancellation()
+                records[index].object = try applyAutomaticCaptionMetadata(
                     record: records[index],
                     datasetDirectory: datasetDirectory,
                     force: force
@@ -546,6 +563,49 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return updated
     }
 
+    nonisolated private static func applyAutomaticCaptionMetadata(
+        record: LocalDatasetCaptionRecord,
+        datasetDirectory: URL,
+        force: Bool
+    ) throws -> [String: Any] {
+        guard shouldGenerateNativeCaption(for: record.object, force: force) else {
+            return record.object
+        }
+
+        let previousCaption = explicitCaptionText(from: record.object)
+        guard let generatedCaption = generatedMetadataCaption(for: record.object, seedCaption: previousCaption) else {
+            return record.object
+        }
+
+        var updated = record.object
+        updated["caption"] = generatedCaption
+        updated["prompt"] = generatedCaption
+        updated["caption_source"] = "native"
+
+        var annotation = updated["annotation"] as? [String: Any] ?? [:]
+        let rawOutputs = annotation["raw_output_files"] as? [String: Any] ?? [:]
+        annotation["schema_version"] = TrainingDatasetPackageWriter.annotationSchemaVersion
+        annotation["updated_at"] = ISO8601DateFormatter().string(from: Date())
+        annotation["caption_source"] = "native"
+        annotation["caption_present"] = true
+        annotation["caption_backend"] = "native-metadata-captioner"
+        annotation["caption_model_id"] = "anvil-metadata-caption-v1"
+        annotation["caption_seed"] = previousCaption
+        annotation["caption_inputs"] = nativeCaptionInputs(in: updated)
+        annotation["raw_output_files"] = rawOutputs
+        updated["annotation"] = annotation
+
+        let clipURL = resolve(record.file, relativeTo: datasetDirectory)
+        var sidecar = readJSONObject(from: clipURL.deletingPathExtension().appendingPathExtension("json")) ?? [:]
+        sidecar["caption"] = generatedCaption
+        sidecar["prompt"] = generatedCaption
+        sidecar["caption_source"] = "native"
+        sidecar["annotation"] = annotation
+        try writeJSONObject(sidecar, to: clipURL.deletingPathExtension().appendingPathExtension("json"))
+
+        return updated
+    }
+
     nonisolated private static func refreshCachedStemAnalysisIfNeeded(
         record: [String: Any],
         datasetDirectory: URL,
@@ -793,6 +853,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
             ? nil
             : rounded(bpmEstimates.reduce(0, +) / Double(bpmEstimates.count), places: 1)
         let keyValues = keyMetadataValues(in: captions)
+        let autoCaptionedClipCount = nativeCaptionedClipCount(in: captions)
 
         return LocalDatasetEnrichmentResult(
             datasetDirectory: datasetDirectory,
@@ -810,7 +871,8 @@ final class LocalDatasetEnrichmentService: ObservableObject {
             bpmEstimateCount: bpmEstimates.count,
             averageBPM: averageBPM,
             keyEstimateCount: keyValues.count,
-            transcribedClipCount: transcribedClipCount
+            transcribedClipCount: transcribedClipCount,
+            autoCaptionedClipCount: autoCaptionedClipCount
         )
     }
 
@@ -1287,6 +1349,165 @@ final class LocalDatasetEnrichmentService: ObservableObject {
 
     nonisolated private static func hasCompletedTranscription(_ record: [String: Any]) -> Bool {
         !transcriptionText(from: record).isEmpty
+    }
+
+    nonisolated private static func shouldGenerateNativeCaption(
+        for record: [String: Any],
+        force: Bool
+    ) -> Bool {
+        let annotation = record["annotation"] as? [String: Any] ?? [:]
+        let source = stringValue(record["caption_source"])
+            ?? stringValue(annotation["caption_source"])
+            ?? (explicitCaptionText(from: record).isEmpty ? "none" : "manual")
+        switch source {
+        case "none", "manual", "native":
+            return true
+        default:
+            return force && source == "native"
+        }
+    }
+
+    nonisolated private static func explicitCaptionText(from record: [String: Any]) -> String {
+        for key in ["caption", "prompt"] {
+            if let value = record[key] as? String {
+                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    return trimmed
+                }
+            }
+        }
+        return ""
+    }
+
+    nonisolated private static func generatedMetadataCaption(
+        for record: [String: Any],
+        seedCaption: String
+    ) -> String? {
+        var components: [String] = []
+        appendCaptionComponent(seedCaption, to: &components)
+
+        if let bpm = captionBPM(in: record) {
+            appendCaptionComponent("\(tempoDescriptor(for: bpm)) \(formatBPM(bpm)) BPM", to: &components)
+        }
+        if let key = captionKey(in: record) {
+            appendCaptionComponent(key, to: &components)
+        }
+        appendCaptionComponent(contentDescriptor(for: record), to: &components)
+
+        guard !components.isEmpty else { return nil }
+        return components.joined(separator: ", ")
+    }
+
+    nonisolated private static func appendCaptionComponent(_ value: String, to components: inout [String]) {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let normalized = trimmed.lowercased()
+        guard !components.contains(where: { existing in
+            let existingNormalized = existing.lowercased()
+            return existingNormalized == normalized ||
+                existingNormalized.contains(normalized) ||
+                normalized.contains(existingNormalized)
+        }) else {
+            return
+        }
+        components.append(trimmed)
+    }
+
+    nonisolated private static func captionBPM(in record: [String: Any]) -> Double? {
+        if let bpm = doubleValue(record["bpm"]) {
+            return bpm
+        }
+        if let analysis = record["analysis"] as? [String: Any] {
+            return doubleValue(analysis["bpm"]) ?? doubleValue(analysis["tempo_bpm_estimate"])
+        }
+        return nil
+    }
+
+    nonisolated private static func captionKey(in record: [String: Any]) -> String? {
+        if let key = stringValue(record["keyscale"]) ?? stringValue(record["key"]) {
+            return key
+        }
+        if let analysis = record["analysis"] as? [String: Any] {
+            return stringValue(analysis["keyscale"]) ?? stringValue(analysis["key"])
+        }
+        return nil
+    }
+
+    nonisolated private static func tempoDescriptor(for bpm: Double) -> String {
+        switch bpm {
+        case ..<75:
+            return "very slow"
+        case ..<95:
+            return "slow"
+        case ..<125:
+            return "mid-tempo"
+        case ..<155:
+            return "upbeat"
+        default:
+            return "fast"
+        }
+    }
+
+    nonisolated private static func formatBPM(_ bpm: Double) -> String {
+        bpm.rounded() == bpm
+            ? String(Int(bpm))
+            : bpm.formatted(.number.precision(.fractionLength(1)))
+    }
+
+    nonisolated private static func contentDescriptor(for record: [String: Any]) -> String {
+        let role = stringValue(record["role"]) ?? "full_mix"
+        let hasVocals = boolValue(record["vocal_overlap"]) == true ||
+            !transcriptionText(from: record).isEmpty ||
+            stemPath(for: .vocals, in: record) != nil
+        let hasInstrumental = stemPath(for: .instrumental, in: record) != nil
+
+        switch role {
+        case "vocal", "vocals":
+            return "isolated vocal stem"
+        case "instrumental":
+            return "instrumental backing stem"
+        default:
+            if hasVocals && hasInstrumental {
+                return "full mix with vocals and instrumental backing"
+            }
+            if hasVocals {
+                return "full mix with vocals"
+            }
+            if hasInstrumental {
+                return "instrumental full mix"
+            }
+            return "full mix"
+        }
+    }
+
+    nonisolated private static func nativeCaptionInputs(in record: [String: Any]) -> [String] {
+        var inputs = ["caption_seed"]
+        if captionBPM(in: record) != nil {
+            inputs.append("bpm")
+        }
+        if captionKey(in: record) != nil {
+            inputs.append("key")
+        }
+        if !transcriptionText(from: record).isEmpty {
+            inputs.append("transcript")
+        }
+        if record["separation"] != nil {
+            inputs.append("stems")
+        }
+        return inputs
+    }
+
+    nonisolated private static func nativeCaptionedClipCount(in captions: [[String: Any]]) -> Int {
+        captions.filter { record in
+            if stringValue(record["caption_source"]) == "native" {
+                return true
+            }
+            if let annotation = record["annotation"] as? [String: Any],
+               stringValue(annotation["caption_source"]) == "native" {
+                return true
+            }
+            return false
+        }.count
     }
 
     nonisolated private static func readJSONObject(from url: URL) -> [String: Any]? {

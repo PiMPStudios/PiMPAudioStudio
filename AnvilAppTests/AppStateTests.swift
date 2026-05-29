@@ -957,11 +957,15 @@ private func zipEntries(in archiveURL: URL) throws -> [String] {
     )
 
     #expect(result.transcribedClipCount == 1)
+    #expect(result.autoCaptionedClipCount == 1)
     #expect(await lyricsTranscriber.evictionCount == 1)
 
     let captionsData = try Data(contentsOf: datasetDir.appendingPathComponent("captions.json"))
     let captions = try JSONSerialization.jsonObject(with: captionsData) as? [[String: Any]]
     let record = captions?.first
+    #expect(record?["caption"] as? String == "dark blues stem package, very slow 72 BPM, E minor, full mix with vocals and instrumental backing")
+    #expect(record?["prompt"] as? String == "dark blues stem package, very slow 72 BPM, E minor, full mix with vocals and instrumental backing")
+    #expect(record?["caption_source"] as? String == "native")
     #expect(record?["lyrics"] as? String == "I keep singing low")
     #expect(record?["transcript"] as? String == "I keep singing low")
     let transcription = record?["transcription"] as? [String: Any]
@@ -970,6 +974,10 @@ private func zipEntries(in archiveURL: URL) throws -> [String] {
     #expect(transcription?["lyrics_file"] as? String == "stems/f001_clip_001/lyrics.txt")
     #expect(record?["lyrics_source"] as? String == "native-qwen3-asr")
     let annotation = record?["annotation"] as? [String: Any]
+    #expect(annotation?["caption_source"] as? String == "native")
+    #expect(annotation?["caption_backend"] as? String == "native-metadata-captioner")
+    #expect(annotation?["caption_model_id"] as? String == "anvil-metadata-caption-v1")
+    #expect(annotation?["caption_seed"] as? String == "dark blues stem package")
     #expect(annotation?["lyrics_source"] as? String == "native-qwen3-asr")
     #expect(annotation?["model_id"] as? String == "fake-qwen3-asr")
     let assets = record?["assets"] as? [String: Any]
@@ -995,9 +1003,90 @@ private func zipEntries(in archiveURL: URL) throws -> [String] {
     let manifestAnnotation = manifest?["annotation"] as? [String: Any]
     let lyricSources = manifestAnnotation?["lyrics_sources"] as? [String] ?? []
     #expect(lyricSources.contains("native-qwen3-asr"))
+    let captionSources = manifestAnnotation?["caption_sources"] as? [String] ?? []
+    #expect(captionSources.contains("native"))
     let manifestAnalysis = manifest?["analysis"] as? [String: Any]
     #expect(manifestAnalysis?["bpm_status"] as? String == "estimated_from_stems")
     #expect(manifestAnalysis?["key_status"] as? String == "estimated_from_audio")
+}
+
+@Test func localDatasetEnrichmentPreservesImportedCaptions() async throws {
+    let datasetDir = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let clipsDir = datasetDir.appendingPathComponent("clips", isDirectory: true)
+    let stemsDir = datasetDir
+        .appendingPathComponent("stems", isDirectory: true)
+        .appendingPathComponent("f001_clip_001", isDirectory: true)
+    try FileManager.default.createDirectory(at: clipsDir, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: stemsDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: datasetDir) }
+
+    let clipURL = clipsDir.appendingPathComponent("f001_clip_001.wav")
+    let vocalURL = stemsDir.appendingPathComponent("vocals.wav")
+    let instrumentalURL = stemsDir.appendingPathComponent("instrumental.wav")
+    try silentWAVData().write(to: clipURL)
+    try silentWAVData().write(to: vocalURL)
+    try silentWAVData().write(to: instrumentalURL)
+
+    let separationJSON = """
+    {
+      "stems": {
+        "vocals": {
+          "file": "stems/f001_clip_001/vocals.wav",
+          "analysis": { "tempo_bpm_estimate": 90 }
+        },
+        "instrumental": {
+          "file": "stems/f001_clip_001/instrumental.wav",
+          "analysis": {
+            "tempo_bpm_estimate": 90,
+            "key": "A minor",
+            "keyscale": "A minor",
+            "key_status": "estimated_from_audio",
+            "key_source": "native-dsp-instrumental"
+          }
+        }
+      }
+    }
+    """
+    try Data(separationJSON.utf8).write(to: stemsDir.appendingPathComponent("separation.json"))
+
+    let captionsJSON = """
+    [
+      {
+        "file": "clips/f001_clip_001.wav",
+        "caption": "imported human caption",
+        "caption_source": "sidecar",
+        "annotation": {
+          "caption_source": "sidecar"
+        },
+        "separation": {
+          "mode": "instrumental",
+          "stems": {
+            "vocals": "stems/f001_clip_001/vocals.wav",
+            "instrumental": "stems/f001_clip_001/instrumental.wav"
+          },
+          "separation_file": "stems/f001_clip_001/separation.json"
+        }
+      }
+    ]
+    """
+    try Data(captionsJSON.utf8).write(to: datasetDir.appendingPathComponent("captions.json"))
+
+    let result = try await LocalDatasetEnrichmentService.run(
+        datasetDirectory: datasetDir,
+        lyricsTranscriber: FakeDatasetLyricsTranscriber(),
+        onStep: { _ in }
+    )
+
+    #expect(result.autoCaptionedClipCount == 0)
+
+    let captionsData = try Data(contentsOf: datasetDir.appendingPathComponent("captions.json"))
+    let captions = try JSONSerialization.jsonObject(with: captionsData) as? [[String: Any]]
+    let record = captions?.first
+    #expect(record?["caption"] as? String == "imported human caption")
+    #expect(record?["caption_source"] as? String == "sidecar")
+    let annotation = record?["annotation"] as? [String: Any]
+    #expect(annotation?["caption_source"] as? String == "sidecar")
 }
 
 @Test func localDatasetEnrichmentExportsStemBundlesNatively() throws {
