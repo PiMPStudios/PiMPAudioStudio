@@ -43,6 +43,11 @@ struct TrainingPresentation: Identifiable {
     }
 }
 
+enum TrainingSurfacePresentationStyle {
+    case sheet
+    case inline
+}
+
 struct TrainingSheet: View {
     @EnvironmentObject private var trainingService: TrainingService
     @EnvironmentObject private var historyStore: HistoryStore
@@ -50,6 +55,9 @@ struct TrainingSheet: View {
     let selectedEntries: [HistoryEntry]
 
     @Environment(\.dismiss) private var dismiss
+
+    private let presentationStyle: TrainingSurfacePresentationStyle
+    private let onClose: (() -> Void)?
 
     @State private var adapterName: String = ""
     private let resumeAdapterID: String?
@@ -70,10 +78,14 @@ struct TrainingSheet: View {
         initialImportedFiles: [TrainingImportedFile] = [],
         initialName: String = "",
         initialConfig: LoRAConfig? = nil,
-        resumeAdapterID: String? = nil
+        resumeAdapterID: String? = nil,
+        presentationStyle: TrainingSurfacePresentationStyle = .sheet,
+        onClose: (() -> Void)? = nil
     ) {
         self.selectedEntries = selectedEntries
         self.resumeAdapterID = resumeAdapterID
+        self.presentationStyle = presentationStyle
+        self.onClose = onClose
         self._importedFiles = State(initialValue: initialImportedFiles)
         self._adapterName = State(initialValue: initialName)
         if let config = initialConfig {
@@ -96,7 +108,7 @@ struct TrainingSheet: View {
                 Text("Train LoRA Adapter")
                     .font(.headline)
                 Spacer()
-                Button("Close") { dismiss() }
+                Button("Close") { close() }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
             }
@@ -118,7 +130,15 @@ struct TrainingSheet: View {
                 }
             }
         }
-        .frame(minWidth: 500, minHeight: 500)
+        .frame(
+            minWidth: presentationStyle == .sheet ? 500 : 0,
+            minHeight: presentationStyle == .sheet ? 500 : 0
+        )
+        .frame(
+            maxWidth: presentationStyle == .inline ? .infinity : nil,
+            maxHeight: presentationStyle == .inline ? .infinity : nil,
+            alignment: .topLeading
+        )
         .onAppear {
             trainingService.resetToIdle()
         }
@@ -161,218 +181,261 @@ struct TrainingSheet: View {
     // MARK: - Config View
 
     private var configView: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            // Resume banner
-            if isCheckpointResume {
-                HStack {
-                    Image(systemName: "pause.circle.fill")
-                        .foregroundStyle(.orange)
-                    Text("Training paused. Resume from the saved checkpoint, or start fresh from Retrain.")
-                        .font(.callout)
-                    Spacer()
-                }
-                .padding(8)
-                .background(.orange.opacity(0.1))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+        Group {
+            if presentationStyle == .inline {
+                inlineConfigView
+            } else {
+                sheetConfigView
             }
+        }
+    }
 
-            // Training data section
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Training Data")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
+    private var sheetConfigView: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            resumeBanner
+            trainingDataSection
+            configurationSection
+            errorDisplay
+            startButtonRow
+        }
+        .padding()
+    }
 
-                VStack(spacing: 4) {
-                    ForEach(selectedEntries) { entry in
-                        HStack {
-                            Image(systemName: "waveform")
-                                .foregroundStyle(.secondary)
-                            Text(entry.prompt)
-                                .lineLimit(1)
-                                .font(.callout)
-                            Spacer()
-                            Text("\(Int(entry.duration))s")
+    private var inlineConfigView: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            resumeBanner
+
+            HStack(alignment: .top, spacing: 32) {
+                trainingDataSection
+                    .frame(minWidth: 280, idealWidth: 360, maxWidth: 420, alignment: .topLeading)
+
+                VStack(alignment: .leading, spacing: 16) {
+                    configurationSection
+                    errorDisplay
+                    startButtonRow
+                }
+                .frame(minWidth: 360, idealWidth: 460, maxWidth: 560, alignment: .topLeading)
+            }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+        .padding(24)
+    }
+
+    @ViewBuilder
+    private var resumeBanner: some View {
+        if isCheckpointResume {
+            HStack {
+                Image(systemName: "pause.circle.fill")
+                    .foregroundStyle(.orange)
+                Text("Training paused. Resume from the saved checkpoint, or start fresh from Retrain.")
+                    .font(.callout)
+                Spacer()
+            }
+            .padding(8)
+            .background(.orange.opacity(0.1))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+    }
+
+    private var trainingDataSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Training Data")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+
+            VStack(spacing: 4) {
+                ForEach(selectedEntries) { entry in
+                    HStack {
+                        Image(systemName: "waveform")
+                            .foregroundStyle(.secondary)
+                        Text(entry.prompt)
+                            .lineLimit(1)
+                            .font(.callout)
+                        Spacer()
+                        Text("\(Int(entry.duration))s")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                ForEach(importedFiles.indices, id: \.self) { idx in
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "doc.badge.plus")
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 6)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(importedFiles[idx].url.lastPathComponent)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                        }
-                    }
-                    ForEach(importedFiles.indices, id: \.self) { idx in
-                        HStack(alignment: .top, spacing: 8) {
-                            Image(systemName: "doc.badge.plus")
-                                .foregroundStyle(.secondary)
-                                .padding(.top, 6)
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(importedFiles[idx].url.lastPathComponent)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
-                                TextField("Description", text: Binding(
-                                    get: { importedFiles[idx].description },
-                                    set: { importedFiles[idx].description = $0 }
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            TextField("Description", text: Binding(
+                                get: { importedFiles[idx].description },
+                                set: { importedFiles[idx].description = $0 }
+                            ))
+                            .font(.callout)
+                            .textFieldStyle(.roundedBorder)
+                            .disabled(isCheckpointResume)
+                            if !importedFiles[idx].lyrics.isEmpty {
+                                TextField("Lyrics", text: Binding(
+                                    get: { importedFiles[idx].lyrics },
+                                    set: { importedFiles[idx].lyrics = $0 }
                                 ))
-                                .font(.callout)
+                                .font(.caption)
                                 .textFieldStyle(.roundedBorder)
                                 .disabled(isCheckpointResume)
-                                if !importedFiles[idx].lyrics.isEmpty {
-                                    TextField("Lyrics", text: Binding(
-                                        get: { importedFiles[idx].lyrics },
-                                        set: { importedFiles[idx].lyrics = $0 }
-                                    ))
-                                    .font(.caption)
-                                    .textFieldStyle(.roundedBorder)
-                                    .disabled(isCheckpointResume)
+                            }
+                        }
+                        Button {
+                            importedFiles.remove(at: idx)
+                        } label: {
+                            Image(systemName: "xmark.circle")
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(isCheckpointResume)
+                        .padding(.top, 6)
+                    }
+                }
+            }
+            .padding(8)
+            .background(.quaternary.opacity(0.3))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            HStack {
+                let totalCount = selectedEntries.count + importedFiles.count
+                Text("\(totalCount) tracks selected")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button("+ Add audio files or JSON...") {
+                    showingFileImporter = true
+                }
+                .buttonStyle(.borderless)
+                .font(.caption)
+                .disabled(isCheckpointResume)
+            }
+            if let importStatusMessage {
+                Label(importStatusMessage, systemImage: "checkmark.circle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if let importErrorMessage {
+                Label(importErrorMessage, systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+        }
+    }
+
+    private var configurationSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Configuration")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+
+            LabeledContent("Adapter Name") {
+                TextField("e.g. My Jazz Style", text: $adapterName)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(maxWidth: 240)
+                    .disabled(isCheckpointResume)
+            }
+            LabeledContent("Base Model") {
+                Text(baseModelDisplayName)
+                    .foregroundStyle(.secondary)
+            }
+            LabeledContent("Rank") {
+                Picker("Rank", selection: $selectedRank) {
+                    ForEach(rankOptions, id: \.self) { Text("\($0)").tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 150)
+                .disabled(isCheckpointResume)
+            }
+            LabeledContent("Epochs") {
+                Picker("Epochs", selection: $selectedEpochs) {
+                    ForEach(epochOptions, id: \.self) { Text("\($0)").tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 220)
+                .disabled(isCheckpointResume)
+            }
+
+            // Target layers
+            LabeledContent("Target Layers") {
+                HStack(spacing: 8) {
+                    ForEach(TargetLayer.allCases, id: \.self) { layer in
+                        Toggle(layer.displayName, isOn: Binding(
+                            get: { selectedTargetLayers.contains(layer) },
+                            set: { isOn in
+                                if isOn {
+                                    selectedTargetLayers.insert(layer)
+                                } else if selectedTargetLayers.count > 1 {
+                                    selectedTargetLayers.remove(layer)
                                 }
                             }
-                            Button {
-                                importedFiles.remove(at: idx)
-                            } label: {
-                                Image(systemName: "xmark.circle")
-                                    .foregroundStyle(.secondary)
-                            }
-                            .buttonStyle(.borderless)
-                            .disabled(isCheckpointResume)
-                            .padding(.top, 6)
-                        }
+                        ))
+                        .toggleStyle(.checkbox)
+                        .disabled(isCheckpointResume)
                     }
-                }
-                .padding(8)
-                .background(.quaternary.opacity(0.3))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-
-                HStack {
-                    let totalCount = selectedEntries.count + importedFiles.count
-                    Text("\(totalCount) tracks selected")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Button("+ Add audio files or JSON...") {
-                        showingFileImporter = true
-                    }
-                    .buttonStyle(.borderless)
-                    .font(.caption)
-                    .disabled(isCheckpointResume)
-                }
-                if let importStatusMessage {
-                    Label(importStatusMessage, systemImage: "checkmark.circle")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                if let importErrorMessage {
-                    Label(importErrorMessage, systemImage: "exclamationmark.triangle")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
                 }
             }
 
-            // Configuration section
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Configuration")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-
-                LabeledContent("Adapter Name") {
-                    TextField("e.g. My Jazz Style", text: $adapterName)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(maxWidth: 200)
+            // Advanced: warmup + accumulation
+            DisclosureGroup("Advanced") {
+                LabeledContent("LR Warmup") {
+                    HStack {
+                        Slider(
+                            value: Binding(
+                                get: { Double(warmupFraction) },
+                                set: { warmupFraction = Float($0) }
+                            ),
+                            in: 0...0.5,
+                            step: 0.05
+                        )
+                        .frame(maxWidth: 150)
                         .disabled(isCheckpointResume)
-                }
-                LabeledContent("Base Model") {
-                    Text(baseModelDisplayName)
-                        .foregroundStyle(.secondary)
-                }
-                LabeledContent("Rank") {
-                    Picker("Rank", selection: $selectedRank) {
-                        ForEach(rankOptions, id: \.self) { Text("\($0)").tag($0) }
+                        Text("\(Int(warmupFraction * 100))%")
+                            .monospacedDigit()
+                            .frame(width: 40)
                     }
-                    .pickerStyle(.segmented)
-                    .frame(maxWidth: 150)
-                    .disabled(isCheckpointResume)
                 }
-                LabeledContent("Epochs") {
-                    Picker("Epochs", selection: $selectedEpochs) {
-                        ForEach(epochOptions, id: \.self) { Text("\($0)").tag($0) }
+                LabeledContent("Grad. Accumulation") {
+                    Picker("Steps", selection: $gradientAccumulationSteps) {
+                        ForEach(accumOptions, id: \.self) { Text("\($0)").tag($0) }
                     }
                     .pickerStyle(.segmented)
                     .frame(maxWidth: 200)
                     .disabled(isCheckpointResume)
                 }
-
-                // Target layers
-                LabeledContent("Target Layers") {
-                    HStack(spacing: 8) {
-                        ForEach(TargetLayer.allCases, id: \.self) { layer in
-                            Toggle(layer.displayName, isOn: Binding(
-                                get: { selectedTargetLayers.contains(layer) },
-                                set: { isOn in
-                                    if isOn {
-                                        selectedTargetLayers.insert(layer)
-                                    } else if selectedTargetLayers.count > 1 {
-                                        selectedTargetLayers.remove(layer)
-                                    }
-                                }
-                            ))
-                            .toggleStyle(.checkbox)
-                            .disabled(isCheckpointResume)
-                        }
-                    }
-                }
-
-                // Advanced: warmup + accumulation
-                DisclosureGroup("Advanced") {
-                    LabeledContent("LR Warmup") {
-                        HStack {
-                            Slider(
-                                value: Binding(
-                                    get: { Double(warmupFraction) },
-                                    set: { warmupFraction = Float($0) }
-                                ),
-                                in: 0...0.5,
-                                step: 0.05
-                            )
-                            .frame(maxWidth: 150)
-                            .disabled(isCheckpointResume)
-                            Text("\(Int(warmupFraction * 100))%")
-                                .monospacedDigit()
-                                .frame(width: 40)
-                        }
-                    }
-                    LabeledContent("Grad. Accumulation") {
-                        Picker("Steps", selection: $gradientAccumulationSteps) {
-                            ForEach(accumOptions, id: \.self) { Text("\($0)").tag($0) }
-                        }
-                        .pickerStyle(.segmented)
-                        .frame(maxWidth: 200)
-                        .disabled(isCheckpointResume)
-                    }
-                }
-            }
-
-            // Error display
-            if case .failed(let message) = trainingService.state {
-                Label(message, systemImage: "exclamationmark.triangle")
-                    .foregroundStyle(.red)
-                    .font(.caption)
-            }
-
-            // Start/Resume button
-            HStack {
-                Spacer()
-                if isCheckpointResume {
-                    Button("Resume Training") {
-                        startTraining()
-                    }
-                    .buttonStyle(.borderedProminent)
-                } else {
-                    Button("Start Training") {
-                        startTraining()
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(!canStartTraining)
-                }
             }
         }
-        .padding()
+    }
+
+    @ViewBuilder
+    private var errorDisplay: some View {
+        if case .failed(let message) = trainingService.state {
+            Label(message, systemImage: "exclamationmark.triangle")
+                .foregroundStyle(.red)
+                .font(.caption)
+        }
+    }
+
+    private var startButtonRow: some View {
+        HStack {
+            Spacer()
+            if isCheckpointResume {
+                Button("Resume Training") {
+                    startTraining()
+                }
+                .buttonStyle(.borderedProminent)
+            } else {
+                Button("Start Training") {
+                    startTraining()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!canStartTraining)
+            }
+        }
     }
 
     // MARK: - Progress View
@@ -496,7 +559,7 @@ struct TrainingSheet: View {
                 .buttonStyle(.bordered)
                 .help("Return to config with the same dataset — adjust epochs or settings and retrain")
 
-                Button("Done") { dismiss() }
+                Button("Done") { close() }
                     .buttonStyle(.borderedProminent)
             }
         }
@@ -522,6 +585,14 @@ struct TrainingSheet: View {
 
     private var isCheckpointResume: Bool {
         isResumeSession || isPausedState
+    }
+
+    private func close() {
+        if let onClose {
+            onClose()
+        } else {
+            dismiss()
+        }
     }
 
     private func statView(value: String, label: String) -> some View {

@@ -241,6 +241,7 @@ private struct BuildDatasetsView: View {
 private struct BuildTrainingView: View {
     @EnvironmentObject private var trainingService: TrainingService
 
+    @State private var selectedTrainingMode: BuildTrainingMode = .lora
     @State private var trainingPresentation: TrainingPresentation?
     @State private var showingStopConfirmation = false
 
@@ -248,17 +249,10 @@ private struct BuildTrainingView: View {
         VStack(alignment: .leading, spacing: 0) {
             header
             Divider()
-            statusView
+            trainingModeBar
+            Divider()
+            workspaceContent
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .sheet(item: $trainingPresentation) { presentation in
-            TrainingSheet(
-                selectedEntries: presentation.selectedEntries,
-                initialImportedFiles: presentation.files,
-                initialName: presentation.initialName,
-                initialConfig: presentation.initialConfig,
-                resumeAdapterID: presentation.resumeAdapterID
-            )
         }
         .alert("Pause or Stop Training?", isPresented: $showingStopConfirmation) {
             Button("Continue Training", role: .cancel) {}
@@ -290,9 +284,56 @@ private struct BuildTrainingView: View {
                 Label("Train from Files\u{2026}", systemImage: "graduationcap")
             }
             .buttonStyle(.borderedProminent)
-            .disabled(!canStartNewTraining)
+            .disabled(selectedTrainingMode != .lora || !canStartNewTraining || trainingPresentation != nil)
         }
         .padding()
+    }
+
+    private var trainingModeBar: some View {
+        HStack {
+            Picker("Training Mode", selection: $selectedTrainingMode) {
+                ForEach(BuildTrainingMode.allCases) { mode in
+                    Text(mode.title).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 360)
+            .disabled(!canStartNewTraining || trainingPresentation != nil)
+
+            Spacer()
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 10)
+    }
+
+    @ViewBuilder
+    private var workspaceContent: some View {
+        switch selectedTrainingMode {
+        case .lora:
+            loraWorkspace
+        case .lokr:
+            statusMessage("LoKr Training", message: "Not available yet.", systemImage: "slider.horizontal.3", color: .secondary)
+        case .remote:
+            statusMessage("Remote Training", message: "Not available yet.", systemImage: "cloud", color: .secondary)
+        }
+    }
+
+    @ViewBuilder
+    private var loraWorkspace: some View {
+        if let presentation = trainingPresentation {
+            TrainingSheet(
+                selectedEntries: presentation.selectedEntries,
+                initialImportedFiles: presentation.files,
+                initialName: presentation.initialName,
+                initialConfig: presentation.initialConfig,
+                resumeAdapterID: presentation.resumeAdapterID,
+                presentationStyle: .inline
+            ) {
+                trainingPresentation = nil
+            }
+        } else {
+            statusView
+        }
     }
 
     @ViewBuilder
@@ -429,6 +470,22 @@ private struct BuildTrainingView: View {
             return "\(hours)h \(remainingMinutes)m"
         }
         return "\(minutes)m \(seconds)s"
+    }
+}
+
+private enum BuildTrainingMode: String, CaseIterable, Identifiable {
+    case lora
+    case lokr
+    case remote
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .lora: return "LoRA"
+        case .lokr: return "LoKr"
+        case .remote: return "Remote GPU"
+        }
     }
 }
 
