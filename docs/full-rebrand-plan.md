@@ -105,6 +105,8 @@ Open naming checks before execution:
 
 ### Phase 0: Freeze And Baseline
 
+Status: Complete as of 2026-05-30.
+
 - Confirm final names in the table above.
 - Keep old repo clean and untouched.
 - Record current working model/data locations before migration work.
@@ -117,7 +119,14 @@ Exit criteria:
 - Baseline green in the new worktree.
 - Final target names confirmed.
 
+Validation notes:
+
+- `xcodebuild -project AnvilApp.xcodeproj -scheme AnvilApp -destination 'platform=macOS' -derivedDataPath /tmp/PiMPAudioStudio-baseline-xcbuild -only-testing:AnvilAppTests/AppStateTests test` passed.
+- `swift test --package-path AnvilCore` and the LoKR filter compile but MLX-touching SwiftPM execution is blocked in this harness by `default.metallib` not being found. Treat Xcode app tests as the useful baseline until the MLX SwiftPM artifact issue is separately fixed.
+
 ### Phase 1: Project And Build Identity
+
+Status: Complete as of 2026-05-30.
 
 - Rename project-level files and folders:
   - `AnvilApp/` to `PiMPAudioStudio/`
@@ -134,6 +143,12 @@ Exit criteria:
 - Swift package builds/tests under the new package name.
 - Xcode app target builds.
 - No project references to old target/module names except legacy migration docs.
+
+Validation notes:
+
+- `swift test --package-path PiMPAudioCore --scratch-path /tmp/PiMPAudioCore-spm-smoke --filter piMPAudioCoreHasVersion` passed.
+- `xcodebuild -project PiMPAudioStudio.xcodeproj -scheme PiMPAudioStudio -destination 'platform=macOS' -derivedDataPath /tmp/PiMPAudioStudio-phase1-xcbuild -only-testing:PiMPAudioStudioTests/AppStateTests test` passed.
+- `git diff --check` passed.
 
 ### Phase 2: Runtime Identity
 

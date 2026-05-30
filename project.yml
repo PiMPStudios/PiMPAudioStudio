@@ -1,14 +1,14 @@
-name: AnvilApp
+name: PiMPAudioStudio
 options:
-  bundleIdPrefix: net.pimp.anvil
+  bundleIdPrefix: com.pimpstudios
   deploymentTarget:
     macOS: "15.0"
   xcodeVersion: "16.0"
   minimumXcodeGenVersion: "2.38"
 
 packages:
-  AnvilCore:
-    path: ./AnvilCore
+  PiMPAudioCore:
+    path: ./PiMPAudioCore
   mlx-swift:
     url: https://github.com/ml-explore/mlx-swift
     from: 0.21.0
@@ -17,12 +17,12 @@ packages:
     from: 0.12.1
 
 targets:
-  AnvilApp:
+  PiMPAudioStudio:
     type: application
     platform: macOS
-    sources: [AnvilApp]
+    sources: [PiMPAudioStudio]
     dependencies:
-      - package: AnvilCore
+      - package: PiMPAudioCore
       - package: mlx-swift
         product: MLX
       - package: mlx-swift
@@ -31,7 +31,7 @@ targets:
         product: MCP
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: net.pimp.anvil.AnvilApp
+        PRODUCT_BUNDLE_IDENTIFIER: com.pimpstudios.PiMPAudioStudio
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: 1
         SWIFT_VERSION: "5.10"
@@ -39,11 +39,11 @@ targets:
         INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.music"
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_NSHumanReadableCopyright: ""
-        INFOPLIST_KEY_CFBundleDisplayName: "Anvil"
+        INFOPLIST_KEY_CFBundleDisplayName: "PiMP Audio Studio"
         ENABLE_HARDENED_RUNTIME: YES
         ENABLE_TESTABILITY: YES
     entitlements:
-      path: AnvilApp/AnvilApp.entitlements
+      path: PiMPAudioStudio/PiMPAudioStudio.entitlements
       properties:
         com.apple.security.app-sandbox: true
         com.apple.security.network.client: true
@@ -60,14 +60,25 @@ targets:
         com.apple.security.temporary-exception.files.home-relative-path.read-write:
           - /.gemini/
 
-  AnvilAppTests:
+  PiMPAudioStudioTests:
     type: bundle.unit-test
     platform: macOS
-    sources: [AnvilAppTests]
+    sources: [PiMPAudioStudioTests]
     dependencies:
-      - target: AnvilApp
-      - package: AnvilCore
+      - target: PiMPAudioStudio
+      - package: PiMPAudioCore
     settings:
       base:
         SWIFT_VERSION: "5.10"
         GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  PiMPAudioStudio:
+    build:
+      targets:
+        PiMPAudioStudio: all
+    test:
+      targets:
+        - PiMPAudioStudioTests
+    run:
+      config: Debug

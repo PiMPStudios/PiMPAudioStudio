@@ -1,8 +1,8 @@
-# Anvil
+# PiMP Audio Studio
 
 **AI-powered music generation for macOS**, built natively with Swift, SwiftUI, and [MLX](https://github.com/ml-explore/mlx-swift).
 
-Anvil runs diffusion-based audio models entirely on-device using Apple Silicon GPU acceleration. No cloud, no subscriptions, no internet required after initial model download.
+PiMP Audio Studio runs diffusion-based audio models entirely on-device using Apple Silicon GPU acceleration. No cloud, no subscriptions, no internet required after initial model download.
 
 ---
 
@@ -29,7 +29,7 @@ Anvil runs diffusion-based audio models entirely on-device using Apple Silicon G
 - **On-Device Training** — Flow-matching training loop with AdamW optimizer, cosine LR scheduling, gradient accumulation
 - **Configurable Targets** — Self-attention, cross-attention, MLP injection with per-layer control
 - **Checkpoint/Resume** — Save and restore training state mid-session
-- **Training Dataset Packages** — Slice local files into package manifests, export remote-ready zips, and import Anvil/anvil-audio-v2 JSON bundles with vocal transcripts
+- **Training Dataset Packages** — Slice local files into package manifests, export remote-ready zips, and import compatible JSON bundles with vocal transcripts
 - **Adapter Management** — Rename, delete, export, merge (weighted interpolation of two adapters)
 - **Community Sharing** — Browse and download community adapters from a curated manifest; import any adapter from HuggingFace
 - **Multi-Adapter Stacking** — Apply up to 3 LoRA adapters simultaneously with real-time strength sliders (Inject-All architecture)
@@ -45,13 +45,13 @@ Anvil runs diffusion-based audio models entirely on-device using Apple Silicon G
 ## Architecture
 
 ```text
-AnvilApp (macOS target)
+PiMPAudioStudio (macOS target)
 ├── UI/              SwiftUI views (Generate, Editor, Settings, Training)
 ├── Services/        GenerationService, TrainingService, CommunityService, etc.
 ├── DSP/             WSOLA, LPC, EQ, resampler implementations
 └── Models/          App-level data types
 
-AnvilCore (Swift Package)
+PiMPAudioCore (Swift Package)
 ├── Inference/
 │   ├── DiT/         Diffusion Transformer (AceStep)
 │   ├── VAE/         Variational Autoencoder (encode/decode audio latents)
@@ -95,12 +95,12 @@ AnvilCore (Swift Package)
 ## Building
 
 ```bash
-git clone https://github.com/PiMPStudios/AnvilApp.git
-cd AnvilApp
-open AnvilApp.xcodeproj
+git clone https://github.com/PiMPStudios/PiMPAudioStudio.git
+cd PiMPAudioStudio
+open PiMPAudioStudio.xcodeproj
 ```
 
-Build and run with Xcode. The AnvilCore Swift package resolves automatically.
+Build and run with Xcode. The PiMPAudioCore Swift package resolves automatically.
 
 On first launch, the app guides you through downloading the base model weights (~2-4 GB depending on selected models).
 
@@ -109,13 +109,13 @@ On first launch, the app guides you through downloading the base model weights (
 ## Project Structure
 
 ```text
-AnvilApp.xcodeproj        Xcode project (macOS app target)
-AnvilCore/                Swift Package (inference engine, LoRA, registry)
+PiMPAudioStudio.xcodeproj        Xcode project (macOS app target)
+PiMPAudioCore/                Swift Package (inference engine, LoRA, registry)
   Package.swift           SPM manifest (mlx-swift, swift-transformers)
-  Sources/AnvilCore/      Library source
-  Tests/AnvilCoreTests/   Unit tests (Metal-dependent tests require GPU)
-AnvilApp/                 App source
-  AnvilAppApp.swift       @main entry point, environment object wiring
+  Sources/PiMPAudioCore/      Library source
+  Tests/PiMPAudioCoreTests/   Unit tests (Metal-dependent tests require GPU)
+PiMPAudioStudio/                 App source
+  PiMPAudioStudioApp.swift       @main entry point, environment object wiring
   UI/                     SwiftUI views organized by feature
   Services/               Business logic and orchestration
   DSP/                    Signal processing implementations
