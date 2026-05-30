@@ -100,8 +100,14 @@ enum TrainingDatasetPackageWriter {
         try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
 
         let existingCaptionRecords = captionRecordsByFile(from: outputDirectory)
+        let trimmedStyle = styleTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
+        let packageCaptionSource = trimmedStyle.isEmpty ? "filename" : "manual"
         try writeCaptionsFile(
-            clips: clips.map { (url: $0.url, caption: normalizedCaption(for: $0)) },
+            clips: clips.map { (
+                url: $0.url,
+                caption: normalizedCaption(for: $0),
+                captionSource: packageCaptionSource
+            ) },
             to: outputDirectory,
             existingRecordsByFile: existingCaptionRecords
         )
@@ -114,10 +120,10 @@ enum TrainingDatasetPackageWriter {
             outputDirectory: outputDirectory,
             config: config,
             audioMetadata: clipAudioMetadata,
+            captionSource: packageCaptionSource,
             existingCaptionRecordsByFile: existingCaptionRecords
         )
         let createdAtString = ISO8601DateFormatter().string(from: createdAt)
-        let trimmedStyle = styleTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
 
         try writeJSONObject(
             datasetConfig(),
@@ -517,6 +523,10 @@ enum TrainingDatasetPackageWriter {
             "style_hint": styleTemplate,
             "clip_count": clips.count,
             "clip_length_seconds": seconds(config.clipLength),
+            "clip_sampling": [
+                "mode": config.samplingMode.rawValue,
+                "seed": config.samplingSeed,
+            ],
             "estimated_total_seconds": seconds(Double(clips.count) * config.clipLength),
             "audio": audioSummary,
             "separation": [
@@ -532,7 +542,7 @@ enum TrainingDatasetPackageWriter {
                 "schema_version": annotationSchemaVersion,
                 "status": "manual_review_required",
                 "default_backend": "manual",
-                "caption_sources": ["manual", "sidecar", "native", "ace-step-captioner", "remote"],
+                "caption_sources": ["filename", "manual", "sidecar", "native", "ace-step-captioner", "remote"],
                 "lyrics_sources": ["none", "manual", "sidecar", "native-qwen3-asr", "ace-step-transcriber", "remote"],
                 "review_gate": "manual_approval_required",
             ],
@@ -656,11 +666,14 @@ enum TrainingDatasetPackageWriter {
         outputDirectory: URL,
         config: LocalFilesDatasetConfig,
         audioMetadata: [String: AudioFileMetadata],
+        captionSource: String,
         existingCaptionRecordsByFile: [String: [String: Any]]
     ) -> [[String: Any]] {
         clips.enumerated().map { index, clip in
             let relativePath = relativeClipPath(for: clip.url, from: outputDirectory)
             let caption = normalizedCaption(for: clip)
+            let resolvedCaptionSource = caption.isEmpty ? "none" : captionSource
+            let annotationBackend = resolvedCaptionSource == "filename" ? "filename" : "manual"
             let metadata = audioMetadata[normalizedFilePath(clip.url)] ?? fallbackAudioMetadata(for: clip.url)
             var object: [String: Any] = [
                 "id": String(format: "clip_%04d", index + 1),
@@ -670,7 +683,7 @@ enum TrainingDatasetPackageWriter {
                 ],
                 "caption": caption,
                 "prompt": caption,
-                "caption_source": caption.isEmpty ? "none" : "manual",
+                "caption_source": resolvedCaptionSource,
                 "lyrics": "",
                 "lyrics_source": "none",
                 "transcript": "",
@@ -679,9 +692,9 @@ enum TrainingDatasetPackageWriter {
                     "text": "",
                 ],
                 "annotation": annotationMetadata(
-                    captionSource: caption.isEmpty ? "none" : "manual",
+                    captionSource: resolvedCaptionSource,
                     lyricsSource: "none",
-                    backend: "manual",
+                    backend: annotationBackend,
                     modelID: "",
                     modelRevision: "",
                     language: "",
@@ -707,6 +720,12 @@ enum TrainingDatasetPackageWriter {
             )
             object["caption"] = caption
             object["prompt"] = caption
+            object["caption_source"] = resolvedCaptionSource
+            updateAnnotationCaptionSource(
+                in: &object,
+                captionSource: resolvedCaptionSource,
+                caption: caption
+            )
             object["file"] = relativePath
             object["assets"] = [
                 "full_mix": relativePath,
@@ -1356,7 +1375,7 @@ enum TrainingDatasetPackageWriter {
     }
 
     private static func writeCaptionsFile(
-        clips: [(url: URL, caption: String)],
+        clips: [(url: URL, caption: String, captionSource: String)],
         to outputDir: URL,
         existingRecordsByFile: [String: [String: Any]]
     ) throws {
@@ -1365,6 +1384,9 @@ enum TrainingDatasetPackageWriter {
             var entry = existingRecordsByFile[file] ?? [:]
             entry["file"] = file
             entry["caption"] = $0.caption
+            entry["caption_source"] = $0.caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? "none"
+                : $0.captionSource
             return entry
         }
         try writeJSONObjectArray(entries, to: outputDir.appendingPathComponent(captionsFileName))
@@ -1397,6 +1419,17 @@ enum TrainingDatasetPackageWriter {
         ] where existing[key] != nil {
             object[key] = existing[key]
         }
+    }
+
+    private static func updateAnnotationCaptionSource(
+        in object: inout [String: Any],
+        captionSource: String,
+        caption: String
+    ) {
+        var annotation = object["annotation"] as? [String: Any] ?? [:]
+        annotation["caption_source"] = captionSource
+        annotation["caption_present"] = !caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        object["annotation"] = annotation
     }
 
     private static func writeJSONObject(_ object: [String: Any], to url: URL) throws {

@@ -633,6 +633,9 @@ private func zipEntries(in archiveURL: URL) throws -> [String] {
     #expect(clipAudioJSON?["metadata_status"] as? String == "ok")
     #expect((clipAudioJSON?["sample_rate"] as? NSNumber)?.intValue == 22_050)
     #expect((clipAudioJSON?["channels"] as? NSNumber)?.intValue == 1)
+    #expect(clipsJSON?.first?["caption_source"] as? String == "filename")
+    let annotation = clipsJSON?.first?["annotation"] as? [String: Any]
+    #expect(annotation?["caption_source"] as? String == "filename")
     let duration = (clipAudioJSON?["duration_seconds"] as? NSNumber)?.doubleValue ?? 0
     #expect(abs(duration - 0.1) < 0.001)
 }
@@ -1089,6 +1092,92 @@ private func zipEntries(in archiveURL: URL) throws -> [String] {
     #expect(annotation?["caption_source"] as? String == "sidecar")
 }
 
+@Test func localDatasetEnrichmentReplacesFilenameCaptionPlaceholders() async throws {
+    let datasetDir = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let clipsDir = datasetDir.appendingPathComponent("clips", isDirectory: true)
+    let stemsDir = datasetDir
+        .appendingPathComponent("stems", isDirectory: true)
+        .appendingPathComponent("f001_clip_001", isDirectory: true)
+    try FileManager.default.createDirectory(at: clipsDir, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: stemsDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: datasetDir) }
+
+    let clipURL = clipsDir.appendingPathComponent("f001_clip_001.wav")
+    let vocalURL = stemsDir.appendingPathComponent("vocals.wav")
+    let instrumentalURL = stemsDir.appendingPathComponent("instrumental.wav")
+    try silentWAVData().write(to: clipURL)
+    try silentWAVData().write(to: vocalURL)
+    try silentWAVData().write(to: instrumentalURL)
+
+    let separationJSON = """
+    {
+      "stems": {
+        "vocals": {
+          "file": "stems/f001_clip_001/vocals.wav",
+          "analysis": { "tempo_bpm_estimate": 90 }
+        },
+        "instrumental": {
+          "file": "stems/f001_clip_001/instrumental.wav",
+          "analysis": {
+            "tempo_bpm_estimate": 90,
+            "key": "A minor",
+            "keyscale": "A minor",
+            "key_status": "estimated_from_audio",
+            "key_source": "native-dsp-instrumental"
+          }
+        }
+      }
+    }
+    """
+    try Data(separationJSON.utf8).write(to: stemsDir.appendingPathComponent("separation.json"))
+
+    let captionsJSON = """
+    [
+      {
+        "file": "clips/f001_clip_001.wav",
+        "caption": "source song (clip 1)",
+        "caption_source": "filename",
+        "source": {
+          "kind": "local_file",
+          "file_name": "source song.wav"
+        },
+        "annotation": {
+          "caption_source": "filename"
+        },
+        "separation": {
+          "mode": "instrumental",
+          "stems": {
+            "vocals": "stems/f001_clip_001/vocals.wav",
+            "instrumental": "stems/f001_clip_001/instrumental.wav"
+          },
+          "separation_file": "stems/f001_clip_001/separation.json"
+        }
+      }
+    ]
+    """
+    try Data(captionsJSON.utf8).write(to: datasetDir.appendingPathComponent("captions.json"))
+
+    let result = try await LocalDatasetEnrichmentService.run(
+        datasetDirectory: datasetDir,
+        lyricsTranscriber: FakeDatasetLyricsTranscriber(),
+        onStep: { _ in }
+    )
+
+    #expect(result.autoCaptionedClipCount == 1)
+
+    let captionsData = try Data(contentsOf: datasetDir.appendingPathComponent("captions.json"))
+    let captions = try JSONSerialization.jsonObject(with: captionsData) as? [[String: Any]]
+    let record = captions?.first
+    #expect(record?["caption"] as? String == "slow 90 BPM, A minor, full mix with vocals and instrumental backing")
+    #expect(record?["prompt"] as? String == "slow 90 BPM, A minor, full mix with vocals and instrumental backing")
+    #expect(record?["caption_source"] as? String == "native")
+    let annotation = record?["annotation"] as? [String: Any]
+    #expect(annotation?["caption_seed"] as? String == "")
+    let inputs = annotation?["caption_inputs"] as? [String] ?? []
+    #expect(!inputs.contains("caption_seed"))
+}
+
 @Test func localDatasetEnrichmentExportsStemBundlesNatively() throws {
     let datasetDir = FileManager.default.temporaryDirectory
         .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -1203,6 +1292,56 @@ private func zipEntries(in archiveURL: URL) throws -> [String] {
     let audioJSON = manifestJSON?["audio"] as? [String: Any]
     #expect(audioJSON?["format"] as? String == "wav")
     #expect(audioJSON?["metadata_status"] as? String == "audio_properties_collected")
+    let samplingJSON = manifestJSON?["clip_sampling"] as? [String: Any]
+    #expect(samplingJSON?["mode"] as? String == LocalDatasetClipSamplingMode.evenlySpread.rawValue)
+}
+
+@Test func localClipSamplerEvenlySpreadsLongSources() throws {
+    let starts = LocalDatasetClipSampler.startTimes(
+        totalSeconds: 90.0 * 60.0,
+        clipLength: 35,
+        maxClips: 8,
+        mode: .evenlySpread,
+        seed: 1337,
+        sourceIdentifier: "long-source.wav"
+    )
+
+    #expect(starts.count == 8)
+    #expect(starts.first == 0)
+    #expect(abs((starts.last ?? 0) - ((90.0 * 60.0) - 35.0)) < 0.001)
+    #expect(starts[1] > 35)
+}
+
+@Test func localClipSamplerRandomSeedIsDeterministicAndSorted() throws {
+    let first = LocalDatasetClipSampler.startTimes(
+        totalSeconds: 90.0 * 60.0,
+        clipLength: 35,
+        maxClips: 8,
+        mode: .randomSeeded,
+        seed: 42,
+        sourceIdentifier: "long-source.wav"
+    )
+    let second = LocalDatasetClipSampler.startTimes(
+        totalSeconds: 90.0 * 60.0,
+        clipLength: 35,
+        maxClips: 8,
+        mode: .randomSeeded,
+        seed: 42,
+        sourceIdentifier: "long-source.wav"
+    )
+    let differentSeed = LocalDatasetClipSampler.startTimes(
+        totalSeconds: 90.0 * 60.0,
+        clipLength: 35,
+        maxClips: 8,
+        mode: .randomSeeded,
+        seed: 43,
+        sourceIdentifier: "long-source.wav"
+    )
+
+    #expect(first == second)
+    #expect(first != differentSeed)
+    #expect(first == first.sorted())
+    #expect(first.contains { $0 > 35.0 * 8.0 })
 }
 
 @Test func localDatasetPackageValidationReportsMissingClipFiles() throws {

@@ -24,11 +24,151 @@ enum LocalDatasetClipFormat: String, CaseIterable, Hashable, Identifiable {
     }
 }
 
+enum LocalDatasetClipSamplingMode: String, CaseIterable, Hashable, Identifiable {
+    case sequential
+    case evenlySpread
+    case randomSeeded
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .sequential: return "Sequential"
+        case .evenlySpread: return "Evenly Spread"
+        case .randomSeeded: return "Random Seeded"
+        }
+    }
+
+    var helpText: String {
+        switch self {
+        case .sequential:
+            return "Takes clips from the start of each file in order."
+        case .evenlySpread:
+            return "Spreads clips across each full source file. Recommended for long recordings."
+        case .randomSeeded:
+            return "Uses reproducible random clip positions from across each source file."
+        }
+    }
+}
+
 struct LocalFilesDatasetConfig {
     var clipLength: TimeInterval = 35
     var clipsPerTrack: Int = 8
     var maxTotalClips: Int = 40
     var clipFormat: LocalDatasetClipFormat = .wav
+    var samplingMode: LocalDatasetClipSamplingMode = .evenlySpread
+    var samplingSeed: Int = 1337
+}
+
+enum LocalDatasetClipSampler {
+    static func startTimes(
+        totalSeconds: TimeInterval,
+        clipLength: TimeInterval,
+        maxClips: Int,
+        mode: LocalDatasetClipSamplingMode,
+        seed: Int,
+        sourceIdentifier: String
+    ) -> [TimeInterval] {
+        guard totalSeconds > 0, clipLength > 0, maxClips > 0 else { return [] }
+        if totalSeconds <= clipLength { return [0] }
+
+        let clipCount = min(maxClips, Int(totalSeconds / clipLength))
+        guard clipCount > 0 else { return [] }
+
+        switch mode {
+        case .sequential:
+            return (0..<clipCount).map { Double($0) * clipLength }
+        case .evenlySpread:
+            guard clipCount > 1 else { return [0] }
+            let maxStart = max(0, totalSeconds - clipLength)
+            return (0..<clipCount).map { index in
+                maxStart * Double(index) / Double(clipCount - 1)
+            }
+        case .randomSeeded:
+            let availableSlots = max(1, Int(totalSeconds / clipLength))
+            return selectedRandomSlots(
+                availableSlots: availableSlots,
+                clipCount: clipCount,
+                seed: seed,
+                sourceIdentifier: sourceIdentifier
+            )
+            .map { Double($0) * clipLength }
+        }
+    }
+
+    static func frameStarts(
+        totalFrames: AVAudioFramePosition,
+        framesPerClip: AVAudioFramePosition,
+        maxClips: Int,
+        mode: LocalDatasetClipSamplingMode,
+        seed: Int,
+        sourceIdentifier: String
+    ) -> [AVAudioFramePosition] {
+        guard totalFrames > 0, framesPerClip > 0, maxClips > 0 else { return [] }
+        if totalFrames <= framesPerClip { return [0] }
+
+        let clipCount = min(maxClips, Int(totalFrames / framesPerClip))
+        guard clipCount > 0 else { return [] }
+
+        switch mode {
+        case .sequential:
+            return (0..<clipCount).map { AVAudioFramePosition($0) * framesPerClip }
+        case .evenlySpread:
+            guard clipCount > 1 else { return [0] }
+            let maxStart = totalFrames - framesPerClip
+            return (0..<clipCount).map { index in
+                AVAudioFramePosition((Double(maxStart) * Double(index) / Double(clipCount - 1)).rounded(.down))
+            }
+        case .randomSeeded:
+            let availableSlots = max(1, Int(totalFrames / framesPerClip))
+            return selectedRandomSlots(
+                availableSlots: availableSlots,
+                clipCount: clipCount,
+                seed: seed,
+                sourceIdentifier: sourceIdentifier
+            )
+            .map { AVAudioFramePosition($0) * framesPerClip }
+        }
+    }
+
+    private static func selectedRandomSlots(
+        availableSlots: Int,
+        clipCount: Int,
+        seed: Int,
+        sourceIdentifier: String
+    ) -> [Int] {
+        guard availableSlots > 0, clipCount > 0 else { return [] }
+        var generator = SeededRandomNumberGenerator(seed: mixedSeed(seed, sourceIdentifier: sourceIdentifier))
+        var slots = Array(0..<availableSlots)
+        slots.shuffle(using: &generator)
+        return slots.prefix(min(clipCount, availableSlots)).sorted()
+    }
+
+    private static func mixedSeed(_ seed: Int, sourceIdentifier: String) -> UInt64 {
+        let input = "\(seed)|\(sourceIdentifier)"
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        for byte in input.utf8 {
+            hash ^= UInt64(byte)
+            hash &*= 0x0000_0100_0000_01b3
+        }
+        return hash == 0 ? 0x9e37_79b9_7f4a_7c15 : hash
+    }
+
+    private struct SeededRandomNumberGenerator: RandomNumberGenerator {
+        var state: UInt64
+
+        init(seed: UInt64) {
+            state = seed
+        }
+
+        mutating func next() -> UInt64 {
+            state &+= 0x9e37_79b9_7f4a_7c15
+            var value = state
+            value = (value ^ (value >> 30)) &* 0xbf58_476d_1ce4_e5b9
+            value = (value ^ (value >> 27)) &* 0x94d0_49bb_1331_11eb
+            return value ^ (value >> 31)
+        }
+    }
 }
 
 struct LocalFilesDatasetResult {
@@ -206,7 +346,9 @@ final class LocalFilesDatasetBuilder: ObservableObject {
                     maxClips: min(config.clipsPerTrack, remaining),
                     styleTemplate: trimmedStyle,
                     outputDirectory: clipsDir,
-                    clipFormat: config.clipFormat
+                    clipFormat: config.clipFormat,
+                    samplingMode: config.samplingMode,
+                    samplingSeed: config.samplingSeed
                 )
                 allClips.append(contentsOf: chunks.map {
                     TrainingImportedFile(url: $0.url, description: $0.caption)
@@ -238,7 +380,9 @@ final class LocalFilesDatasetBuilder: ObservableObject {
         maxClips: Int,
         styleTemplate: String,
         outputDirectory: URL,
-        clipFormat: LocalDatasetClipFormat
+        clipFormat: LocalDatasetClipFormat,
+        samplingMode: LocalDatasetClipSamplingMode,
+        samplingSeed: Int
     ) async throws -> [(url: URL, caption: String)] {
         switch clipFormat {
         case .wav:
@@ -249,7 +393,9 @@ final class LocalFilesDatasetBuilder: ObservableObject {
                 clipLength: clipLength,
                 maxClips: maxClips,
                 styleTemplate: styleTemplate,
-                outputDirectory: outputDirectory
+                outputDirectory: outputDirectory,
+                samplingMode: samplingMode,
+                samplingSeed: samplingSeed
             )
         case .m4a:
             return try await YouTubeDatasetBuilder.chunkAudio(
@@ -260,7 +406,10 @@ final class LocalFilesDatasetBuilder: ObservableObject {
                 maxClips: maxClips,
                 styleTemplate: styleTemplate,
                 outputDirectory: outputDirectory,
-                filenamePrefix: "f"
+                filenamePrefix: "f",
+                samplingMode: samplingMode,
+                samplingSeed: samplingSeed,
+                sourceIdentifier: sourceURL.standardizedFileURL.path
             )
         }
     }
@@ -272,7 +421,9 @@ final class LocalFilesDatasetBuilder: ObservableObject {
         clipLength: TimeInterval,
         maxClips: Int,
         styleTemplate: String,
-        outputDirectory: URL
+        outputDirectory: URL,
+        samplingMode: LocalDatasetClipSamplingMode,
+        samplingSeed: Int
     ) throws -> [(url: URL, caption: String)] {
         let sourceFile = try AVAudioFile(forReading: sourceURL)
         let format = sourceFile.processingFormat
@@ -280,17 +431,20 @@ final class LocalFilesDatasetBuilder: ObservableObject {
         let totalFrames = sourceFile.length
         guard sampleRate > 0, totalFrames > 0 else { return [] }
 
-        let totalSeconds = Double(totalFrames) / sampleRate
         let framesPerClip = max(1, AVAudioFramePosition((clipLength * sampleRate).rounded(.down)))
-        let clipCount = totalSeconds <= clipLength
-            ? 1
-            : min(maxClips, Int(totalFrames / framesPerClip))
-        guard clipCount > 0 else { return [] }
+        let startFrames = LocalDatasetClipSampler.frameStarts(
+            totalFrames: totalFrames,
+            framesPerClip: framesPerClip,
+            maxClips: maxClips,
+            mode: samplingMode,
+            seed: samplingSeed,
+            sourceIdentifier: sourceURL.standardizedFileURL.path
+        )
+        guard !startFrames.isEmpty else { return [] }
 
         var clips: [(url: URL, caption: String)] = []
-        for i in 0..<clipCount {
+        for (i, startFrame) in startFrames.enumerated() {
             try Task.checkCancellation()
-            let startFrame = AVAudioFramePosition(i) * framesPerClip
             let frameCount = min(framesPerClip, totalFrames - startFrame)
             guard frameCount > 0 else { continue }
 
@@ -306,7 +460,7 @@ final class LocalFilesDatasetBuilder: ObservableObject {
             )
 
             let caption = styleTemplate.isEmpty
-                ? (clipCount > 1 ? "\(title) (clip \(i + 1))" : title)
+                ? (startFrames.count > 1 ? "\(title) (clip \(i + 1))" : title)
                 : styleTemplate
             clips.append((url: dest, caption: caption))
         }

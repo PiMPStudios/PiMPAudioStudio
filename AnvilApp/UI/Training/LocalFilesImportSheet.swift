@@ -161,7 +161,7 @@ struct LocalFilesImportSheet: View {
             TextField("dark blues, slow tempo, minor key, atmospheric guitar", text: $styleTemplate)
                 .textFieldStyle(.roundedBorder)
                 .disabled(isBusy)
-            Text("Applied to every clip as its training caption. Leave blank to use file names.")
+            Text("Applied to every clip as its training caption. Leave blank for filename placeholders that Enrich Dataset can replace with native metadata captions.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -191,6 +191,30 @@ struct LocalFilesImportSheet: View {
                                 in: 1...20)
                         .disabled(isBusy)
                         .frame(maxWidth: 130)
+                }
+                LabeledContent("Sampling") {
+                    Picker("Sampling", selection: $config.samplingMode) {
+                        ForEach(LocalDatasetClipSamplingMode.allCases) { mode in
+                            Text(mode.displayName).tag(mode)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .disabled(isBusy)
+                    .frame(maxWidth: 260)
+                }
+                Text(config.samplingMode.helpText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if config.samplingMode == .randomSeeded {
+                    LabeledContent("Random Seed") {
+                        Stepper("\(config.samplingSeed)",
+                                value: $config.samplingSeed,
+                                in: 0...999_999)
+                        .disabled(isBusy)
+                        .frame(maxWidth: 130)
+                    }
                 }
                 LabeledContent("Max Total Clips") {
                         Stepper("\(config.maxTotalClips)",

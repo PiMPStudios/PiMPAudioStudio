@@ -237,7 +237,10 @@ final class YouTubeDatasetBuilder: ObservableObject {
         maxClips: Int,
         styleTemplate: String = "",
         outputDirectory: URL,
-        filenamePrefix: String = "v"
+        filenamePrefix: String = "v",
+        samplingMode: LocalDatasetClipSamplingMode = .sequential,
+        samplingSeed: Int = 1337,
+        sourceIdentifier: String? = nil
     ) async throws -> [(url: URL, caption: String)] {
         let asset = AVURLAsset(url: sourceURL)
         let cmDuration = try await asset.load(.duration)
@@ -256,12 +259,18 @@ final class YouTubeDatasetBuilder: ObservableObject {
             return [(url: dest, caption: caption)]
         }
 
-        let clipCount = min(maxClips, Int(totalSeconds / clipLength))
+        let startTimes = LocalDatasetClipSampler.startTimes(
+            totalSeconds: totalSeconds,
+            clipLength: clipLength,
+            maxClips: maxClips,
+            mode: samplingMode,
+            seed: samplingSeed,
+            sourceIdentifier: sourceIdentifier ?? sourceURL.standardizedFileURL.path
+        )
         var clips: [(url: URL, caption: String)] = []
 
-        for i in 0..<clipCount {
+        for (i, startSec) in startTimes.enumerated() {
             try Task.checkCancellation()
-            let startSec = Double(i) * clipLength
             let start = CMTime(seconds: startSec, preferredTimescale: 600)
             let rawEnd = startSec + clipLength
             let actualLen = rawEnd <= totalSeconds ? clipLength : totalSeconds - startSec
@@ -275,7 +284,7 @@ final class YouTubeDatasetBuilder: ObservableObject {
                                   to: dest)
             let caption: String
             if styleTemplate.isEmpty {
-                caption = clipCount > 1 ? "\(title) (clip \(i + 1))" : title
+                caption = startTimes.count > 1 ? "\(title) (clip \(i + 1))" : title
             } else {
                 caption = styleTemplate
             }

@@ -572,7 +572,12 @@ final class LocalDatasetEnrichmentService: ObservableObject {
             return record.object
         }
 
-        let previousCaption = explicitCaptionText(from: record.object)
+        let captionSource = captionSource(in: record.object)
+        let previousCaption = shouldUseCaptionAsNativeSeed(
+            record: record.object,
+            captionSource: captionSource,
+            datasetDirectory: datasetDirectory
+        ) ? explicitCaptionText(from: record.object) : ""
         guard let generatedCaption = generatedMetadataCaption(for: record.object, seedCaption: previousCaption) else {
             return record.object
         }
@@ -591,7 +596,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         annotation["caption_backend"] = "native-metadata-captioner"
         annotation["caption_model_id"] = "anvil-metadata-caption-v1"
         annotation["caption_seed"] = previousCaption
-        annotation["caption_inputs"] = nativeCaptionInputs(in: updated)
+        annotation["caption_inputs"] = nativeCaptionInputs(in: updated, usedSeed: !previousCaption.isEmpty)
         annotation["raw_output_files"] = rawOutputs
         updated["annotation"] = annotation
 
@@ -1355,16 +1360,83 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         for record: [String: Any],
         force: Bool
     ) -> Bool {
-        let annotation = record["annotation"] as? [String: Any] ?? [:]
-        let source = stringValue(record["caption_source"])
-            ?? stringValue(annotation["caption_source"])
-            ?? (explicitCaptionText(from: record).isEmpty ? "none" : "manual")
+        let source = captionSource(in: record)
         switch source {
-        case "none", "manual", "native":
+        case "none", "manual", "filename", "native":
             return true
         default:
-            return force && source == "native"
+            return false
         }
+    }
+
+    nonisolated private static func captionSource(in record: [String: Any]) -> String {
+        let annotation = record["annotation"] as? [String: Any] ?? [:]
+        return stringValue(record["caption_source"])
+            ?? stringValue(annotation["caption_source"])
+            ?? (explicitCaptionText(from: record).isEmpty ? "none" : "manual")
+    }
+
+    nonisolated private static func shouldUseCaptionAsNativeSeed(
+        record: [String: Any],
+        captionSource: String,
+        datasetDirectory: URL
+    ) -> Bool {
+        guard captionSource != "filename" else { return false }
+        if captionSource == "manual",
+           datasetCaptionMode(datasetDirectory: datasetDirectory) == "filename",
+           looksLikeFilenameCaption(record: record) {
+            return false
+        }
+        return true
+    }
+
+    nonisolated private static func datasetCaptionMode(datasetDirectory: URL) -> String? {
+        let manifestURL = datasetDirectory.appendingPathComponent(TrainingDatasetPackageWriter.datasetManifestFileName)
+        return readJSONObject(from: manifestURL).flatMap { stringValue($0["caption_mode"]) }
+    }
+
+    nonisolated private static func looksLikeFilenameCaption(record: [String: Any]) -> Bool {
+        let caption = explicitCaptionText(from: record)
+        guard !caption.isEmpty else { return false }
+
+        let candidates = filenameCaptionCandidates(record: record)
+        let normalizedCaption = normalizedCaptionComparisonText(caption)
+        return candidates.contains { candidate in
+            let normalizedCandidate = normalizedCaptionComparisonText(candidate)
+            guard !normalizedCandidate.isEmpty else { return false }
+            return normalizedCaption == normalizedCandidate ||
+                normalizedCaption.hasPrefix("\(normalizedCandidate) clip ") ||
+                normalizedCaption.hasPrefix("\(normalizedCandidate) take ")
+        }
+    }
+
+    nonisolated private static func filenameCaptionCandidates(record: [String: Any]) -> [String] {
+        var candidates: [String] = []
+        if let file = stringValue(record["file"]) {
+            candidates.append(URL(fileURLWithPath: file).deletingPathExtension().lastPathComponent)
+        }
+        if let source = record["source"] as? [String: Any],
+           let fileName = stringValue(source["file_name"]) {
+            let stem = URL(fileURLWithPath: fileName).deletingPathExtension().lastPathComponent
+            candidates.append(stem)
+        }
+        if let assets = record["assets"] as? [String: Any],
+           let fullMix = stringValue(assets["full_mix"]) {
+            candidates.append(URL(fileURLWithPath: fullMix).deletingPathExtension().lastPathComponent)
+        }
+        return sortedUniqueStrings(candidates)
+    }
+
+    nonisolated private static func normalizedCaptionComparisonText(_ value: String) -> String {
+        value
+            .lowercased()
+            .replacingOccurrences(of: "(", with: " ")
+            .replacingOccurrences(of: ")", with: " ")
+            .replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: "-", with: " ")
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
     }
 
     nonisolated private static func explicitCaptionText(from record: [String: Any]) -> String {
@@ -1480,8 +1552,11 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         }
     }
 
-    nonisolated private static func nativeCaptionInputs(in record: [String: Any]) -> [String] {
-        var inputs = ["caption_seed"]
+    nonisolated private static func nativeCaptionInputs(in record: [String: Any], usedSeed: Bool) -> [String] {
+        var inputs: [String] = []
+        if usedSeed {
+            inputs.append("caption_seed")
+        }
         if captionBPM(in: record) != nil {
             inputs.append("bpm")
         }
