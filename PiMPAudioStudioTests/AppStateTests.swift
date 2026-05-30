@@ -258,6 +258,43 @@ private extension JSONDecoder {
     #expect(FileManager.default.fileExists(atPath: reportURL.path))
 }
 
+@Test func appRuntimeMigrationLeavesFailedDataMigrationRetryable() {
+    let failedReport = AppDataDirectoryMigrationReport(
+        schemaVersion: "1.0",
+        migratedAt: Date(timeIntervalSince1970: 0),
+        sourceRoots: ["/legacy/Anvil"],
+        destinationRoot: "/new/PiMP Audio Studio",
+        entries: [
+            .init(
+                relativePath: "models",
+                sourcePath: "/legacy/Anvil/models",
+                destinationPath: "/new/PiMP Audio Studio/models",
+                action: "failed",
+                message: "Permission denied"
+            ),
+        ]
+    )
+    let cleanReport = AppDataDirectoryMigrationReport(
+        schemaVersion: "1.0",
+        migratedAt: Date(timeIntervalSince1970: 0),
+        sourceRoots: ["/legacy/Anvil"],
+        destinationRoot: "/new/PiMP Audio Studio",
+        entries: [
+            .init(
+                relativePath: "models",
+                sourcePath: "/legacy/Anvil/models",
+                destinationPath: "/new/PiMP Audio Studio/models",
+                action: "copied",
+                message: nil
+            ),
+        ]
+    )
+
+    #expect(failedReport.hasFailures)
+    #expect(AppRuntimeMigration.shouldMarkDataDirectoryMigrationComplete(failedReport) == false)
+    #expect(AppRuntimeMigration.shouldMarkDataDirectoryMigrationComplete(cleanReport))
+}
+
 @Test func trainingDatasetImporterUsesVocalStemTranscriptAsLyrics() throws {
     let datasetDir = FileManager.default.temporaryDirectory
         .appendingPathComponent(UUID().uuidString, isDirectory: true)

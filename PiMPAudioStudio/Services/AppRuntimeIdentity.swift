@@ -173,6 +173,14 @@ struct AppDataDirectoryMigrationReport: Codable, Equatable {
     var sourceRoots: [String]
     var destinationRoot: String
     var entries: [Entry]
+
+    var failedEntries: [Entry] {
+        entries.filter { $0.action == "failed" }
+    }
+
+    var hasFailures: Bool {
+        !failedEntries.isEmpty
+    }
 }
 
 enum AppRuntimeMigration {
@@ -209,10 +217,20 @@ enum AppRuntimeMigration {
             into: AppStorageLocations.rootDirectory,
             reportURL: AppStorageLocations.migrationReportURL
         )
+        guard shouldMarkDataDirectoryMigrationComplete(report) else {
+            logger.warning(
+                "Data directory migration recorded \(report.failedEntries.count, privacy: .public) failures; leaving migration retryable"
+            )
+            return
+        }
         defaults.set(true, forKey: AppUserDefaultsKeys.dataDirectoryMigration)
         logger.info(
             "Data directory migration finished with \(report.entries.count, privacy: .public) recorded entries"
         )
+    }
+
+    static func shouldMarkDataDirectoryMigrationComplete(_ report: AppDataDirectoryMigrationReport) -> Bool {
+        !report.hasFailures
     }
 
     @discardableResult
