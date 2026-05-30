@@ -20,6 +20,8 @@ struct PiMPAudioStudioApp: App {
     @StateObject private var presetStore = PresetStore()
 
     init() {
+        AppRuntimeMigration.migrateIfNeeded()
+
         let apiKeys = APIKeyStore()
         let providerAccess = ProviderAccessStore()
         let appState = AppState(apiKeyStore: apiKeys)
@@ -174,7 +176,7 @@ final class AppServices: ObservableObject {
     @Published var historyStore: HistoryStore
     @Published var generationService: GenerationService
     let traceMonitor: GenerationTraceMonitor
-    let mcpServer: AnvilMCPServer
+    let mcpServer: PiMPAudioMCPServer
 
     /// Shared ML actors — created once, reused by both generation and the editor
     /// so weights are never duplicated in GPU memory.
@@ -193,7 +195,7 @@ final class AppServices: ObservableObject {
     private let vaeActor: VAEActor
     private let diffusionActor: DiffusionActor
     private let conditioningActor: ConditioningActor
-    private let commandFacade: AnvilCommandFacade
+    private let commandFacade: PiMPAudioCommandFacade
 
     init(
         sfxModelManager: SFXModelManager,
@@ -249,7 +251,7 @@ final class AppServices: ObservableObject {
         let dir = outputManager.directory ?? FileManager.default.temporaryDirectory
         let store = HistoryStore(directory: dir)
         self.historyStore = store
-        let facade = AnvilCommandFacade(
+        let facade = PiMPAudioCommandFacade(
             registry: registry,
             historyStore: store,
             promptEnhancer: promptEnhancer,
@@ -257,7 +259,7 @@ final class AppServices: ObservableObject {
         )
         facade.configure(editorService: editorSvc)
         self.commandFacade = facade
-        self.mcpServer = AnvilMCPServer(facade: facade)
+        self.mcpServer = PiMPAudioMCPServer(facade: facade)
         let generationService = Self.makeGenerationService(
             vaeActor: vae,
             diffusionActor: diffusion,

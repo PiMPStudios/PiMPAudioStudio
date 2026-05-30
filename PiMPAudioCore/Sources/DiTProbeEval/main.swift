@@ -421,7 +421,7 @@ private func expandPath(_ path: String) -> String {
 
 private func defaultModelCacheRoot() -> URL {
     FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Containers/com.pimpstudios.PiMPAudioStudio/Data/Library/Application Support/Anvil/models")
+        .appendingPathComponent("Library/Containers/com.pimpstudios.PiMPAudioStudio/Data/Library/Application Support/PiMP Audio Studio/models")
 }
 
 private func defaultDiTWeightsURL() -> URL {

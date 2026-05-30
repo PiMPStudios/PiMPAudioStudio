@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to AnvilApp are documented here.
+All notable changes to PiMP Audio Studio are documented here.
 
 ---
 
@@ -8,6 +8,7 @@ All notable changes to AnvilApp are documented here.
 
 ### Added
 
+- **Runtime identity now uses PiMP Audio Studio** — app display strings, bundle/runtime constants, Application Support paths, generated filenames, OSLog subsystems, UserDefaults keys, Keychain service names, and MCP-facing resources now use the new PiMP Audio Studio identity while reading legacy Anvil values during migration.
 - **Generation Analyzer live window** — a new analyzer scene can be opened before generation to watch the request move through routing, model selection, adapter setup, conditioning, diffusion, decode, WAV write, waveform analysis, and trace writing. Events are shown reverse-chronologically with stage labels, timestamps, progress, ETA, request metadata, model details, LoRA stack, and audio statistics.
 - **Per-generation trace sidecars** — each generated WAV now gets a sibling `.trace.json` sidecar containing the resolved request, prompt, lyrics, pipeline, primary/supporting models, active adapters, timing, feature flags, waveform peaks, per-second envelope stats, and audio summary. History entries now store the trace filename plus model/adapter snapshots, so old generations can be inspected later without rerunning them.
 - **Saved trace viewer from History** — history rows with trace sidecars show an analyzer shortcut and context-menu action. Opening a saved trace reconstructs the analyzer session with the original request, model stack, prompt, lyrics, audio stats, and trace metadata.
@@ -39,7 +40,7 @@ All notable changes to AnvilApp are documented here.
 - **Native speech tooling raises the minimum runtime** — the app now targets macOS 15.0+ and Xcode 16+ to match the Swift/MLX speech stack used for on-device Qwen3-ASR transcription.
 - **Primary LoRA strength control** — the Generate view now exposes the selected LoRA adapter's strength, routes the primary adapter through the same weighted stack path as additional adapters, persists the value in saved presets, and records the actual weight in history/trace sidecars. This makes XL PEFT adapter A/B tests line up with the `lora_scale` knob used by the Python ACE-Step path.
 - **Local MCP server foundation** — Settings now includes an MCP tab that can start/stop a localhost-only endpoint at `http://127.0.0.1:38765/mcp`, optionally require a bearer token, and expose read-only tools for models, adapters, history, trace lookup, and Analyzer-style trace comparison.
-- **MCP resources and smoke testing** — the local MCP endpoint now supports `resources/list` and `resources/read` for `anvil://models`, `anvil://model/{id}`, `anvil://adapters`, `anvil://adapter/{id}`, `anvil://history`, `anvil://history/{id}`, `anvil://trace/{id}`, and `anvil://audio/{id}` metadata. A new `scripts/smoke-mcp.sh` script checks health, initialization, tool discovery, history, trace reads, resource reads, and compare calls against a running local app.
+- **MCP resources and smoke testing** — the local MCP endpoint now supports `resources/list` and `resources/read` for `pimpaudio://models`, `pimpaudio://model/{id}`, `pimpaudio://adapters`, `pimpaudio://adapter/{id}`, `pimpaudio://history`, `pimpaudio://history/{id}`, `pimpaudio://trace/{id}`, and `pimpaudio://audio/{id}` metadata. The `scripts/smoke-pimpaudio-mcp.sh` script checks health, initialization, tool discovery, history, trace reads, resource reads, compare calls, and legacy Anvil aliases against a running local app.
 - **MCP prompt and lyric helpers** — the local MCP endpoint now exposes return-only `enhance_prompt` and `write_lyrics` tools backed by the same prompt enhancer, lyric writer, and lyric sanitizer used by the Generate view. These tools return text for agent workflows without mutating the current prompt field, lyric field, history, traces, models, or audio.
 - **MCP preferred-take review writes** — the local MCP endpoint now exposes `mark_preferred_take`, scoped to the same preferred flag and listening note metadata used by the Generation Analyzer. It requires an existing trace sidecar and mirrors review changes into `history.json`; audio, models, adapters, tensors, and generation settings remain untouched.
 - **MCP adapter selection** — the local MCP endpoint now exposes `apply_adapter` for selecting, stacking, or clearing ACE-Step LoRA adapters. The tool validates adapter existence/category, updates the generation service, persists the primary adapter selection, and notifies the Generate view when it is open so MCP and GUI state stay aligned.

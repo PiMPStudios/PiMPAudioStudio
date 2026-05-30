@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 struct MCPSettingsView: View {
-    @EnvironmentObject private var mcpServer: AnvilMCPServer
+    @EnvironmentObject private var mcpServer: PiMPAudioMCPServer
 
     var body: some View {
         Form {

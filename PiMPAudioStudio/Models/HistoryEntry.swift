@@ -311,6 +311,6 @@ struct HistoryEntry: Identifiable, Codable, Sendable, Equatable {
             )
             .prefix(50)
 
-        return "anvil_\(timestamp)_\(words).wav"
+        return "pimpaudio_\(timestamp)_\(words).wav"
     }
 }

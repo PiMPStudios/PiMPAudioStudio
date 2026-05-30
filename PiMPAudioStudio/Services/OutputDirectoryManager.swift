@@ -7,7 +7,8 @@ final class OutputDirectoryManager: ObservableObject {
 
     @Published var directory: URL?
 
-    private static let bookmarkKey = "outputDirectoryBookmark"
+    private static let bookmarkKey = AppUserDefaultsKeys.outputDirectoryBookmark
+    private static let legacyBookmarkKey = AppUserDefaultsKeys.legacyOutputDirectoryBookmark
 
     init() {
         directory = resolveBookmark()
@@ -20,7 +21,7 @@ final class OutputDirectoryManager: ObservableObject {
         panel.canChooseFiles = false
         panel.canCreateDirectories = true
         panel.allowsMultipleSelection = false
-        panel.message = "Choose where Anvil saves generated audio"
+        panel.message = "Choose where PiMP Audio Studio saves generated audio"
         panel.prompt = "Select Folder"
 
         let response = panel.runModal()
@@ -51,7 +52,8 @@ final class OutputDirectoryManager: ObservableObject {
     }
 
     private func resolveBookmark() -> URL? {
-        guard let data = UserDefaults.standard.data(forKey: Self.bookmarkKey) else {
+        guard let data = UserDefaults.standard.data(forKey: Self.bookmarkKey) ??
+            UserDefaults.standard.data(forKey: Self.legacyBookmarkKey) else {
             return nil
         }
         do {
@@ -65,6 +67,8 @@ final class OutputDirectoryManager: ObservableObject {
             guard url.startAccessingSecurityScopedResource() else { return nil }
             if isStale {
                 saveBookmark(for: url)
+            } else if UserDefaults.standard.data(forKey: Self.bookmarkKey) == nil {
+                UserDefaults.standard.set(data, forKey: Self.bookmarkKey)
             }
             return url
         } catch {

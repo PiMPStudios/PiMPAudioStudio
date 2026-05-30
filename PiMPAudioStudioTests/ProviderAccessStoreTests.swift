@@ -183,7 +183,7 @@ import Testing
         "HOME": "/Users/testuser/Library/Containers/com.pimpstudios.PiMPAudioStudio/Data",
         "USER": "testuser",
         "PATH": "/usr/bin:/bin",
-        "ANVIL_DISABLE_PROVIDER_CLI_GRANTS": "1",
+        "PIMP_AUDIO_DISABLE_PROVIDER_CLI_GRANTS": "1",
     ])
 
     #expect(environment["HOME"] == "/Users/testuser/Library/Containers/com.pimpstudios.PiMPAudioStudio/Data")
@@ -222,7 +222,7 @@ import Testing
             "HOME": "/Users/testuser/Library/Containers/com.pimpstudios.PiMPAudioStudio/Data",
             "USER": "testuser",
             "PATH": "/usr/bin:/bin",
-            "ANVIL_DISABLE_PROVIDER_CLI_GRANTS": "1",
+            "PIMP_AUDIO_DISABLE_PROVIDER_CLI_GRANTS": "1",
         ],
         homeDirectoryMode: .realUser
     )

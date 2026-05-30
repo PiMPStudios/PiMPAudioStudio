@@ -16,7 +16,8 @@ final class APIKeyStore: ObservableObject {
 
     static let huggingFaceProviderID = "huggingface"
 
-    private static let serviceName = "com.pimpstudios.anvil.apikeys"
+    private static let serviceName = AppRuntimeIdentity.keychainServiceName
+    private static let legacyServiceName = AppRuntimeIdentity.legacyKeychainServiceName
 
     init() {
         refreshAvailableProviders()
@@ -78,9 +79,20 @@ final class APIKeyStore: ObservableObject {
     }
 
     private func readFromKeychain(account: String) -> String? {
+        if let value = readFromKeychain(account: account, serviceName: Self.serviceName) {
+            return value
+        }
+        guard let legacyValue = readFromKeychain(account: account, serviceName: Self.legacyServiceName) else {
+            return nil
+        }
+        writeToKeychain(account: account, value: legacyValue)
+        return legacyValue
+    }
+
+    private func readFromKeychain(account: String, serviceName: String) -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: Self.serviceName,
+            kSecAttrService as String: serviceName,
             kSecAttrAccount as String: account,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
@@ -92,7 +104,7 @@ final class APIKeyStore: ObservableObject {
     }
 
     private func writeToKeychain(account: String, value: String) {
-        deleteFromKeychain(account: account)
+        deleteFromKeychain(account: account, serviceName: Self.serviceName)
         guard let data = value.data(using: .utf8) else { return }
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -104,9 +116,14 @@ final class APIKeyStore: ObservableObject {
     }
 
     private func deleteFromKeychain(account: String) {
+        deleteFromKeychain(account: account, serviceName: Self.serviceName)
+        deleteFromKeychain(account: account, serviceName: Self.legacyServiceName)
+    }
+
+    private func deleteFromKeychain(account: String, serviceName: String) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: Self.serviceName,
+            kSecAttrService as String: serviceName,
             kSecAttrAccount as String: account,
         ]
         SecItemDelete(query as CFDictionary)

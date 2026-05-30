@@ -50,13 +50,7 @@ final class LLMModelManager: ObservableObject {
     // MARK: Storage
 
     var modelsDirectory: URL {
-        let appSupport = FileManager.default.urls(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask
-        ).first!
-        return appSupport
-            .appendingPathComponent("Anvil", isDirectory: true)
-            .appendingPathComponent("LLM", isDirectory: true)
+        AppStorageLocations.llmModelsDirectory
     }
 
     private let modelsKey = "LLMModelManager.availableModels"

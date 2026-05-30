@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ENDPOINT="${ANVIL_MCP_ENDPOINT:-http://127.0.0.1:38765/mcp}"
-TOKEN="${ANVIL_MCP_TOKEN:-}"
+ENDPOINT="${PIMP_AUDIO_MCP_ENDPOINT:-${ANVIL_MCP_ENDPOINT:-http://127.0.0.1:38765/mcp}}"
+TOKEN="${PIMP_AUDIO_MCP_TOKEN:-${ANVIL_MCP_TOKEN:-}}"
 BASE_URL="${ENDPOINT%/mcp}"
 
 TMP_DIR="$(mktemp -d)"
@@ -311,7 +311,7 @@ rpc '{
   "params": {
     "protocolVersion": "2025-06-18",
     "capabilities": {},
-    "clientInfo": { "name": "anvil-smoke-mcp", "version": "1.0" }
+    "clientInfo": { "name": "pimpaudio-smoke-mcp", "version": "1.0" }
   }
 }' 1 >/dev/null
 
@@ -451,24 +451,24 @@ grep -q '"operations"' "$TMP_DIR/operations.json"
 
 echo "10. resources/list"
 rpc '{"jsonrpc":"2.0","id":9,"method":"resources/list"}' 9 > "$TMP_DIR/resources.json"
-grep_uri "anvil://history" "$TMP_DIR/resources.json"
-grep_uri "anvil://project/current" "$TMP_DIR/resources.json"
-grep_uri "anvil://track/current" "$TMP_DIR/resources.json"
-grep_uri "anvil://clip/current" "$TMP_DIR/resources.json"
-grep_uri "anvil://region/current-selection" "$TMP_DIR/resources.json"
-grep_uri "anvil://takes" "$TMP_DIR/resources.json"
-grep_uri "anvil://presets" "$TMP_DIR/resources.json"
-grep_uri "anvil://workflows" "$TMP_DIR/resources.json"
-grep_uri "anvil://editor" "$TMP_DIR/resources.json"
-grep_uri "anvil://operations" "$TMP_DIR/resources.json"
-grep_uri "anvil://client-roots" "$TMP_DIR/resources.json"
+grep_uri "pimpaudio://history" "$TMP_DIR/resources.json"
+grep_uri "pimpaudio://project/current" "$TMP_DIR/resources.json"
+grep_uri "pimpaudio://track/current" "$TMP_DIR/resources.json"
+grep_uri "pimpaudio://clip/current" "$TMP_DIR/resources.json"
+grep_uri "pimpaudio://region/current-selection" "$TMP_DIR/resources.json"
+grep_uri "pimpaudio://takes" "$TMP_DIR/resources.json"
+grep_uri "pimpaudio://presets" "$TMP_DIR/resources.json"
+grep_uri "pimpaudio://workflows" "$TMP_DIR/resources.json"
+grep_uri "pimpaudio://editor" "$TMP_DIR/resources.json"
+grep_uri "pimpaudio://operations" "$TMP_DIR/resources.json"
+grep_uri "pimpaudio://client-roots" "$TMP_DIR/resources.json"
 
-echo "10a. resources/read anvil://client-roots"
+echo "10a. resources/read pimpaudio://client-roots"
 rpc '{
   "jsonrpc": "2.0",
   "id": 90,
   "method": "resources/read",
-  "params": { "uri": "anvil://client-roots" }
+  "params": { "uri": "pimpaudio://client-roots" }
 }' 90 > "$TMP_DIR/client-roots.json"
 /usr/bin/python3 -c "$python_check_client_roots_unsupported" < "$TMP_DIR/client-roots.json"
 
@@ -497,8 +497,8 @@ grep -q 'submit_editor_inpaint' "$TMP_DIR/prompt-clean-up-region.json"
 
 echo "12a. resources/templates/list"
 rpc '{"jsonrpc":"2.0","id":110,"method":"resources/templates/list"}' 110 > "$TMP_DIR/resource-templates.json"
-grep -q 'anvil://workflow/{id}' "$TMP_DIR/resource-templates.json"
-grep -q 'anvil://operation/{id}' "$TMP_DIR/resource-templates.json"
+grep -q 'pimpaudio://workflow/{id}' "$TMP_DIR/resource-templates.json"
+grep -q 'pimpaudio://operation/{id}' "$TMP_DIR/resource-templates.json"
 
 echo "12b. completion/complete prompt issue"
 rpc '{
@@ -518,7 +518,7 @@ rpc '{
   "id": 112,
   "method": "completion/complete",
   "params": {
-    "ref": { "type": "ref/resource", "uri": "anvil://workflow/{id}" },
+    "ref": { "type": "ref/resource", "uri": "pimpaudio://workflow/{id}" },
     "argument": { "name": "id", "value": "clean" }
   }
 }' 112 > "$TMP_DIR/completion-workflow-resource.json"
@@ -583,21 +583,21 @@ if [[ "${#TRACE_IDS[@]}" -ge 1 ]]; then
     }
   }" 14 >/dev/null
 
-  echo "16. resources/read anvil://history/$FIRST_ID"
+  echo "16. resources/read pimpaudio://history/$FIRST_ID"
   rpc "{
     \"jsonrpc\": \"2.0\",
     \"id\": 15,
     \"method\": \"resources/read\",
-    \"params\": { \"uri\": \"anvil://history/$FIRST_ID\" }
+    \"params\": { \"uri\": \"pimpaudio://history/$FIRST_ID\" }
   }" 15 > "$TMP_DIR/history-resource.json"
   grep -q '"contents"' "$TMP_DIR/history-resource.json"
 
-  echo "17. resources/read anvil://trace/$FIRST_ID"
+  echo "17. resources/read pimpaudio://trace/$FIRST_ID"
   rpc "{
     \"jsonrpc\": \"2.0\",
     \"id\": 16,
     \"method\": \"resources/read\",
-    \"params\": { \"uri\": \"anvil://trace/$FIRST_ID\" }
+    \"params\": { \"uri\": \"pimpaudio://trace/$FIRST_ID\" }
   }" 16 > "$TMP_DIR/trace-resource.json"
   grep -q '"contents"' "$TMP_DIR/trace-resource.json"
 else
@@ -675,7 +675,7 @@ rpc '{
   "id": 20,
   "method": "tools/call",
   "params": {
-    "_meta": { "progressToken": "anvil-smoke-progress" },
+    "_meta": { "progressToken": "pimpaudio-smoke-progress" },
     "name": "generation_status",
     "arguments": {}
   }
@@ -700,6 +700,6 @@ if [[ "$STREAM_EXIT" != "0" && "$STREAM_EXIT" != "28" ]]; then
   exit 1
 fi
 grep -q 'notifications/progress' "$TMP_DIR/get-mcp.sse"
-grep -q 'anvil-smoke-progress' "$TMP_DIR/get-mcp.sse"
+grep -q 'pimpaudio-smoke-progress' "$TMP_DIR/get-mcp.sse"
 
 echo "MCP smoke test passed."

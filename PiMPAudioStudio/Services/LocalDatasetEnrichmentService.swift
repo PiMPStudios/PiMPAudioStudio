@@ -620,7 +620,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         annotation["caption_source"] = "native"
         annotation["caption_present"] = true
         annotation["caption_backend"] = "native-metadata-captioner"
-        annotation["caption_model_id"] = "anvil-metadata-caption-v1"
+        annotation["caption_model_id"] = "pimp-audio-metadata-caption-v1"
         annotation["caption_seed"] = previousCaption
         annotation["caption_inputs"] = nativeCaptionInputs(in: updated, usedSeed: !previousCaption.isEmpty)
         annotation["raw_output_files"] = rawOutputs

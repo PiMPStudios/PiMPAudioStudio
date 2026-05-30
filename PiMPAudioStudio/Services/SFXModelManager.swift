@@ -39,15 +39,9 @@ final class SFXModelManager: ObservableObject {
         }
     }
 
-    /// Canonical base directory for all Anvil model files.
+    /// Canonical base directory for all PiMP Audio Studio model files.
     private static func baseModelsDirectory() -> URL {
-        let appSupport = FileManager.default.urls(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask
-        ).first!
-        return appSupport
-            .appendingPathComponent("Anvil", isDirectory: true)
-            .appendingPathComponent("models", isDirectory: true)
+        AppStorageLocations.modelsDirectory
     }
 
     func downloadIfNeeded() async throws {

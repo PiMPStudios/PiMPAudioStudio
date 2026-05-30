@@ -1,11 +1,11 @@
 # Local MCP Server
 
-Anvil can expose a localhost-only MCP endpoint for local agents and scripts.
+PiMP Audio Studio can expose a localhost-only MCP endpoint for local agents and scripts.
 The server is off by default and is intended for same-machine workflows.
 
 The current implementation uses the official Swift MCP SDK for lifecycle,
 tool/resource dispatch, structured tool output, and stateful Streamable HTTP
-session handling. Anvil still owns the localhost listener and optional token
+session handling. PiMP Audio Studio still owns the localhost listener and optional token
 gate so it can stay embedded inside the desktop app.
 
 ## Enable
@@ -29,7 +29,7 @@ Authorization: Bearer <token>
 
 ## Transport Behavior
 
-Anvil speaks MCP Streamable HTTP through the Swift SDK's stateful server
+PiMP Audio Studio speaks MCP Streamable HTTP through the Swift SDK's stateful server
 transport:
 
 - `POST /mcp` accepts JSON-RPC requests and can return `text/event-stream`
@@ -38,11 +38,11 @@ transport:
   session id on later `POST`, `GET`, and `DELETE` requests.
 - `GET /mcp` opens the standalone SSE stream used for server-initiated
   messages, including `notifications/progress`.
-- `DELETE /mcp` terminates the session. Anvil resets the embedded SDK
+- `DELETE /mcp` terminates the session. PiMP Audio Studio resets the embedded SDK
   transport afterward so another local client can initialize without an app
   restart.
 - Raw curl callers should parse SSE `data:` events as JSON-RPC messages.
-  `scripts/smoke-mcp.sh` is the canonical shell example.
+  `scripts/smoke-pimpaudio-mcp.sh` is the canonical shell example.
 
 ## Tools
 
@@ -76,7 +76,7 @@ operation record.
 
 `editor_status` returns editor readiness, loaded audio metadata, supported
 editor action descriptors, and the active editor operation when present.
-`load_editor_audio` loads an Anvil history/audio id, or a readable local audio
+`load_editor_audio` loads a PiMP Audio Studio history/audio id, or a readable local audio
 path, into the shared editor coordinator as a background operation. It returns
 an `operationID` for polling or cancellation before inpaint/DSP/render tools
 mutate the editor buffer. History/audio ids are preferred because
@@ -107,7 +107,7 @@ editor inpaint/repaint submissions return `editor.inpaint`, DSP chains return
 them through the same operation registry used by the app.
 
 Protocol progress is currently request-scoped: when a client includes
-`_meta.progressToken` on `tools/call`, Anvil emits start/completed/failed
+`_meta.progressToken` on `tools/call`, PiMP Audio Studio emits start/completed/failed
 `notifications/progress` messages on the standalone `GET /mcp` stream.
 If a generation tool submits background work, the tool request's progress
 notification completes after the operation is accepted and includes the
@@ -117,7 +117,7 @@ MCP permits progress tokens to stay valid after the original response only for
 task-augmented requests, and the Swift SDK version currently integrated here
 does not expose task capabilities yet.
 
-For guarded mutations, Anvil uses the standard MCP `elicitation/create` flow
+For guarded mutations, PiMP Audio Studio uses the standard MCP `elicitation/create` flow
 when the initialized client advertises form elicitation support and the tool
 call omits `confirm: true`. The elicitation asks for an `approved` boolean;
 only `action: "accept"` with `approved: true` is treated as confirmation.
@@ -197,66 +197,66 @@ compatibility, for example `anvil.list_history` and `anvil_list_history`.
 
 The same data is also available as MCP resources:
 
-- `anvil://models`
-- `anvil://model/{id}`
-- `anvil://adapters`
-- `anvil://adapter/{id}`
-- `anvil://history`
-- `anvil://history/{id}`
-- `anvil://project/current`
-- `anvil://track/current`
-- `anvil://clip/current`
-- `anvil://region/current-selection`
-- `anvil://takes`
-- `anvil://take/{id}`
-- `anvil://presets`
-- `anvil://preset/{id}`
-- `anvil://workflows`
-- `anvil://workflow/{id}`
-- `anvil://trace/{id}`
-- `anvil://audio/{id}`
-- `anvil://editor`
-- `anvil://operations`
-- `anvil://operation/{id}`
-- `anvil://client-roots`
+- `pimpaudio://models`
+- `pimpaudio://model/{id}`
+- `pimpaudio://adapters`
+- `pimpaudio://adapter/{id}`
+- `pimpaudio://history`
+- `pimpaudio://history/{id}`
+- `pimpaudio://project/current`
+- `pimpaudio://track/current`
+- `pimpaudio://clip/current`
+- `pimpaudio://region/current-selection`
+- `pimpaudio://takes`
+- `pimpaudio://take/{id}`
+- `pimpaudio://presets`
+- `pimpaudio://preset/{id}`
+- `pimpaudio://workflows`
+- `pimpaudio://workflow/{id}`
+- `pimpaudio://trace/{id}`
+- `pimpaudio://audio/{id}`
+- `pimpaudio://editor`
+- `pimpaudio://operations`
+- `pimpaudio://operation/{id}`
+- `pimpaudio://client-roots`
 
 Audio resources return local file metadata and paths only. They do not stream
 audio bytes over MCP.
 
-`anvil://client-roots` reports whether the initialized MCP client advertised
+`pimpaudio://client-roots` reports whether the initialized MCP client advertised
 the MCP roots capability, the latest roots returned by `roots/list`, and
-Anvil's local path policy. Roots are advisory filesystem boundaries from the
-client; they do not bypass macOS sandboxing or grant Anvil new file
+PiMP Audio Studio's local path policy. Roots are advisory filesystem boundaries from the
+client; they do not bypass macOS sandboxing or grant PiMP Audio Studio new file
 permissions. For editor loading, history/audio ids are still preferred. For
 renders, the default `MCPExports` folder beside the loaded source audio remains
 the safest path unless the user intentionally chooses a client-advertised root.
 
-`anvil://project/current` is the top-level local workstation snapshot. It links
+`pimpaudio://project/current` is the top-level local workstation snapshot. It links
 the current editor track, clip, current/last region, recent takes, presets,
 workflow prompts, editor status, and operation registry.
 
-`anvil://takes` and `anvil://take/{id}` present generation history in a
+`pimpaudio://takes` and `pimpaudio://take/{id}` present generation history in a
 workstation-friendly shape with links to the matching history, trace, and audio
 resources.
 
 The endpoint also supports `resources/templates/list` for parameterized
 resource discovery. Current templates are:
 
-- `anvil://model/{id}`
-- `anvil://adapter/{id}`
-- `anvil://history/{id}`
-- `anvil://take/{id}`
-- `anvil://trace/{id}`
-- `anvil://audio/{id}`
-- `anvil://preset/{id}`
-- `anvil://workflow/{id}`
-- `anvil://operation/{id}`
+- `pimpaudio://model/{id}`
+- `pimpaudio://adapter/{id}`
+- `pimpaudio://history/{id}`
+- `pimpaudio://take/{id}`
+- `pimpaudio://trace/{id}`
+- `pimpaudio://audio/{id}`
+- `pimpaudio://preset/{id}`
+- `pimpaudio://workflow/{id}`
+- `pimpaudio://operation/{id}`
 
-`anvil://presets` includes saved generation presets plus built-in guidance,
+`pimpaudio://presets` includes saved generation presets plus built-in guidance,
 inpaint, reverb, and DSP effect catalogs. Individual saved presets are
-addressable as `anvil://preset/{id}`.
+addressable as `pimpaudio://preset/{id}`.
 
-`anvil://workflows` and `anvil://workflow/{id}` expose the same workflow prompt
+`pimpaudio://workflows` and `pimpaudio://workflow/{id}` expose the same workflow prompt
 catalog that is available through MCP prompts, including required arguments,
 recommended resources, and relevant tools.
 
@@ -272,10 +272,10 @@ The local MCP endpoint advertises reusable workflow prompts through the SDK
 - `production_ready_prompt`
 
 These prompts do not mutate app state by themselves. They give a client a
-structured workflow recipe that points at Anvil resources and tools, with the
+structured workflow recipe that points at PiMP Audio Studio resources and tools, with the
 same dry-run and guarded-confirmation expectations used by the direct tools.
 
-Anvil advertises MCP completions through `completion/complete`. Completions
+PiMP Audio Studio advertises MCP completions through `completion/complete`. Completions
 cover workflow prompt arguments such as `takeID`, `regionStart`, `regionEnd`,
 `variantCount`, `duration`, `direction`, `issue`, and `outputDirectory`, plus
 resource-template ids for models, adapters, history/takes/traces/audio,
@@ -288,13 +288,13 @@ those root paths.
 The repo includes a smoke script:
 
 ```bash
-scripts/smoke-mcp.sh
+scripts/smoke-pimpaudio-mcp.sh
 ```
 
 If token mode is enabled:
 
 ```bash
-ANVIL_MCP_TOKEN='<token>' scripts/smoke-mcp.sh
+PIMP_AUDIO_MCP_TOKEN='<token>' scripts/smoke-pimpaudio-mcp.sh
 ```
 
 The smoke script initializes a session, parses POST SSE responses, checks the

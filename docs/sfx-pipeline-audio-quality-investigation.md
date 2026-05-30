@@ -20,7 +20,7 @@ in both Swift and Python — this is a model characteristic, not a bug.
 > "Hypotheses still open" first.
 
 > **Quick orientation:** the `[AUDIODIAG]` toggle (same as ACE-Step —
-> `defaults write com.pimp.AnvilApp audioDebugVerbose -bool YES`) is wired into the SFX
+> `defaults write com.pimpstudios.PiMPAudioStudio com.pimpstudios.PiMPAudioStudio.audioDebugVerbose -bool YES`) is wired into the SFX
 > pipeline. Filter Xcode console for `SFX_` to see only SAO-path lines.
 
 ---
@@ -596,7 +596,7 @@ reflects magnitude differences, not direction. Not a bug.
 ## How to resume
 
 1. **Read "Current symptom"** and "Hypotheses still open" first.
-2. **Enable AUDIODIAG:** `defaults write com.pimp.AnvilApp audioDebugVerbose -bool YES`.
+2. **Enable AUDIODIAG:** `defaults write com.pimpstudios.PiMPAudioStudio com.pimpstudios.PiMPAudioStudio.audioDebugVerbose -bool YES`.
    Filter console for `SFX_DIT_` to see DiT internals per step.
 3. **Test prompts:** "footsteps on a wooden floor" and "dog barking", 30s, 100 steps,
    guidance=7.5. These should produce audibly different output once conditioning is working.

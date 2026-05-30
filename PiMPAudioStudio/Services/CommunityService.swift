@@ -154,7 +154,7 @@ final class CommunityService: ObservableObject {
     ///
     /// 1. **PEFT with config** (`adapter_config.json` + `adapter_model.safetensors`) —
     ///    rank/alpha/target_modules parsed from the config; keys remapped at import time.
-    /// 2. **Native Anvil** (`adapter.json` + `adapter.safetensors`) —
+    /// 2. **Native PiMP Audio Studio** (`adapter.json` + `adapter.safetensors`) —
     ///    metadata loaded verbatim, weights stored as-is.
     /// 3. **Weights-only PEFT** (`adapter_model.safetensors` only, no config) —
     ///    rank inferred from tensor shape, target modules inferred from key names.
@@ -176,7 +176,7 @@ final class CommunityService: ObservableObject {
             )
         }
 
-        // ── 2. Native Anvil format ────────────────────────────────────────────
+        // ── 2. Native PiMP Audio Studio format ────────────────────────────────
         let metadataURL = baseURL.appendingPathComponent("adapter.json")
         let (metaData, metaResponse) = try await URLSession.shared.data(from: metadataURL)
         if let http = metaResponse as? HTTPURLResponse, http.statusCode == 200 {
@@ -495,11 +495,11 @@ enum CommunityError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .missingFile(let file, let url):
-            return "Couldn't find \(file) in this repo. Check that the URL points to a valid Anvil or PEFT LoRA adapter. (\(url.absoluteString))"
+            return "Couldn't find \(file) in this repo. Check that the URL points to a valid PiMP Audio Studio or PEFT LoRA adapter. (\(url.absoluteString))"
         case .alreadyInstalled(let name):
             return "\"\(name)\" is already installed. Delete it first to re-download."
         case .incompatibleVersion(let required):
-            return "This adapter requires Anvil \(required) or later."
+            return "This adapter requires PiMP Audio Studio \(required) or later."
         case .unsupportedPEFTType(let type):
             return "Unsupported PEFT adapter type '\(type)'. Only LoRA adapters are supported."
         case .noMappableWeights(let url):

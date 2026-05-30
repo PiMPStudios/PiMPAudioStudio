@@ -23,11 +23,11 @@ struct GenerateView: View {
     @State private var stepsOverrideText: String = ""
     @State private var shiftOverride: Double = 3.0
     @State private var advancedExpanded: Bool = false
-    @AppStorage("audioDebugVerbose") private var audioDebugVerbose: Bool = false
+    @AppStorage(AppUserDefaultsKeys.audioDebugVerbose) private var audioDebugVerbose: Bool = false
     @State private var modeSelection: ModeSelection = .auto
     @State private var selectedAdapterID: String?
-    @AppStorage("selectedAdapterID") private var persistedAdapterID: String = ""
-    @AppStorage("selectedAdapterStrength") private var persistedAdapterStrength: Double = 1.0
+    @AppStorage(AppUserDefaultsKeys.selectedAdapterID) private var persistedAdapterID: String = ""
+    @AppStorage(AppUserDefaultsKeys.selectedAdapterStrength) private var persistedAdapterStrength: Double = 1.0
 
     // Cover song
     @State private var sourceAudioURL: URL? = nil
@@ -385,15 +385,7 @@ struct GenerateView: View {
     }
 
     private static func sourceAudioImportsDirectory() throws -> URL {
-        let appSupport = try FileManager.default.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true
-        )
-        return appSupport
-            .appending(path: "Anvil", directoryHint: .isDirectory)
-            .appending(path: "SourceAudioImports", directoryHint: .isDirectory)
+        AppStorageLocations.sourceAudioImportsDirectory
     }
 
     private static func uniqueSourceAudioURL(for sourceURL: URL, in directory: URL) -> URL {

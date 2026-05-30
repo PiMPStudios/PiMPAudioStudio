@@ -152,12 +152,19 @@ Validation notes:
 
 ### Phase 2: Runtime Identity
 
+Status: Complete as of 2026-05-30.
+
 - Rename visible app display name to `PiMP Audio Studio`.
 - Update bundle ID and app metadata.
 - Update OSLog subsystem strings.
 - Update UserDefaults keys for MCP settings, migration gates, and diagnostics.
 - Update Keychain service name with a one-shot legacy read/copy path.
 - Update dispatch queue labels and process-local diagnostics.
+- Centralize runtime names, bundle IDs, app-support paths, defaults keys,
+  keychain services, and MCP scheme constants in `AppRuntimeIdentity`.
+- Keep development-only compatibility readers for legacy `anvil://`, `ANVIL_*`,
+  old UserDefaults keys, and the old Keychain service while writing new
+  PiMP Audio Studio values.
 
 Exit criteria:
 
@@ -165,6 +172,13 @@ Exit criteria:
 - Existing local API keys can be copied into the new service without exposing
   values.
 - Debug logs use the new subsystem.
+
+Validation notes:
+
+- `xcodegen generate` passed.
+- `swift test --package-path PiMPAudioCore --scratch-path /tmp/PiMPAudioCore-phase2-spm-smoke --filter piMPAudioCoreHasVersion` passed.
+- `xcodebuild -project PiMPAudioStudio.xcodeproj -scheme PiMPAudioStudio -destination 'platform=macOS' -derivedDataPath /tmp/PiMPAudioStudio-phase2-xcbuild -only-testing:PiMPAudioStudioTests/AppStateTests test` built and launched the renamed app target successfully; the selected filter matched no tests.
+- `git diff --check` passed.
 
 ### Phase 3: Data Directory Migration
 
@@ -199,7 +213,7 @@ Exit criteria:
     notes until we are confident no local scripts depend on it.
   - Release default: advertise only `pimpaudio://`.
 - Update tools, resources, prompts, smoke tests, and MCP docs.
-- Update `scripts/smoke-mcp.sh` or create a renamed smoke script.
+- Update `scripts/smoke-pimpaudio-mcp.sh` or create a renamed smoke script.
 
 Exit criteria:
 

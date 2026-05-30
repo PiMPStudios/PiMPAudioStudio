@@ -348,7 +348,7 @@ private func requireFile(_ url: URL) throws {
 }
 
 private func defaultVAEWeightsURL() -> URL {
-    let path = "~/Library/Containers/com.pimpstudios.PiMPAudioStudio/Data/Library/Application Support/Anvil/models/ace-step-vae/vae.safetensors"
+    let path = "~/Library/Containers/com.pimpstudios.PiMPAudioStudio/Data/Library/Application Support/PiMP Audio Studio/models/ace-step-vae/vae.safetensors"
     return URL(fileURLWithPath: expandPath(path))
 }
 

@@ -80,13 +80,15 @@ struct DemucsMLXSourceSeparator {
     }
 
     private static func configuredModelName() -> String {
-        let configured = ProcessInfo.processInfo.environment["ANVIL_DEMUCS_MODEL_NAME"]?
+        let environment = ProcessInfo.processInfo.environment
+        let configured = (environment["PIMP_AUDIO_DEMUCS_MODEL_NAME"] ?? environment["ANVIL_DEMUCS_MODEL_NAME"])?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return configured?.isEmpty == false ? configured! : defaultModelName
     }
 
     private static func configuredModelDirectory() -> URL? {
-        guard let configured = ProcessInfo.processInfo.environment["ANVIL_DEMUCS_MODEL_DIR"]?
+        let environment = ProcessInfo.processInfo.environment
+        guard let configured = (environment["PIMP_AUDIO_DEMUCS_MODEL_DIR"] ?? environment["ANVIL_DEMUCS_MODEL_DIR"])?
             .trimmingCharacters(in: .whitespacesAndNewlines),
             !configured.isEmpty else {
             return nil

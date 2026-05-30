@@ -93,7 +93,7 @@ struct MainShellView: View {
             }
         }
         .listStyle(.sidebar)
-        .navigationTitle("Anvil")
+        .navigationTitle(AppRuntimeIdentity.displayName)
     }
 
     @ViewBuilder

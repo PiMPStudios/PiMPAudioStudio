@@ -189,7 +189,7 @@ enum ProviderCLILyricMode: Sendable {
 enum ProviderCLIPromptFile {
     static func write(_ prompt: String) throws -> URL {
         let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("anvil-lyric-prompt-\(UUID().uuidString).txt")
+            .appendingPathComponent("pimpaudio-lyric-prompt-\(UUID().uuidString).txt")
         let didCreate = FileManager.default.createFile(
             atPath: url.path,
             contents: Data(prompt.utf8),

@@ -13,7 +13,7 @@ struct OutputDirectoryPicker: View {
                 .font(.title2)
                 .fontWeight(.semibold)
 
-            Text("Select where Anvil saves your generated audio files.")
+            Text("Select where PiMP Audio Studio saves your generated audio files.")
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 300)

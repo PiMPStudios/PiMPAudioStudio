@@ -20,6 +20,7 @@
 		0DBC488CDA268BAC26F86953 /* DatasetReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C79807A5A367107A18B34BEE /* DatasetReviewView.swift */; };
 		15AB20E0214EA2D3CC895660 /* EditorWaveformView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDCC7827664FE7A88713A8B7 /* EditorWaveformView.swift */; };
 		164E4B0B7027803F2507DC29 /* Resampler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86E9FD577ED231C6654F4B3D /* Resampler.swift */; };
+		177D56B544182F5C4FB28DE9 /* PiMPAudioMCPServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F5D080E857CAB3EBCD872F5 /* PiMPAudioMCPServer.swift */; };
 		182238F80E3D42B8629B61FC /* LyricWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38D9EDCE18703E06F880DE57 /* LyricWriter.swift */; };
 		1995A54E6A36DE64E1F0C1CB /* FirstLaunchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF1B0EC010DA54932CEC58BA /* FirstLaunchView.swift */; };
 		1A76C731707C7C8E9AAB6003 /* YouTubeDatasetBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FB702EAAC8A01AD7E5D790A /* YouTubeDatasetBuilder.swift */; };
@@ -39,6 +40,7 @@
 		428F31BF21440674F8DB5F0C /* TrainingDatasetPackageWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0D7B640C60A10C22AC67066 /* TrainingDatasetPackageWriter.swift */; };
 		42F7C25DED41A07CD77F2476 /* SFXModelManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DD92064FAD410A700E4F870 /* SFXModelManager.swift */; };
 		48C1D4CCBB95609618A4C90A /* CommunityService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF5C8822A6F0B121B6259586 /* CommunityService.swift */; };
+		4C3DF5AE0DB4BB5075B15825 /* AppRuntimeIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 127582913C97D8C75CF1450A /* AppRuntimeIdentity.swift */; };
 		4FBA8122499600CE9E2A1338 /* HuggingFaceImportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D278A4F69183EB5824B0863 /* HuggingFaceImportSheet.swift */; };
 		5153534B0DACDE8F7F99A75B /* AdapterStackView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0289E58F6A0E77CDC343102A /* AdapterStackView.swift */; };
 		51FE470CF2AB778783784315 /* HistoryListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4F7666A5DAAC6A25C563792 /* HistoryListView.swift */; };
@@ -66,6 +68,7 @@
 		8378730F5910EC7809F5FB3D /* GenerationRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = A98FE13318125AE341A28854 /* GenerationRequest.swift */; };
 		84A6DC12829EC57B2B79F640 /* MergeSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5188E7D541F36EB4421F2DC5 /* MergeSheet.swift */; };
 		86BBD017EB5D967B8A836829 /* GenerationTraceComparator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E9D5E74344ECD70EDE5DD2F /* GenerationTraceComparator.swift */; };
+		89F4DFFD187D886658A57440 /* PiMPAudioCommandFacade.swift in Sources */ = {isa = PBXBuildFile; fileRef = D86270EFEFBCD098089A4A29 /* PiMPAudioCommandFacade.swift */; };
 		8BD6918D0C3D269DAFF24309 /* LocalDatasetEnrichmentService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2586CD181CDD97D6353D448 /* LocalDatasetEnrichmentService.swift */; };
 		92928B1D3C508CAC75377CAB /* EditorService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA120575D5C225BFB3148920 /* EditorService.swift */; };
 		934D522A5C33A28BF6C4B12F /* EQControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B9B61DDF5146616CE91EE57 /* EQControlView.swift */; };
@@ -73,7 +76,6 @@
 		A179EBA24885EAFBF2173798 /* LocalLyricWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9833CA38211A8C643BAE09B /* LocalLyricWriter.swift */; };
 		A6248C2C27E12041F92176DD /* OutputDirectoryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3924B1206C20610914243DAB /* OutputDirectoryManager.swift */; };
 		A8972C66FD839E9B148C733A /* CoverSongCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CED922964E51FCBD115D467 /* CoverSongCoordinator.swift */; };
-		A9DD02535114911CD8E87360 /* AnvilCommandFacade.swift in Sources */ = {isa = PBXBuildFile; fileRef = 957E0AAFC9F43D231820CE4F /* AnvilCommandFacade.swift */; };
 		AC01F1A2679689242F452C5D /* LoRACoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9393D7D26AFD717C9B830A10 /* LoRACoordinator.swift */; };
 		B1DAB4DFA5D6049A759C40E2 /* LyricWriterManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED1388985C0184792CDC8821 /* LyricWriterManager.swift */; };
 		B3CEBFB093C63C4ED5A84A00 /* CommunityBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0112B72B90B6F4C1FD66A04C /* CommunityBrowserView.swift */; };
@@ -90,7 +92,6 @@
 		C6CF263F4D8D0E2E27FB4CE0 /* GenerationAnalyzerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A600FB041528B3B4F141941 /* GenerationAnalyzerView.swift */; };
 		C81C2E0DD27E3B4C15A74216 /* WSOLAProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0BAE2D98D7CB4D300D75CCF /* WSOLAProcessor.swift */; };
 		CA2D2590A6B840D225550B6E /* PitchShiftControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0258ADFE79C7081A0E21313D /* PitchShiftControlView.swift */; };
-		CCF427935D02940EF2C82083 /* AnvilMCPServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBDF571E0B124762B3343723 /* AnvilMCPServer.swift */; };
 		D40862C7EEC3480CDEF32BE6 /* MLXNN in Frameworks */ = {isa = PBXBuildFile; productRef = EA965B8EEA2CED94FC7C3D6E /* MLXNN */; };
 		D416F5AFC82DAA00C55334D2 /* AdaptersSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B2F09BDCEDAF886F83A9186 /* AdaptersSettingsView.swift */; };
 		D4B8839DE8DCEC1070FEFACF /* LiveGenerationTrace.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4331AE5019A96224C031C32B /* LiveGenerationTrace.swift */; };
@@ -132,6 +133,7 @@
 		0D278A4F69183EB5824B0863 /* HuggingFaceImportSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HuggingFaceImportSheet.swift; sourceTree = "<group>"; };
 		0DD92064FAD410A700E4F870 /* SFXModelManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SFXModelManager.swift; sourceTree = "<group>"; };
 		0ECE7DFBAAFB9CB5FB304F7E /* ModelsSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsSettingsView.swift; sourceTree = "<group>"; };
+		127582913C97D8C75CF1450A /* AppRuntimeIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRuntimeIdentity.swift; sourceTree = "<group>"; };
 		14DF3990C64F292DEA3A1EE5 /* HistoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryStore.swift; sourceTree = "<group>"; };
 		15E5A1DDB5948E297A67C5B9 /* WaveformView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveformView.swift; sourceTree = "<group>"; };
 		15F85488EBD4AE107FD29266 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
@@ -175,11 +177,11 @@
 		7AD283BC85D582825E3DBDE3 /* DSPProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DSPProcessor.swift; sourceTree = "<group>"; };
 		7B2F09BDCEDAF886F83A9186 /* AdaptersSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdaptersSettingsView.swift; sourceTree = "<group>"; };
 		7F318EE06916402DA1BE7B5A /* PiMPAudioStudioTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PiMPAudioStudioTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		7F5D080E857CAB3EBCD872F5 /* PiMPAudioMCPServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiMPAudioMCPServer.swift; sourceTree = "<group>"; };
 		801F725A93F45D28B64D2BC5 /* TrainingDatasetPackageEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingDatasetPackageEditor.swift; sourceTree = "<group>"; };
 		86E9FD577ED231C6654F4B3D /* Resampler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Resampler.swift; sourceTree = "<group>"; };
 		89A033EBCC29848A6AB1942E /* TimeStretchControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimeStretchControlView.swift; sourceTree = "<group>"; };
 		9393D7D26AFD717C9B830A10 /* LoRACoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoRACoordinator.swift; sourceTree = "<group>"; };
-		957E0AAFC9F43D231820CE4F /* AnvilCommandFacade.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnvilCommandFacade.swift; sourceTree = "<group>"; };
 		9764574A837708EFE458372A /* TrainingManifest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingManifest.swift; sourceTree = "<group>"; };
 		97FD0BB7B9F19C6BD8C4E549 /* EditorState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorState.swift; sourceTree = "<group>"; };
 		9C5A6EF10A9C21E6D06F6E19 /* PiMPAudioStudioApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiMPAudioStudioApp.swift; sourceTree = "<group>"; };
@@ -207,6 +209,7 @@
 		CDCC7827664FE7A88713A8B7 /* EditorWaveformView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorWaveformView.swift; sourceTree = "<group>"; };
 		D259CCEA17A9820A3167836A /* GenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationService.swift; sourceTree = "<group>"; };
 		D33155AB9C847F52FEB43199 /* PiMPAudioCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = PiMPAudioCore; path = PiMPAudioCore; sourceTree = SOURCE_ROOT; };
+		D86270EFEFBCD098089A4A29 /* PiMPAudioCommandFacade.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiMPAudioCommandFacade.swift; sourceTree = "<group>"; };
 		D9833CA38211A8C643BAE09B /* LocalLyricWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLyricWriter.swift; sourceTree = "<group>"; };
 		DA120575D5C225BFB3148920 /* EditorService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorService.swift; sourceTree = "<group>"; };
 		DAEBC0221FBFBE74FC50074F /* EditorToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorToolbar.swift; sourceTree = "<group>"; };
@@ -219,7 +222,6 @@
 		ED4AC7C94D81749A9705316C /* ProviderAccessStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderAccessStoreTests.swift; sourceTree = "<group>"; };
 		ED69726963E9E51F4E929435 /* LocalFilesImportSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalFilesImportSheet.swift; sourceTree = "<group>"; };
 		F3FDF1309A57FC7B5D92D13A /* PresetStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetStore.swift; sourceTree = "<group>"; };
-		FBDF571E0B124762B3343723 /* AnvilMCPServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnvilMCPServer.swift; sourceTree = "<group>"; };
 		FDAD1DFCE24C8AC8940CB518 /* AudioPlayerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayerService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -289,9 +291,8 @@
 				23E3669212635DA76F1F31BB /* ACEStepGenerationService.swift */,
 				6F8CB5A74714F176FCF6989C /* AdapterRegistry.swift */,
 				170EDAB12E02A75BD53997D2 /* AdapterStackManager.swift */,
-				957E0AAFC9F43D231820CE4F /* AnvilCommandFacade.swift */,
-				FBDF571E0B124762B3343723 /* AnvilMCPServer.swift */,
 				3747A32ED0DA7C80736A0625 /* APIKeyStore.swift */,
+				127582913C97D8C75CF1450A /* AppRuntimeIdentity.swift */,
 				1922ED80936C6D49A9DBE3AF /* AudioFileLoader.swift */,
 				FDAD1DFCE24C8AC8940CB518 /* AudioPlayerService.swift */,
 				DF5C8822A6F0B121B6259586 /* CommunityService.swift */,
@@ -306,6 +307,8 @@
 				9393D7D26AFD717C9B830A10 /* LoRACoordinator.swift */,
 				3924B1206C20610914243DAB /* OutputDirectoryManager.swift */,
 				09875B08861E528C4612B08D /* PEFTKeyRemapper.swift */,
+				D86270EFEFBCD098089A4A29 /* PiMPAudioCommandFacade.swift */,
+				7F5D080E857CAB3EBCD872F5 /* PiMPAudioMCPServer.swift */,
 				F3FDF1309A57FC7B5D92D13A /* PresetStore.swift */,
 				B2BBE32A110AD18FA798DA39 /* PromptEnhancer.swift */,
 				170F4A62CC218DA23066DBFA /* ProviderAccessStore.swift */,
@@ -576,8 +579,7 @@
 				5153534B0DACDE8F7F99A75B /* AdapterStackView.swift in Sources */,
 				D416F5AFC82DAA00C55334D2 /* AdaptersSettingsView.swift in Sources */,
 				E86FB740CCF3CA9ECEF81C4F /* AddModelView.swift in Sources */,
-				A9DD02535114911CD8E87360 /* AnvilCommandFacade.swift in Sources */,
-				CCF427935D02940EF2C82083 /* AnvilMCPServer.swift in Sources */,
+				4C3DF5AE0DB4BB5075B15825 /* AppRuntimeIdentity.swift in Sources */,
 				B7C5671EA3CA0B9B76232E13 /* AppState.swift in Sources */,
 				65CFCDFCBE6F8226103415F6 /* AudioBufferConverter.swift in Sources */,
 				F9F62614EF9238A108984C92 /* AudioFileLoader.swift in Sources */,
@@ -636,6 +638,8 @@
 				A6248C2C27E12041F92176DD /* OutputDirectoryManager.swift in Sources */,
 				07669B652228A1D5565052CF /* OutputDirectoryPicker.swift in Sources */,
 				BAB9F41373E0AC3D8082158D /* PEFTKeyRemapper.swift in Sources */,
+				89F4DFFD187D886658A57440 /* PiMPAudioCommandFacade.swift in Sources */,
+				177D56B544182F5C4FB28DE9 /* PiMPAudioMCPServer.swift in Sources */,
 				057FB5A3410F8551F372E358 /* PiMPAudioStudioApp.swift in Sources */,
 				CA2D2590A6B840D225550B6E /* PitchShiftControlView.swift in Sources */,
 				C0BA58D97F2340A272150F99 /* PlayerView.swift in Sources */,

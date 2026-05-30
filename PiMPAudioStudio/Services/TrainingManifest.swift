@@ -9,7 +9,7 @@ struct TrainingImportedFile: Codable, Hashable, Sendable {
     /// Optional lyric/transcript conditioning, used mainly for vocal stem datasets.
     var lyrics: String
     /// Optional reusable preprocess cache target, present when imported from an
-    /// Anvil dataset bundle that declares `preprocess_cache.json`.
+    /// PiMP Audio Studio dataset bundle that declares `preprocess_cache.json`.
     var preprocessCache: TrainingPreprocessCacheReference?
 
     init(
@@ -128,7 +128,7 @@ enum TrainingDatasetImportError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .unsupportedJSON(let name):
-            return "\(name) is not a supported Anvil training dataset JSON file."
+            return "\(name) is not a supported PiMP Audio Studio training dataset JSON file."
         case .noUsableAudioFiles(let url):
             return "No readable audio files were found from \(url.lastPathComponent)."
         }

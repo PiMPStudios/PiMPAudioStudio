@@ -18,18 +18,12 @@ final class AppState: ObservableObject {
     let registry: ModelRegistry
 
     convenience init() {
-        let modelsDir = FileManager.default.urls(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask
-        )[0].appending(path: "Anvil/models")
+        let modelsDir = AppStorageLocations.modelsDirectory
         self.init(registry: ModelRegistry(baseDirectory: modelsDir))
     }
 
     convenience init(apiKeyStore: APIKeyStore) {
-        let modelsDir = FileManager.default.urls(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask
-        )[0].appending(path: "Anvil/models")
+        let modelsDir = AppStorageLocations.modelsDirectory
         let tokenProvider: @Sendable () async -> String? = { [apiKeyStore] in
             await MainActor.run { apiKeyStore.huggingFaceToken() }
         }

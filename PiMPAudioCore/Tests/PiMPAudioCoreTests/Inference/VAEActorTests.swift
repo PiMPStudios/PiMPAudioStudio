@@ -44,7 +44,7 @@ struct VAEActorTests {
 
     @Test("Decode matches Python reference")
     func decodeMatchesPythonReference() async throws {
-        let weightsPath = ("~/Library/Containers/com.pimpstudios.PiMPAudioStudio/Data/Library/Application Support/Anvil/models/ace-step-vae/vae.safetensors" as NSString).expandingTildeInPath
+        let weightsPath = ("~/Library/Containers/com.pimpstudios.PiMPAudioStudio/Data/Library/Application Support/PiMP Audio Studio/models/ace-step-vae/vae.safetensors" as NSString).expandingTildeInPath
         let latentPath = "/tmp/vae_test_latent.safetensors"
         guard FileManager.default.fileExists(atPath: weightsPath),
               FileManager.default.fileExists(atPath: latentPath)

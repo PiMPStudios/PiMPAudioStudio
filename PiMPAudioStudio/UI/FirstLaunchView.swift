@@ -14,7 +14,7 @@ struct FirstLaunchView: View {
         VStack(spacing: 32) {
             Spacer()
 
-            Text("Welcome to Anvil")
+            Text("Welcome to \(AppRuntimeIdentity.displayName)")
                 .font(.largeTitle.bold())
 
             Text("AI audio generation — music, sound effects, and more.\nCore models need to be downloaded before first use.")

@@ -1,12 +1,12 @@
 # Remote Worker Contract
 
-This document defines the provider-neutral remote job shape for Anvil dataset annotation, preprocessing, LoRA training, and LoKR training.
+This document defines the provider-neutral remote job shape for PiMP Audio Studio dataset annotation, preprocessing, LoRA training, and LoKR training.
 
 The contract is intentionally separate from RunPod, DigitalOcean, or any other provider. Provider adapters only upload packages, start workers, stream status/logs, cancel jobs, and download artifacts. The package, job request, logs, metrics, and results should look the same no matter where the GPU runs.
 
 ## Goals
 
-- Keep Anvil's local dataset package as the source of truth.
+- Keep PiMP Audio Studio's local dataset package as the source of truth.
 - Let remote workers consume the same zip that local training can re-import.
 - Avoid provider-specific fields in dataset packages and training manifests.
 - Keep provider API keys in Keychain, never inside package zips or job files.
@@ -42,7 +42,7 @@ Stem bundles are optional until local enrichment has run. `preprocessed/**` can 
 
 ## Job Request
 
-Before launch, Anvil creates a provider-neutral `remote_job.json`. The provider adapter sends that file with the package zip or writes it into the unzipped package before the worker starts.
+Before launch, PiMP Audio Studio creates a provider-neutral `remote_job.json`. The provider adapter sends that file with the package zip or writes it into the unzipped package before the worker starts.
 
 Minimal shape:
 

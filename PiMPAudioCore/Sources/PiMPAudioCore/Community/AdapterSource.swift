@@ -11,6 +11,6 @@ public enum AdapterSource: String, Codable, Sendable, Hashable {
     /// Imported directly from a HuggingFace repo URL.
     case huggingface
 
-    /// Imported from a local PEFT/Anvil adapter folder.
+    /// Imported from a local PEFT or native PiMP Audio Studio adapter folder.
     case imported
 }

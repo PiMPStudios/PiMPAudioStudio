@@ -1,43 +1,43 @@
 # MCP Standards Roadmap
 
-This document records the direction for Anvil's local MCP surface after the
-2026-05 standards review. The goal is to keep Anvil as close to the official
+This document records the direction for PiMP Audio Studio's local MCP surface after the
+2026-05 standards review. The goal is to keep PiMP Audio Studio as close to the official
 Model Context Protocol shape as practical while preserving the app-specific
 command facade that already protects generation, history, adapter, and model
 state.
 
 ## Decision
 
-Anvil should move toward an SDK-backed or spec-conformant MCP server instead of
+PiMP Audio Studio should move toward an SDK-backed or spec-conformant MCP server instead of
 letting the current hand-rolled JSON-RPC/HTTP implementation grow into a larger
 custom protocol.
 
-The existing `AnvilCommandFacade` remains the right internal boundary. It
+The existing `PiMPAudioCommandFacade` remains the right internal boundary. It
 should continue to expose JSON-safe app commands and resources. The protocol
 transport and MCP data-layer responsibilities should move toward the official
 Swift SDK if the SDK can support the app-hosted localhost use case cleanly.
 
 ## Why
 
-Anvil is expected to grow beyond simple generation into richer editing and
+PiMP Audio Studio is expected to grow beyond simple generation into richer editing and
 workstation workflows. A larger audio surface will need first-class support for
 long-running operations, progress, cancellation, reusable workflows, resources,
 and structured confirmations. Those are MCP protocol concerns, not business
 logic concerns, and they should not be reinvented piecemeal inside
-`AnvilMCPServer`.
+`PiMPAudioMCPServer`.
 
 ## Current State
 
-- `AnvilMCPServer` is a local, app-hosted, localhost-only HTTP endpoint at
+- `PiMPAudioMCPServer` is a local, app-hosted, localhost-only HTTP endpoint at
   `http://127.0.0.1:38765/mcp`.
-- The server implements the small method set Anvil currently needs:
+- The server implements the small method set PiMP Audio Studio currently needs:
   `initialize`, `ping`, `tools/list`, `tools/call`, `resources/list`,
   `resources/read`, `resources/templates/list`, `prompts/list`, `prompts/get`,
   and `completion/complete`.
 - Tool/resource registration, lifecycle handling, structured tool results,
   JSON-RPC dispatch, stateful Streamable HTTP sessions, and SSE response
   handling now run through the official Swift MCP SDK.
-- Anvil still owns the lightweight localhost socket listener so the app can
+- PiMP Audio Studio still owns the lightweight localhost socket listener so the app can
   keep its existing settings UI, token gate, and process-local endpoint.
 - The public tool catalog uses plain snake_case names such as `list_history`,
   `generate_song`, and `release_memory`.
@@ -67,17 +67,17 @@ logic concerns, and they should not be reinvented piecemeal inside
 - Workstation resources now expose the current local project/session, current
   track, loaded clip, current/last editor region, recent takes, saved/built-in
   presets, and workflow prompt metadata:
-  `anvil://project/current`, `anvil://track/current`,
-  `anvil://clip/current`, `anvil://region/current-selection`,
-  `anvil://takes`, `anvil://take/{id}`, `anvil://presets`,
-  `anvil://preset/{id}`, `anvil://workflows`, and
-  `anvil://workflow/{id}`.
+  `pimpaudio://project/current`, `pimpaudio://track/current`,
+  `pimpaudio://clip/current`, `pimpaudio://region/current-selection`,
+  `pimpaudio://takes`, `pimpaudio://take/{id}`, `pimpaudio://presets`,
+  `pimpaudio://preset/{id}`, `pimpaudio://workflows`, and
+  `pimpaudio://workflow/{id}`.
 - Resource templates are now advertised through `resources/templates/list` for
   model, adapter, history, take, trace, audio, preset, workflow, and operation
   URI patterns.
 - Client roots are tracked through the Swift SDK roots primitives when a client
-  advertises the roots capability. Anvil exposes the current roots and local
-  path policy as `anvil://client-roots`; roots guide safe path choices but do
+  advertises the roots capability. PiMP Audio Studio exposes the current roots and local
+  path policy as `pimpaudio://client-roots`; roots guide safe path choices but do
   not bypass macOS sandbox permissions.
 - The SDK-backed server advertises workflow prompts through `prompts/list` and
   `prompts/get`: `improve_chorus`, `create_mix_variants`,
@@ -88,11 +88,11 @@ logic concerns, and they should not be reinvented piecemeal inside
   ids, including take IDs, region times, presets, workflows, and operations.
 - Operation state is exposed through `list_operations`, `get_operation`,
   `cancel_operation`, `generation_status.currentOperation`,
-  `editor_status.currentOperation`, `anvil://editor`, `anvil://operations`,
-  and `anvil://operation/{id}`.
+  `editor_status.currentOperation`, `pimpaudio://editor`, `pimpaudio://operations`,
+  and `pimpaudio://operation/{id}`.
 - The current SDK bridge uses `StatefulHTTPServerTransport`, so `initialize`
   returns `MCP-Session-Id`, `POST /mcp` may return SSE, `GET /mcp` opens the
-  standalone SSE stream, and `DELETE /mcp` terminates the session. Anvil resets
+  standalone SSE stream, and `DELETE /mcp` terminates the session. PiMP Audio Studio resets
   the embedded SDK transport after a successful `DELETE` so local clients can
   initialize again without restarting the app.
 - Normal macOS app termination now explicitly stops the local MCP server so the
@@ -116,7 +116,7 @@ logic concerns, and they should not be reinvented piecemeal inside
 flowchart LR
     Client["MCP clients\nCodex / Grok / Claude / scripts"]
     Transport["MCP transport + lifecycle\nOfficial Swift SDK preferred"]
-    Facade["AnvilCommandFacade\nJSON-safe app boundary"]
+    Facade["PiMPAudioCommandFacade\nJSON-safe app boundary"]
     Services["App services\nGeneration / history / editor / models"]
     Artifacts["Artifacts\ntraces / audio metadata / presets / projects"]
 
@@ -135,7 +135,7 @@ The transport layer should own MCP concerns:
 - cancellation, progress, and future task support
 - optional authentication and session behavior
 
-The facade should own Anvil concerns:
+The facade should own PiMP Audio Studio concerns:
 
 - validation of generation and editing requests
 - adapter/model/history lookup
@@ -150,16 +150,16 @@ tools.
 
 Resources should describe state:
 
-- `anvil://projects`
-- `anvil://project/{id}`
-- `anvil://project/{id}/tracks`
-- `anvil://track/{id}`
-- `anvil://clip/{id}`
-- `anvil://region/{id}`
-- `anvil://take/{id}`
-- `anvil://preset/{id}`
-- `anvil://trace/{id}`
-- `anvil://audio/{id}`
+- `pimpaudio://projects`
+- `pimpaudio://project/{id}`
+- `pimpaudio://project/{id}/tracks`
+- `pimpaudio://track/{id}`
+- `pimpaudio://clip/{id}`
+- `pimpaudio://region/{id}`
+- `pimpaudio://take/{id}`
+- `pimpaudio://preset/{id}`
+- `pimpaudio://trace/{id}`
+- `pimpaudio://audio/{id}`
 
 Tools should perform bounded actions:
 
@@ -200,7 +200,7 @@ in-flight MCP request cancellation.
 
 ## Swift 6 Migration Posture
 
-The official Swift SDK currently targets Swift 6.0+ / Xcode 16+. Anvil should
+The official Swift SDK currently targets Swift 6.0+ / Xcode 16+. PiMP Audio Studio should
 not flip the entire app to Swift 6 language mode as the first step. Instead:
 
 1. Keep the current Swift 5.10 language mode while repairing stale tests.
@@ -218,7 +218,7 @@ fully annotated yet.
 Phase 0 warning inventory was refreshed with:
 
 ```bash
-swift build --package-path AnvilCore \
+swift build --package-path PiMPAudioCore \
   -Xswiftc -warn-concurrency \
   -Xswiftc -strict-concurrency=complete
 ```
@@ -244,12 +244,12 @@ Known warning groups:
 - [x] Repair stale Swift package test fixtures for the current tokenizer,
       conditioning, VAE, DiT, SFX, editor, and LLM contracts.
 - [x] Add a concurrency-warning inventory before changing language modes.
-- [x] Add `scripts/test-anvilcore-serial.sh` as the reliable Phase 0 package
+- [x] Add `scripts/test-pimpaudiocore-serial.sh` as the reliable Phase 0 package
       baseline.
 
-Current test posture: use `scripts/test-anvilcore-serial.sh` for MCP-related
-baseline work. It enumerates AnvilCore test suites and runs each suite filter in
-its own `swift test` invocation. Raw `swift test --package-path AnvilCore` still
+Current test posture: use `scripts/test-pimpaudiocore-serial.sh` for MCP-related
+baseline work. It enumerates PiMPAudioCore test suites and runs each suite filter in
+its own `swift test` invocation. Raw `swift test --package-path PiMPAudioCore` still
 exits with signal 5 in MLX convolution under the all-at-once Swift Testing
 runner, so the next harness cleanup should serialize or isolate the MLX-heavy
 suites before treating the raw package command as a required gate.
@@ -265,9 +265,9 @@ suites before treating the raw package command as a required gate.
 
 Spike result: `Spikes/MCPServerSDKSpike` resolved the official SDK at `0.12.1`
 and validated the tiny read-only surface through both `InMemoryTransport` and
-`StatelessHTTPServerTransport`. The stateless transport matched Anvil's earlier
+`StatelessHTTPServerTransport`. The stateless transport matched PiMP Audio Studio's earlier
 POST/JSON-only endpoint closely enough to justify the SDK integration. The app
-now uses the SDK's stateful transport, while Anvil still provides the localhost
+now uses the SDK's stateful transport, while PiMP Audio Studio still provides the localhost
 socket listener and adapts raw requests/responses into the SDK's
 framework-agnostic `HTTPRequest` and `HTTPResponse` types.
 
@@ -276,7 +276,7 @@ framework-agnostic `HTTPRequest` and `HTTPResponse` types.
 If the SDK fits:
 
 - [x] Replace the custom MCP protocol dispatch shell with SDK primitives.
-- [x] Keep `AnvilCommandFacade` and existing tool semantics intact.
+- [x] Keep `PiMPAudioCommandFacade` and existing tool semantics intact.
 - [x] Preserve compatibility aliases unless they conflict with SDK validation.
 - [x] Keep the existing localhost listener while adapting raw HTTP requests and
       responses into the SDK's framework-agnostic `HTTPRequest` and
@@ -285,7 +285,7 @@ If the SDK fits:
       `StatefulHTTPServerTransport`.
 - [x] Stream SDK `.stream` responses through the app-hosted socket listener
       without `Content-Length`.
-- [x] Update `scripts/smoke-mcp.sh` for session ids, POST SSE parsing,
+- [x] Update `scripts/smoke-pimpaudio-mcp.sh` for session ids, POST SSE parsing,
       `GET /mcp`, and request-scoped progress notifications.
 - [x] Normalize operation progress payloads so `progress` / `total` describe
       whole-operation completion and stage-local counters use
@@ -298,11 +298,11 @@ If the SDK does not fit yet:
 - Track each intentional divergence in this roadmap.
 
 Implementation result: the app target now depends on `modelcontextprotocol/swift-sdk`
-`0.12.1` and registers the current Anvil tool/resource catalog against SDK
+`0.12.1` and registers the current PiMP Audio Studio tool/resource catalog against SDK
 `Server` handlers. The bridge now uses the SDK's stateful Streamable HTTP
 transport. The remaining custom code is listener glue, token checking,
 localhost-only origin gating, streaming socket writes, and conversion between
-Anvil's JSON-safe facade payloads and SDK `Value` objects.
+PiMP Audio Studio's JSON-safe facade payloads and SDK `Value` objects.
 
 ### Phase 3 - Rich Workstation Capabilities
 
@@ -312,7 +312,7 @@ Anvil's JSON-safe facade payloads and SDK `Value` objects.
 - [x] Add project, track, clip, region, take, and preset resources.
 - [x] Add resource templates and completions for workflow prompt/resource ids.
 - [x] Track MCP client roots and expose the path-access policy through
-      `anvil://client-roots`.
+      `pimpaudio://client-roots`.
 - Map background generation/editor operation progress onto MCP task-augmented
   requests once the Swift SDK supports task capabilities, without breaking the
   pollable operation contract.
@@ -325,10 +325,10 @@ Anvil's JSON-safe facade payloads and SDK `Value` objects.
 
 ## Acceptance Criteria
 
-- A standards-based client can discover Anvil tools and resources without
-  custom knowledge of Anvil's legacy names.
+- A standards-based client can discover PiMP Audio Studio tools and resources without
+  custom knowledge of PiMP Audio Studio's legacy names.
 - Raw HTTP smoke tests and real MCP-client discovery both pass.
-- `AnvilCommandFacade` remains the only route from MCP into app services.
+- `PiMPAudioCommandFacade` remains the only route from MCP into app services.
 - Long-running work has operation IDs, pollable progress, and cancellation
   before new heavy tools are added.
 - Remote or LAN exposure remains out of scope until auth/session design is

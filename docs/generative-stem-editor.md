@@ -8,13 +8,13 @@
 
 ## Overview
 
-The **Generative Stem Editor** is a proposed evolution of Anvil's editing experience. Instead of treating the editor as a single-file AI inpainting + DSP tool (current state), it reorients the product around **stems as first-class, independently generatable and editable objects**.
+The **Generative Stem Editor** is a proposed evolution of PiMP Audio Studio's editing experience. Instead of treating the editor as a single-file AI inpainting + DSP tool (current state), it reorients the product around **stems as first-class, independently generatable and editable objects**.
 
 The core idea is:
 
 > Build, refine, and arrange music and sound using AI generation and inpainting *at the stem level*, then stitch and iterate until the full arrangement feels coherent.
 
-This direction deliberately leans into Anvil's unique strengths:
+This direction deliberately leans into PiMP Audio Studio's unique strengths:
 - High-quality on-device music generation (ACE-Step DiT / flow-matching)
 - High-quality on-device SFX/ambient generation (Stable Audio Open components)
 - Strong latent-space inpainting and region editing via `InpaintCoordinator`
@@ -153,7 +153,7 @@ LoRAs become even more powerful when they can be applied per-stem or per-section
 
 ### MCP Surface
 
-Existing concepts like `anvil://take/{id}`, `anvil://takes`, `prepare_stems_for_review`, and the current "project/track/clip" resources should evolve to support stem-aware operations.
+Existing concepts like `pimpaudio://take/{id}`, `pimpaudio://takes`, `prepare_stems_for_review`, and the current "project/track/clip" resources should evolve to support stem-aware operations.
 
 ---
 
@@ -238,7 +238,7 @@ The goal is an exceptional **AI-native** creative tool, not a replacement for Lo
 
 ## Summary for Codex
 
-The Generative Stem Editor is the bet that Anvil's future lies in **deep, iterative, stem-level generative work** rather than competing in the general DAW space.
+The Generative Stem Editor is the bet that PiMP Audio Studio's future lies in **deep, iterative, stem-level generative work** rather than competing in the general DAW space.
 
 It reuses and extends the excellent latent inpainting work from Phase 6, the take/history system, and the dual-pipeline architecture. The hardest parts will be the data model, the multi-stem audio engine, and the conditioning/coherence problems — not the traditional DAW UI chrome.
 

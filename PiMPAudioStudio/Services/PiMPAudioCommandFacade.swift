@@ -3,7 +3,7 @@ import AVFoundation
 import PiMPAudioCore
 
 @MainActor
-final class AnvilCommandFacade {
+final class PiMPAudioCommandFacade {
     private let registry: ModelRegistry
     private let promptEnhancer: PromptEnhancer
     private let lyricWriterManager: LyricWriterManager
@@ -171,19 +171,19 @@ final class AnvilCommandFacade {
     func listResources() async -> [[String: Any]] {
         var resources: [[String: Any]] = [
             resource(
-                uri: "anvil://models",
+                uri: "pimpaudio://models",
                 name: "models",
-                title: "Anvil Models",
+                title: "PiMP Audio Studio Models",
                 description: "Current model registry state and active model selections."
             ),
             resource(
-                uri: "anvil://adapters",
+                uri: "pimpaudio://adapters",
                 name: "adapters",
-                title: "Anvil LoRA Adapters",
+                title: "PiMP Audio Studio LoRA Adapters",
                 description: "Installed LoRA adapters and checkpoint metadata."
             ),
             resource(
-                uri: "anvil://history",
+                uri: "pimpaudio://history",
                 name: "history",
                 title: "Recent Generation History",
                 description: "Recent generation rows with model, seed, prompt, audio path, and trace availability."
@@ -191,7 +191,7 @@ final class AnvilCommandFacade {
             resource(
                 uri: resourceURI(kind: "project", identifier: "current"),
                 name: "current",
-                title: "Current Anvil Project",
+                title: "Current PiMP Audio Studio Project",
                 description: "Current local workstation project/session with editor, take, and operation links."
             ),
             resource(
@@ -213,31 +213,31 @@ final class AnvilCommandFacade {
                 description: "Current or most recently requested editor selection/region metadata."
             ),
             resource(
-                uri: "anvil://takes",
+                uri: "pimpaudio://takes",
                 name: "takes",
                 title: "Recent Takes",
                 description: "Recent generated takes with links to history, audio, and trace resources."
             ),
             resource(
-                uri: "anvil://presets",
+                uri: "pimpaudio://presets",
                 name: "presets",
                 title: "Generation and Editor Presets",
                 description: "Saved generation presets plus built-in editor/guidance preset catalogs."
             ),
             resource(
-                uri: "anvil://workflows",
+                uri: "pimpaudio://workflows",
                 name: "workflows",
-                title: "Anvil Workflow Prompts",
+                title: "PiMP Audio Studio Workflow Prompts",
                 description: "Reusable agent workflow prompt templates for generation, editing, and review."
             ),
             resource(
-                uri: "anvil://editor",
+                uri: "pimpaudio://editor",
                 name: "editor",
                 title: "Editor Status",
                 description: "Current editor readiness, loaded audio metadata, supported actions, and active editor operation."
             ),
             resource(
-                uri: "anvil://operations",
+                uri: "pimpaudio://operations",
                 name: "operations",
                 title: "MCP Operations",
                 description: "Recent MCP-observable operations with progress, status, result, and cancellation metadata."
@@ -328,8 +328,8 @@ final class AnvilCommandFacade {
     }
 
     func readResource(uri: String) async throws -> [String: Any] {
-        guard let parsed = AnvilResourceURI(uri) else {
-            throw AnvilCommandFacadeError.invalidResourceURI(uri)
+        guard let parsed = PiMPAudioResourceURI(uri) else {
+            throw PiMPAudioCommandFacadeError.invalidResourceURI(uri)
         }
 
         switch parsed.kind {
@@ -337,14 +337,14 @@ final class AnvilCommandFacade {
             return await listModels()
         case "model":
             guard let identifier = parsed.identifier else {
-                throw AnvilCommandFacadeError.invalidResourceURI(uri)
+                throw PiMPAudioCommandFacadeError.invalidResourceURI(uri)
             }
             return try await modelResource(id: identifier)
         case "adapters":
             return await listAdapters()
         case "adapter":
             guard let identifier = parsed.identifier else {
-                throw AnvilCommandFacadeError.invalidResourceURI(uri)
+                throw PiMPAudioCommandFacadeError.invalidResourceURI(uri)
             }
             return try await adapterResource(id: identifier)
         case "history":
@@ -369,31 +369,31 @@ final class AnvilCommandFacade {
             return takesResource(limit: 200)
         case "take":
             guard let identifier = parsed.identifier else {
-                throw AnvilCommandFacadeError.invalidResourceURI(uri)
+                throw PiMPAudioCommandFacadeError.invalidResourceURI(uri)
             }
             return try takeResource(identifier: identifier)
         case "presets":
             return presetsResource()
         case "preset":
             guard let identifier = parsed.identifier else {
-                throw AnvilCommandFacadeError.invalidResourceURI(uri)
+                throw PiMPAudioCommandFacadeError.invalidResourceURI(uri)
             }
             return try presetResource(identifier: identifier)
         case "workflows":
             return workflowsResource()
         case "workflow":
             guard let identifier = parsed.identifier else {
-                throw AnvilCommandFacadeError.invalidResourceURI(uri)
+                throw PiMPAudioCommandFacadeError.invalidResourceURI(uri)
             }
             return try workflowResource(identifier: identifier)
         case "trace":
             guard let identifier = parsed.identifier else {
-                throw AnvilCommandFacadeError.invalidResourceURI(uri)
+                throw PiMPAudioCommandFacadeError.invalidResourceURI(uri)
             }
             return try getTrace(arguments: ["id": identifier])
         case "audio":
             guard let identifier = parsed.identifier else {
-                throw AnvilCommandFacadeError.invalidResourceURI(uri)
+                throw PiMPAudioCommandFacadeError.invalidResourceURI(uri)
             }
             return try audioResource(identifier: identifier)
         case "editor":
@@ -402,11 +402,11 @@ final class AnvilCommandFacade {
             return listOperations(arguments: ["limit": maxOperationRecords])
         case "operation":
             guard let identifier = parsed.identifier else {
-                throw AnvilCommandFacadeError.invalidResourceURI(uri)
+                throw PiMPAudioCommandFacadeError.invalidResourceURI(uri)
             }
             return try getOperation(arguments: ["id": identifier])
         default:
-            throw AnvilCommandFacadeError.resourceNotFound(uri)
+            throw PiMPAudioCommandFacadeError.resourceNotFound(uri)
         }
     }
 
@@ -451,7 +451,7 @@ final class AnvilCommandFacade {
         let isPreferred: Bool
         if hasPreferredArgument {
             guard let parsed = boolValue(preferredValue) else {
-                throw AnvilCommandFacadeError.invalidBoolean("isPreferred")
+                throw PiMPAudioCommandFacadeError.invalidBoolean("isPreferred")
             }
             isPreferred = parsed
         } else {
@@ -511,7 +511,7 @@ final class AnvilCommandFacade {
 
     func applyAdapter(arguments: [String: Any]) async throws -> [String: Any] {
         guard let generationService else {
-            throw AnvilCommandFacadeError.generationServiceUnavailable
+            throw PiMPAudioCommandFacadeError.generationServiceUnavailable
         }
 
         if boolValue(arguments["clear"] ?? arguments["none"]) == true {
@@ -610,7 +610,7 @@ final class AnvilCommandFacade {
 
     func generate(arguments: [String: Any]) throws -> [String: Any] {
         guard let generationService else {
-            throw AnvilCommandFacadeError.generationServiceUnavailable
+            throw PiMPAudioCommandFacadeError.generationServiceUnavailable
         }
 
         let request = try generationRequest(arguments)
@@ -620,10 +620,10 @@ final class AnvilCommandFacade {
         }
 
         guard generationService.outputDirectoryPath != nil else {
-            throw AnvilCommandFacadeError.outputDirectoryUnavailable
+            throw PiMPAudioCommandFacadeError.outputDirectoryUnavailable
         }
         guard generationService.canSubmitGeneration else {
-            throw AnvilCommandFacadeError.generationAlreadyActive(stateName(generationService.state))
+            throw PiMPAudioCommandFacadeError.generationAlreadyActive(stateName(generationService.state))
         }
 
         syncGenerationAdapterSelectionFromDefaultsIfNeeded(generationService)
@@ -640,7 +640,7 @@ final class AnvilCommandFacade {
 
     func generationStatus() throws -> [String: Any] {
         guard let generationService else {
-            throw AnvilCommandFacadeError.generationServiceUnavailable
+            throw PiMPAudioCommandFacadeError.generationServiceUnavailable
         }
 
         refreshGenerationOperation()
@@ -653,7 +653,7 @@ final class AnvilCommandFacade {
 
     func editorStatus() async throws -> [String: Any] {
         guard let editorService else {
-            throw AnvilCommandFacadeError.editorServiceUnavailable
+            throw PiMPAudioCommandFacadeError.editorServiceUnavailable
         }
 
         let coordinator = editorService.coordinator
@@ -676,7 +676,7 @@ final class AnvilCommandFacade {
 
     func loadEditorAudio(arguments: [String: Any]) throws -> [String: Any] {
         guard editorService?.coordinator != nil else {
-            throw AnvilCommandFacadeError.editorServiceUnavailable
+            throw PiMPAudioCommandFacadeError.editorServiceUnavailable
         }
 
         let source = try editorAudioLoadSource(from: arguments)
@@ -741,13 +741,13 @@ final class AnvilCommandFacade {
         }
 
         guard boolValue(arguments["confirm"]) == true else {
-            throw AnvilCommandFacadeError.confirmationRequired("submit_editor_inpaint")
+            throw PiMPAudioCommandFacadeError.confirmationRequired("submit_editor_inpaint")
         }
         guard let editorService, let coordinator = editorService.coordinator else {
-            throw AnvilCommandFacadeError.editorServiceUnavailable
+            throw PiMPAudioCommandFacadeError.editorServiceUnavailable
         }
         guard await coordinator.hasLoadedAudio else {
-            throw AnvilCommandFacadeError.editorAudioNotLoaded
+            throw PiMPAudioCommandFacadeError.editorAudioNotLoaded
         }
         try validateEditorSelection(request.selection, loadedAudio: editorService.loadedAudio)
 
@@ -789,14 +789,14 @@ final class AnvilCommandFacade {
         }
 
         guard let editorService, let coordinator = editorService.coordinator else {
-            throw AnvilCommandFacadeError.editorServiceUnavailable
+            throw PiMPAudioCommandFacadeError.editorServiceUnavailable
         }
         guard await coordinator.hasLoadedAudio, editorService.loadedAudio != nil else {
-            throw AnvilCommandFacadeError.editorAudioNotLoaded
+            throw PiMPAudioCommandFacadeError.editorAudioNotLoaded
         }
         if FileManager.default.fileExists(atPath: request.outputURL.path(percentEncoded: false)),
            !request.overwrite {
-            throw AnvilCommandFacadeError.editorRenderFileExists(
+            throw PiMPAudioCommandFacadeError.editorRenderFileExists(
                 request.outputURL.path(percentEncoded: false)
             )
         }
@@ -841,13 +841,13 @@ final class AnvilCommandFacade {
         }
 
         guard boolValue(arguments["confirm"]) == true else {
-            throw AnvilCommandFacadeError.confirmationRequired("apply_editor_effect_chain")
+            throw PiMPAudioCommandFacadeError.confirmationRequired("apply_editor_effect_chain")
         }
         guard let editorService, let coordinator = editorService.coordinator else {
-            throw AnvilCommandFacadeError.editorServiceUnavailable
+            throw PiMPAudioCommandFacadeError.editorServiceUnavailable
         }
         guard await coordinator.hasLoadedAudio, editorService.loadedAudio != nil else {
-            throw AnvilCommandFacadeError.editorAudioNotLoaded
+            throw PiMPAudioCommandFacadeError.editorAudioNotLoaded
         }
 
         let operation = registerOperation(
@@ -887,7 +887,7 @@ final class AnvilCommandFacade {
         refreshGenerationOperation()
         let id = try operationID(from: arguments)
         guard let record = operationRecords[id] else {
-            throw AnvilCommandFacadeError.operationNotFound(id)
+            throw PiMPAudioCommandFacadeError.operationNotFound(id)
         }
         return operationPayload(record)
     }
@@ -896,7 +896,7 @@ final class AnvilCommandFacade {
         refreshGenerationOperation()
         let id = try operationID(from: arguments)
         guard var record = operationRecords[id] else {
-            throw AnvilCommandFacadeError.operationNotFound(id)
+            throw PiMPAudioCommandFacadeError.operationNotFound(id)
         }
 
         let reason = stringValue(arguments["reason"])?
@@ -933,10 +933,10 @@ final class AnvilCommandFacade {
 
     func releaseMemory(arguments: [String: Any]) async throws -> [String: Any] {
         guard boolValue(arguments["confirm"]) == true else {
-            throw AnvilCommandFacadeError.confirmationRequired("release_memory")
+            throw PiMPAudioCommandFacadeError.confirmationRequired("release_memory")
         }
         guard let generationService else {
-            throw AnvilCommandFacadeError.generationServiceUnavailable
+            throw PiMPAudioCommandFacadeError.generationServiceUnavailable
         }
 
         let summary = await generationService.unloadAllWeights()
@@ -962,14 +962,14 @@ final class AnvilCommandFacade {
             } else if let rawItems = rawStack as? [Any] {
                 items = rawItems.compactMap { $0 as? [String: Any] }
             } else {
-                throw AnvilCommandFacadeError.invalidAdapterStack
+                throw PiMPAudioCommandFacadeError.invalidAdapterStack
             }
 
             for item in items {
                 let identifier = stringValue(item["id"] ?? item["adapterID"] ?? item["name"])?
                     .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 guard !identifier.isEmpty else {
-                    throw AnvilCommandFacadeError.missingRequiredArgument("id")
+                    throw PiMPAudioCommandFacadeError.missingRequiredArgument("id")
                 }
                 let adapter = try resolveAdapter(identifier, installed: installed)
                 let strength = try adapterStrength(item["strength"] ?? item["weight"] ?? item["scale"])
@@ -979,7 +979,7 @@ final class AnvilCommandFacade {
             let identifier = stringValue(arguments["id"] ?? arguments["adapterID"] ?? arguments["name"])?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             guard !identifier.isEmpty else {
-                throw AnvilCommandFacadeError.missingRequiredArgument("id")
+                throw PiMPAudioCommandFacadeError.missingRequiredArgument("id")
             }
             let adapter = try resolveAdapter(identifier, installed: installed)
             let strength = try adapterStrength(arguments["strength"] ?? arguments["weight"] ?? arguments["scale"])
@@ -993,13 +993,13 @@ final class AnvilCommandFacade {
         }
 
         guard !unique.isEmpty else {
-            throw AnvilCommandFacadeError.missingRequiredArgument("id")
+            throw PiMPAudioCommandFacadeError.missingRequiredArgument("id")
         }
         guard unique.count <= AdapterStackManager.maxStackSize else {
-            throw AnvilCommandFacadeError.tooManyAdapters(AdapterStackManager.maxStackSize)
+            throw PiMPAudioCommandFacadeError.tooManyAdapters(AdapterStackManager.maxStackSize)
         }
         for entry in unique where entry.adapter.baseModelCategory != .aceStepDiT {
-            throw AnvilCommandFacadeError.incompatibleAdapter(
+            throw PiMPAudioCommandFacadeError.incompatibleAdapter(
                 entry.adapter.name,
                 entry.adapter.baseModelCategory.rawValue
             )
@@ -1021,13 +1021,13 @@ final class AnvilCommandFacade {
         }) {
             return partial
         }
-        throw AnvilCommandFacadeError.adapterNotFound(identifier)
+        throw PiMPAudioCommandFacadeError.adapterNotFound(identifier)
     }
 
     private func adapterStrength(_ value: Any?) throws -> Float {
         guard let value else { return 1.0 }
         guard let parsed = doubleValue(value), parsed >= 0.0, parsed <= 1.0 else {
-            throw AnvilCommandFacadeError.invalidStrength
+            throw PiMPAudioCommandFacadeError.invalidStrength
         }
         return Float(parsed)
     }
@@ -1036,7 +1036,7 @@ final class AnvilCommandFacade {
         guard generationService.adapterStack.isEmpty else { return }
 
         let defaults = UserDefaults.standard
-        let adapterID = defaults.string(forKey: "selectedAdapterID")?
+        let adapterID = defaults.string(forKey: AppUserDefaultsKeys.selectedAdapterID)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !adapterID.isEmpty else {
             generationService.selectedAdapterID = nil
@@ -1051,7 +1051,7 @@ final class AnvilCommandFacade {
             return
         }
 
-        let rawStrength = doubleValue(defaults.object(forKey: "selectedAdapterStrength")) ?? 1.0
+        let rawStrength = doubleValue(defaults.object(forKey: AppUserDefaultsKeys.selectedAdapterStrength)) ?? 1.0
         let strength = Float(min(max(rawStrength, 0.0), 1.0))
         generationService.selectedAdapterID = adapterID
         generationService.adapterStack = [(id: adapterID, weight: strength)]
@@ -1083,7 +1083,7 @@ final class AnvilCommandFacade {
     private func orchestrationDuration(in arguments: [String: Any]) throws -> Double {
         let duration = doubleValue(arguments["duration"] ?? arguments["durationSeconds"]) ?? 30.0
         guard duration > 0 else {
-            throw AnvilCommandFacadeError.invalidDuration
+            throw PiMPAudioCommandFacadeError.invalidDuration
         }
         return duration
     }
@@ -1095,7 +1095,7 @@ final class AnvilCommandFacade {
         let pipeline = pipelineChoice(from: arguments["pipeline"] ?? arguments["pipelineOverride"]) ?? .auto
         let requestedDuration = doubleValue(arguments["duration"] ?? arguments["durationSeconds"]) ?? 30.0
         guard requestedDuration > 0 else {
-            throw AnvilCommandFacadeError.invalidDuration
+            throw PiMPAudioCommandFacadeError.invalidDuration
         }
 
         let duration: Double
@@ -1145,11 +1145,11 @@ final class AnvilCommandFacade {
                 return nil
             }
             guard let parsed = Int(trimmed) else {
-                throw AnvilCommandFacadeError.invalidSeed
+                throw PiMPAudioCommandFacadeError.invalidSeed
             }
             return parsed
         }
-        throw AnvilCommandFacadeError.invalidSeed
+        throw PiMPAudioCommandFacadeError.invalidSeed
     }
 
     private func stepsValue(_ value: Any?) throws -> Int? {
@@ -1163,17 +1163,17 @@ final class AnvilCommandFacade {
                 return nil
             }
             guard let parsed = Int(trimmed), parsed > 0 else {
-                throw AnvilCommandFacadeError.invalidSteps
+                throw PiMPAudioCommandFacadeError.invalidSteps
             }
             return parsed
         }
-        throw AnvilCommandFacadeError.invalidSteps
+        throw PiMPAudioCommandFacadeError.invalidSteps
     }
 
     private func modelResource(id: String) async throws -> [String: Any] {
         let specs = await registry.allSpecs
         guard let spec = specs.first(where: { $0.id == id }) else {
-            throw AnvilCommandFacadeError.resourceNotFound(resourceURI(kind: "model", identifier: id))
+            throw PiMPAudioCommandFacadeError.resourceNotFound(resourceURI(kind: "model", identifier: id))
         }
 
         let activeID = await registry.activeModelID(for: spec.category)
@@ -1203,7 +1203,7 @@ final class AnvilCommandFacade {
 
     private func adapterResource(id: String) async throws -> [String: Any] {
         guard let adapter = await loadAdapters().first(where: { $0.id == id }) else {
-            throw AnvilCommandFacadeError.resourceNotFound(resourceURI(kind: "adapter", identifier: id))
+            throw PiMPAudioCommandFacadeError.resourceNotFound(resourceURI(kind: "adapter", identifier: id))
         }
 
         return [
@@ -1249,7 +1249,7 @@ final class AnvilCommandFacade {
 
     private func validateResourceIdentifier(_ identifier: String?, expected: String, uri: String) throws {
         guard identifier == expected else {
-            throw AnvilCommandFacadeError.invalidResourceURI(uri)
+            throw PiMPAudioCommandFacadeError.invalidResourceURI(uri)
         }
     }
 
@@ -1269,21 +1269,21 @@ final class AnvilCommandFacade {
         return [
             "id": "current",
             "kind": "project",
-            "name": "Anvil Local Workstation",
+            "name": "PiMP Audio Studio Local Workstation",
             "scope": "local",
             "resourceURI": resourceURI(kind: "project", identifier: "current"),
             "resources": [
-                "models": "anvil://models",
-                "adapters": "anvil://adapters",
-                "history": "anvil://history",
-                "takes": "anvil://takes",
+                "models": "pimpaudio://models",
+                "adapters": "pimpaudio://adapters",
+                "history": "pimpaudio://history",
+                "takes": "pimpaudio://takes",
                 "track": resourceURI(kind: "track", identifier: "current"),
                 "clip": resourceURI(kind: "clip", identifier: "current"),
                 "region": resourceURI(kind: "region", identifier: "current-selection"),
-                "presets": "anvil://presets",
-                "workflows": "anvil://workflows",
-                "editor": "anvil://editor",
-                "operations": "anvil://operations"
+                "presets": "pimpaudio://presets",
+                "workflows": "pimpaudio://workflows",
+                "editor": "pimpaudio://editor",
+                "operations": "pimpaudio://operations"
             ],
             "counts": [
                 "history": historyStore.entries.count,
@@ -1440,7 +1440,7 @@ final class AnvilCommandFacade {
         guard let preset = loadGenerationPresets().first(where: {
             $0.id.uuidString.lowercased() == normalized || $0.name.lowercased() == normalized
         }) else {
-            throw AnvilCommandFacadeError.resourceNotFound(resourceURI(kind: "preset", identifier: identifier))
+            throw PiMPAudioCommandFacadeError.resourceNotFound(resourceURI(kind: "preset", identifier: identifier))
         }
         return generationPresetPayload(preset)
     }
@@ -1455,7 +1455,7 @@ final class AnvilCommandFacade {
 
     private func workflowResource(identifier: String) throws -> [String: Any] {
         guard let workflow = workflowPromptDefinitions.first(where: { $0.id == identifier }) else {
-            throw AnvilCommandFacadeError.resourceNotFound(resourceURI(kind: "workflow", identifier: identifier))
+            throw PiMPAudioCommandFacadeError.resourceNotFound(resourceURI(kind: "workflow", identifier: identifier))
         }
         var payload = workflowPromptPayload(workflow)
         payload["template"] = workflow.template
@@ -1626,7 +1626,7 @@ final class AnvilCommandFacade {
             return entry
         }
 
-        throw AnvilCommandFacadeError.historyEntryNotFound(identifier)
+        throw PiMPAudioCommandFacadeError.historyEntryNotFound(identifier)
     }
 
     private func resolveTrace(arguments: [String: Any]) throws -> GenerationTrace {
@@ -1636,7 +1636,7 @@ final class AnvilCommandFacade {
             ?? stringValue(arguments["audioFileName"])
 
         guard let id, !id.isEmpty else {
-            throw AnvilCommandFacadeError.missingTraceIdentifier
+            throw PiMPAudioCommandFacadeError.missingTraceIdentifier
         }
 
         if let entryID = UUID(uuidString: id),
@@ -1656,7 +1656,7 @@ final class AnvilCommandFacade {
             return try historyStore.loadTrace(traceFileName: id)
         }
 
-        throw AnvilCommandFacadeError.traceNotFound(id)
+        throw PiMPAudioCommandFacadeError.traceNotFound(id)
     }
 
     private func historySummary(_ entry: HistoryEntry) -> [String: Any] {
@@ -2151,7 +2151,7 @@ final class AnvilCommandFacade {
 
             try Task.checkCancellation()
             guard let editorService, let coordinator = editorService.coordinator else {
-                throw AnvilCommandFacadeError.editorServiceUnavailable
+                throw PiMPAudioCommandFacadeError.editorServiceUnavailable
             }
 
             updateOperationProgress(
@@ -2207,7 +2207,7 @@ final class AnvilCommandFacade {
         do {
             try Task.checkCancellation()
             guard let editorService, let coordinator = editorService.coordinator else {
-                throw AnvilCommandFacadeError.editorServiceUnavailable
+                throw PiMPAudioCommandFacadeError.editorServiceUnavailable
             }
 
             var completed = false
@@ -2256,7 +2256,7 @@ final class AnvilCommandFacade {
             }
 
             if !completed {
-                throw AnvilCommandFacadeError.editorInpaintDidNotComplete
+                throw PiMPAudioCommandFacadeError.editorInpaintDidNotComplete
             }
         } catch is CancellationError {
             cancelOperationRecord(
@@ -2279,10 +2279,10 @@ final class AnvilCommandFacade {
         do {
             try Task.checkCancellation()
             guard let editorService, let coordinator = editorService.coordinator else {
-                throw AnvilCommandFacadeError.editorServiceUnavailable
+                throw PiMPAudioCommandFacadeError.editorServiceUnavailable
             }
             guard let loadedAudio = editorService.loadedAudio else {
-                throw AnvilCommandFacadeError.editorAudioNotLoaded
+                throw PiMPAudioCommandFacadeError.editorAudioNotLoaded
             }
 
             updateOperationProgress(
@@ -2290,7 +2290,7 @@ final class AnvilCommandFacade {
                 progress: editorRenderProgressPayload(stage: "readingBuffer", message: "Reading editor audio buffer.")
             )
             guard let currentAudio = await coordinator.getCurrentAudio() else {
-                throw AnvilCommandFacadeError.editorAudioNotLoaded
+                throw PiMPAudioCommandFacadeError.editorAudioNotLoaded
             }
 
             try Task.checkCancellation()
@@ -2318,7 +2318,7 @@ final class AnvilCommandFacade {
             do {
                 try writeAudioBuffer(renderedBuffer, to: request.outputURL)
             } catch {
-                throw AnvilCommandFacadeError.editorRenderWriteFailed(
+                throw PiMPAudioCommandFacadeError.editorRenderWriteFailed(
                     request.outputURL.path(percentEncoded: false),
                     error.localizedDescription
                 )
@@ -2355,10 +2355,10 @@ final class AnvilCommandFacade {
         do {
             try Task.checkCancellation()
             guard let editorService, let coordinator = editorService.coordinator else {
-                throw AnvilCommandFacadeError.editorServiceUnavailable
+                throw PiMPAudioCommandFacadeError.editorServiceUnavailable
             }
             guard let loadedAudio = editorService.loadedAudio else {
-                throw AnvilCommandFacadeError.editorAudioNotLoaded
+                throw PiMPAudioCommandFacadeError.editorAudioNotLoaded
             }
 
             updateOperationProgress(
@@ -2366,7 +2366,7 @@ final class AnvilCommandFacade {
                 progress: editorDSPProgressPayload(stage: "readingBuffer", message: "Reading editor audio buffer.")
             )
             guard let currentAudio = await coordinator.getCurrentAudio() else {
-                throw AnvilCommandFacadeError.editorAudioNotLoaded
+                throw PiMPAudioCommandFacadeError.editorAudioNotLoaded
             }
 
             try Task.checkCancellation()
@@ -2508,7 +2508,7 @@ final class AnvilCommandFacade {
             Int((selection.endTime * Double(buffer.sampleRate)).rounded(.up))
         )
         guard endFrame > startFrame else {
-            throw AnvilCommandFacadeError.invalidEditorSelection
+            throw PiMPAudioCommandFacadeError.invalidEditorSelection
         }
 
         let bytesPerFrame = MemoryLayout<Int16>.size * buffer.channels
@@ -2654,7 +2654,7 @@ final class AnvilCommandFacade {
         let id = stringValue(arguments["id"] ?? arguments["operationID"] ?? arguments["operationId"])?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !id.isEmpty else {
-            throw AnvilCommandFacadeError.missingRequiredArgument("id")
+            throw PiMPAudioCommandFacadeError.missingRequiredArgument("id")
         }
         return id
     }
@@ -3003,7 +3003,7 @@ final class AnvilCommandFacade {
         let rawSteps = try editorDSPRawSteps(from: arguments)
         let steps = try rawSteps.map { try editorDSPEffectStep($0, topLevel: arguments, loadedAudio: loadedAudio) }
         guard !steps.isEmpty else {
-            throw AnvilCommandFacadeError.editorDSPChainEmpty
+            throw PiMPAudioCommandFacadeError.editorDSPChainEmpty
         }
         let descriptions = steps.map { step in
             DSPProcessor()
@@ -3028,17 +3028,17 @@ final class AnvilCommandFacade {
                     return nil
                 }
                 guard items.count == rawItems.count else {
-                    throw AnvilCommandFacadeError.invalidDSPChain
+                    throw PiMPAudioCommandFacadeError.invalidDSPChain
                 }
                 return items
             }
-            throw AnvilCommandFacadeError.invalidDSPChain
+            throw PiMPAudioCommandFacadeError.invalidDSPChain
         }
 
         let effect = stringValue(arguments["effect"] ?? arguments["name"])?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !effect.isEmpty else {
-            throw AnvilCommandFacadeError.missingRequiredArgument("effect")
+            throw PiMPAudioCommandFacadeError.missingRequiredArgument("effect")
         }
         return [arguments]
     }
@@ -3052,7 +3052,7 @@ final class AnvilCommandFacade {
             stepArguments["effect"] ?? stepArguments["name"] ?? stepArguments["type"]
         )?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !effectName.isEmpty else {
-            throw AnvilCommandFacadeError.missingRequiredArgument("effect")
+            throw PiMPAudioCommandFacadeError.missingRequiredArgument("effect")
         }
 
         let effect = try editorDSPEffect(from: effectName)
@@ -3097,7 +3097,7 @@ final class AnvilCommandFacade {
         case "pitchshift", "pitch", "transpose":
             return .pitchShift
         default:
-            throw AnvilCommandFacadeError.invalidDSPEffect(value)
+            throw PiMPAudioCommandFacadeError.invalidDSPEffect(value)
         }
     }
 
@@ -3125,16 +3125,16 @@ final class AnvilCommandFacade {
             switch explicitTarget {
             case "whole", "track", "wholetrack", "full", "fulltrack":
                 if effect.requiresSelection {
-                    throw AnvilCommandFacadeError.invalidDSPTarget("Effect '\(effect.rawValue)' requires a selection target.")
+                    throw PiMPAudioCommandFacadeError.invalidDSPTarget("Effect '\(effect.rawValue)' requires a selection target.")
                 }
                 return .wholeTrack
             case "selection", "selected", "region", "range":
                 guard let selection else {
-                    throw AnvilCommandFacadeError.invalidEditorSelection
+                    throw PiMPAudioCommandFacadeError.invalidEditorSelection
                 }
                 return .selection(start: selection.startTime, end: selection.endTime)
             default:
-                throw AnvilCommandFacadeError.invalidDSPTarget("Unsupported target '\(explicitTarget)'.")
+                throw PiMPAudioCommandFacadeError.invalidDSPTarget("Unsupported target '\(explicitTarget)'.")
             }
         }
 
@@ -3142,7 +3142,7 @@ final class AnvilCommandFacade {
             return .selection(start: selection.startTime, end: selection.endTime)
         }
         if effect.requiresSelection {
-            throw AnvilCommandFacadeError.invalidEditorSelection
+            throw PiMPAudioCommandFacadeError.invalidEditorSelection
         }
         return .wholeTrack
     }
@@ -3177,7 +3177,7 @@ final class AnvilCommandFacade {
         guard startValue != nil || endValue != nil else { return nil }
         guard let startTime = doubleValue(startValue),
               let endTime = doubleValue(endValue) else {
-            throw AnvilCommandFacadeError.invalidEditorSelection
+            throw PiMPAudioCommandFacadeError.invalidEditorSelection
         }
         let selection = InpaintSelection(startTime: startTime, endTime: endTime)
         try validateEditorSelection(selection, loadedAudio: loadedAudio)
@@ -3221,31 +3221,31 @@ final class AnvilCommandFacade {
         } else if let rawItems = rawBands as? [Any] {
             bandObjects = rawItems.compactMap { $0 as? [String: Any] }
             guard bandObjects.count == rawItems.count else {
-                throw AnvilCommandFacadeError.invalidDSPParameters("EQ bands must be objects.")
+                throw PiMPAudioCommandFacadeError.invalidDSPParameters("EQ bands must be objects.")
             }
         } else {
-            throw AnvilCommandFacadeError.invalidDSPParameters("EQ bands must be an array.")
+            throw PiMPAudioCommandFacadeError.invalidDSPParameters("EQ bands must be an array.")
         }
 
         let bands = try bandObjects.map { band -> EQBand in
             guard let frequency = doubleValue(band["frequency"] ?? band["freq"] ?? band["hz"]),
                   frequency > 0,
                   frequency <= 24_000 else {
-                throw AnvilCommandFacadeError.invalidDSPParameters("EQ band frequency must be between 0 and 24000 Hz.")
+                throw PiMPAudioCommandFacadeError.invalidDSPParameters("EQ band frequency must be between 0 and 24000 Hz.")
             }
             guard let gain = doubleValue(band["gain"] ?? band["gainDB"] ?? band["db"]),
                   gain >= -48,
                   gain <= 48 else {
-                throw AnvilCommandFacadeError.invalidDSPParameters("EQ band gain must be between -48 and 48 dB.")
+                throw PiMPAudioCommandFacadeError.invalidDSPParameters("EQ band gain must be between -48 and 48 dB.")
             }
             let q = doubleValue(band["q"] ?? band["quality"]) ?? 1.0
             guard q > 0, q <= 20 else {
-                throw AnvilCommandFacadeError.invalidDSPParameters("EQ band q must be > 0 and <= 20.")
+                throw PiMPAudioCommandFacadeError.invalidDSPParameters("EQ band q must be > 0 and <= 20.")
             }
             return EQBand(frequency: Float(frequency), gain: Float(gain), q: Float(q))
         }
         guard !bands.isEmpty else {
-            throw AnvilCommandFacadeError.invalidDSPParameters("EQ must include at least one band.")
+            throw PiMPAudioCommandFacadeError.invalidDSPParameters("EQ must include at least one band.")
         }
         return EQParameters(bands: bands)
     }
@@ -3260,7 +3260,7 @@ final class AnvilCommandFacade {
         let presetParams: ReverbParameters
         if let presetValue, !presetValue.isEmpty {
             guard let preset = ReverbPreset(rawValue: presetValue) else {
-                throw AnvilCommandFacadeError.invalidDSPParameters("Unsupported reverb preset '\(presetValue)'.")
+                throw PiMPAudioCommandFacadeError.invalidDSPParameters("Unsupported reverb preset '\(presetValue)'.")
             }
             presetParams = preset.parameters
         } else {
@@ -3280,7 +3280,7 @@ final class AnvilCommandFacade {
               wetDryMix >= 0, wetDryMix <= 1,
               preDelay >= 0, preDelay <= 500,
               damping >= 0, damping <= 1 else {
-            throw AnvilCommandFacadeError.invalidDSPParameters(
+            throw PiMPAudioCommandFacadeError.invalidDSPParameters(
                 "Reverb requires decayTime 0.1...20, wetDryMix 0...1, preDelay 0...500, and damping 0...1."
             )
         }
@@ -3298,7 +3298,7 @@ final class AnvilCommandFacade {
     ) throws -> TimeStretchParameters {
         let rate = doubleValue(parameters["rate"] ?? parameters["ratio"] ?? fallback["rate"] ?? fallback["ratio"]) ?? 1.0
         guard rate >= 0.25, rate <= 4.0 else {
-            throw AnvilCommandFacadeError.invalidDSPParameters("Time-stretch rate must be between 0.25 and 4.0.")
+            throw PiMPAudioCommandFacadeError.invalidDSPParameters("Time-stretch rate must be between 0.25 and 4.0.")
         }
         return TimeStretchParameters(rate: Float(rate))
     }
@@ -3311,7 +3311,7 @@ final class AnvilCommandFacade {
         let semitoneValue = doubleValue(parameters["semitones"] ?? parameters["semitone"] ?? fallback["semitones"] ?? fallback["semitone"])
         let pitch = centsValue ?? semitoneValue.map { $0 * 100.0 } ?? 0
         guard pitch >= -2_400, pitch <= 2_400 else {
-            throw AnvilCommandFacadeError.invalidDSPParameters("Pitch shift must be between -2400 and 2400 cents.")
+            throw PiMPAudioCommandFacadeError.invalidDSPParameters("Pitch shift must be between -2400 and 2400 cents.")
         }
         return PitchShiftParameters(pitch: Float(pitch))
     }
@@ -3334,7 +3334,7 @@ final class AnvilCommandFacade {
         guard startValue != nil || endValue != nil else { return nil }
         guard let startTime = doubleValue(startValue),
               let endTime = doubleValue(endValue) else {
-            throw AnvilCommandFacadeError.invalidEditorSelection
+            throw PiMPAudioCommandFacadeError.invalidEditorSelection
         }
         let selection = InpaintSelection(startTime: startTime, endTime: endTime)
         try validateEditorSelection(selection, loadedAudio: loadedAudio)
@@ -3362,7 +3362,7 @@ final class AnvilCommandFacade {
                 .deletingLastPathComponent()
                 .appending(path: "MCPExports")
         } else {
-            directory = FileManager.default.temporaryDirectory.appending(path: "AnvilMCPExports")
+            directory = FileManager.default.temporaryDirectory.appending(path: "PiMPAudioMCPExports")
         }
 
         let fileName = stringValue(arguments["fileName"])?
@@ -3406,7 +3406,7 @@ final class AnvilCommandFacade {
             return .wav
         }
         guard let format = EditorRenderFormat(rawValue: rawValue.lowercased()) else {
-            throw AnvilCommandFacadeError.invalidRenderFormat(rawValue)
+            throw PiMPAudioCommandFacadeError.invalidRenderFormat(rawValue)
         }
         return format
     }
@@ -3431,7 +3431,7 @@ final class AnvilCommandFacade {
         if let mode = EditMode(rawValue: rawValue.lowercased()) {
             return mode
         }
-        throw AnvilCommandFacadeError.invalidEditMode(rawValue)
+        throw PiMPAudioCommandFacadeError.invalidEditMode(rawValue)
     }
 
     private func editorSelection(
@@ -3456,7 +3456,7 @@ final class AnvilCommandFacade {
         if startValue != nil || endValue != nil {
             guard let parsedStart = doubleValue(startValue),
                   let parsedEnd = doubleValue(endValue) else {
-                throw AnvilCommandFacadeError.invalidEditorSelection
+                throw PiMPAudioCommandFacadeError.invalidEditorSelection
             }
             startTime = parsedStart
             endTime = parsedEnd
@@ -3464,7 +3464,7 @@ final class AnvilCommandFacade {
             startTime = 0
             endTime = duration
         } else {
-            throw AnvilCommandFacadeError.missingRequiredArgument("selectionStart")
+            throw PiMPAudioCommandFacadeError.missingRequiredArgument("selectionStart")
         }
 
         let selection = InpaintSelection(
@@ -3518,7 +3518,7 @@ final class AnvilCommandFacade {
               low >= 0,
               high > low,
               high <= 24_000 else {
-            throw AnvilCommandFacadeError.invalidFrequencyBand
+            throw PiMPAudioCommandFacadeError.invalidFrequencyBand
         }
         return FrequencyBand(lowCutHz: Float(low), highCutHz: Float(high))
     }
@@ -3544,11 +3544,11 @@ final class AnvilCommandFacade {
         loadedAudio: EditorLoadedAudio?
     ) throws {
         guard selection.startTime >= 0, selection.endTime > selection.startTime else {
-            throw AnvilCommandFacadeError.invalidEditorSelection
+            throw PiMPAudioCommandFacadeError.invalidEditorSelection
         }
         if let duration = loadedAudio?.duration,
            selection.endTime > duration + 0.001 {
-            throw AnvilCommandFacadeError.invalidEditorSelection
+            throw PiMPAudioCommandFacadeError.invalidEditorSelection
         }
     }
 
@@ -3558,7 +3558,7 @@ final class AnvilCommandFacade {
         let rawValue = arguments["strength"] ?? arguments["denoiseStrength"] ?? arguments["editStrength"]
         guard let rawValue, !(rawValue is NSNull) else { return defaultStrength }
         guard let value = doubleValue(rawValue), value >= 0.0, value <= 1.0 else {
-            throw AnvilCommandFacadeError.invalidEditorStrength
+            throw PiMPAudioCommandFacadeError.invalidEditorStrength
         }
         return Float(value)
     }
@@ -3569,7 +3569,7 @@ final class AnvilCommandFacade {
         let rawValue = arguments["guidanceScale"] ?? arguments["guidance"]
         guard let rawValue, !(rawValue is NSNull) else { return defaultGuidance }
         guard let value = doubleValue(rawValue), value > 0 else {
-            throw AnvilCommandFacadeError.invalidGuidanceScale
+            throw PiMPAudioCommandFacadeError.invalidGuidanceScale
         }
         return Float(value)
     }
@@ -3581,7 +3581,7 @@ final class AnvilCommandFacade {
             return nil
         }
         guard let preset = InpaintPreset(rawValue: rawValue.lowercased()) else {
-            throw AnvilCommandFacadeError.invalidInpaintPreset(rawValue)
+            throw PiMPAudioCommandFacadeError.invalidInpaintPreset(rawValue)
         }
         return preset
     }
@@ -3592,7 +3592,7 @@ final class AnvilCommandFacade {
             return .auto
         }
         guard let pipeline = pipelineChoice(from: rawValue) else {
-            throw AnvilCommandFacadeError.invalidPipeline(stringValue(rawValue) ?? "\(rawValue)")
+            throw PiMPAudioCommandFacadeError.invalidPipeline(stringValue(rawValue) ?? "\(rawValue)")
         }
         return pipeline
     }
@@ -3670,7 +3670,7 @@ final class AnvilCommandFacade {
         var isDirectory = ObjCBool(false)
         let exists = FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory)
         guard exists, !isDirectory.boolValue else {
-            throw AnvilCommandFacadeError.editorAudioFileNotFound(path)
+            throw PiMPAudioCommandFacadeError.editorAudioFileNotFound(path)
         }
     }
 
@@ -3693,11 +3693,11 @@ final class AnvilCommandFacade {
     private func persistAdapterSelection(_ selection: [AdapterSelection]) {
         let defaults = UserDefaults.standard
         if let primary = selection.first {
-            defaults.set(primary.adapter.id, forKey: "selectedAdapterID")
-            defaults.set(Double(primary.strength), forKey: "selectedAdapterStrength")
+            defaults.set(primary.adapter.id, forKey: AppUserDefaultsKeys.selectedAdapterID)
+            defaults.set(Double(primary.strength), forKey: AppUserDefaultsKeys.selectedAdapterStrength)
         } else {
-            defaults.removeObject(forKey: "selectedAdapterID")
-            defaults.set(1.0, forKey: "selectedAdapterStrength")
+            defaults.removeObject(forKey: AppUserDefaultsKeys.selectedAdapterID)
+            defaults.set(1.0, forKey: AppUserDefaultsKeys.selectedAdapterStrength)
         }
     }
 
@@ -3725,7 +3725,7 @@ final class AnvilCommandFacade {
         encoder.dateEncodingStrategy = .iso8601
         let data = try encoder.encode(value)
         guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw AnvilCommandFacadeError.encodingFailed
+            throw PiMPAudioCommandFacadeError.encodingFailed
         }
         return object
     }
@@ -3789,7 +3789,7 @@ final class AnvilCommandFacade {
     private func requiredString(_ key: String, in arguments: [String: Any]) throws -> String {
         let value = stringValue(arguments[key])?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !value.isEmpty else {
-            throw AnvilCommandFacadeError.missingRequiredArgument(key)
+            throw PiMPAudioCommandFacadeError.missingRequiredArgument(key)
         }
         return value
     }
@@ -3805,13 +3805,13 @@ final class AnvilCommandFacade {
                 return value
             }
         }
-        throw AnvilCommandFacadeError.missingRequiredArgument(key)
+        throw PiMPAudioCommandFacadeError.missingRequiredArgument(key)
     }
 
     private func requiredDuration(in arguments: [String: Any]) throws -> Double {
         guard let duration = doubleValue(arguments["duration"] ?? arguments["durationSeconds"]),
               duration > 0 else {
-            throw AnvilCommandFacadeError.invalidDuration
+            throw PiMPAudioCommandFacadeError.invalidDuration
         }
         return duration
     }
@@ -3916,9 +3916,9 @@ final class AnvilCommandFacade {
     }
 
     private func resourceURI(kind: String, identifier: String? = nil) -> String {
-        guard let identifier else { return "anvil://\(kind)" }
+        guard let identifier else { return "\(AppRuntimeIdentity.mcpScheme)://\(kind)" }
         let encoded = identifier.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? identifier
-        return "anvil://\(kind)/\(encoded)"
+        return "\(AppRuntimeIdentity.mcpScheme)://\(kind)/\(encoded)"
     }
 
     private func confirmationRequirementPayload(toolName: String) -> [String: Any] {
@@ -3935,7 +3935,7 @@ final class AnvilCommandFacade {
     }
 }
 
-private enum AnvilCommandFacadeError: LocalizedError {
+private enum PiMPAudioCommandFacadeError: LocalizedError {
     case missingTraceIdentifier
     case traceNotFound(String)
     case historyEntryNotFound(String)
@@ -3986,9 +3986,9 @@ private enum AnvilCommandFacadeError: LocalizedError {
         case .historyEntryNotFound(let identifier):
             return "No history entry matched '\(identifier)'."
         case .invalidResourceURI(let uri):
-            return "Invalid Anvil resource URI: \(uri)."
+            return "Invalid PiMP Audio Studio resource URI: \(uri)."
         case .resourceNotFound(let uri):
-            return "No Anvil resource matched '\(uri)'."
+            return "No PiMP Audio Studio resource matched '\(uri)'."
         case .adapterNotFound(let identifier):
             return "No LoRA adapter matched '\(identifier)'."
         case .incompatibleAdapter(let name, let category):
@@ -4182,11 +4182,11 @@ private let workflowPromptDefinitions: [WorkflowPromptDefinition] = [
             )
         ],
         resources: [
-            "anvil://takes",
-            "anvil://track/current",
-            "anvil://clip/current",
-            "anvil://region/current-selection",
-            "anvil://presets"
+            "pimpaudio://takes",
+            "pimpaudio://track/current",
+            "pimpaudio://clip/current",
+            "pimpaudio://region/current-selection",
+            "pimpaudio://presets"
         ],
         tools: [
             "load_editor_audio",
@@ -4226,10 +4226,10 @@ private let workflowPromptDefinitions: [WorkflowPromptDefinition] = [
             )
         ],
         resources: [
-            "anvil://takes",
-            "anvil://track/current",
-            "anvil://clip/current",
-            "anvil://presets"
+            "pimpaudio://takes",
+            "pimpaudio://track/current",
+            "pimpaudio://clip/current",
+            "pimpaudio://presets"
         ],
         tools: [
             "load_editor_audio",
@@ -4273,10 +4273,10 @@ private let workflowPromptDefinitions: [WorkflowPromptDefinition] = [
             )
         ],
         resources: [
-            "anvil://track/current",
-            "anvil://clip/current",
-            "anvil://region/current-selection",
-            "anvil://presets"
+            "pimpaudio://track/current",
+            "pimpaudio://clip/current",
+            "pimpaudio://region/current-selection",
+            "pimpaudio://presets"
         ],
         tools: [
             "load_editor_audio",
@@ -4310,10 +4310,10 @@ private let workflowPromptDefinitions: [WorkflowPromptDefinition] = [
             )
         ],
         resources: [
-            "anvil://takes",
-            "anvil://track/current",
-            "anvil://clip/current",
-            "anvil://operations"
+            "pimpaudio://takes",
+            "pimpaudio://track/current",
+            "pimpaudio://clip/current",
+            "pimpaudio://operations"
         ],
         tools: [
             "load_editor_audio",
@@ -4331,7 +4331,7 @@ private let workflowPromptDefinitions: [WorkflowPromptDefinition] = [
     WorkflowPromptDefinition(
         id: "production_ready_prompt",
         title: "Production Ready Prompt",
-        description: "Turn a rough music or SFX idea into an Anvil generation request.",
+        description: "Turn a rough music or SFX idea into an PiMP Audio Studio generation request.",
         promptName: "production_ready_prompt",
         arguments: [
             WorkflowPromptArgument(
@@ -4346,10 +4346,10 @@ private let workflowPromptDefinitions: [WorkflowPromptDefinition] = [
             )
         ],
         resources: [
-            "anvil://models",
-            "anvil://adapters",
-            "anvil://presets",
-            "anvil://operations"
+            "pimpaudio://models",
+            "pimpaudio://adapters",
+            "pimpaudio://presets",
+            "pimpaudio://operations"
         ],
         tools: [
             "enhance_prompt",
@@ -4359,20 +4359,21 @@ private let workflowPromptDefinitions: [WorkflowPromptDefinition] = [
             "generation_status"
         ],
         template: """
-        Convert the supplied prompt into a production-ready Anvil generation request.
+        Convert the supplied prompt into a production-ready PiMP Audio Studio generation request.
         Inspect models, adapters, and presets first so the request fits the current workstation.
         Use enhance_prompt and write_lyrics when useful, then validate the final generate_song request with dryRun before submitting.
         """
     )
 ]
 
-private struct AnvilResourceURI {
+private struct PiMPAudioResourceURI {
     let kind: String
     let identifier: String?
 
     init?(_ rawValue: String) {
         guard let components = URLComponents(string: rawValue),
-              components.scheme == "anvil",
+              components.scheme == AppRuntimeIdentity.mcpScheme ||
+                components.scheme == AppRuntimeIdentity.legacyMCPScheme,
               let host = components.host,
               !host.isEmpty else {
             return nil

@@ -980,7 +980,7 @@ private func zipEntries(in archiveURL: URL) throws -> [String] {
     let annotation = record?["annotation"] as? [String: Any]
     #expect(annotation?["caption_source"] as? String == "native")
     #expect(annotation?["caption_backend"] as? String == "native-metadata-captioner")
-    #expect(annotation?["caption_model_id"] as? String == "anvil-metadata-caption-v1")
+    #expect(annotation?["caption_model_id"] as? String == "pimp-audio-metadata-caption-v1")
     #expect(annotation?["caption_seed"] as? String == "dark blues stem package")
     #expect(annotation?["lyrics_source"] as? String == "native-qwen3-asr")
     #expect(annotation?["model_id"] as? String == "fake-qwen3-asr")

@@ -3,7 +3,7 @@ import Darwin
 import MCP
 import OSLog
 
-enum AnvilMCPServerState: Equatable {
+enum PiMPAudioMCPServerState: Equatable {
     case stopped
     case starting
     case running(endpoint: String)
@@ -24,33 +24,41 @@ enum AnvilMCPServerState: Equatable {
 }
 
 @MainActor
-final class AnvilMCPServer: ObservableObject {
-    private static let enabledKey = "com.pimpstudios.PiMPAudioStudio.mcp.enabled"
-    private static let tokenRequiredKey = "com.pimpstudios.PiMPAudioStudio.mcp.tokenRequired"
-    private static let tokenKey = "com.pimpstudios.PiMPAudioStudio.mcp.token"
+final class PiMPAudioMCPServer: ObservableObject {
+    private static let enabledKey = AppRuntimeIdentity.defaultsKey("mcp.enabled")
+    private static let tokenRequiredKey = AppRuntimeIdentity.defaultsKey("mcp.tokenRequired")
+    private static let tokenKey = AppRuntimeIdentity.defaultsKey("mcp.token")
+    private static let legacyEnabledKey = AppRuntimeIdentity.legacyDefaultsKey("mcp.enabled")
+    private static let legacyTokenRequiredKey = AppRuntimeIdentity.legacyDefaultsKey("mcp.tokenRequired")
+    private static let legacyTokenKey = AppRuntimeIdentity.legacyDefaultsKey("mcp.token")
     private static let defaultPort: UInt16 = 38765
 
     @Published private(set) var isEnabled: Bool
     @Published private(set) var isTokenRequired: Bool
     @Published private(set) var token: String
-    @Published private(set) var state: AnvilMCPServerState = .stopped
+    @Published private(set) var state: PiMPAudioMCPServerState = .stopped
 
     private let logger = Logger(subsystem: "com.pimpstudios.PiMPAudioStudio", category: "MCP")
-    private let facade: AnvilCommandFacade
+    private let facade: PiMPAudioCommandFacade
     private var httpServer: MCPHTTPServer?
-    private var sdkBridge: AnvilMCPSDKBridge?
+    private var sdkBridge: PiMPAudioMCPSDKBridge?
     private var startupTask: Task<Void, Never>?
 
     var endpoint: String {
         "http://127.0.0.1:\(Self.defaultPort)/mcp"
     }
 
-    init(facade: AnvilCommandFacade) {
+    init(facade: PiMPAudioCommandFacade) {
         self.facade = facade
         let defaults = UserDefaults.standard
-        self.isEnabled = defaults.bool(forKey: Self.enabledKey)
-        self.isTokenRequired = defaults.bool(forKey: Self.tokenRequiredKey)
-        if let storedToken = defaults.string(forKey: Self.tokenKey), !storedToken.isEmpty {
+        self.isEnabled = Self.migratedBool(defaults, key: Self.enabledKey, legacyKey: Self.legacyEnabledKey)
+        self.isTokenRequired = Self.migratedBool(
+            defaults,
+            key: Self.tokenRequiredKey,
+            legacyKey: Self.legacyTokenRequiredKey
+        )
+        if let storedToken = Self.migratedString(defaults, key: Self.tokenKey, legacyKey: Self.legacyTokenKey),
+           !storedToken.isEmpty {
             self.token = storedToken
         } else {
             let generated = Self.generateToken()
@@ -114,7 +122,7 @@ final class AnvilMCPServer: ObservableObject {
         startupTask = Task { @MainActor [weak self] in
             guard let self else { return }
 
-            let bridge = AnvilMCPSDKBridge(
+            let bridge = PiMPAudioMCPSDKBridge(
                 facade: self.facade,
                 version: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1.0"
             )
@@ -177,11 +185,30 @@ final class AnvilMCPServer: ObservableObject {
     private static func generateToken() -> String {
         UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
     }
+
+    private static func migratedBool(_ defaults: UserDefaults, key: String, legacyKey: String) -> Bool {
+        if defaults.object(forKey: key) != nil {
+            return defaults.bool(forKey: key)
+        }
+        guard defaults.object(forKey: legacyKey) != nil else { return false }
+        let value = defaults.bool(forKey: legacyKey)
+        defaults.set(value, forKey: key)
+        return value
+    }
+
+    private static func migratedString(_ defaults: UserDefaults, key: String, legacyKey: String) -> String? {
+        if let value = defaults.string(forKey: key) {
+            return value
+        }
+        guard let value = defaults.string(forKey: legacyKey) else { return nil }
+        defaults.set(value, forKey: key)
+        return value
+    }
 }
 
 @MainActor
-private final class AnvilMCPSDKBridge {
-    private let facade: AnvilCommandFacade
+private final class PiMPAudioMCPSDKBridge {
+    private let facade: PiMPAudioCommandFacade
     private let version: String
     private var server: Server
     private var transport: StatefulHTTPServerTransport
@@ -196,7 +223,7 @@ private final class AnvilMCPSDKBridge {
     private var clientRootsRefreshedAt: Date?
     private var clientRootsLastError: String?
 
-    init(facade: AnvilCommandFacade, version: String) {
+    init(facade: PiMPAudioCommandFacade, version: String) {
         self.facade = facade
         self.version = version
         let components = Self.makeServer(version: version)
@@ -206,7 +233,7 @@ private final class AnvilMCPSDKBridge {
 
     private static func makeServer(version: String) -> (server: Server, transport: StatefulHTTPServerTransport) {
         let server = Server(
-            name: "Anvil",
+            name: AppRuntimeIdentity.displayName,
             version: version,
             capabilities: .init(
                 completions: .init(),
@@ -567,7 +594,7 @@ private final class AnvilMCPSDKBridge {
     }
 
     private func presetCompletionValues() async -> [String] {
-        guard let payload = try? await facade.readResource(uri: "anvil://presets"),
+        guard let payload = try? await facade.readResource(uri: "pimpaudio://presets"),
               let presets = payload["savedGenerationPresets"] as? [[String: Any]] else {
             return []
         }
@@ -585,7 +612,7 @@ private final class AnvilMCPSDKBridge {
         defaults: [String]
     ) async -> [String] {
         var values: [String] = []
-        if let payload = try? await facade.readResource(uri: "anvil://region/current-selection"),
+        if let payload = try? await facade.readResource(uri: "pimpaudio://region/current-selection"),
            let selection = payload["selection"] as? [String: Any],
            let value = decimalString(selection[key]) {
             values.append(value)
@@ -597,7 +624,7 @@ private final class AnvilMCPSDKBridge {
     private func outputDirectoryCompletionValues() async -> [String] {
         var values = clientRootPathCompletionValues()
 
-        if let payload = try? await facade.readResource(uri: "anvil://clip/current"),
+        if let payload = try? await facade.readResource(uri: "pimpaudio://clip/current"),
            let path = nonEmptyString(payload["path"]) {
             let directory = URL(fileURLWithPath: path).deletingLastPathComponent()
             values.append(directory.appendingPathComponent("MCPExports").path(percentEncoded: false))
@@ -761,7 +788,7 @@ private final class AnvilMCPSDKBridge {
                 "advisory": true,
                 "historyAudioPreferred": true,
                 "defaultRenderLocation": "MCPExports beside the loaded source audio when no output path is provided.",
-                "note": "MCP client roots describe client-approved filesystem boundaries. They do not bypass macOS sandboxing or grant Anvil new file permissions."
+                "note": "MCP client roots describe client-approved filesystem boundaries. They do not bypass macOS sandboxing or grant PiMP Audio Studio new file permissions."
             ]
         ]
     }
@@ -834,7 +861,7 @@ private final class AnvilMCPSDKBridge {
         case "release_memory":
             return try await facade.releaseMemory(arguments: arguments)
         default:
-            throw MCPError.methodNotFound("Unknown Anvil tool: \(name)")
+            throw MCPError.methodNotFound("Unknown PiMP Audio Studio tool: \(name)")
         }
     }
 
@@ -863,7 +890,8 @@ private final class AnvilMCPSDKBridge {
                 requestedSchema: confirmationSchema(for: toolName),
                 mode: .form,
                 _meta: Metadata(additionalFields: [
-                    "anvilTool": .string(toolName),
+                    "pimpAudioTool": .string(toolName),
+                    "legacyAnvilTool": .string(toolName),
                     "confirmArgument": .string("confirm")
                 ])
             )
@@ -927,8 +955,8 @@ private final class AnvilMCPSDKBridge {
 
     private func confirmationSchema(for toolName: String) -> Elicitation.RequestSchema {
         Elicitation.RequestSchema(
-            title: "Confirm Anvil MCP Action",
-            description: "Approve only if this local Anvil action was intentional.",
+            title: "Confirm PiMP Audio Studio MCP Action",
+            description: "Approve only if this local PiMP Audio Studio action was intentional.",
             properties: [
                 "approved": [
                     "type": "boolean",
@@ -944,13 +972,13 @@ private final class AnvilMCPSDKBridge {
     private func confirmationMessage(for toolName: String) -> String {
         switch toolName {
         case "submit_editor_inpaint":
-            return "Anvil wants to submit a selected-region editor inpaint/repaint mutation. Approve this action?"
+            return "PiMP Audio Studio wants to submit a selected-region editor inpaint/repaint mutation. Approve this action?"
         case "apply_editor_effect_chain":
-            return "Anvil wants to apply DSP effects to the loaded editor audio. Approve this mutation?"
+            return "PiMP Audio Studio wants to apply DSP effects to the loaded editor audio. Approve this mutation?"
         case "release_memory":
-            return "Anvil wants to cancel active generation if needed, unload model weights, and flush MLX GPU cache. Approve this action?"
+            return "PiMP Audio Studio wants to cancel active generation if needed, unload model weights, and flush MLX GPU cache. Approve this action?"
         default:
-            return "Anvil wants to run \(toolName). Approve this action?"
+            return "PiMP Audio Studio wants to run \(toolName). Approve this action?"
         }
     }
 
@@ -989,6 +1017,12 @@ private final class AnvilMCPSDKBridge {
     }
 
     private func canonicalToolName(_ name: String) -> String {
+        if name.hasPrefix("pimpaudio.") {
+            return String(name.dropFirst("pimpaudio.".count))
+        }
+        if name.hasPrefix("pimpaudio_") {
+            return String(name.dropFirst("pimpaudio_".count))
+        }
         if name.hasPrefix("anvil.") {
             return String(name.dropFirst("anvil.".count))
         }
@@ -1172,7 +1206,7 @@ private enum MCPPromptCatalog {
         prompt(
             name: "production_ready_prompt",
             title: "Production Ready Prompt",
-            description: "Turn a rough music or SFX idea into an Anvil generation request.",
+            description: "Turn a rough music or SFX idea into an PiMP Audio Studio generation request.",
             arguments: [
                 argument("prompt", "Rough prompt or creative brief to develop.", required: true),
                 argument("duration", "Optional target duration in seconds.")
@@ -1184,17 +1218,17 @@ private enum MCPPromptCatalog {
         switch params.name {
         case "improve_chorus":
             return result(
-                description: "Improve a chorus using current Anvil workstation resources.",
+                description: "Improve a chorus using current PiMP Audio Studio workstation resources.",
                 text: """
                 Improve the chorus while preserving the best material around it.
 
                 Inputs:
                 - takeID: \(argumentValue(params, "takeID", fallback: "use the current loaded clip"))
-                - regionStart: \(argumentValue(params, "regionStart", fallback: "infer from anvil://region/current-selection"))
-                - regionEnd: \(argumentValue(params, "regionEnd", fallback: "infer from anvil://region/current-selection"))
+                - regionStart: \(argumentValue(params, "regionStart", fallback: "infer from pimpaudio://region/current-selection"))
+                - regionEnd: \(argumentValue(params, "regionEnd", fallback: "infer from pimpaudio://region/current-selection"))
                 - direction: \(argumentValue(params, "direction", fallback: "make the chorus stronger without over-editing"))
 
-                Inspect anvil://takes, anvil://track/current, anvil://clip/current, anvil://region/current-selection, and anvil://presets first.
+                Inspect pimpaudio://takes, pimpaudio://track/current, pimpaudio://clip/current, pimpaudio://region/current-selection, and pimpaudio://presets first.
                 If takeID is provided, call load_editor_audio and poll get_operation until complete.
                 Validate submit_editor_inpaint and apply_editor_effect_chain with dryRun before any mutation.
                 Require confirm: true or MCP elicitation approval before inpaint or DSP changes, then render_editor_audio if the user wants an export.
@@ -1209,7 +1243,7 @@ private enum MCPPromptCatalog {
                 Target variant count: \(argumentValue(params, "variantCount", fallback: "3"))
                 Direction: \(argumentValue(params, "direction", fallback: "balanced review variants"))
 
-                Inspect anvil://takes, anvil://track/current, anvil://clip/current, and anvil://presets.
+                Inspect pimpaudio://takes, pimpaudio://track/current, pimpaudio://clip/current, and pimpaudio://presets.
                 Prefer reversible, bounded DSP chains with apply_editor_effect_chain dryRun first.
                 Use render_editor_audio for each approved variant and poll get_operation for completion.
                 Do not mark_preferred_take unless the user explicitly asks.
@@ -1227,7 +1261,7 @@ private enum MCPPromptCatalog {
                 - regionEnd: \(argumentValue(params, "regionEnd", fallback: "required if no current region exists"))
                 - issue: \(argumentValue(params, "issue", fallback: "remove obvious defect while preserving musical context"))
 
-                Inspect anvil://track/current, anvil://clip/current, anvil://region/current-selection, and anvil://presets.
+                Inspect pimpaudio://track/current, pimpaudio://clip/current, pimpaudio://region/current-selection, and pimpaudio://presets.
                 Use apply_editor_effect_chain for mechanical cleanup and submit_editor_inpaint for musical replacement.
                 Every editor mutation must be scoped to the selected region, dry-run first, and then require confirm: true or MCP elicitation approval.
                 """
@@ -1240,7 +1274,7 @@ private enum MCPPromptCatalog {
 
                 Output directory: \(argumentValue(params, "outputDirectory", fallback: "default MCPExports folder beside the source audio"))
 
-                Inspect anvil://takes, anvil://track/current, anvil://clip/current, and anvil://operations.
+                Inspect pimpaudio://takes, pimpaudio://track/current, pimpaudio://clip/current, and pimpaudio://operations.
                 Use render_editor_audio with lossless output and descriptive filenames.
                 Poll get_operation until render operations complete.
                 Do not overwrite existing files unless overwrite is explicitly requested.
@@ -1248,20 +1282,20 @@ private enum MCPPromptCatalog {
             )
         case "production_ready_prompt":
             return result(
-                description: "Develop a rough idea into a validated Anvil generation request.",
+                description: "Develop a rough idea into a validated PiMP Audio Studio generation request.",
                 text: """
-                Convert this rough idea into a production-ready Anvil generation request:
+                Convert this rough idea into a production-ready PiMP Audio Studio generation request:
                 \(argumentValue(params, "prompt", fallback: "No prompt supplied. Ask for a prompt before submitting generation."))
 
                 Target duration: \(argumentValue(params, "duration", fallback: "choose based on prompt and current presets"))
 
-                Inspect anvil://models, anvil://adapters, anvil://presets, and anvil://operations first.
+                Inspect pimpaudio://models, pimpaudio://adapters, pimpaudio://presets, and pimpaudio://operations first.
                 Use enhance_prompt and write_lyrics when useful.
                 Validate the final generate_song call with dryRun before submitting a real generation.
                 """
             )
         default:
-            throw MCPError.invalidParams("Unknown Anvil prompt: \(params.name)")
+            throw MCPError.invalidParams("Unknown PiMP Audio Studio prompt: \(params.name)")
         }
     }
 
@@ -1309,66 +1343,66 @@ private enum MCPPromptCatalog {
 }
 
 private enum MCPResourceCatalog {
-    static let clientRootsURI = "anvil://client-roots"
+    static let clientRootsURI = "pimpaudio://client-roots"
     static let clientRootsResourceDefinition: [String: Any] = [
         "uri": clientRootsURI,
         "name": "client-roots",
         "title": "MCP Client Roots",
-        "description": "Client-advertised filesystem roots and Anvil's local path access policy.",
+        "description": "Client-advertised filesystem roots and PiMP Audio Studio local path access policy.",
         "mimeType": "application/json"
     ]
 
     static let templates: [Resource.Template] = [
         template(
-            uriTemplate: "anvil://model/{id}",
+            uriTemplate: "pimpaudio://model/{id}",
             name: "model",
-            title: "Anvil Model",
+            title: "PiMP Audio Studio Model",
             description: "Model registry entry by model id."
         ),
         template(
-            uriTemplate: "anvil://adapter/{id}",
+            uriTemplate: "pimpaudio://adapter/{id}",
             name: "adapter",
-            title: "Anvil Adapter",
+            title: "PiMP Audio Studio Adapter",
             description: "LoRA adapter registry entry by adapter id or name."
         ),
         template(
-            uriTemplate: "anvil://history/{id}",
+            uriTemplate: "pimpaudio://history/{id}",
             name: "history",
             title: "Generation History Entry",
             description: "Generation history entry by UUID, trace filename, or audio filename."
         ),
         template(
-            uriTemplate: "anvil://take/{id}",
+            uriTemplate: "pimpaudio://take/{id}",
             name: "take",
             title: "Generated Take",
             description: "Workstation take view by history id or audio filename."
         ),
         template(
-            uriTemplate: "anvil://trace/{id}",
+            uriTemplate: "pimpaudio://trace/{id}",
             name: "trace",
             title: "Generation Trace",
             description: "Generation trace sidecar by history id, trace filename, or audio filename."
         ),
         template(
-            uriTemplate: "anvil://audio/{id}",
+            uriTemplate: "pimpaudio://audio/{id}",
             name: "audio",
             title: "Generated Audio Metadata",
             description: "Generated audio metadata by history id or audio filename."
         ),
         template(
-            uriTemplate: "anvil://preset/{id}",
+            uriTemplate: "pimpaudio://preset/{id}",
             name: "preset",
             title: "Generation Preset",
             description: "Saved generation preset by UUID or preset name."
         ),
         template(
-            uriTemplate: "anvil://workflow/{id}",
+            uriTemplate: "pimpaudio://workflow/{id}",
             name: "workflow",
             title: "Workflow Prompt",
             description: "Workflow prompt definition by workflow id."
         ),
         template(
-            uriTemplate: "anvil://operation/{id}",
+            uriTemplate: "pimpaudio://operation/{id}",
             name: "operation",
             title: "MCP Operation",
             description: "Recent MCP-observable operation by operation id."
@@ -1900,7 +1934,7 @@ private enum MCPToolCatalog {
         tool(
             name: "list_models",
             title: "List Models",
-            description: "Return Anvil model registry status, active models, readiness, and runtime support notes.",
+            description: "Return PiMP Audio Studio model registry status, active models, readiness, and runtime support notes.",
             properties: [:]
         ),
         tool(
@@ -2266,7 +2300,7 @@ private enum MCPToolCatalog {
                 ],
                 "referenceAudioPath": [
                     "type": "string",
-                    "description": "Optional local audio path for cover-song generation. If the client advertises MCP roots, prefer a file under anvil://client-roots."
+                    "description": "Optional local audio path for cover-song generation. If the client advertises MCP roots, prefer a file under pimpaudio://client-roots."
                 ],
                 "coverStrength": [
                     "type": "number",
@@ -2319,7 +2353,7 @@ private enum MCPToolCatalog {
                 ],
                 "path": [
                     "type": "string",
-                    "description": "Readable local audio file path. History/audio ids are preferred; if MCP client roots are advertised, choose a file under anvil://client-roots. Sandboxed builds may still reject arbitrary paths."
+                    "description": "Readable local audio file path. History/audio ids are preferred; if MCP client roots are advertised, choose a file under pimpaudio://client-roots. Sandboxed builds may still reject arbitrary paths."
                 ],
                 "audioPath": [
                     "type": "string",
@@ -2765,7 +2799,7 @@ private enum MCPToolCatalog {
                 ],
                 "outputDirectory": [
                     "type": "string",
-                    "description": "Optional output directory. Defaults to MCPExports beside the loaded source audio. If MCP client roots are advertised, prefer a directory under anvil://client-roots."
+                    "description": "Optional output directory. Defaults to MCPExports beside the loaded source audio. If MCP client roots are advertised, prefer a directory under pimpaudio://client-roots."
                 ],
                 "directory": [
                     "type": "string",

@@ -360,7 +360,7 @@ enum TrainingDatasetPackageWriter {
         }
 
         let stagingRoot = FileManager.default.temporaryDirectory
-            .appendingPathComponent("AnvilPackageExport-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("PiMPAudioPackageExport-\(UUID().uuidString)", isDirectory: true)
         let stagedPackageDirectory = stagingRoot.appendingPathComponent(outputDirectory.lastPathComponent, isDirectory: true)
         try FileManager.default.createDirectory(at: stagedPackageDirectory, withIntermediateDirectories: true)
         defer {

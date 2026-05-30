@@ -7,7 +7,7 @@ import OSLog
 /// flag is off, so it's safe to leave callsites in place.
 ///
 /// Toggle via UI (Advanced → Verbose audio diagnostics) or directly:
-///   defaults write com.pimpstudios.PiMPAudioStudio audioDebugVerbose -bool YES
+///   defaults write com.pimpstudios.PiMPAudioStudio com.pimpstudios.PiMPAudioStudio.audioDebugVerbose -bool YES
 ///
 /// In Xcode, filter the console with: subsystem:com.pimpstudios.PiMPAudioStudio [AUDIODIAG]
 ///
@@ -15,10 +15,12 @@ import OSLog
 ///   [AUDIODIAG] <tag> shape=[…] dtype=… abs_mean=… abs_max=… any_nan=… any_inf=… first5=[…]
 public enum AudioDiagnostics {
     private static let logger = Logger(subsystem: "com.pimpstudios.PiMPAudioStudio", category: "AudioDiag")
-    private static let userDefaultsKey = "audioDebugVerbose"
+    private static let userDefaultsKey = "com.pimpstudios.PiMPAudioStudio.audioDebugVerbose"
+    private static let legacyUserDefaultsKey = "audioDebugVerbose"
 
     public static var isEnabled: Bool {
-        UserDefaults.standard.bool(forKey: userDefaultsKey)
+        UserDefaults.standard.bool(forKey: userDefaultsKey) ||
+            UserDefaults.standard.bool(forKey: legacyUserDefaultsKey)
     }
 
     /// Emit tensor stats for an MLXArray. Forces eval to materialize values.

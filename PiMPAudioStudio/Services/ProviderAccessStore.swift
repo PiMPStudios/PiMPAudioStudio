@@ -951,7 +951,8 @@ enum ProviderCLIAccessGrantPicker {
 }
 
 enum ProviderCLIAccessGrants {
-    private static let bookmarkPrefix = "providerCLIAccessBookmark."
+    private static let bookmarkPrefix = AppUserDefaultsKeys.providerCLIAccessBookmarkPrefix
+    private static let legacyBookmarkPrefix = AppUserDefaultsKeys.legacyProviderCLIAccessBookmarkPrefix
 
     static func saveDirectory(_ url: URL, providerID: String) throws {
         let bookmark = try url.bookmarkData(
@@ -985,13 +986,14 @@ enum ProviderCLIAccessGrants {
         UserDefaults.standard
             .dictionaryRepresentation()
             .keys
-            .filter { $0.hasPrefix(bookmarkPrefix) }
+            .filter { $0.hasPrefix(bookmarkPrefix) || $0.hasPrefix(legacyBookmarkPrefix) }
             .compactMap { providerID(fromBookmarkKey: $0) }
             .compactMap(resolveDirectory(providerID:))
     }
 
     private static func resolveDirectory(providerID: String) -> URL? {
-        guard let data = UserDefaults.standard.data(forKey: bookmarkKey(providerID: providerID)) else {
+        guard let data = UserDefaults.standard.data(forKey: bookmarkKey(providerID: providerID)) ??
+            UserDefaults.standard.data(forKey: legacyBookmarkKey(providerID: providerID)) else {
             return nil
         }
 
@@ -1005,6 +1007,8 @@ enum ProviderCLIAccessGrants {
             )
             if isStale {
                 try saveDirectory(url, providerID: providerID)
+            } else if UserDefaults.standard.data(forKey: bookmarkKey(providerID: providerID)) == nil {
+                UserDefaults.standard.set(data, forKey: bookmarkKey(providerID: providerID))
             }
             return url
         } catch {
@@ -1017,9 +1021,18 @@ enum ProviderCLIAccessGrants {
         bookmarkPrefix + providerID
     }
 
+    private static func legacyBookmarkKey(providerID: String) -> String {
+        legacyBookmarkPrefix + providerID
+    }
+
     private static func providerID(fromBookmarkKey key: String) -> String? {
-        guard key.hasPrefix(bookmarkPrefix) else { return nil }
-        return String(key.dropFirst(bookmarkPrefix.count))
+        if key.hasPrefix(bookmarkPrefix) {
+            return String(key.dropFirst(bookmarkPrefix.count))
+        }
+        if key.hasPrefix(legacyBookmarkPrefix) {
+            return String(key.dropFirst(legacyBookmarkPrefix.count))
+        }
+        return nil
     }
 }
 
@@ -1099,7 +1112,9 @@ enum ProviderCLIPaths {
     ) -> String {
         let processHome = primaryHomeDirectory ?? processHomeDirectory(environment: environment)
         let userHome = realUserHomeDirectory(environment: environment)
-        let includeGrantedDirectories = environment["ANVIL_DISABLE_PROVIDER_CLI_GRANTS"] != "1"
+        let includeGrantedDirectories =
+            environment["PIMP_AUDIO_DISABLE_PROVIDER_CLI_GRANTS"] != "1" &&
+            environment["ANVIL_DISABLE_PROVIDER_CLI_GRANTS"] != "1"
         var directories = includeGrantedDirectories ? ProviderCLIAccessGrants.grantedDirectoryPaths() : []
         directories.append(contentsOf: [
             "\(processHome)/.grok/bin",

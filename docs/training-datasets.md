@@ -1,6 +1,6 @@
 # Training Dataset Packages
 
-Anvil can build and import local LoRA training datasets without a cloud service. The current dataset builder is local-file/full-mix first, with package metadata shaped so a future remote worker can consume the same folder or zip.
+PiMP Audio Studio can build and import local LoRA training datasets without a cloud service. The current dataset builder is local-file/full-mix first, with package metadata shaped so a future remote worker can consume the same folder or zip.
 
 ## Build From Local Files
 
@@ -16,7 +16,7 @@ The package contains:
 - `captions.json` - clip captions for audio-dir style tooling.
 - `dataset_config.json` - generic audio-directory training config.
 - `dataset_manifest.json` - full package metadata, source file list, clip list, audio header metadata, and package status.
-- `training_bundle.json` - Anvil training bundle for the generated full-mix clips.
+- `training_bundle.json` - PiMP Audio Studio training bundle for the generated full-mix clips.
 - `training_bundle_full_mix.json` - explicit full-mix bundle; this is the safest file to re-import into Anvil.
 - `training_bundle_vocals.json` - optional vocal-stem bundle written after local enrichment.
 - `training_bundle_instrumental.json` - optional instrumental-stem bundle written after local enrichment.
@@ -59,13 +59,13 @@ The current cache is sample-level training data. It is the shared handoff for lo
 
 ## Local Enrichment
 
-After a local-file package is built, use **Review Dataset** from the build sheet or open it from **Build > Datasets**, then use **Enrich Dataset** in the review workspace to enrich that package in place. AnvilApp owns this workflow directly; it does not call or require any sibling repo.
+After a local-file package is built, use **Review Dataset** from the build sheet or open it from **Build > Datasets**, then use **Enrich Dataset** in the review workspace to enrich that package in place. PiMP Audio Studio owns this workflow directly; it does not call or require any sibling repo.
 
-The enrichment backend is native Swift/MLX Demucs via `demucs-mlx-swift`, using `htdemucs` in vocals-plus-instrumental mode. AnvilApp writes `stems/`, `separation.json`, `training_bundle_vocals.json`, `training_bundle_instrumental.json`, refreshed manifest metadata, and package validation itself.
+The enrichment backend is native Swift/MLX Demucs via `demucs-mlx-swift`, using `htdemucs` in vocals-plus-instrumental mode. PiMP Audio Studio writes `stems/`, `separation.json`, `training_bundle_vocals.json`, `training_bundle_instrumental.json`, refreshed manifest metadata, and package validation itself.
 
-Native Demucs model selection can be overridden with `ANVIL_DEMUCS_MODEL_NAME`; the optional `ANVIL_DEMUCS_MODEL_DIR` points at a local Demucs MLX model directory. The default model remains `htdemucs`.
+Native Demucs model selection can be overridden with `PIMP_AUDIO_DEMUCS_MODEL_NAME`; the optional `PIMP_AUDIO_DEMUCS_MODEL_DIR` points at a local Demucs MLX model directory. The legacy `ANVIL_DEMUCS_MODEL_NAME` and `ANVIL_DEMUCS_MODEL_DIR` variables are still accepted during the rebrand migration. The default model remains `htdemucs`.
 
-Before enrichment starts from the app UI, AnvilApp releases idle generation, cover-song, SFX, LoRA, and LLM model weights through the same GPU-memory release path used by Settings. The enrichment loop also compacts the MLX allocator between Demucs separation and Qwen transcription work so dataset builds do not stack avoidable model/cache memory on top of the active generation pipeline.
+Before enrichment starts from the app UI, PiMP Audio Studio releases idle generation, cover-song, SFX, LoRA, and LLM model weights through the same GPU-memory release path used by Settings. The enrichment loop also compacts the MLX allocator between Demucs separation and Qwen transcription work so dataset builds do not stack avoidable model/cache memory on top of the active generation pipeline.
 
 Enrichment also transcribes each generated `vocals.wav` with native `speech-swift` Qwen3-ASR. The quality path uses `Qwen3-ASR-1.7B` plus `Qwen3-ForcedAligner-0.6B` for word timestamps, then writes `lyrics.txt`, `lyrics.timed.json`, and `lyrics.lrc` next to the stem files. Those transcripts are copied into `captions.json` and `training_bundle_vocals.json`; instrumental bundles keep lyrics empty.
 
@@ -79,9 +79,9 @@ Use **Build > Training > Train from Files... > Add audio files or JSON...** when
 
 Recommended JSON entry points:
 
-- Use `training_bundle_vocals.json` for vocal-stem training. Anvil selects `vocals.wav` assets and uses transcripts/lyrics from each clip.
-- Use `training_bundle_instrumental.json` for instrumental-stem training. Anvil selects instrumental assets and intentionally leaves lyrics empty.
-- Use `training_bundle_full_mix.json` for Anvil local-file packages created by **From Local Files...**.
+- Use `training_bundle_vocals.json` for vocal-stem training. PiMP Audio Studio selects `vocals.wav` assets and uses transcripts/lyrics from each clip.
+- Use `training_bundle_instrumental.json` for instrumental-stem training. PiMP Audio Studio selects instrumental assets and intentionally leaves lyrics empty.
+- Use `training_bundle_full_mix.json` for PiMP Audio Studio local-file packages created by **From Local Files...**.
 - `dataset_config.json` is also supported. If a `caption_file` is provided, or a sibling `captions.json` exists, Anvil uses those captions and preserves lyrics for vocal file paths.
 
 The training sheet reports how many files were imported from JSON, how many include lyrics, and how many duplicate paths were skipped.
@@ -105,4 +105,4 @@ The initial package is full-mix only. After local enrichment, the same package c
 
 Remote packages include `preprocess_cache.json`, `annotations/**`, and `preprocessed/**` in their copy rules. Local bundle preprocessing can now populate `preprocessed/<bundle>/samples/*.safetensors` plus `index.json`; remote workers should read or write the same cache shape instead of inventing provider-specific tensor layouts.
 
-Remote launch requests use the provider-neutral shape in [remote-worker-contract.md](remote-worker-contract.md). In short, Anvil should generate a `remote_job.json`, provider adapters should launch a worker without changing that schema, and workers should return `remote_artifacts/result.json`, `logs.jsonl`, `metrics.jsonl`, checkpoints, and final adapter artifacts in the standard layout.
+Remote launch requests use the provider-neutral shape in [remote-worker-contract.md](remote-worker-contract.md). In short, PiMP Audio Studio should generate a `remote_job.json`, provider adapters should launch a worker without changing that schema, and workers should return `remote_artifacts/result.json`, `logs.jsonl`, `metrics.jsonl`, checkpoints, and final adapter artifacts in the standard layout.

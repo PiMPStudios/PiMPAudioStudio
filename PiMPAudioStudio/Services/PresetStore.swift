@@ -3,7 +3,7 @@ import Foundation
 /// Manages CRUD operations for saved generation presets.
 ///
 /// Presets are stored as individual JSON files in
-/// `~/Library/Application Support/Anvil/presets/`.
+/// `~/Library/Application Support/PiMP Audio Studio/presets/`.
 @MainActor
 final class PresetStore: ObservableObject {
     @Published var presets: [GenerationPreset] = []
@@ -13,9 +13,7 @@ final class PresetStore: ObservableObject {
     @Published var presetToLoad: GenerationPreset?
 
     static var presetsDirectory: URL {
-        FileManager.default
-            .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appending(path: "Anvil/presets")
+        AppStorageLocations.presetsDirectory
     }
 
     init() {

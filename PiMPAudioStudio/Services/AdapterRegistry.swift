@@ -4,8 +4,7 @@ import MLX
 
 struct AdapterRegistry {
     static var adaptersDirectory: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appending(path: "Anvil/models/adapters")
+        AppStorageLocations.adaptersDirectory
     }
 
     static func listAdapters() -> [LoRAAdapter] {

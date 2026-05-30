@@ -49,7 +49,7 @@ struct HuggingFaceImportSheet: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Import Adapter")
                     .font(.headline)
-                Text("Install an Anvil or PEFT LoRA adapter from HuggingFace or a local folder.")
+                Text("Install a PiMP Audio Studio or PEFT LoRA adapter from HuggingFace or a local folder.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -81,7 +81,7 @@ struct HuggingFaceImportSheet: View {
                     ProgressView().controlSize(.small)
                 }
             }
-            Text("Accepts PEFT repos (adapter_config.json + adapter_model.safetensors) and native Anvil repos (adapter.json + adapter.safetensors).")
+            Text("Accepts PEFT repos (adapter_config.json + adapter_model.safetensors) and native PiMP Audio Studio repos (adapter.json + adapter.safetensors).")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
         }
