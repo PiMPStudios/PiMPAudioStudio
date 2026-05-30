@@ -13,6 +13,7 @@ struct LocalFilesImportSheet: View {
 
     @State private var selectedFiles: [URL] = []
     @State private var selectedFolders: [URL] = []
+    @State private var datasetName = ""
     @State private var styleTemplate = ""
     @State private var config = LocalFilesDatasetConfig()
     @State private var editableClips: [TrainingImportedFile] = []
@@ -28,6 +29,7 @@ struct LocalFilesImportSheet: View {
             Divider()
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+                    datasetNameSection
                     filesSection
                     styleSection
                     configSection
@@ -155,6 +157,20 @@ struct LocalFilesImportSheet: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+        }
+    }
+
+    private var datasetNameSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Dataset Name")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+            TextField("Dark Gentlemen vocal dataset", text: $datasetName)
+                .textFieldStyle(.roundedBorder)
+                .disabled(isBusy)
+            Text("Used for the package folder and exported archive name. Leave blank to keep the first-file fallback.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -528,6 +544,7 @@ struct LocalFilesImportSheet: View {
             sourceDirectories: selectedFolders,
             config: config,
             outputBase: outputBase,
+            datasetName: datasetName,
             styleTemplate: template
         )
     }

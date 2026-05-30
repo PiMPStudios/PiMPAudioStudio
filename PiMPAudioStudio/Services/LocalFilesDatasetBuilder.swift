@@ -265,6 +265,7 @@ final class LocalFilesDatasetBuilder: ObservableObject {
         sourceDirectories: [URL] = [],
         config: LocalFilesDatasetConfig,
         outputBase: URL,
+        datasetName: String = "",
         styleTemplate: String = ""
     ) {
         cancel()
@@ -279,6 +280,7 @@ final class LocalFilesDatasetBuilder: ObservableObject {
                     sourceDirectories: sourceDirectories,
                     config: config,
                     outputBase: outputBase,
+                    datasetName: datasetName,
                     styleTemplate: styleTemplate,
                     onPhase: { [weak self] p in await MainActor.run { self?.phase = p } }
                 )
@@ -302,6 +304,7 @@ final class LocalFilesDatasetBuilder: ObservableObject {
         sourceDirectories: [URL] = [],
         config: LocalFilesDatasetConfig,
         outputBase: URL,
+        datasetName: String = "",
         styleTemplate: String = "",
         onPhase: @escaping (LocalFilesImportPhase) async -> Void
     ) async throws -> LocalFilesDatasetResult {
@@ -312,7 +315,7 @@ final class LocalFilesDatasetBuilder: ObservableObject {
             scopedDirectories.forEach { $0.stopAccessingSecurityScopedResource() }
         }
 
-        let folderTag = datasetFolderTag(for: sourceFiles.first)
+        let folderTag = datasetFolderTag(for: datasetName, fallbackURL: sourceFiles.first)
         let outputDir = outputBase
             .appendingPathComponent("TrainingDatasets", isDirectory: true)
             .appendingPathComponent("\(folderTag)_local_\(timestampTag())", isDirectory: true)
@@ -508,10 +511,15 @@ final class LocalFilesDatasetBuilder: ObservableObject {
         return "\(prefix)\(source)_clip_\(clip).\(fileExtension)"
     }
 
-    nonisolated private static func datasetFolderTag(for url: URL?) -> String {
-        let name = url?.deletingPathExtension().lastPathComponent ?? "local-dataset"
-        let sanitized = sanitizeDatasetName(name)
-        return sanitized.isEmpty ? "local-dataset" : sanitized
+    nonisolated private static func datasetFolderTag(for datasetName: String, fallbackURL: URL?) -> String {
+        let trimmedName = datasetName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let fallbackName = fallbackURL?.deletingPathExtension().lastPathComponent ?? "local-dataset"
+        let sanitized = sanitizeDatasetName(trimmedName.isEmpty ? fallbackName : trimmedName)
+        let fallback = sanitizeDatasetName(fallbackName)
+        if !sanitized.isEmpty {
+            return sanitized
+        }
+        return fallback.isEmpty ? "local-dataset" : fallback
     }
 
     nonisolated private static func sanitizeDatasetName(_ input: String) -> String {

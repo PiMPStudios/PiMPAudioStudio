@@ -1494,6 +1494,31 @@ private extension JSONDecoder {
     #expect(samplingJSON?["mode"] as? String == LocalDatasetClipSamplingMode.evenlySpread.rawValue)
 }
 
+@Test @MainActor func localFilesDatasetBuilderUsesCustomDatasetName() async throws {
+    let tempRoot = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+    let sourceURL = tempRoot.appendingPathComponent("first-source-file.wav")
+    try silentWAVData(sampleRate: 22_050, channels: 1, frameCount: 2_205).write(to: sourceURL)
+
+    let result = try await LocalFilesDatasetBuilder.run(
+        sourceFiles: [sourceURL],
+        config: LocalFilesDatasetConfig(clipLength: 0.1, clipsPerTrack: 1, maxTotalClips: 1),
+        outputBase: tempRoot,
+        datasetName: "My Custom Dataset!",
+        styleTemplate: "custom dataset naming test",
+        onPhase: { _ in }
+    )
+
+    #expect(result.outputDirectory.lastPathComponent.hasPrefix("my-custom-dataset_local_"))
+
+    let manifestData = try Data(contentsOf: result.outputDirectory.appendingPathComponent("dataset_manifest.json"))
+    let manifestJSON = try JSONSerialization.jsonObject(with: manifestData) as? [String: Any]
+    #expect((manifestJSON?["name"] as? String)?.hasPrefix("my-custom-dataset_local_") == true)
+}
+
 @Test func localClipSamplerEvenlySpreadsLongSources() throws {
     let starts = LocalDatasetClipSampler.startTimes(
         totalSeconds: 90.0 * 60.0,
