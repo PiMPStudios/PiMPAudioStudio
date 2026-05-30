@@ -31,16 +31,16 @@ struct AdapterPicker: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("LoRA Adapter")
+            Text("Adapter")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            Picker("LoRA Adapter", selection: normalizedSelection) {
+            Picker("Adapter", selection: normalizedSelection) {
                 Text("None").tag(String?.none)
                 ForEach(adapters) { adapter in
                     HStack {
                         Text(adapter.name)
-                        Text("rank \(adapter.config.rank) \u{2022} \(adapter.sampleCount) tracks")
+                        Text("\(adapter.kind.rawValue.uppercased()) \(adapterDimensionLabel(adapter)) \u{2022} \(adapter.sampleCount) tracks")
                             .foregroundStyle(.secondary)
                     }
                     .tag(Optional(adapter.id))
@@ -71,6 +71,15 @@ struct AdapterPicker: View {
         if let selected = selectedAdapterID,
            !adapters.contains(where: { $0.id == selected }) {
             selectedAdapterID = nil
+        }
+    }
+
+    private func adapterDimensionLabel(_ adapter: LoRAAdapter) -> String {
+        switch adapter.kind {
+        case .lora:
+            return "rank \(adapter.config.rank)"
+        case .lokr:
+            return "dim \(adapter.lokrConfig?.linearDim ?? adapter.config.rank)"
         }
     }
 }

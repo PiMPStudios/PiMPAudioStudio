@@ -67,6 +67,9 @@ final class AdapterStackManager: ObservableObject {
         guard !isAtCapacity else { return }
         guard !additionalAdapters.contains(where: { $0.adapter.id == adapter.id }) else { return }
         guard adapter.id != primaryAdapter?.id else { return }
+        if let primaryAdapter {
+            guard adapter.kind == primaryAdapter.kind else { return }
+        }
         additionalAdapters.append((adapter: adapter, strength: strength))
     }
 

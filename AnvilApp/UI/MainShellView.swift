@@ -523,6 +523,7 @@ private struct BuildTrainingView: View {
                 initialImportedFiles: presentation.files,
                 initialName: presentation.initialName,
                 initialConfig: presentation.initialConfig,
+                adapterKind: presentation.adapterKind,
                 resumeAdapterID: presentation.resumeAdapterID,
                 presentationStyle: .inline
             ) {
@@ -611,61 +612,85 @@ private struct BuildTrainingView: View {
         return remotePackages.first { $0.id == selectedRemotePackageID }
     }
 
+    @ViewBuilder
     private var lokrWorkspace: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 10) {
-                Text("\(remotePackages.count) package\(remotePackages.count == 1 ? "" : "s")")
+        if let presentation = trainingPresentation, presentation.adapterKind == .lokr {
+            TrainingSheet(
+                selectedEntries: presentation.selectedEntries,
+                initialImportedFiles: presentation.files,
+                initialName: presentation.initialName,
+                initialConfig: presentation.initialConfig,
+                adapterKind: presentation.adapterKind,
+                resumeAdapterID: presentation.resumeAdapterID,
+                presentationStyle: .inline
+            ) {
+                trainingPresentation = nil
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 10) {
+                    Text("\(remotePackages.count) package\(remotePackages.count == 1 ? "" : "s")")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Spacer()
+
+                    Button {
+                        refreshRemotePackages()
+                    } label: {
+                        Label("Refresh", systemImage: "arrow.clockwise")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+
+                    Button {
+                        openRemotePackageFolder()
+                    } label: {
+                        Label("Finder", systemImage: "folder")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(selectedRemotePackage == nil)
+
+                    Button {
+                        openSelectedPackageInLoKRTraining()
+                    } label: {
+                        Label("Train LoKR", systemImage: "bolt.badge.clock")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .disabled(selectedRemotePackage == nil || selectedRemotePackage?.isValid == false)
+                }
+                .padding()
+
+                Divider()
+
+                if remotePackages.isEmpty {
+                    statusMessage(
+                        "No Dataset Packages",
+                        message: "Build or open a reviewed dataset package before training LoKR adapters.",
+                        systemImage: "tray",
+                        color: .secondary
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    List(selection: $selectedRemotePackageID) {
+                        ForEach(remotePackages) { package in
+                            lokrPackageRow(package)
+                                .tag(package.id)
+                        }
+                    }
+                    .listStyle(.inset)
+                }
+
+                Divider()
+                Text("Experimental LoKR uses the same reviewed package and `preprocess_cache.json` contract as LoRA, then trains a local Kronecker adapter through the native Swift/MLX loop.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-
-                Spacer()
-
-                Button {
-                    refreshRemotePackages()
-                } label: {
-                    Label("Refresh", systemImage: "arrow.clockwise")
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-
-                Button {
-                    openRemotePackageFolder()
-                } label: {
-                    Label("Finder", systemImage: "folder")
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .disabled(selectedRemotePackage == nil)
+                    .padding()
             }
-            .padding()
-
-            Divider()
-
-            if remotePackages.isEmpty {
-                statusMessage(
-                    "No Dataset Packages",
-                    message: "Build or open a reviewed dataset package before testing LoKR training.",
-                    systemImage: "tray",
-                    color: .secondary
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                List(selection: $selectedRemotePackageID) {
-                    ForEach(remotePackages) { package in
-                        lokrPackageRow(package)
-                            .tag(package.id)
-                    }
-                }
-                .listStyle(.inset)
-            }
-
-            Divider()
-            Text("Experimental LoKR uses the same reviewed package and `preprocess_cache.json` contract as LoRA. The native LoKR trainer is still pending.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding()
+            .onAppear(perform: refreshRemotePackages)
         }
-        .onAppear(perform: refreshRemotePackages)
     }
 
     private var remoteWorkspace: some View {
@@ -829,6 +854,22 @@ private struct BuildTrainingView: View {
     private func openRemotePackageFolder() {
         guard let package = selectedRemotePackage else { return }
         NSWorkspace.shared.open(package.directory)
+    }
+
+    private func openSelectedPackageInLoKRTraining() {
+        guard let package = selectedRemotePackage else { return }
+        let bundleURL = package.directory.appendingPathComponent(TrainingDatasetPackageWriter.fullMixBundleFileName)
+        do {
+            let imported = try TrainingDatasetImporter.importFiles(from: bundleURL)
+            let baseName = package.name.replacingOccurrences(of: "_local_", with: " ")
+            trainingPresentation = TrainingPresentation(
+                files: imported,
+                adapterKind: .lokr,
+                initialName: "\(baseName) LoKR"
+            )
+        } catch {
+            remoteNotice = error.localizedDescription
+        }
     }
 
     private func exportRemotePackage() {

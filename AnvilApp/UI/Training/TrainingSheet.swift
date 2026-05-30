@@ -15,15 +15,18 @@ struct TrainingPresentation: Identifiable {
     let initialName: String
     /// Pre-fill training config (nil = use defaults for new sessions).
     let initialConfig: LoRAConfig?
+    /// Adapter implementation for this training session.
+    let adapterKind: AdapterKind
     /// Adapter ID to resume from a saved checkpoint. Nil means fresh training/retraining.
     let resumeAdapterID: String?
 
     /// Blank new training session.
-    init(files: [TrainingImportedFile] = []) {
+    init(files: [TrainingImportedFile] = [], adapterKind: AdapterKind = .lora, initialName: String = "") {
         self.selectedEntries = []
         self.files = files
-        self.initialName = ""
+        self.initialName = initialName
         self.initialConfig = nil
+        self.adapterKind = adapterKind
         self.resumeAdapterID = nil
     }
 
@@ -33,12 +36,14 @@ struct TrainingPresentation: Identifiable {
         files: [TrainingImportedFile],
         initialName: String,
         initialConfig: LoRAConfig?,
+        adapterKind: AdapterKind = .lora,
         resumeAdapterID: String? = nil
     ) {
         self.selectedEntries = selectedEntries
         self.files = files
         self.initialName = initialName
         self.initialConfig = initialConfig
+        self.adapterKind = adapterKind
         self.resumeAdapterID = resumeAdapterID
     }
 }
@@ -58,6 +63,7 @@ struct TrainingSheet: View {
 
     private let presentationStyle: TrainingSurfacePresentationStyle
     private let onClose: (() -> Void)?
+    private let adapterKind: AdapterKind
 
     @State private var adapterName: String = ""
     private let resumeAdapterID: String?
@@ -78,6 +84,7 @@ struct TrainingSheet: View {
         initialImportedFiles: [TrainingImportedFile] = [],
         initialName: String = "",
         initialConfig: LoRAConfig? = nil,
+        adapterKind: AdapterKind = .lora,
         resumeAdapterID: String? = nil,
         presentationStyle: TrainingSurfacePresentationStyle = .sheet,
         onClose: (() -> Void)? = nil
@@ -86,6 +93,7 @@ struct TrainingSheet: View {
         self.resumeAdapterID = resumeAdapterID
         self.presentationStyle = presentationStyle
         self.onClose = onClose
+        self.adapterKind = adapterKind
         self._importedFiles = State(initialValue: initialImportedFiles)
         self._adapterName = State(initialValue: initialName)
         if let config = initialConfig {
@@ -97,7 +105,9 @@ struct TrainingSheet: View {
         }
     }
 
-    private let rankOptions = [8, 16, 32, 64]
+    private var rankOptions: [Int] {
+        adapterKind == .lokr ? [16, 32, 64, 128] : [8, 16, 32, 64]
+    }
     private let epochOptions = [5, 10, 20, 50, 75, 100]
     private let accumOptions = [1, 2, 4, 8]
 
@@ -105,7 +115,7 @@ struct TrainingSheet: View {
         VStack(spacing: 0) {
             // Header
             HStack {
-                Text("Train LoRA Adapter")
+                Text("Train \(adapterKind.title) Adapter")
                     .font(.headline)
                 Spacer()
                 Button("Close") { close() }
@@ -343,8 +353,8 @@ struct TrainingSheet: View {
                 Text(baseModelDisplayName)
                     .foregroundStyle(.secondary)
             }
-            LabeledContent("Rank") {
-                Picker("Rank", selection: $selectedRank) {
+            LabeledContent(adapterKind == .lokr ? "Linear Dim" : "Rank") {
+                Picker(adapterKind == .lokr ? "Linear Dim" : "Rank", selection: $selectedRank) {
                     ForEach(rankOptions, id: \.self) { Text("\($0)").tag($0) }
                 }
                 .pickerStyle(.segmented)
@@ -545,7 +555,7 @@ struct TrainingSheet: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                Text("Rank \(adapter.config.rank) \u{2022} \(adapter.sampleCount) tracks")
+                Text("\(adapter.kind == .lokr ? "Linear dim" : "Rank") \(adapter.kind == .lokr ? adapter.lokrConfig?.linearDim ?? adapter.config.rank : adapter.config.rank) \u{2022} \(adapter.sampleCount) tracks")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -622,14 +632,32 @@ struct TrainingSheet: View {
             warmupFraction: warmupFraction,
             gradientAccumulationSteps: gradientAccumulationSteps
         )
-        trainingService.startTraining(
-            entries: selectedEntries,
-            audioURLs: audioURLs,
-            importedFiles: importedFiles,
-            adapterName: adapterName,
-            config: config,
-            resumeAdapterID: resumeAdapterID
-        )
+        switch adapterKind {
+        case .lora:
+            trainingService.startTraining(
+                entries: selectedEntries,
+                audioURLs: audioURLs,
+                importedFiles: importedFiles,
+                adapterName: adapterName,
+                config: config,
+                resumeAdapterID: resumeAdapterID
+            )
+        case .lokr:
+            trainingService.startLoKRTraining(
+                entries: selectedEntries,
+                audioURLs: audioURLs,
+                importedFiles: importedFiles,
+                adapterName: adapterName,
+                config: LoKRConfig(
+                    linearDim: selectedRank,
+                    alpha: Float(selectedRank),
+                    targetLayers: selectedTargetLayers,
+                    maxEpochs: selectedEpochs,
+                    warmupFraction: warmupFraction,
+                    gradientAccumulationSteps: gradientAccumulationSteps
+                )
+            )
+        }
     }
 
     private func refreshBaseModelDisplayName() async {
@@ -710,6 +738,15 @@ struct TrainingSheet: View {
             parts.append("Skipped \(duplicateCount) duplicate\(duplicateCount == 1 ? "" : "s")")
         }
         return parts.joined(separator: ". ")
+    }
+}
+
+private extension AdapterKind {
+    var title: String {
+        switch self {
+        case .lora: return "LoRA"
+        case .lokr: return "LoKR"
+        }
     }
 }
 

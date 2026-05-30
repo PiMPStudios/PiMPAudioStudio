@@ -90,6 +90,34 @@ public actor MusicPipeline {
         await diffusion.clearLoRAContributions()
     }
 
+    public func injectLoKR(config: LoKRConfig) async throws -> [String] {
+        try await diffusion.injectLoKR(config: config)
+    }
+
+    public func loadLoKRWeights(_ weights: [(String, MLXArray)], adapterID: String) async throws {
+        try await diffusion.loadLoKRWeights(weights, adapterID: adapterID)
+    }
+
+    public func addLoKRContribution(
+        adapterID: String,
+        displayName: String?,
+        source: AdapterSource,
+        weights: [(String, MLXArray)],
+        strength: Float
+    ) async {
+        await diffusion.addLoKRContribution(
+            adapterID: adapterID,
+            displayName: displayName,
+            source: source,
+            weights: weights,
+            strength: strength
+        )
+    }
+
+    public func clearLoKRContributions() async {
+        await diffusion.clearLoKRContributions()
+    }
+
     public var injectedAdapterID: String? {
         get async { await diffusion.injectedAdapterID }
     }
@@ -111,6 +139,20 @@ public actor MusicPipeline {
             samples: samples,
             config: config,
             resumeFrom: checkpoint,
+            initialWeights: initialWeights,
+            onProgress: onProgress
+        )
+    }
+
+    public func trainLoKR(
+        samples: [TrainingSample],
+        config: LoKRConfig,
+        initialWeights: [(String, MLXArray)]? = nil,
+        onProgress: @escaping @Sendable (TrainingProgress) -> Void
+    ) async throws -> (weights: [(String, MLXArray)], finalLoss: Float?) {
+        try await diffusion.trainLoKR(
+            samples: samples,
+            config: config,
             initialWeights: initialWeights,
             onProgress: onProgress
         )

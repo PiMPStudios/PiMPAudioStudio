@@ -55,7 +55,7 @@ preprocessed/<bundle>/index.json
 
 The cache key includes the bundle file, bundle name, clip id, source audio path, prompt, and lyrics, so prompt or lyric edits produce a different sample artifact. `preprocess_cache.json` reports each bundle as `ready_for_preprocess`, `partial`, `complete`, or `waiting_for_bundle`.
 
-The current cache is sample-level training data. It is the shared handoff for later LoRA/LoKR reuse and remote workers, while a fuller clip-level tensor cache can still be added later if we want more random-window variation across repeated runs.
+The current cache is sample-level training data. It is the shared handoff for local LoRA/LoKR training and remote workers, while a fuller clip-level tensor cache can still be added later if we want more random-window variation across repeated runs.
 
 ## Local Enrichment
 
@@ -85,6 +85,12 @@ Recommended JSON entry points:
 - `dataset_config.json` is also supported. If a `caption_file` is provided, or a sibling `captions.json` exists, Anvil uses those captions and preserves lyrics for vocal file paths.
 
 The training sheet reports how many files were imported from JSON, how many include lyrics, and how many duplicate paths were skipped.
+
+## Experimental LoKR Training
+
+Use **Build > Training > LoKR** to select a reviewed dataset package and open it in the native LoKR trainer. The LoKR path uses the same package manifests, full-mix bundle, preprocessing cache, warmup, gradient accumulation, and base-model selection flow as LoRA, but writes adapter metadata with `kind: "lokr"` plus a `lokrConfig` block.
+
+LoKR adapters can be selected for generation like LoRA adapters, but stacks are kept kind-compatible: LoRA adapters stack with LoRA, LoKR adapters stack with LoKR. Merge/resume/checkpoint behavior remains LoRA-only until the LoKR training loop has equivalent checkpoint semantics.
 
 ## Remote Package Shape
 

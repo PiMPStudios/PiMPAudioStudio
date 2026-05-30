@@ -95,6 +95,8 @@ struct AdapterRegistry {
         case nameExists(String)
         case notFound(String)
         case rankMismatch(Int, Int)
+        case kindMismatch(AdapterKind, AdapterKind)
+        case unsupportedMergeKind(AdapterKind)
 
         var errorDescription: String? {
             switch self {
@@ -104,6 +106,10 @@ struct AdapterRegistry {
                 return "Adapter '\(id)' not found"
             case .rankMismatch(let a, let b):
                 return "Cannot merge adapters with different ranks (\(a) vs \(b))"
+            case .kindMismatch(let a, let b):
+                return "Cannot merge \(a.rawValue.uppercased()) and \(b.rawValue.uppercased()) adapters"
+            case .unsupportedMergeKind(let kind):
+                return "Merging \(kind.rawValue.uppercased()) adapters is not supported yet"
             }
         }
     }
@@ -284,6 +290,13 @@ struct AdapterRegistry {
 
         let metaB = try Data(contentsOf: adapterDirectory(id: adapterB).appending(path: "adapter.json"))
         let infoB = try decoder.decode(LoRAAdapter.self, from: metaB)
+
+        guard infoA.kind == infoB.kind else {
+            throw AdapterError.kindMismatch(infoA.kind, infoB.kind)
+        }
+        guard infoA.kind == .lora else {
+            throw AdapterError.unsupportedMergeKind(infoA.kind)
+        }
 
         // Validate same rank
         guard infoA.config.rank == infoB.config.rank else {

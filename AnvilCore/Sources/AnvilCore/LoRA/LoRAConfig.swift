@@ -101,6 +101,92 @@ public struct LoRAConfig: Codable, Sendable, Equatable, Hashable {
     }
 }
 
+/// Adapter implementation stored in the registry.
+public enum AdapterKind: String, Codable, Sendable, Equatable, Hashable {
+    case lora
+    case lokr
+}
+
+/// Configuration for experimental LoKR adapter training and injection.
+public struct LoKRConfig: Codable, Sendable, Equatable, Hashable {
+    /// Kronecker factor block dimension. Side-Step calls this linear dim.
+    public var linearDim: Int
+
+    /// Scaling factor. The adapter contribution is scaled by alpha/linearDim.
+    public var alpha: Float
+
+    /// Dropout rate applied to adapter path during training. 0.0 = no dropout.
+    public var dropout: Float
+
+    /// Which module categories to inject LoKR into.
+    public var targetLayers: Set<TargetLayer>
+
+    /// Optional exact module paths to inject.
+    public var exactInjectionPatterns: [String]?
+
+    /// Learning rate for AdamW optimizer.
+    public var learningRate: Float
+
+    /// Maximum number of training epochs.
+    public var maxEpochs: Int
+
+    /// Training batch size. Default 1 (memory constrained on-device).
+    public var batchSize: Int
+
+    /// Fraction of total steps used for linear LR warmup.
+    public var warmupFraction: Float
+
+    /// Number of mini-batches to accumulate gradients over before optimizer step.
+    public var gradientAccumulationSteps: Int
+
+    public init(
+        linearDim: Int = 64,
+        alpha: Float = 64.0,
+        dropout: Float = 0.0,
+        targetLayers: Set<TargetLayer> = [.selfAttention, .crossAttention],
+        exactInjectionPatterns: [String]? = nil,
+        learningRate: Float = 1e-4,
+        maxEpochs: Int = 10,
+        batchSize: Int = 1,
+        warmupFraction: Float = 0.10,
+        gradientAccumulationSteps: Int = 1
+    ) {
+        self.linearDim = linearDim
+        self.alpha = alpha
+        self.dropout = dropout
+        self.targetLayers = targetLayers
+        self.exactInjectionPatterns = exactInjectionPatterns
+        self.learningRate = learningRate
+        self.maxEpochs = maxEpochs
+        self.batchSize = batchSize
+        self.warmupFraction = warmupFraction
+        self.gradientAccumulationSteps = gradientAccumulationSteps
+    }
+
+    public var injectionPatterns: [String] {
+        if let exactInjectionPatterns, !exactInjectionPatterns.isEmpty {
+            return exactInjectionPatterns
+        }
+        return targetLayers.sorted(by: { $0.rawValue < $1.rawValue })
+            .flatMap(\.defaultPatterns)
+    }
+
+    public var loraCompatibleConfig: LoRAConfig {
+        LoRAConfig(
+            rank: linearDim,
+            alpha: alpha,
+            dropout: dropout,
+            targetLayers: targetLayers,
+            exactInjectionPatterns: exactInjectionPatterns,
+            learningRate: learningRate,
+            maxEpochs: maxEpochs,
+            batchSize: batchSize,
+            warmupFraction: warmupFraction,
+            gradientAccumulationSteps: gradientAccumulationSteps
+        )
+    }
+}
+
 /// A saved LoRA adapter with metadata.
 public struct LoRAAdapter: Codable, Sendable, Identifiable, Equatable, Hashable {
     /// Directory name used as identifier.
@@ -111,6 +197,12 @@ public struct LoRAAdapter: Codable, Sendable, Identifiable, Equatable, Hashable 
 
     /// The LoRA config used during training.
     public let config: LoRAConfig
+
+    /// Adapter implementation used by this registry entry.
+    public let kind: AdapterKind
+
+    /// LoKR-specific config when `kind == .lokr`.
+    public let lokrConfig: LoKRConfig?
 
     /// ID of the base model this adapter was trained against.
     public let baseModelID: String
@@ -137,6 +229,8 @@ public struct LoRAAdapter: Codable, Sendable, Identifiable, Equatable, Hashable 
         id: String,
         name: String,
         config: LoRAConfig,
+        kind: AdapterKind = .lora,
+        lokrConfig: LoKRConfig? = nil,
         baseModelID: String,
         baseModelCategory: ModelCategory,
         createdAt: Date,
@@ -148,6 +242,8 @@ public struct LoRAAdapter: Codable, Sendable, Identifiable, Equatable, Hashable 
         self.id = id
         self.name = name
         self.config = config
+        self.kind = kind
+        self.lokrConfig = lokrConfig
         self.baseModelID = baseModelID
         self.baseModelCategory = baseModelCategory
         self.createdAt = createdAt
@@ -160,7 +256,7 @@ public struct LoRAAdapter: Codable, Sendable, Identifiable, Equatable, Hashable 
     // Custom Codable for backward compatibility — existing adapters without
     // `source` field decode as .local.
     enum CodingKeys: String, CodingKey {
-        case id, name, config, baseModelID, baseModelCategory
+        case id, name, config, kind, lokrConfig, baseModelID, baseModelCategory
         case createdAt, sampleCount, finalLoss, source, remoteRepoURL
     }
 
@@ -169,6 +265,8 @@ public struct LoRAAdapter: Codable, Sendable, Identifiable, Equatable, Hashable 
         id = try container.decode(String.self, forKey: .id)
         name = try container.decode(String.self, forKey: .name)
         config = try container.decode(LoRAConfig.self, forKey: .config)
+        kind = try container.decodeIfPresent(AdapterKind.self, forKey: .kind) ?? .lora
+        lokrConfig = try container.decodeIfPresent(LoKRConfig.self, forKey: .lokrConfig)
         baseModelID = try container.decode(String.self, forKey: .baseModelID)
         baseModelCategory = try container.decode(ModelCategory.self, forKey: .baseModelCategory)
         createdAt = try container.decode(Date.self, forKey: .createdAt)

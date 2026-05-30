@@ -39,6 +39,7 @@ public actor DiTActor {
         decoder = nil
         loadedModelID = nil
         injectedPaths = []
+        injectedKind = nil
         injectedAdapterID = nil
     }
 
@@ -157,8 +158,10 @@ public actor DiTActor {
     // MARK: - LoRA
 
     private var injectedPaths: [String] = []
+    private var injectedKind: AdapterKind?
     public private(set) var injectedAdapterID: String?
-    private var activeTrainer: LoRATrainer?
+    private var activeLoRATrainer: LoRATrainer?
+    private var activeLoKRTrainer: LoKRTrainer?
 
     /// Inject LoRA adapter layers into the DiT decoder.
     public func injectLoRA(config: LoRAConfig) throws -> [String] {
@@ -167,6 +170,7 @@ public actor DiTActor {
         }
         let paths = LoRAInjector.inject(model: decoder, config: config)
         injectedPaths = paths
+        injectedKind = .lora
         let expectedPaths = decoder.layers.count * config.injectionPatterns.count
         AudioDiagnostics.note(
             "lora/inject",
@@ -178,8 +182,14 @@ public actor DiTActor {
     /// Remove LoRA adapter, restoring plain Linear layers.
     public func removeLoRA() {
         guard let decoder else { return }
-        LoRAInjector.remove(model: decoder, paths: injectedPaths)
+        switch injectedKind {
+        case .lokr:
+            LoKRInjector.remove(model: decoder, paths: injectedPaths)
+        default:
+            LoRAInjector.remove(model: decoder, paths: injectedPaths)
+        }
         injectedPaths = []
+        injectedKind = nil
         injectedAdapterID = nil
     }
 
@@ -223,6 +233,55 @@ public actor DiTActor {
     public func clearLoRAContributions() {
         guard let decoder else { return }
         LoRAInjector.clearContributions(model: decoder, paths: injectedPaths)
+    }
+
+    public func injectLoKR(config: LoKRConfig) throws -> [String] {
+        guard let decoder else {
+            throw DiTActorError.weightsNotLoaded
+        }
+        let paths = LoKRInjector.inject(model: decoder, config: config)
+        injectedPaths = paths
+        injectedKind = .lokr
+        let expectedPaths = decoder.layers.count * config.injectionPatterns.count
+        AudioDiagnostics.note(
+            "lokr/inject",
+            "linearDim=\(config.linearDim) alpha=\(String(format: "%.3f", config.alpha)) layers=\(decoder.layers.count) patterns=\(config.injectionPatterns) expected=\(expectedPaths) activePaths=\(paths.count)"
+        )
+        return paths
+    }
+
+    public func loadLoKRWeights(_ weights: [(String, MLXArray)], adapterID: String) throws {
+        guard let decoder else {
+            throw DiTActorError.weightsNotLoaded
+        }
+        LoKRInjector.loadWeights(model: decoder, paths: injectedPaths, weights: weights, adapterID: adapterID)
+        eval(decoder.parameters())
+        injectedAdapterID = adapterID
+    }
+
+    public func addLoKRContribution(
+        adapterID: String,
+        displayName: String?,
+        source: AdapterSource,
+        weights: [(String, MLXArray)],
+        strength: Float
+    ) {
+        guard let decoder else { return }
+        LoKRInjector.addContribution(
+            model: decoder,
+            adapterID: adapterID,
+            displayName: displayName,
+            source: source,
+            weights: weights,
+            strength: strength,
+            paths: injectedPaths
+        )
+        eval(decoder.parameters())
+    }
+
+    public func clearLoKRContributions() {
+        guard let decoder else { return }
+        LoKRInjector.clearContributions(model: decoder, paths: injectedPaths)
     }
 
     /// Run LoRA training on the decoder.
@@ -270,12 +329,65 @@ public actor DiTActor {
             resumeFrom: checkpoint
         )
         print("[DiTActor.trainLoRA] trainer created")
-        activeTrainer = trainer
+        activeLoRATrainer = trainer
         print("[DiTActor.trainLoRA] starting trainer.train samples=\(samples.count)")
         defer {
-            activeTrainer = nil
+            activeLoRATrainer = nil
             LoRAInjector.remove(model: decoder, paths: paths)
             decoder.unfreeze()
+            if injectedKind == .lora {
+                injectedPaths = []
+                injectedKind = nil
+            }
+        }
+
+        let weights = try await trainer.train(dataset: samples, onProgress: onProgress)
+        return (weights, trainer.lowestLoss)
+    }
+
+    public func trainLoKR(
+        samples: [TrainingSample],
+        config: LoKRConfig,
+        initialWeights: [(String, MLXArray)]? = nil,
+        onProgress: @escaping @Sendable (TrainingProgress) -> Void
+    ) async throws -> (weights: [(String, MLXArray)], finalLoss: Float?) {
+        guard let decoder else {
+            throw DiTActorError.weightsNotLoaded
+        }
+        let trainableLayerIndices = Self.trainingLayerIndices(for: decoder.layers.count)
+        let paths = LoKRInjector.inject(
+            model: decoder,
+            config: config,
+            layerIndices: trainableLayerIndices
+        )
+        decoder.freeze()
+        LoKRInjector.unfreezeAdapters(model: decoder, paths: paths)
+        let trainableCount = decoder.trainableParameters().flattened().count
+        print(
+            "[DiTActor.trainLoKR] injectedLoKRLayers=\(paths.count) trainableParams=\(trainableCount) layers=\(trainableLayerIndices.sorted())"
+        )
+        if let initialWeights {
+            print("[DiTActor.trainLoKR] loading initialWeights count=\(initialWeights.count)")
+            LoKRInjector.loadWeights(model: decoder, paths: paths, weights: initialWeights)
+            print("[DiTActor.trainLoKR] loaded initialWeights")
+        } else {
+            print("[DiTActor.trainLoKR] no initialWeights")
+        }
+        let trainer = LoKRTrainer(
+            model: decoder,
+            config: config,
+            injectedPaths: paths,
+            datasetSize: samples.count
+        )
+        activeLoKRTrainer = trainer
+        defer {
+            activeLoKRTrainer = nil
+            LoKRInjector.remove(model: decoder, paths: paths)
+            decoder.unfreeze()
+            if injectedKind == .lokr {
+                injectedPaths = []
+                injectedKind = nil
+            }
         }
 
         let weights = try await trainer.train(dataset: samples, onProgress: onProgress)
@@ -292,6 +404,7 @@ public actor DiTActor {
 
     /// Cancel ongoing training.
     public func cancelTraining() {
-        activeTrainer?.cancel()
+        activeLoRATrainer?.cancel()
+        activeLoKRTrainer?.cancel()
     }
 }

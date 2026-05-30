@@ -51,7 +51,7 @@ private struct MyAdaptersListView: View {
         VStack(alignment: .leading, spacing: 0) {
             // Toolbar
             HStack {
-                Text("LoRA Adapters")
+                Text("Adapters")
                     .font(.headline)
                 Spacer()
                 Button("Merge Two") {
@@ -98,6 +98,7 @@ private struct MyAdaptersListView: View {
                 initialImportedFiles: presentation.files,
                 initialName: presentation.initialName,
                 initialConfig: presentation.initialConfig,
+                adapterKind: presentation.adapterKind,
                 resumeAdapterID: presentation.resumeAdapterID
             )
         }
@@ -136,7 +137,7 @@ private struct MyAdaptersListView: View {
             ForEach(adapters) { adapter in
                 adapterRow(adapter)
                     .contextMenu {
-                        if AdapterRegistry.hasCheckpoint(adapterID: adapter.id) {
+                        if adapter.kind == .lora, AdapterRegistry.hasCheckpoint(adapterID: adapter.id) {
                             Button("Resume Training…") { beginResume(adapter) }
                         }
                         Button("Retrain…") { beginRetrain(adapter) }
@@ -202,7 +203,9 @@ private struct MyAdaptersListView: View {
                             .background(.secondary.opacity(0.15))
                             .clipShape(Capsule())
                     }
-                    Text("Rank \(adapter.config.rank)")
+                    Text(adapter.kind == .lokr
+                        ? "LoKR dim \(adapter.lokrConfig?.linearDim ?? adapter.config.rank)"
+                        : "LoRA rank \(adapter.config.rank)")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                     if let loss = adapter.finalLoss {
@@ -282,7 +285,8 @@ private struct MyAdaptersListView: View {
             selectedEntries: sources.entries,
             files: sources.files,
             initialName: adapter.name,
-            initialConfig: adapter.config
+            initialConfig: adapter.lokrConfig?.loraCompatibleConfig ?? adapter.config,
+            adapterKind: adapter.kind
         )
     }
 
@@ -304,6 +308,7 @@ private struct MyAdaptersListView: View {
             files: sources.files,
             initialName: adapter.name,
             initialConfig: checkpoint.config,
+            adapterKind: adapter.kind,
             resumeAdapterID: adapter.id
         )
     }

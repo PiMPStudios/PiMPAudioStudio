@@ -56,6 +56,7 @@ final class TrainingService: ObservableObject {
     private var trainingTask: Task<Void, Never>?
     private var isStopping = false
     private var shouldSaveCheckpointOnStop = false
+    private var activeAdapterKind: AdapterKind?
     private let stackManager: AdapterStackManager?
     private var savedStack: [(adapter: LoRAAdapter, strength: Float)] = []
 
@@ -89,10 +90,51 @@ final class TrainingService: ObservableObject {
         config: LoRAConfig,
         resumeAdapterID: String? = nil
     ) {
+        startAdapterTraining(
+            kind: .lora,
+            entries: entries,
+            audioURLs: audioURLs,
+            importedFiles: importedFiles,
+            adapterName: adapterName,
+            config: config,
+            lokrConfig: nil,
+            resumeAdapterID: resumeAdapterID
+        )
+    }
+
+    func startLoKRTraining(
+        entries: [HistoryEntry],
+        audioURLs: [URL],
+        importedFiles: [TrainingImportedFile],
+        adapterName: String,
+        config: LoKRConfig
+    ) {
+        startAdapterTraining(
+            kind: .lokr,
+            entries: entries,
+            audioURLs: audioURLs,
+            importedFiles: importedFiles,
+            adapterName: adapterName,
+            config: config.loraCompatibleConfig,
+            lokrConfig: config,
+            resumeAdapterID: nil
+        )
+    }
+
+    private func startAdapterTraining(
+        kind: AdapterKind,
+        entries: [HistoryEntry],
+        audioURLs: [URL],
+        importedFiles: [TrainingImportedFile],
+        adapterName: String,
+        config: LoRAConfig,
+        lokrConfig: LoKRConfig?,
+        resumeAdapterID: String?
+    ) {
         let effectiveResumeAdapterID: String?
-        if let resumeAdapterID {
+        if kind == .lora, let resumeAdapterID {
             effectiveResumeAdapterID = resumeAdapterID
-        } else if case .paused = state {
+        } else if kind == .lora, case .paused = state {
             effectiveResumeAdapterID = Self.adapterID(from: adapterName)
         } else {
             effectiveResumeAdapterID = nil
@@ -101,6 +143,7 @@ final class TrainingService: ObservableObject {
         trainingTask?.cancel()
         isStopping = false
         shouldSaveCheckpointOnStop = false
+        activeAdapterKind = kind
 
         trainingTask = Task { [weak self] in
             guard let self else { return }
@@ -112,6 +155,7 @@ final class TrainingService: ObservableObject {
                     self.savedStack = []
                 }
                 self.trainingTask = nil
+                self.activeAdapterKind = nil
                 if let onTrainingFinished {
                     Task {
                         await onTrainingFinished()
@@ -139,6 +183,7 @@ final class TrainingService: ObservableObject {
                     for: .aceStepDiT
                 ) ?? "unknown"
                 let sessionConfig: LoRAConfig
+                let sessionLoKRConfig: LoKRConfig?
                 let resumeCheckpoint: TrainingCheckpoint?
                 let initialWeights: [(String, MLXArray)]?
 
@@ -158,10 +203,12 @@ final class TrainingService: ObservableObject {
                     }
                     resumeCheckpoint = checkpoint
                     sessionConfig = checkpoint.config
+                    sessionLoKRConfig = nil
                     initialWeights = try await AdapterRegistry.loadWeights(adapterID: resumeAdapterID)
                 } else {
                     resumeCheckpoint = nil
                     sessionConfig = config
+                    sessionLoKRConfig = lokrConfig
                     initialWeights = nil
                 }
 
@@ -205,29 +252,48 @@ final class TrainingService: ObservableObject {
                     return
                 }
 
-                // 2. Run training through pipeline (trainLoRA added in Task 10)
+                // 2. Run training through pipeline
                 try Task.checkCancellation()
 
-                let result = try await self.pipeline.trainLoRA(
-                    samples: samples,
-                    config: sessionConfig,
-                    resumeFrom: resumeCheckpoint,
-                    initialWeights: initialWeights,
-                    onProgress: { [weak self] progress in
-                        Task { @MainActor in
-                            self?.state = .training(TrainingUIState(
-                                epoch: progress.epoch,
-                                totalEpochs: progress.totalEpochs,
-                                step: progress.step,
-                                loss: progress.loss,
-                                learningRate: progress.learningRate,
-                                elapsed: progress.elapsedTime,
-                                remaining: progress.estimatedTimeRemaining,
-                                lossHistory: progress.lossHistory
-                            ))
-                        }
+                let progressHandler: @Sendable (TrainingProgress) -> Void = { [weak self] progress in
+                    Task { @MainActor in
+                        self?.state = .training(TrainingUIState(
+                            epoch: progress.epoch,
+                            totalEpochs: progress.totalEpochs,
+                            step: progress.step,
+                            loss: progress.loss,
+                            learningRate: progress.learningRate,
+                            elapsed: progress.elapsedTime,
+                            remaining: progress.estimatedTimeRemaining,
+                            lossHistory: progress.lossHistory
+                        ))
                     }
-                )
+                }
+
+                let result: LoRATrainingResult
+                switch kind {
+                case .lora:
+                    let trained = try await self.pipeline.trainLoRA(
+                        samples: samples,
+                        config: sessionConfig,
+                        resumeFrom: resumeCheckpoint,
+                        initialWeights: initialWeights,
+                        onProgress: progressHandler
+                    )
+                    result = LoRATrainingResult(weights: trained.weights, finalLoss: trained.finalLoss)
+                case .lokr:
+                    guard let sessionLoKRConfig else {
+                        self.state = .failed("LoKR training configuration was missing.")
+                        return
+                    }
+                    let trained = try await self.pipeline.trainLoKR(
+                        samples: samples,
+                        config: sessionLoKRConfig,
+                        initialWeights: initialWeights,
+                        onProgress: progressHandler
+                    )
+                    result = LoRATrainingResult(weights: trained.weights, finalLoss: trained.finalLoss)
+                }
 
                 try Task.checkCancellation()
 
@@ -240,6 +306,8 @@ final class TrainingService: ObservableObject {
                     id: adapterID,
                     name: adapterName,
                     config: sessionConfig,
+                    kind: kind,
+                    lokrConfig: sessionLoKRConfig,
                     baseModelID: activeModelID,
                     baseModelCategory: .aceStepDiT,
                     createdAt: Date(),
@@ -248,7 +316,7 @@ final class TrainingService: ObservableObject {
                 )
 
                 if self.isStopping {
-                    if self.shouldSaveCheckpointOnStop {
+                    if kind == .lora, self.shouldSaveCheckpointOnStop {
                         let checkpoint = self.makeCheckpoint(
                             adapterID: adapterID,
                             config: sessionConfig,
@@ -322,6 +390,7 @@ final class TrainingService: ObservableObject {
 
     /// Whether training can produce a persisted pause checkpoint on stop.
     var canSaveOnStop: Bool {
+        guard activeAdapterKind == .lora else { return false }
         if case .training(let uiState) = state {
             return uiState.step > 0
         }

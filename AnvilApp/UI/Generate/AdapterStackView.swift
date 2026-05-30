@@ -112,7 +112,9 @@ struct AdapterStackView: View {
                                 Text(adapter.name)
                                     .font(.body)
                                 HStack(spacing: 4) {
-                                    Text("Rank \(adapter.config.rank)")
+                                    Text(adapter.kind == .lokr
+                                        ? "LoKR dim \(adapter.lokrConfig?.linearDim ?? adapter.config.rank)"
+                                        : "LoRA rank \(adapter.config.rank)")
                                     if adapter.source != .local {
                                         Text("(\(adapter.source.rawValue))")
                                     }
@@ -140,6 +142,12 @@ struct AdapterStackView: View {
         _ = adapterListVersion
         let allCompatible = AdapterRegistry.compatibleAdapters(for: activeModelCategory)
         let stackedIDs = Set(stackManager.allStackedAdapters.map(\.adapter.id))
-        return allCompatible.filter { !stackedIDs.contains($0.id) }
+        return allCompatible.filter { adapter in
+            guard !stackedIDs.contains(adapter.id) else { return false }
+            if let primary = stackManager.primaryAdapter {
+                return adapter.kind == primary.kind
+            }
+            return true
+        }
     }
 }
