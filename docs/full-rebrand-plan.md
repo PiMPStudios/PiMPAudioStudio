@@ -222,21 +222,32 @@ Validation notes:
 
 ### Phase 4: MCP Clean Break
 
-- Rename `AnvilCommandFacade` to `PiMPAudioCommandFacade`.
-- Rename `AnvilMCPServer` and related state/catalog types.
-- Change primary URI scheme from `anvil://` to `pimpaudio://`.
-- Decide compatibility behavior:
-  - Development default: accept `anvil://` as legacy aliases with deprecation
-    notes until we are confident no local scripts depend on it.
-  - Release default: advertise only `pimpaudio://`.
+Status: Complete as of 2026-05-30.
+
+- Rename the app MCP facade to `PiMPAudioCommandFacade`.
+- Rename the app MCP server and related state/catalog types to PiMP Audio Studio
+  names.
+- Change the public URI scheme to `pimpaudio://`.
+- Remove old `anvil.` / `anvil_` tool-prefix compatibility from the MCP
+  dispatcher before release.
+- Use only `PIMP_AUDIO_MCP_ENDPOINT` and `PIMP_AUDIO_MCP_TOKEN` in the renamed
+  smoke script.
 - Update tools, resources, prompts, smoke tests, and MCP docs.
-- Update `scripts/smoke-pimpaudio-mcp.sh` or create a renamed smoke script.
+- Keep legacy Anvil references only in runtime migration constants and
+  historical planning docs.
 
 Exit criteria:
 
 - MCP smoke test passes with `pimpaudio://` resources.
 - No advertised resource or prompt text uses `anvil://`.
-- Legacy aliases, if kept, are isolated and documented as temporary.
+- Legacy aliases are removed from the callable public MCP path.
+
+Validation notes:
+
+- `bash -n scripts/smoke-pimpaudio-mcp.sh` passed.
+- `xcodegen generate` passed.
+- `xcodebuild -project PiMPAudioStudio.xcodeproj -scheme PiMPAudioStudio -destination 'platform=macOS' -derivedDataPath /tmp/PiMPAudioStudio-phase4-xcbuild -only-testing:PiMPAudioStudioTests test` passed with 59 Swift Testing tests.
+- `git diff --check` passed.
 
 ### Phase 5: Source Symbols And Product Language
 

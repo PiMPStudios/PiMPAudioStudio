@@ -41,15 +41,15 @@ All notable changes to PiMP Audio Studio are documented here.
 - **Native speech tooling raises the minimum runtime** — the app now targets macOS 15.0+ and Xcode 16+ to match the Swift/MLX speech stack used for on-device Qwen3-ASR transcription.
 - **Primary LoRA strength control** — the Generate view now exposes the selected LoRA adapter's strength, routes the primary adapter through the same weighted stack path as additional adapters, persists the value in saved presets, and records the actual weight in history/trace sidecars. This makes XL PEFT adapter A/B tests line up with the `lora_scale` knob used by the Python ACE-Step path.
 - **Local MCP server foundation** — Settings now includes an MCP tab that can start/stop a localhost-only endpoint at `http://127.0.0.1:38765/mcp`, optionally require a bearer token, and expose read-only tools for models, adapters, history, trace lookup, and Analyzer-style trace comparison.
-- **MCP resources and smoke testing** — the local MCP endpoint now supports `resources/list` and `resources/read` for `pimpaudio://models`, `pimpaudio://model/{id}`, `pimpaudio://adapters`, `pimpaudio://adapter/{id}`, `pimpaudio://history`, `pimpaudio://history/{id}`, `pimpaudio://trace/{id}`, and `pimpaudio://audio/{id}` metadata. The `scripts/smoke-pimpaudio-mcp.sh` script checks health, initialization, tool discovery, history, trace reads, resource reads, compare calls, and legacy Anvil aliases against a running local app.
+- **MCP resources and smoke testing** — the local MCP endpoint now supports `resources/list` and `resources/read` for `pimpaudio://models`, `pimpaudio://model/{id}`, `pimpaudio://adapters`, `pimpaudio://adapter/{id}`, `pimpaudio://history`, `pimpaudio://history/{id}`, `pimpaudio://trace/{id}`, and `pimpaudio://audio/{id}` metadata. The `scripts/smoke-pimpaudio-mcp.sh` script checks health, initialization, tool discovery, history, trace reads, resource reads, compare calls, and progress streaming against a running local app.
 - **MCP prompt and lyric helpers** — the local MCP endpoint now exposes return-only `enhance_prompt` and `write_lyrics` tools backed by the same prompt enhancer, lyric writer, and lyric sanitizer used by the Generate view. These tools return text for agent workflows without mutating the current prompt field, lyric field, history, traces, models, or audio.
 - **MCP preferred-take review writes** — the local MCP endpoint now exposes `mark_preferred_take`, scoped to the same preferred flag and listening note metadata used by the Generation Analyzer. It requires an existing trace sidecar and mirrors review changes into `history.json`; audio, models, adapters, tensors, and generation settings remain untouched.
 - **MCP adapter selection** — the local MCP endpoint now exposes `apply_adapter` for selecting, stacking, or clearing ACE-Step LoRA adapters. The tool validates adapter existence/category, updates the generation service, persists the primary adapter selection, and notifies the Generate view when it is open so MCP and GUI state stay aligned.
 - **MCP generation submission** — the local MCP endpoint now exposes `generate_song`, `generate`, and `generation_status`. Generation requests reuse the same `GenerationService` path as the Generate button, return immediately for polling via status/history/analyzer traces, and support a `dryRun` mode for validating resolved request settings without starting a render.
 - **MCP operation tracking and cancellation** — MCP-submitted generation now
   returns an `operationID` and is visible through `list_operations`,
-  `get_operation`, `generation_status.currentOperation`, `anvil://operations`,
-  and `anvil://operation/{id}`. `cancel_operation` cancels the matching active
+  `get_operation`, `generation_status.currentOperation`, `pimpaudio://operations`,
+  and `pimpaudio://operation/{id}`. `cancel_operation` cancels the matching active
   generation through the same cancellation path as the app UI, giving richer
   editor workflows a standards-shaped operation contract before protocol-level
   progress streams are enabled.
@@ -87,7 +87,7 @@ All notable changes to PiMP Audio Studio are documented here.
   times, presets, workflows, and recent operation ids.
 - **MCP client roots policy** — the SDK bridge now tracks MCP client roots when
   the initialized client advertises them, refreshes on
-  `notifications/roots/list_changed`, exposes `anvil://client-roots`, and uses
+  `notifications/roots/list_changed`, exposes `pimpaudio://client-roots`, and uses
   root paths as low-risk output-directory completion suggestions while keeping
   history/audio ids as the preferred editor-loading path.
 - **MCP quit cleanup** — app termination now explicitly stops the local MCP
@@ -105,13 +105,13 @@ All notable changes to PiMP Audio Studio are documented here.
   now expose `progress` / `total` as whole-operation completion values, with
   `stageProgress` / `stageTotal` preserving stage-local counters when available.
 - **MCP guarded memory release** — the local MCP endpoint now exposes `release_memory`, which runs the same consolidated model-unload and MLX GPU-cache flush path as Settings. The tool requires `confirm: true` or MCP form elicitation approval and returns before/after active, cache, and peak memory counters for agent-visible cleanup checks.
-- **MCP standards roadmap** — added `docs/mcp-standards-roadmap.md` to lock in the standards-first direction: preserve `AnvilCommandFacade` as the app boundary, prefer the official Swift MCP SDK for transport/lifecycle/schema handling where practical, stage Swift 6/concurrency migration instead of flipping the whole app at once, and plan richer workstation resources, prompts, progress, and cancellation support.
-- **Serial AnvilCore test baseline** — added `scripts/test-anvilcore-serial.sh` to enumerate AnvilCore test suites and run each suite filter in its own `swift test` invocation while the raw whole-suite runner still trips MLX under all-at-once scheduling.
-- **Swift MCP SDK spike package** — added `Spikes/MCPServerSDKSpike`, an isolated Swift 6 package that resolves `modelcontextprotocol/swift-sdk`, exposes `list_history` plus `anvil://history`, and verifies SDK client discovery plus stateless HTTP handling for the same JSON-RPC method shape used by the MCP smoke script.
+- **MCP standards roadmap** — added `docs/mcp-standards-roadmap.md` to lock in the standards-first direction: preserve the PiMP Audio Studio facade as the app boundary, prefer the official Swift MCP SDK for transport/lifecycle/schema handling where practical, stage Swift 6/concurrency migration instead of flipping the whole app at once, and plan richer workstation resources, prompts, progress, and cancellation support.
+- **Serial PiMPAudioCore test baseline** — added `scripts/test-pimpaudiocore-serial.sh` to enumerate PiMPAudioCore test suites and run each suite filter in its own `swift test` invocation while the raw whole-suite runner still trips MLX under all-at-once scheduling.
+- **Swift MCP SDK spike package** — added `Spikes/MCPServerSDKSpike`, an isolated Swift 6 package that resolves `modelcontextprotocol/swift-sdk`, exposes `list_history` plus `pimpaudio://history`, and verifies SDK client discovery plus stateless HTTP handling for the same JSON-RPC method shape used by the MCP smoke script.
 
 ### Changed
 
-- **MCP docs now treat snake_case tool names as primary** — `docs/mcp-local.md` and the MCP spec/plan now document `list_history`, `generate_song`, `generation_status`, and related plain names as the public catalog while noting that legacy `anvil.` / `anvil_` aliases remain callable for compatibility.
+- **MCP docs now treat PiMP Audio Studio names as primary** — `docs/mcp-local.md`, the MCP spec/plan, and the smoke test now document `pimpaudio://` resources, `PIMP_AUDIO_MCP_*` environment variables, and snake_case tool names as the public catalog.
 - **MCP progress/cancellation design is staged** — the standards roadmap now
   separates today's pollable operation records and request-scoped progress
   notifications from the later background-operation task/progress mapping. MCP
@@ -119,9 +119,9 @@ All notable changes to PiMP Audio Studio are documented here.
 - **Phase 0 MCP hardening status is documented** — the MCP standards roadmap now records the cleaned-up package-test baseline, the current strict-concurrency warning inventory, and the remaining raw `swift test --package-path AnvilCore` MLX runner limitation.
 - **MCP SDK replacement direction is now concrete** — the standards plan records
   the completed move to the SDK's stateful Streamable HTTP transport while
-  keeping `AnvilCommandFacade` and the localhost listener boundary intact.
-- **Local MCP dispatch is now SDK-backed** — `AnvilMCPServer` keeps the existing
-  localhost socket listener, token gate, and `AnvilCommandFacade` boundary, but
+  keeping the PiMP Audio Studio command facade and localhost listener boundary intact.
+- **Local MCP dispatch is now SDK-backed** — `PiMPAudioMCPServer` keeps the existing
+  localhost socket listener, token gate, and `PiMPAudioCommandFacade` boundary, but
   tool/resource registration, lifecycle handling, structured tool results,
   JSON-RPC dispatch, and stateful HTTP/SSE response shaping now run through the
   official Swift MCP SDK.

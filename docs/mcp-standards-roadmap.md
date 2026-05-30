@@ -41,8 +41,8 @@ logic concerns, and they should not be reinvented piecemeal inside
   keep its existing settings UI, token gate, and process-local endpoint.
 - The public tool catalog uses plain snake_case names such as `list_history`,
   `generate_song`, and `release_memory`.
-- Legacy dotted and underscored aliases are still accepted for compatibility,
-  for example `anvil.list_history` and `anvil_list_history`.
+- Legacy dotted and underscored Anvil aliases are removed from the public MCP
+  surface before release.
 - MCP-submitted generation now creates an operation record with stable
   `operationID`, status, progress payload, latest result/error, and a
   cancellation hook.
@@ -240,7 +240,7 @@ Known warning groups:
 ### Phase 0 - Baseline Cleanup
 
 - [x] Update docs to show snake_case MCP tool names as the primary catalog.
-- [x] Keep legacy alias support documented separately.
+- [x] Remove old Anvil prefix compatibility from the public MCP path before release.
 - [x] Repair stale Swift package test fixtures for the current tokenizer,
       conditioning, VAE, DiT, SFX, editor, and LLM contracts.
 - [x] Add a concurrency-warning inventory before changing language modes.

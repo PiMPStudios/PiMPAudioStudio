@@ -891,7 +891,6 @@ private final class PiMPAudioMCPSDKBridge {
                 mode: .form,
                 _meta: Metadata(additionalFields: [
                     "pimpAudioTool": .string(toolName),
-                    "legacyAnvilTool": .string(toolName),
                     "confirmArgument": .string("confirm")
                 ])
             )
@@ -1022,12 +1021,6 @@ private final class PiMPAudioMCPSDKBridge {
         }
         if name.hasPrefix("pimpaudio_") {
             return String(name.dropFirst("pimpaudio_".count))
-        }
-        if name.hasPrefix("anvil.") {
-            return String(name.dropFirst("anvil.".count))
-        }
-        if name.hasPrefix("anvil_") {
-            return String(name.dropFirst("anvil_".count))
         }
         return name
     }

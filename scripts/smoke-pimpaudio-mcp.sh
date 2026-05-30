@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ENDPOINT="${PIMP_AUDIO_MCP_ENDPOINT:-${ANVIL_MCP_ENDPOINT:-http://127.0.0.1:38765/mcp}}"
-TOKEN="${PIMP_AUDIO_MCP_TOKEN:-${ANVIL_MCP_TOKEN:-}}"
+ENDPOINT="${PIMP_AUDIO_MCP_ENDPOINT:-http://127.0.0.1:38765/mcp}"
+TOKEN="${PIMP_AUDIO_MCP_TOKEN:-}"
 BASE_URL="${ENDPOINT%/mcp}"
 
 TMP_DIR="$(mktemp -d)"
@@ -625,29 +625,7 @@ else
   echo "18. skipped compare; fewer than two traced history rows found"
 fi
 
-echo "19. legacy anvil.list_history alias"
-rpc '{
-  "jsonrpc": "2.0",
-  "id": 18,
-  "method": "tools/call",
-  "params": {
-    "name": "anvil.list_history",
-    "arguments": { "limit": 1 }
-  }
-}' 18 >/dev/null
-
-echo "20. legacy anvil_list_history alias"
-rpc '{
-  "jsonrpc": "2.0",
-  "id": 19,
-  "method": "tools/call",
-  "params": {
-    "name": "anvil_list_history",
-    "arguments": { "limit": 1 }
-  }
-}' 19 >/dev/null
-
-echo "21. GET /mcp stream + progress notification"
+echo "19. GET /mcp stream + progress notification"
 STREAM_CURL_ARGS=(
   -sS
   --no-buffer

@@ -190,8 +190,8 @@ weights, evicts the local LLM, and flushes the MLX GPU cache. It requires
 `confirm: true` or MCP form elicitation approval and returns before/after
 memory counters.
 
-Legacy aliases using `anvil.` and `anvil_` prefixes are still accepted for
-compatibility, for example `anvil.list_history` and `anvil_list_history`.
+Legacy `anvil.` and `anvil_` tool prefixes are no longer part of the public MCP
+surface. Use the plain snake_case tool names listed above.
 
 ## Resources
 
