@@ -182,6 +182,8 @@ Validation notes:
 
 ### Phase 3: Data Directory Migration
 
+Status: Complete as of 2026-05-30.
+
 - Introduce one central `AppStorageLocations` or equivalent utility that owns all
   app-specific filesystem paths.
 - Move path construction out of scattered literals where practical.
@@ -192,16 +194,31 @@ Validation notes:
   - `Application Support/Anvil/LLM`
   - `Application Support/Anvil/SourceAudioImports`
   - `Application Support/Anvil/TrainingDatasets`
+  - `Application Support/Anvil/MCPImports`
 - Preserve large model directories by moving when safe and copying only when
   required.
 - Write migration result metadata so the migration is idempotent.
+- Keep data-directory migration behind its own v2 gate so it still runs even if
+  the Phase 2 runtime-identity migration already completed.
+- Resolve the real user home from inside the sandbox before probing the legacy
+  `net.pimp.anvil.AnvilApp` container.
+- Skip automatic launch migration while running tests so the test host does not
+  mutate real user data.
+- Write `runtime_migration.json` under the new app-support root with source
+  roots, destination root, migrated paths, actions, and any failures.
 
 Exit criteria:
 
-- Models, adapters, presets, datasets, and source imports remain visible after
-  first launch under the new bundle/data root.
-- Re-running migration is safe.
+- Models, adapters, presets, datasets, MCP imports, and source imports remain
+  visible after first launch under the new bundle/data root.
+- Re-running migration is safe and does not overwrite existing destination files.
 - Missing legacy directories are treated as no-op, not failure.
+
+Validation notes:
+
+- `xcodegen generate` passed.
+- `xcodebuild -project PiMPAudioStudio.xcodeproj -scheme PiMPAudioStudio -destination 'platform=macOS' -derivedDataPath /tmp/PiMPAudioStudio-phase3-xcbuild -only-testing:PiMPAudioStudioTests test` passed with 59 Swift Testing tests.
+- `git diff --check` passed.
 
 ### Phase 4: MCP Clean Break
 

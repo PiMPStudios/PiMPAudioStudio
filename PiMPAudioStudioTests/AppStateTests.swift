@@ -112,6 +112,22 @@ private func zipEntries(in archiveURL: URL) throws -> [String] {
     return output.split(separator: "\n").map(String.init)
 }
 
+private func writeFixture(_ value: String, to url: URL) throws {
+    try FileManager.default.createDirectory(
+        at: url.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+    )
+    try Data(value.utf8).write(to: url)
+}
+
+private extension JSONDecoder {
+    static var withISO8601Dates: JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }
+}
+
 @Test @MainActor func appStateDetectsIncompleteSetup() async {
     let tempDir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
     let registry = ModelRegistry(baseDirectory: tempDir)
@@ -138,6 +154,108 @@ private func zipEntries(in archiveURL: URL) throws -> [String] {
     let state = AppState(registry: registry)
     await state.checkSetupStatus()
     #expect(state.isSetupComplete == true)
+}
+
+@Test func appStorageLocationsResolveRealUserHomeOutsideSandboxContainer() {
+    let home = AppStorageLocations.realUserHomeDirectory(environment: [
+        "HOME": "/Users/testuser/Library/Containers/com.pimpstudios.PiMPAudioStudio/Data",
+        "USER": "testuser",
+    ])
+
+    #expect(home.path == "/Users/testuser")
+}
+
+@Test func appRuntimeMigrationMovesLegacyDataDirectoriesAndWritesReport() throws {
+    let tempRoot = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let legacyRoot = tempRoot.appendingPathComponent("Application Support/Anvil", isDirectory: true)
+    let destinationRoot = tempRoot.appendingPathComponent("Application Support/PiMP Audio Studio", isDirectory: true)
+    let reportURL = destinationRoot.appendingPathComponent("runtime_migration.json")
+    defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+    try writeFixture("legacy model", to: legacyRoot.appendingPathComponent("models/ace-step/model.safetensors"))
+    try writeFixture("legacy adapter", to: legacyRoot.appendingPathComponent("models/adapters/dark/adapter.json"))
+    try writeFixture("legacy preset", to: legacyRoot.appendingPathComponent("presets/dark-blues.json"))
+    try writeFixture("legacy llm", to: legacyRoot.appendingPathComponent("LLM/qwen/model.safetensors"))
+    try writeFixture("legacy import", to: legacyRoot.appendingPathComponent("SourceAudioImports/source.m4a"))
+    try writeFixture("legacy dataset", to: legacyRoot.appendingPathComponent("TrainingDatasets/pkg/captions.json"))
+    try writeFixture("legacy mcp import", to: legacyRoot.appendingPathComponent("MCPImports/imported.wav"))
+    try writeFixture("existing model", to: destinationRoot.appendingPathComponent("models/existing/keep.txt"))
+
+    let report = AppRuntimeMigration.migrateDataDirectories(
+        from: [legacyRoot],
+        into: destinationRoot,
+        reportURL: reportURL,
+        migratedAt: Date(timeIntervalSince1970: 0)
+    )
+
+    #expect(FileManager.default.fileExists(
+        atPath: destinationRoot.appendingPathComponent("models/ace-step/model.safetensors").path
+    ))
+    #expect(FileManager.default.fileExists(
+        atPath: destinationRoot.appendingPathComponent("models/adapters/dark/adapter.json").path
+    ))
+    #expect(FileManager.default.fileExists(
+        atPath: destinationRoot.appendingPathComponent("presets/dark-blues.json").path
+    ))
+    #expect(FileManager.default.fileExists(
+        atPath: destinationRoot.appendingPathComponent("LLM/qwen/model.safetensors").path
+    ))
+    #expect(FileManager.default.fileExists(
+        atPath: destinationRoot.appendingPathComponent("SourceAudioImports/source.m4a").path
+    ))
+    #expect(FileManager.default.fileExists(
+        atPath: destinationRoot.appendingPathComponent("TrainingDatasets/pkg/captions.json").path
+    ))
+    #expect(FileManager.default.fileExists(
+        atPath: destinationRoot.appendingPathComponent("MCPImports/imported.wav").path
+    ))
+    #expect(try String(contentsOf: destinationRoot.appendingPathComponent("models/existing/keep.txt")) == "existing model")
+
+    let migratedPaths = Set(report.entries.map(\.relativePath))
+    #expect(migratedPaths == ["models", "presets", "LLM", "SourceAudioImports", "TrainingDatasets", "MCPImports"])
+    #expect(report.entries.first(where: { $0.relativePath == "models" })?.action == "merged")
+    #expect(FileManager.default.fileExists(atPath: reportURL.path))
+
+    let reportData = try Data(contentsOf: reportURL)
+    let decoded = try JSONDecoder.withISO8601Dates.decode(AppDataDirectoryMigrationReport.self, from: reportData)
+    #expect(decoded.schemaVersion == "1.0")
+    #expect(decoded.entries.count == report.entries.count)
+}
+
+@Test func appRuntimeMigrationDoesNotOverwriteExistingFiles() throws {
+    let tempRoot = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let legacyRoot = tempRoot.appendingPathComponent("Application Support/Anvil", isDirectory: true)
+    let destinationRoot = tempRoot.appendingPathComponent("Application Support/PiMP Audio Studio", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+    let destinationPreset = destinationRoot.appendingPathComponent("presets/shared.json")
+    try writeFixture("new preset", to: destinationPreset)
+    try writeFixture("old preset", to: legacyRoot.appendingPathComponent("presets/shared.json"))
+
+    _ = AppRuntimeMigration.migrateDataDirectories(from: [legacyRoot], into: destinationRoot)
+    _ = AppRuntimeMigration.migrateDataDirectories(from: [legacyRoot], into: destinationRoot)
+
+    #expect(try String(contentsOf: destinationPreset) == "new preset")
+}
+
+@Test func appRuntimeMigrationTreatsMissingLegacyRootsAsNoOp() throws {
+    let tempRoot = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let missingLegacyRoot = tempRoot.appendingPathComponent("missing/Anvil", isDirectory: true)
+    let destinationRoot = tempRoot.appendingPathComponent("Application Support/PiMP Audio Studio", isDirectory: true)
+    let reportURL = destinationRoot.appendingPathComponent("runtime_migration.json")
+    defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+    let report = AppRuntimeMigration.migrateDataDirectories(
+        from: [missingLegacyRoot],
+        into: destinationRoot,
+        reportURL: reportURL
+    )
+
+    #expect(report.entries.isEmpty)
+    #expect(FileManager.default.fileExists(atPath: reportURL.path))
 }
 
 @Test func trainingDatasetImporterUsesVocalStemTranscriptAsLyrics() throws {

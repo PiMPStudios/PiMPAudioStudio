@@ -48,6 +48,7 @@ enum AppUserDefaultsKeys {
     static let legacySelectedAdapterStrength = "selectedAdapterStrength"
 
     static let runtimeIdentityMigration = AppRuntimeIdentity.defaultsKey("migration.runtimeIdentity.v1")
+    static let dataDirectoryMigration = AppRuntimeIdentity.defaultsKey("migration.dataDirectories.v2")
 }
 
 enum AppStorageLocations {
@@ -82,8 +83,16 @@ enum AppStorageLocations {
         rootDirectory.appendingPathComponent("SourceAudioImports", isDirectory: true)
     }
 
+    static var trainingDatasetsDirectory: URL {
+        rootDirectory.appendingPathComponent("TrainingDatasets", isDirectory: true)
+    }
+
+    static var migrationReportURL: URL {
+        rootDirectory.appendingPathComponent("runtime_migration.json")
+    }
+
     static var legacyRootDirectories: [URL] {
-        let home = FileManager.default.homeDirectoryForCurrentUser
+        let home = realUserHomeDirectory()
         let candidates = [
             applicationSupportBase.appendingPathComponent(
                 AppRuntimeIdentity.legacyAppSupportFolderName,
@@ -104,6 +113,35 @@ enum AppStorageLocations {
         }
     }
 
+    static func realUserHomeDirectory(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> URL {
+        let environmentHome = environment["HOME"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let user = environment["USER"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+            ?? NSUserName()
+
+        if let environmentHome, !environmentHome.isEmpty, !isSandboxContainerHome(environmentHome) {
+            return URL(fileURLWithPath: environmentHome, isDirectory: true)
+        }
+
+        if !user.isEmpty,
+           let accountHome = NSHomeDirectoryForUser(user),
+           !accountHome.isEmpty,
+           !isSandboxContainerHome(accountHome) {
+            return URL(fileURLWithPath: accountHome, isDirectory: true)
+        }
+
+        if !user.isEmpty {
+            return URL(fileURLWithPath: "/Users/\(user)", isDirectory: true)
+        }
+
+        if let environmentHome, !environmentHome.isEmpty {
+            return URL(fileURLWithPath: environmentHome, isDirectory: true)
+        }
+
+        return FileManager.default.homeDirectoryForCurrentUser
+    }
+
     private static func unique(_ urls: [URL]) -> [URL] {
         var seen = Set<String>()
         var result: [URL] = []
@@ -115,6 +153,26 @@ enum AppStorageLocations {
         }
         return result
     }
+
+    private static func isSandboxContainerHome(_ path: String) -> Bool {
+        path.contains("/Library/Containers/") && path.hasSuffix("/Data")
+    }
+}
+
+struct AppDataDirectoryMigrationReport: Codable, Equatable {
+    struct Entry: Codable, Equatable {
+        var relativePath: String
+        var sourcePath: String
+        var destinationPath: String
+        var action: String
+        var message: String?
+    }
+
+    var schemaVersion: String
+    var migratedAt: Date
+    var sourceRoots: [String]
+    var destinationRoot: String
+    var entries: [Entry]
 }
 
 enum AppRuntimeMigration {
@@ -122,22 +180,84 @@ enum AppRuntimeMigration {
         subsystem: AppRuntimeIdentity.logSubsystem,
         category: "RuntimeMigration"
     )
+    private static let dataDirectoryRelativePaths = [
+        "models",
+        "presets",
+        "LLM",
+        "SourceAudioImports",
+        "TrainingDatasets",
+        "MCPImports",
+    ]
 
     static func migrateIfNeeded() {
+        guard !isRunningUnitTests else { return }
         let defaults = UserDefaults.standard
+        migrateRuntimeIdentityIfNeeded(defaults: defaults)
+        migrateDataDirectoriesIfNeeded(defaults: defaults)
+    }
+
+    static func migrateRuntimeIdentityIfNeeded(defaults: UserDefaults = .standard) {
         guard !defaults.bool(forKey: AppUserDefaultsKeys.runtimeIdentityMigration) else { return }
-
-        migrateApplicationSupportRoots()
-        migrateSimpleUserDefaults()
-
+        migrateSimpleUserDefaults(defaults: defaults)
         defaults.set(true, forKey: AppUserDefaultsKeys.runtimeIdentityMigration)
     }
 
-    private static func migrateApplicationSupportRoots() {
-        let fileManager = FileManager.default
-        let destinationRoot = AppStorageLocations.rootDirectory
+    static func migrateDataDirectoriesIfNeeded(defaults: UserDefaults = .standard) {
+        guard !defaults.bool(forKey: AppUserDefaultsKeys.dataDirectoryMigration) else { return }
+        let report = migrateDataDirectories(
+            from: AppStorageLocations.legacyRootDirectories,
+            into: AppStorageLocations.rootDirectory,
+            reportURL: AppStorageLocations.migrationReportURL
+        )
+        defaults.set(true, forKey: AppUserDefaultsKeys.dataDirectoryMigration)
+        logger.info(
+            "Data directory migration finished with \(report.entries.count, privacy: .public) recorded entries"
+        )
+    }
 
-        for legacyRoot in AppStorageLocations.legacyRootDirectories {
+    @discardableResult
+    static func migrateDataDirectories(
+        from legacyRoots: [URL],
+        into destinationRoot: URL,
+        reportURL: URL? = nil,
+        fileManager: FileManager = .default,
+        migratedAt: Date = Date()
+    ) -> AppDataDirectoryMigrationReport {
+        var report = AppDataDirectoryMigrationReport(
+            schemaVersion: "1.0",
+            migratedAt: migratedAt,
+            sourceRoots: legacyRoots.map { $0.path(percentEncoded: false) },
+            destinationRoot: destinationRoot.path(percentEncoded: false),
+            entries: []
+        )
+
+        migrateApplicationSupportRoots(
+            legacyRoots: legacyRoots,
+            destinationRoot: destinationRoot,
+            fileManager: fileManager,
+            report: &report
+        )
+
+        if let reportURL {
+            do {
+                try writeReport(report, to: reportURL, fileManager: fileManager)
+            } catch {
+                logger.error(
+                    "Failed to write data migration report \(reportURL.path(percentEncoded: false), privacy: .public): \(error.localizedDescription, privacy: .public)"
+                )
+            }
+        }
+
+        return report
+    }
+
+    private static func migrateApplicationSupportRoots(
+        legacyRoots: [URL],
+        destinationRoot: URL,
+        fileManager: FileManager,
+        report: inout AppDataDirectoryMigrationReport
+    ) {
+        for legacyRoot in legacyRoots {
             var isDirectory: ObjCBool = false
             guard fileManager.fileExists(
                 atPath: legacyRoot.path(percentEncoded: false),
@@ -146,39 +266,108 @@ enum AppRuntimeMigration {
                 continue
             }
 
-            do {
-                try mergeDirectory(
-                    from: legacyRoot,
-                    into: destinationRoot,
-                    fileManager: fileManager
-                )
-                logger.info(
-                    "Migrated legacy app support root from \(legacyRoot.path(percentEncoded: false), privacy: .public)"
-                )
-            } catch {
-                logger.error(
-                    "Failed to migrate legacy app support root \(legacyRoot.path(percentEncoded: false), privacy: .public): \(error.localizedDescription, privacy: .public)"
-                )
+            for relativePath in dataDirectoryRelativePaths {
+                let source = legacyRoot.appendingPathComponent(relativePath, isDirectory: true)
+                let destination = destinationRoot.appendingPathComponent(relativePath, isDirectory: true)
+                var sourceIsDirectory: ObjCBool = false
+                guard fileManager.fileExists(
+                    atPath: source.path(percentEncoded: false),
+                    isDirectory: &sourceIsDirectory
+                ), sourceIsDirectory.boolValue else {
+                    continue
+                }
+
+                do {
+                    let action = try mergeItem(
+                        from: source,
+                        into: destination,
+                        fileManager: fileManager
+                    )
+                    report.entries.append(
+                        .init(
+                            relativePath: relativePath,
+                            sourcePath: source.path(percentEncoded: false),
+                            destinationPath: destination.path(percentEncoded: false),
+                            action: action,
+                            message: nil
+                        )
+                    )
+                    logger.info(
+                        "Migrated legacy \(relativePath, privacy: .public) from \(source.path(percentEncoded: false), privacy: .public)"
+                    )
+                } catch {
+                    report.entries.append(
+                        .init(
+                            relativePath: relativePath,
+                            sourcePath: source.path(percentEncoded: false),
+                            destinationPath: destination.path(percentEncoded: false),
+                            action: "failed",
+                            message: error.localizedDescription
+                        )
+                    )
+                    logger.error(
+                        "Failed to migrate legacy \(relativePath, privacy: .public) from \(source.path(percentEncoded: false), privacy: .public): \(error.localizedDescription, privacy: .public)"
+                    )
+                }
             }
         }
     }
 
-    private static func migrateSimpleUserDefaults() {
-        copyDefaultIfNeeded(from: AppUserDefaultsKeys.legacyAudioDebugVerbose, to: AppUserDefaultsKeys.audioDebugVerbose)
-        copyDefaultIfNeeded(from: AppUserDefaultsKeys.legacySelectedAdapterID, to: AppUserDefaultsKeys.selectedAdapterID)
+    private static func migrateSimpleUserDefaults(defaults: UserDefaults) {
+        copyDefaultIfNeeded(
+            from: AppUserDefaultsKeys.legacyAudioDebugVerbose,
+            to: AppUserDefaultsKeys.audioDebugVerbose,
+            defaults: defaults
+        )
+        copyDefaultIfNeeded(
+            from: AppUserDefaultsKeys.legacySelectedAdapterID,
+            to: AppUserDefaultsKeys.selectedAdapterID,
+            defaults: defaults
+        )
         copyDefaultIfNeeded(
             from: AppUserDefaultsKeys.legacySelectedAdapterStrength,
-            to: AppUserDefaultsKeys.selectedAdapterStrength
+            to: AppUserDefaultsKeys.selectedAdapterStrength,
+            defaults: defaults
         )
     }
 
-    private static func copyDefaultIfNeeded(from legacyKey: String, to newKey: String) {
-        let defaults = UserDefaults.standard
+    private static func copyDefaultIfNeeded(from legacyKey: String, to newKey: String, defaults: UserDefaults) {
         guard defaults.object(forKey: newKey) == nil,
               let legacyValue = defaults.object(forKey: legacyKey) else {
             return
         }
         defaults.set(legacyValue, forKey: newKey)
+    }
+
+    private static func mergeItem(
+        from source: URL,
+        into destination: URL,
+        fileManager: FileManager
+    ) throws -> String {
+        var destinationIsDirectory: ObjCBool = false
+        let destinationExists = fileManager.fileExists(
+            atPath: destination.path(percentEncoded: false),
+            isDirectory: &destinationIsDirectory
+        )
+
+        if destinationExists {
+            guard destinationIsDirectory.boolValue else { return "skipped_existing_file" }
+            try mergeDirectory(from: source, into: destination, fileManager: fileManager)
+            return "merged"
+        }
+
+        try fileManager.createDirectory(
+            at: destination.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+
+        do {
+            try fileManager.moveItem(at: source, to: destination)
+            return "moved"
+        } catch {
+            try fileManager.copyItem(at: source, to: destination)
+            return "copied"
+        }
     }
 
     private static func mergeDirectory(
@@ -221,6 +410,29 @@ enum AppRuntimeMigration {
             } catch {
                 try fileManager.copyItem(at: child, to: target)
             }
+        }
+    }
+
+    private static func writeReport(
+        _ report: AppDataDirectoryMigrationReport,
+        to url: URL,
+        fileManager: FileManager
+    ) throws {
+        try fileManager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try encoder.encode(report)
+        try data.write(to: url, options: .atomic)
+    }
+
+    private static var isRunningUnitTests: Bool {
+        let environment = ProcessInfo.processInfo.environment
+        if environment["XCTestConfigurationFilePath"] != nil {
+            return true
+        }
+        return ProcessInfo.processInfo.arguments.contains { argument in
+            argument.contains(".xctest") || argument.contains("xctest")
         }
     }
 }
