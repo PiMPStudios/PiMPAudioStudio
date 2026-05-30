@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import AVFoundation
 @testable import AnvilApp
 @testable import AnvilCore
 
@@ -1734,6 +1735,50 @@ private actor FakeDatasetLyricsTranscriber: DatasetLyricsTranscribing, DatasetLy
     #expect(samplingRows?["Source Audio"]?.right == "InDaClub-DryRun.m4a")
     #expect(samplingRows?["Cover Strength"]?.left == "70%")
     #expect(samplingRows?["Cover Strength"]?.right == "35%")
+}
+
+@Test func editorAudioExporterNormalizesDestinationExtensions() {
+    let baseURL = URL(fileURLWithPath: "/tmp/edited-render")
+    let wrongExtensionURL = URL(fileURLWithPath: "/tmp/edited-render.caf")
+
+    #expect(EditorAudioExporter.normalizedDestinationURL(for: baseURL, format: .wav).lastPathComponent == "edited-render.wav")
+    #expect(EditorAudioExporter.normalizedDestinationURL(for: wrongExtensionURL, format: .m4a).lastPathComponent == "edited-render.m4a")
+}
+
+@Test func editorAudioExporterWritesReadableWAV() async throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("EditorAudioExporterTests-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let buffer = editorExportTestBuffer()
+    let destination = directory.appendingPathComponent("edited-render")
+    let exportedURL = try await EditorAudioExporter.export(
+        buffer: buffer,
+        format: .wav,
+        to: destination
+    )
+
+    #expect(exportedURL.lastPathComponent == "edited-render.wav")
+    #expect(FileManager.default.fileExists(atPath: exportedURL.path(percentEncoded: false)))
+
+    let audioFile = try AVAudioFile(forReading: exportedURL)
+    #expect(Int(audioFile.fileFormat.sampleRate.rounded()) == buffer.sampleRate)
+    #expect(Int(audioFile.fileFormat.channelCount) == buffer.channels)
+    #expect(Int(audioFile.length) == buffer.frameCount)
+}
+
+private func editorExportTestBuffer(
+    sampleRate: Int = 22_050,
+    channels: Int = 1,
+    frameCount: Int = 2_205
+) -> AnvilApp.AudioBuffer {
+    var samples = [Int16](repeating: 0, count: frameCount * channels)
+    for index in samples.indices {
+        samples[index] = Int16((index % 128) * 128 - 8_192)
+    }
+    let data = samples.withUnsafeBufferPointer { Data(buffer: $0) }
+    return AnvilApp.AudioBuffer(data: data, sampleRate: sampleRate, channels: channels)
 }
 
 private func traceForComparison(

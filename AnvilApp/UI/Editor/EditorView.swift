@@ -1,10 +1,17 @@
 import SwiftUI
 import AVFoundation
 import AnvilCore
+import OSLog
+
+private let editorExportLogger = Logger(
+    subsystem: "com.pimp.AnvilApp",
+    category: "EditorExport"
+)
 
 struct EditorView: View {
     @StateObject private var state = EditorState()
     @EnvironmentObject private var editorService: EditorService
+    @State private var exportErrorMessage: String?
 
     var preloadedAudioURL: URL?
     var preloadedPrompt: String?
@@ -89,6 +96,14 @@ struct EditorView: View {
             }
             .frame(width: 0, height: 0)
             .opacity(0)
+        }
+        .alert("Could Not Export Audio", isPresented: Binding(
+            get: { exportErrorMessage != nil },
+            set: { if !$0 { exportErrorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) { exportErrorMessage = nil }
+        } message: {
+            Text(exportErrorMessage ?? "")
         }
     }
 
@@ -272,6 +287,7 @@ struct EditorView: View {
 
         let panel = NSSavePanel()
         panel.allowedContentTypes = [format.contentType]
+        panel.canCreateDirectories = true
         let baseName = (state.fileName as NSString).deletingPathExtension
         panel.nameFieldStringValue = "\(baseName.isEmpty ? "edited" : baseName)-edited.\(format.fileExtension)"
 
@@ -279,47 +295,192 @@ struct EditorView: View {
             guard response == .OK, let url = panel.url else { return }
             Task {
                 do {
-                    switch format {
-                    case .wav, .aiff:
-                        // AVAudioFile uses the URL extension to choose the container.
-                        // .wav → RIFF PCM, .aiff → AIFF PCM — both use the same settings dict.
-                        let pcmBuffer = try AudioBufferConverter.toPCMBuffer(buffer)
-                        let outputFile = try AVAudioFile(forWriting: url, settings: pcmBuffer.format.settings)
-                        try outputFile.write(from: pcmBuffer)
-                    case .m4a:
-                        try await exportM4A(buffer: buffer, to: url)
-                    }
+                    _ = try await EditorAudioExporter.export(
+                        buffer: buffer,
+                        format: format,
+                        to: url
+                    )
                 } catch {
-                    // Export failed silently — surface an alert in a future polish pass
+                    editorExportLogger.error("Editor export failed: \(error.localizedDescription, privacy: .public)")
+                    await MainActor.run {
+                        exportErrorMessage = error.localizedDescription
+                    }
                 }
             }
         }
     }
+}
 
-    /// Export to M4A (AAC) via a temp WAV + AVAssetExportSession.
-    private func exportM4A(buffer: AudioBuffer, to dest: URL) async throws {
-        // Step 1: Write a temp WAV (AVAssetExportSession needs a URL input)
-        let tmp = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString)
-            .appendingPathExtension("wav")
-        let pcmBuffer = try AudioBufferConverter.toPCMBuffer(buffer)
-        let tmpFile = try AVAudioFile(forWriting: tmp, settings: pcmBuffer.format.settings)
-        try tmpFile.write(from: pcmBuffer)
-        defer { try? FileManager.default.removeItem(at: tmp) }
+enum EditorAudioExportError: LocalizedError {
+    case invalidBuffer(String)
+    case writeFailed(URL, Error)
+    case exportSessionUnavailable
+    case compressedExportFailed(URL, Error?)
 
-        // Step 2: Export WAV → M4A via AVAssetExportSession
-        let asset = AVURLAsset(url: tmp)
-        guard let session = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A) else {
-            throw CocoaError(.fileWriteUnknown)
+    var errorDescription: String? {
+        switch self {
+        case .invalidBuffer(let reason):
+            return "Could not export edited audio because the editor buffer is invalid: \(reason)"
+        case .writeFailed(let url, let error):
+            return "Could not write edited audio to \(url.path(percentEncoded: false)): \(error.localizedDescription)"
+        case .exportSessionUnavailable:
+            return "Could not create the native M4A export session."
+        case .compressedExportFailed(let url, let error):
+            let detail = error?.localizedDescription ?? "AVFoundation did not report a detailed reason."
+            return "Could not export edited audio to \(url.path(percentEncoded: false)): \(detail)"
         }
-        session.outputURL = dest
-        session.outputFileType = .m4a
-        await session.export()
-        guard session.status == .completed else {
-            throw session.error ?? CocoaError(.fileWriteUnknown)
+    }
+}
+
+enum EditorAudioExporter {
+    @discardableResult
+    static func export(
+        buffer: AudioBuffer,
+        format: ExportFormat,
+        to selectedURL: URL
+    ) async throws -> URL {
+        let destinationURL = normalizedDestinationURL(for: selectedURL, format: format)
+        let didStartAccessing = destinationURL.startAccessingSecurityScopedResource()
+        defer {
+            if didStartAccessing {
+                destinationURL.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        do {
+            switch format {
+            case .wav:
+                try writeWAV(buffer: buffer, to: destinationURL)
+            case .aiff:
+                try writeAIFF(buffer: buffer, to: destinationURL)
+            case .m4a:
+                try await exportM4A(buffer: buffer, to: destinationURL)
+            }
+        } catch let error as EditorAudioExportError {
+            throw error
+        } catch {
+            throw EditorAudioExportError.writeFailed(destinationURL, error)
+        }
+
+        return destinationURL
+    }
+
+    static func normalizedDestinationURL(for url: URL, format: ExportFormat) -> URL {
+        let expectedExtension = format.fileExtension.lowercased()
+        let currentExtension = url.pathExtension.lowercased()
+        if currentExtension == expectedExtension {
+            return url
+        }
+        if currentExtension.isEmpty {
+            return url.appendingPathExtension(expectedExtension)
+        }
+        return url
+            .deletingPathExtension()
+            .appendingPathExtension(expectedExtension)
+    }
+
+    private static func writeWAV(buffer: AudioBuffer, to destinationURL: URL) throws {
+        guard buffer.channels > 0 else {
+            throw EditorAudioExportError.invalidBuffer("channel count is zero")
+        }
+        guard buffer.sampleRate > 0 else {
+            throw EditorAudioExportError.invalidBuffer("sample rate is zero")
+        }
+
+        let bytesPerSample = MemoryLayout<Int16>.size
+        let bytesPerFrame = buffer.channels * bytesPerSample
+        guard buffer.data.count.isMultiple(of: bytesPerFrame) else {
+            throw EditorAudioExportError.invalidBuffer("PCM data is not aligned to the channel count")
+        }
+        guard buffer.data.count <= Int(UInt32.max - 36) else {
+            throw EditorAudioExportError.invalidBuffer("audio is too large for a standard WAV file")
+        }
+
+        do {
+            if !FileManager.default.fileExists(atPath: destinationURL.path(percentEncoded: false)) {
+                _ = FileManager.default.createFile(atPath: destinationURL.path(percentEncoded: false), contents: nil)
+            }
+
+            let handle = try FileHandle(forWritingTo: destinationURL)
+            defer { try? handle.close() }
+            try handle.truncate(atOffset: 0)
+            try handle.write(contentsOf: wavHeader(for: buffer))
+            try handle.write(contentsOf: buffer.data)
+        } catch {
+            throw EditorAudioExportError.writeFailed(destinationURL, error)
         }
     }
 
+    private static func writeAIFF(buffer: AudioBuffer, to destinationURL: URL) throws {
+        do {
+            let pcmBuffer = try AudioBufferConverter.toPCMBuffer(buffer)
+            let outputFile = try AVAudioFile(forWriting: destinationURL, settings: pcmBuffer.format.settings)
+            try outputFile.write(from: pcmBuffer)
+        } catch {
+            throw EditorAudioExportError.writeFailed(destinationURL, error)
+        }
+    }
+
+    /// Export to M4A (AAC) via a temp WAV + AVAssetExportSession.
+    private static func exportM4A(buffer: AudioBuffer, to destinationURL: URL) async throws {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("wav")
+        try writeWAV(buffer: buffer, to: tmp)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        if FileManager.default.fileExists(atPath: destinationURL.path(percentEncoded: false)) {
+            try FileManager.default.removeItem(at: destinationURL)
+        }
+
+        let asset = AVURLAsset(url: tmp)
+        guard let session = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A) else {
+            throw EditorAudioExportError.exportSessionUnavailable
+        }
+        session.outputURL = destinationURL
+        session.outputFileType = .m4a
+        await session.export()
+        guard session.status == .completed else {
+            throw EditorAudioExportError.compressedExportFailed(destinationURL, session.error)
+        }
+    }
+
+    private static func wavHeader(for buffer: AudioBuffer) -> Data {
+        let bitsPerSample: UInt16 = 16
+        let channelCount = UInt16(buffer.channels)
+        let blockAlign = channelCount * bitsPerSample / 8
+        let byteRate = UInt32(buffer.sampleRate) * UInt32(blockAlign)
+        let dataSize = UInt32(buffer.data.count)
+        let fileSize = UInt32(36) + dataSize
+
+        var header = Data(capacity: 44)
+        appendString("RIFF", to: &header)
+        appendLittleEndian(fileSize, to: &header)
+        appendString("WAVE", to: &header)
+        appendString("fmt ", to: &header)
+        appendLittleEndian(UInt32(16), to: &header)
+        appendLittleEndian(UInt16(1), to: &header)
+        appendLittleEndian(channelCount, to: &header)
+        appendLittleEndian(UInt32(buffer.sampleRate), to: &header)
+        appendLittleEndian(byteRate, to: &header)
+        appendLittleEndian(blockAlign, to: &header)
+        appendLittleEndian(bitsPerSample, to: &header)
+        appendString("data", to: &header)
+        appendLittleEndian(dataSize, to: &header)
+        return header
+    }
+
+    private static func appendString(_ value: String, to data: inout Data) {
+        data.append(contentsOf: value.utf8)
+    }
+
+    private static func appendLittleEndian<T: FixedWidthInteger>(_ value: T, to data: inout Data) {
+        var littleEndian = value.littleEndian
+        withUnsafeBytes(of: &littleEndian) { data.append(contentsOf: $0) }
+    }
+}
+
+extension EditorView {
     private func formatTime(_ time: TimeInterval) -> String {
         let minutes = Int(time) / 60
         let seconds = Int(time) % 60
