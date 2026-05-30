@@ -3,6 +3,7 @@ import UniformTypeIdentifiers
 
 struct LocalFilesImportSheet: View {
     @EnvironmentObject private var outputManager: OutputDirectoryManager
+    @EnvironmentObject private var generationService: GenerationService
     @Environment(\.dismiss) private var dismiss
 
     var onOpenDatasetReview: (URL) -> Void
@@ -555,7 +556,12 @@ struct LocalFilesImportSheet: View {
 
     private func startEnrichment(from dir: URL) {
         guard persistCaptionsIfNeeded() else { return }
-        enrichment.enrich(datasetDirectory: dir)
+        enrichment.enrich(
+            datasetDirectory: dir,
+            prepareMemory: { [generationService] in
+                _ = await generationService.unloadAllWeights()
+            }
+        )
     }
 
     private func openDatasetReview() {

@@ -65,6 +65,8 @@ The enrichment backend is native Swift/MLX Demucs via `demucs-mlx-swift`, using 
 
 Native Demucs model selection can be overridden with `ANVIL_DEMUCS_MODEL_NAME`; the optional `ANVIL_DEMUCS_MODEL_DIR` points at a local Demucs MLX model directory. The default model remains `htdemucs`.
 
+Before enrichment starts from the app UI, AnvilApp releases idle generation, cover-song, SFX, LoRA, and LLM model weights through the same GPU-memory release path used by Settings. The enrichment loop also compacts the MLX allocator between Demucs separation and Qwen transcription work so dataset builds do not stack avoidable model/cache memory on top of the active generation pipeline.
+
 Enrichment also transcribes each generated `vocals.wav` with native `speech-swift` Qwen3-ASR. The quality path uses `Qwen3-ASR-1.7B` plus `Qwen3-ForcedAligner-0.6B` for word timestamps, then writes `lyrics.txt`, `lyrics.timed.json`, and `lyrics.lrc` next to the stem files. Those transcripts are copied into `captions.json` and `training_bundle_vocals.json`; instrumental bundles keep lyrics empty.
 
 Enrichment preserves separation/transcription metadata when captions are edited, promotes local stem tempo estimates into each clip's BPM field, and estimates instrumental key/keyscale with native DSP analysis. It also upgrades local-builder/manual captions into deterministic native metadata captions using the original caption seed plus BPM, key, vocal/transcript presence, and stem role context, then refreshes the full-mix training bundle so **Open in Training** uses the enriched captions. Filename placeholder captions are replaced rather than used as creative seed text. Imported sidecar/CSV/remote captions are preserved instead of being overwritten by this automatic pass.

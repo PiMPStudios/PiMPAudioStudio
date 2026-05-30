@@ -11,6 +11,7 @@ private let enrichmentMemoryLogger = Logger(
 )
 
 enum LocalDatasetEnrichmentStep: String, Equatable {
+    case preparingMemory
     case separatingStems
     case transcribingVocals
     case generatingCaptions
@@ -20,6 +21,8 @@ enum LocalDatasetEnrichmentStep: String, Equatable {
 
     var title: String {
         switch self {
+        case .preparingMemory:
+            return "Preparing memory"
         case .separatingStems:
             return "Separating stems"
         case .transcribingVocals:
@@ -102,13 +105,23 @@ final class LocalDatasetEnrichmentService: ObservableObject {
 
     private var task: Task<Void, Never>?
 
-    func enrich(datasetDirectory: URL, force: Bool = false) {
+    func enrich(
+        datasetDirectory: URL,
+        force: Bool = false,
+        prepareMemory: (() async -> Void)? = nil
+    ) {
         cancel()
-        phase = .running(step: .separatingStems)
+        phase = .running(step: prepareMemory == nil ? .separatingStems : .preparingMemory)
 
         task = Task { [weak self] in
             guard let self else { return }
             do {
+                if let prepareMemory {
+                    await MainActor.run {
+                        self.phase = .running(step: .preparingMemory)
+                    }
+                    await prepareMemory()
+                }
                 let result = try await Self.run(
                     datasetDirectory: datasetDirectory,
                     force: force,
@@ -167,7 +180,9 @@ final class LocalDatasetEnrichmentService: ObservableObject {
                     sourceSeparator: sourceSeparator,
                     force: force
                 )
+                compactMLXCache(context: "after separation \(index + 1)/\(records.count)")
             }
+            compactMLXCache(context: "before transcription")
 
             await onStep(.transcribingVocals)
             for index in records.indices {
@@ -178,6 +193,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
                     lyricsTranscriber: lyricsTranscriber,
                     force: force
                 )
+                compactMLXCache(context: "after transcription \(index + 1)/\(records.count)")
             }
 
             for index in records.indices {
@@ -247,6 +263,15 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         let after = Memory.snapshot()
         enrichmentMemoryLogger.info("[enrich.evict] after  active=\(after.activeMemory) cache=\(after.cacheMemory) peak=\(after.peakMemory)")
         enrichmentMemoryLogger.info("[enrich.evict] delta active=-\(before.activeMemory - after.activeMemory) cache=-\(before.cacheMemory - after.cacheMemory)")
+    }
+
+    nonisolated private static func compactMLXCache(context: String) {
+        let before = Memory.snapshot()
+        Memory.clearCache()
+        let after = Memory.snapshot()
+        enrichmentMemoryLogger.info(
+            "[enrich.compact] \(context) active=\(after.activeMemory) cache=\(after.cacheMemory) releasedCache=\(max(0, before.cacheMemory - after.cacheMemory)) peak=\(after.peakMemory)"
+        )
     }
 
     @discardableResult
@@ -999,20 +1024,22 @@ final class LocalDatasetEnrichmentService: ObservableObject {
             if sampleRate > 0 {
                 object["duration_seconds"] = rounded(Double(audioFile.length) / sampleRate, places: 3)
             }
-            if let bpm = estimateTempoBPM(from: url) {
-                object["tempo_bpm_estimate"] = bpm
-            }
-            if role?.lowercased() != "vocals",
-               let keyEstimate = estimateKeyScale(from: url) {
-                object["key"] = keyEstimate.keyscale
-                object["keyscale"] = keyEstimate.keyscale
-                object["key_status"] = "estimated_from_audio"
-                object["key_source"] = "native-dsp-\(role ?? "audio")"
-                object["key_confidence"] = keyEstimate.confidence
-                object["key_tonic"] = keyEstimate.tonic
-                object["key_mode"] = keyEstimate.mode
-                if let runnerUp = keyEstimate.runnerUp {
-                    object["key_runner_up"] = runnerUp
+            if let sampleBuffer = try? monoSamples(from: url) {
+                if let bpm = estimateTempoBPM(from: sampleBuffer) {
+                    object["tempo_bpm_estimate"] = bpm
+                }
+                if role?.lowercased() != "vocals",
+                   let keyEstimate = estimateKeyScale(from: sampleBuffer) {
+                    object["key"] = keyEstimate.keyscale
+                    object["keyscale"] = keyEstimate.keyscale
+                    object["key_status"] = "estimated_from_audio"
+                    object["key_source"] = "native-dsp-\(role ?? "audio")"
+                    object["key_confidence"] = keyEstimate.confidence
+                    object["key_tonic"] = keyEstimate.tonic
+                    object["key_mode"] = keyEstimate.mode
+                    if let runnerUp = keyEstimate.runnerUp {
+                        object["key_runner_up"] = runnerUp
+                    }
                 }
             }
         } catch {
@@ -1108,12 +1135,14 @@ final class LocalDatasetEnrichmentService: ObservableObject {
             ?? stringValue(existingAnalysis["key"])
     }
 
-    nonisolated private static func estimateTempoBPM(from url: URL) -> Double? {
-        guard let samples = try? monoSamples(from: url), samples.samples.count > 4_096 else {
+    nonisolated private static func estimateTempoBPM(
+        from sampleBuffer: (samples: [Float], sampleRate: Double)
+    ) -> Double? {
+        guard sampleBuffer.samples.count > 4_096 else {
             return nil
         }
-        let sampleRate = samples.sampleRate
-        let values = samples.samples
+        let sampleRate = sampleBuffer.sampleRate
+        let values = sampleBuffer.samples
         let frameSize = 1_024
         let hopSize = 512
         guard values.count > frameSize * 4 else { return nil }
@@ -1184,8 +1213,9 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return rounded(60.0 * envelopeRate / Double(selectedLag), places: 1)
     }
 
-    nonisolated private static func estimateKeyScale(from url: URL) -> AudioKeyScaleEstimate? {
-        guard let sampleBuffer = try? monoSamples(from: url) else { return nil }
+    nonisolated private static func estimateKeyScale(
+        from sampleBuffer: (samples: [Float], sampleRate: Double)
+    ) -> AudioKeyScaleEstimate? {
         let samples = sampleBuffer.samples
         guard samples.count >= 4_096 else { return nil }
 

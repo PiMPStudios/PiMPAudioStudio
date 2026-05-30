@@ -3,6 +3,7 @@ import AppKit
 
 struct DatasetReviewView: View {
     @EnvironmentObject private var playerService: AudioPlayerService
+    @EnvironmentObject private var generationService: GenerationService
 
     let datasetDirectory: URL
     var onOpenInTraining: ([TrainingImportedFile]) -> Void
@@ -684,7 +685,12 @@ struct DatasetReviewView: View {
 
     private func startEnrichment() {
         guard saveDocument() else { return }
-        enrichment.enrich(datasetDirectory: datasetDirectory)
+        enrichment.enrich(
+            datasetDirectory: datasetDirectory,
+            prepareMemory: { [generationService] in
+                _ = await generationService.unloadAllWeights()
+            }
+        )
     }
 
     private func openInTraining() {
