@@ -940,6 +940,8 @@ enum TrainingDatasetPackageWriter {
 
         let captions = readJSONArray(from: outputDirectory.appendingPathComponent(captionsFileName))
         guard !captions.isEmpty else { return }
+        manifest["clips"] = captions
+        manifest["clip_count"] = captions.count
 
         let separatedClipCount = captions.filter {
             hasExistingStem("vocals", in: $0, outputDirectory: outputDirectory) &&

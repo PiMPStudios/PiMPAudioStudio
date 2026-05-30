@@ -774,6 +774,10 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         var manifest = readJSONObject(from: manifestURL) ?? [:]
         let now = ISO8601DateFormatter().string(from: Date())
         let captions = readJSONArray(from: datasetDirectory.appendingPathComponent(TrainingDatasetPackageWriter.captionsFileName))
+        if !captions.isEmpty {
+            manifest["clips"] = captions
+            manifest["clip_count"] = captions.count
+        }
 
         var separation = manifest["separation"] as? [String: Any] ?? [:]
         var availableAssets = ["full_mix"]

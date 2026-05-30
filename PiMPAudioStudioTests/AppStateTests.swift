@@ -1044,6 +1044,9 @@ private extension JSONDecoder {
     #expect(training?["preprocess_cache"] as? String == "preprocess_cache.json")
     let annotation = manifest?["annotation"] as? [String: Any]
     #expect(annotation?["status"] as? String == "manual_review_required")
+    let manifestClips = manifest?["clips"] as? [[String: Any]]
+    #expect(manifestClips?.first?["caption"] as? String == "dark blues")
+    #expect(manifestClips?.first?["lyrics"] as? String == "I keep singing low")
 
     let preprocessData = try Data(contentsOf: datasetDir.appendingPathComponent("preprocess_cache.json"))
     let preprocess = try JSONSerialization.jsonObject(with: preprocessData) as? [String: Any]
@@ -1195,6 +1198,12 @@ private extension JSONDecoder {
     let manifestAnalysis = manifest?["analysis"] as? [String: Any]
     #expect(manifestAnalysis?["bpm_status"] as? String == "estimated_from_stems")
     #expect(manifestAnalysis?["key_status"] as? String == "estimated_from_audio")
+    let manifestClips = manifest?["clips"] as? [[String: Any]]
+    #expect(
+        manifestClips?.first?["caption"] as? String ==
+            "dark blues stem package, very slow 72 BPM, E minor, full mix with vocals and instrumental backing"
+    )
+    #expect(manifestClips?.first?["lyrics_source"] as? String == "native-qwen3-asr")
 }
 
 @Test func localDatasetEnrichmentPreservesImportedCaptions() async throws {
