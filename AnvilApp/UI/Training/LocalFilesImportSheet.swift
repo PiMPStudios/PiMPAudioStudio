@@ -5,7 +5,7 @@ struct LocalFilesImportSheet: View {
     @EnvironmentObject private var outputManager: OutputDirectoryManager
     @Environment(\.dismiss) private var dismiss
 
-    var onOpenInTraining: ([TrainingImportedFile]) -> Void
+    var onOpenDatasetReview: (URL) -> Void
 
     @StateObject private var builder = LocalFilesDatasetBuilder()
     @StateObject private var enrichment = LocalDatasetEnrichmentService()
@@ -19,6 +19,7 @@ struct LocalFilesImportSheet: View {
     @State private var sourceNotice: String?
     @State private var packageSummary: String?
     @State private var isExportingPackage = false
+    @State private var hasUnsavedCaptionEdits = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -59,13 +60,16 @@ struct LocalFilesImportSheet: View {
         }
         .onChange(of: builder.phase) { _, newPhase in
             if case .complete(let dir, _) = newPhase {
-                editableClips = builder.resultClips
+                reloadEditableClips(from: dir, fallback: builder.resultClips)
+                hasUnsavedCaptionEdits = false
                 enrichment.reset()
                 refreshPackageSummary(for: dir)
             }
         }
         .onChange(of: enrichment.phase) { _, newPhase in
             if case .complete(let result) = newPhase {
+                reloadEditableClips(from: result.datasetDirectory)
+                hasUnsavedCaptionEdits = false
                 refreshPackageSummary(for: result.datasetDirectory)
             }
         }
@@ -192,7 +196,9 @@ struct LocalFilesImportSheet: View {
                         .disabled(isBusy)
                         .frame(maxWidth: 130)
                 }
-                LabeledContent("Sampling") {
+                HStack(spacing: 10) {
+                    Text("Sampling")
+                        .frame(width: 130, alignment: .trailing)
                     Picker("Sampling", selection: $config.samplingMode) {
                         ForEach(LocalDatasetClipSamplingMode.allCases) { mode in
                             Text(mode.displayName).tag(mode)
@@ -201,7 +207,7 @@ struct LocalFilesImportSheet: View {
                     .labelsHidden()
                     .pickerStyle(.segmented)
                     .disabled(isBusy)
-                    .frame(maxWidth: 260)
+                    .frame(width: 300)
                 }
                 Text(config.samplingMode.helpText)
                     .font(.caption)
@@ -371,7 +377,7 @@ struct LocalFilesImportSheet: View {
                     .foregroundStyle(.secondary)
             }
 
-            Text("Review and edit captions below. The package manifest and training bundles are refreshed when opened.")
+            Text("Preview captions below. Open the dataset review workspace to approve clips and launch training.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -383,7 +389,10 @@ struct LocalFilesImportSheet: View {
                             .frame(width: 16)
                         TextField("Caption", text: Binding(
                             get: { editableClips[idx].description },
-                            set: { editableClips[idx].description = $0 }
+                            set: {
+                                editableClips[idx].description = $0
+                                hasUnsavedCaptionEdits = true
+                            }
                         ))
                         .textFieldStyle(.roundedBorder)
                         .font(.callout)
@@ -440,9 +449,8 @@ struct LocalFilesImportSheet: View {
                     }
                     .buttonStyle(.bordered)
                 } else {
-                    Button("Open in Training") {
-                        persistCaptions()
-                        onOpenInTraining(editableClips)
+                    Button("Review Dataset") {
+                        openDatasetReview()
                     }
                     .buttonStyle(.borderedProminent)
                 }
@@ -523,21 +531,38 @@ struct LocalFilesImportSheet: View {
         )
     }
 
-    private func persistCaptions() {
-        guard case .complete(let dir, _) = builder.phase else { return }
-        try? TrainingDatasetPackageWriter.writeLocalPackage(
-            outputDirectory: dir,
-            clips: editableClips,
-            sourceFiles: selectedFiles,
-            config: config,
-            styleTemplate: styleTemplate
-        )
-        refreshPackageSummary(for: dir)
+    @discardableResult
+    private func persistCaptionsIfNeeded() -> Bool {
+        guard case .complete(let dir, _) = builder.phase else { return false }
+        guard hasUnsavedCaptionEdits else { return true }
+        do {
+            try TrainingDatasetPackageWriter.writeLocalPackage(
+                outputDirectory: dir,
+                clips: editableClips,
+                sourceFiles: selectedFiles,
+                config: config,
+                styleTemplate: styleTemplate
+            )
+            hasUnsavedCaptionEdits = false
+            reloadEditableClips(from: dir, fallback: editableClips)
+            refreshPackageSummary(for: dir)
+            return true
+        } catch {
+            sourceNotice = error.localizedDescription
+            return false
+        }
     }
 
     private func startEnrichment(from dir: URL) {
-        persistCaptions()
+        guard persistCaptionsIfNeeded() else { return }
         enrichment.enrich(datasetDirectory: dir)
+    }
+
+    private func openDatasetReview() {
+        guard case .complete(let dir, _) = builder.phase else { return }
+        guard persistCaptionsIfNeeded() else { return }
+        onOpenDatasetReview(dir)
+        dismiss()
     }
 
     private func refreshPackageSummary(for dir: URL) {
@@ -545,7 +570,7 @@ struct LocalFilesImportSheet: View {
     }
 
     private func exportPackage(from dir: URL) {
-        persistCaptions()
+        guard persistCaptionsIfNeeded() else { return }
 
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.zip]
@@ -608,5 +633,16 @@ struct LocalFilesImportSheet: View {
             merged.append(url)
         }
         return merged
+    }
+
+    private func reloadEditableClips(from dir: URL, fallback: [TrainingImportedFile] = []) {
+        do {
+            editableClips = try TrainingDatasetImporter.importFiles(
+                from: dir.appendingPathComponent(TrainingDatasetPackageWriter.fullMixBundleFileName)
+            )
+        } catch {
+            editableClips = fallback
+            sourceNotice = "Could not reload package captions: \(error.localizedDescription)"
+        }
     }
 }

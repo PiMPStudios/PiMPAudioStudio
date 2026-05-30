@@ -137,6 +137,7 @@ All notable changes to AnvilApp are documented here.
 
 ### Fixed
 
+- **Local file build flow no longer hands stale captions to training** — the local dataset sheet now refreshes its preview from the package after enrichment, updates the full-mix training bundle when captions are auto-generated, and sends users into Dataset Review instead of bypassing approval with an outdated in-memory clip list.
 - **Blank local-file style descriptions no longer pollute auto captions** — local dataset packages now mark filename fallback captions as `filename`, and Enrich Dataset replaces those placeholders with native metadata captions instead of treating file names as manual prompt seed text.
 - **Local dataset enrichment no longer trips Metal validation during Demucs separation** — the vendored Swift/MLX Demucs kernels now use source-stable custom Metal kernel names and synchronize the GPU stream before returning CPU stem buffers, avoiding an in-flight compute pipeline release when `Enrich Dataset` runs under Xcode Metal API validation.
 - **Local dataset manifests now refresh enrichment status from stem artifacts** — package validation now derives separation, transcription, BPM, stem bundle, and enrichment metadata from enriched captions and stem sidecars, so `dataset_manifest.json` cannot remain stuck at `not_run` after a successful `Enrich Dataset` pass.

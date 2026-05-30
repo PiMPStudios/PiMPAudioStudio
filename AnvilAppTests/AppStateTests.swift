@@ -1176,6 +1176,11 @@ private func zipEntries(in archiveURL: URL) throws -> [String] {
     #expect(annotation?["caption_seed"] as? String == "")
     let inputs = annotation?["caption_inputs"] as? [String] ?? []
     #expect(!inputs.contains("caption_seed"))
+
+    let imported = try TrainingDatasetImporter.importFiles(
+        from: datasetDir.appendingPathComponent(TrainingDatasetPackageWriter.fullMixBundleFileName)
+    )
+    #expect(imported.first?.description == "slow 90 BPM, A minor, full mix with vocals and instrumental backing")
 }
 
 @Test func localDatasetEnrichmentExportsStemBundlesNatively() throws {

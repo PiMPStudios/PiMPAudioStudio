@@ -225,11 +225,11 @@ private struct BuildDatasetsView: View {
             if !isShowing { refreshPackages() }
         }
         .sheet(isPresented: $showingLocalFilesSheet) {
-            LocalFilesImportSheet { files in
+            LocalFilesImportSheet { directory in
                 showingLocalFilesSheet = false
                 DispatchQueue.main.async {
                     refreshPackages()
-                    trainingPresentation = TrainingPresentation(files: files)
+                    selectPackage(directory)
                 }
             }
             .environmentObject(outputManager)
@@ -381,6 +381,16 @@ private struct BuildDatasetsView: View {
             selectedPackageID = packages.first?.id
             selectedPackageDirectory = packages.first?.directory
         }
+    }
+
+    private func selectPackage(_ directory: URL) {
+        let summary = TrainingDatasetPackageEditor.packageSummary(at: directory)
+        if !packages.contains(where: { $0.id == summary.id }) {
+            packages.insert(summary, at: 0)
+        }
+        selectedPackageID = summary.id
+        selectedPackageDirectory = directory
+        packageNotice = nil
     }
 
     private func openPackageFolder() {

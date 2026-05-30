@@ -59,7 +59,7 @@ The current cache is sample-level training data. It is the shared handoff for la
 
 ## Local Enrichment
 
-After a local-file package is built, open it from **Build > Datasets** and use **Enrich Dataset** in the review workspace to enrich that package in place. AnvilApp owns this workflow directly; it does not call or require any sibling repo.
+After a local-file package is built, use **Review Dataset** from the build sheet or open it from **Build > Datasets**, then use **Enrich Dataset** in the review workspace to enrich that package in place. AnvilApp owns this workflow directly; it does not call or require any sibling repo.
 
 The enrichment backend is native Swift/MLX Demucs via `demucs-mlx-swift`, using `htdemucs` in vocals-plus-instrumental mode. AnvilApp writes `stems/`, `separation.json`, `training_bundle_vocals.json`, `training_bundle_instrumental.json`, refreshed manifest metadata, and package validation itself.
 
@@ -67,7 +67,7 @@ Native Demucs model selection can be overridden with `ANVIL_DEMUCS_MODEL_NAME`; 
 
 Enrichment also transcribes each generated `vocals.wav` with native `speech-swift` Qwen3-ASR. The quality path uses `Qwen3-ASR-1.7B` plus `Qwen3-ForcedAligner-0.6B` for word timestamps, then writes `lyrics.txt`, `lyrics.timed.json`, and `lyrics.lrc` next to the stem files. Those transcripts are copied into `captions.json` and `training_bundle_vocals.json`; instrumental bundles keep lyrics empty.
 
-Enrichment preserves separation/transcription metadata when captions are edited, promotes local stem tempo estimates into each clip's BPM field, and estimates instrumental key/keyscale with native DSP analysis. It also upgrades local-builder/manual captions into deterministic native metadata captions using the original caption seed plus BPM, key, vocal/transcript presence, and stem role context. Filename placeholder captions are replaced rather than used as creative seed text. Imported sidecar/CSV/remote captions are preserved instead of being overwritten by this automatic pass.
+Enrichment preserves separation/transcription metadata when captions are edited, promotes local stem tempo estimates into each clip's BPM field, and estimates instrumental key/keyscale with native DSP analysis. It also upgrades local-builder/manual captions into deterministic native metadata captions using the original caption seed plus BPM, key, vocal/transcript presence, and stem role context, then refreshes the full-mix training bundle so **Open in Training** uses the enriched captions. Filename placeholder captions are replaced rather than used as creative seed text. Imported sidecar/CSV/remote captions are preserved instead of being overwritten by this automatic pass.
 
 The native captioner is metadata-based, not a full audio-language model. It gives useful training prompts immediately while keeping the local package workflow zero-Python; heavier ACE-Step captioner integration remains a future optional backend.
 

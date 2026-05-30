@@ -203,6 +203,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
                 records.map(\.object),
                 to: datasetDirectory.appendingPathComponent(TrainingDatasetPackageWriter.captionsFileName)
             )
+            try TrainingDatasetPackageWriter.refreshTrainingBundles(at: datasetDirectory)
 
             await onStep(.exportingVocalsBundle)
             _ = try writeStemTrainingBundle(
