@@ -624,7 +624,7 @@ enum TrainingPreprocessCacheStore {
         try MLX.save(
             arrays: arrays,
             metadata: [
-                "anvil_preprocess_sample_version": version,
+                "pimp_audio_preprocess_sample_version": version,
                 "bundle": reference.bundleFileName,
                 "bundle_name": reference.bundleName,
                 "clip_id": reference.clipID,
@@ -647,7 +647,7 @@ enum TrainingPreprocessCacheStore {
         )
 
         var index = readJSONObject(from: indexURL) ?? [
-            "anvil_preprocess_index_version": version,
+            "pimp_audio_preprocess_index_version": version,
             "bundle": reference.bundleFileName,
             "bundle_name": reference.bundleName,
             "cache_dir": reference.cacheDirectory,
@@ -671,7 +671,8 @@ enum TrainingPreprocessCacheStore {
                 "encoder_mask": sample.encoderMask?.shape ?? [],
             ],
         ])
-        index["anvil_preprocess_index_version"] = version
+        index.removeValue(forKey: "anvil_preprocess_index_version")
+        index["pimp_audio_preprocess_index_version"] = version
         index["updated_at"] = ISO8601DateFormatter().string(from: Date())
         index["entries"] = entries.sorted {
             ($0["clip_id"] as? String ?? "") < ($1["clip_id"] as? String ?? "")

@@ -261,7 +261,7 @@ enum TrainingDatasetImporter {
         include: [String]
     ) -> PreprocessCacheContext? {
         let declaresCache = firstString(dict, keys: ["preprocess_cache"]) != nil ||
-            firstString(dict, keys: ["anvil_training_bundle_version"]) != nil ||
+            firstString(dict, keys: ["pimp_audio_training_bundle_version", "anvil_training_bundle_version"]) != nil ||
             fileName.lowercased().hasPrefix("training_bundle")
         guard declaresCache else { return nil }
         let bundleName = bundleCacheName(include: include, fileName: fileName)

@@ -21,7 +21,7 @@ enum RemoteTrainingJobStatus: String, Codable, Hashable, Sendable {
 }
 
 struct RemoteTrainingPackageDescriptor: Codable, Hashable, Sendable {
-    var anvilRemotePackageVersion: String
+    var pimpAudioRemotePackageVersion: String
     var createdAt: String?
     var packageName: String
     var packageRoot: String
@@ -34,7 +34,7 @@ struct RemoteTrainingPackageDescriptor: Codable, Hashable, Sendable {
     var workerContract: RemoteWorkerContract?
 
     enum CodingKeys: String, CodingKey {
-        case anvilRemotePackageVersion = "anvil_remote_package_version"
+        case pimpAudioRemotePackageVersion = "pimp_audio_remote_package_version"
         case createdAt = "created_at"
         case packageName = "package_name"
         case packageRoot = "package_root"
@@ -45,6 +45,55 @@ struct RemoteTrainingPackageDescriptor: Codable, Hashable, Sendable {
         case preprocessCache = "preprocess_cache"
         case copyRules = "copy_rules"
         case workerContract = "worker_contract"
+    }
+
+    private enum LegacyCodingKeys: String, CodingKey {
+        case anvilRemotePackageVersion = "anvil_remote_package_version"
+    }
+
+    init(
+        pimpAudioRemotePackageVersion: String,
+        createdAt: String?,
+        packageName: String,
+        packageRoot: String,
+        clipCount: Int,
+        defaultBundle: String,
+        bundles: [RemoteTrainingBundleReference],
+        providerTargets: [String],
+        preprocessCache: String,
+        copyRules: RemoteTrainingCopyRules,
+        workerContract: RemoteWorkerContract?
+    ) {
+        self.pimpAudioRemotePackageVersion = pimpAudioRemotePackageVersion
+        self.createdAt = createdAt
+        self.packageName = packageName
+        self.packageRoot = packageRoot
+        self.clipCount = clipCount
+        self.defaultBundle = defaultBundle
+        self.bundles = bundles
+        self.providerTargets = providerTargets
+        self.preprocessCache = preprocessCache
+        self.copyRules = copyRules
+        self.workerContract = workerContract
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let legacyContainer = try decoder.container(keyedBy: LegacyCodingKeys.self)
+        self.pimpAudioRemotePackageVersion = try container.decodeIfPresent(
+            String.self,
+            forKey: .pimpAudioRemotePackageVersion
+        ) ?? legacyContainer.decode(String.self, forKey: .anvilRemotePackageVersion)
+        self.createdAt = try container.decodeIfPresent(String.self, forKey: .createdAt)
+        self.packageName = try container.decode(String.self, forKey: .packageName)
+        self.packageRoot = try container.decode(String.self, forKey: .packageRoot)
+        self.clipCount = try container.decode(Int.self, forKey: .clipCount)
+        self.defaultBundle = try container.decode(String.self, forKey: .defaultBundle)
+        self.bundles = try container.decode([RemoteTrainingBundleReference].self, forKey: .bundles)
+        self.providerTargets = try container.decode([String].self, forKey: .providerTargets)
+        self.preprocessCache = try container.decode(String.self, forKey: .preprocessCache)
+        self.copyRules = try container.decode(RemoteTrainingCopyRules.self, forKey: .copyRules)
+        self.workerContract = try container.decodeIfPresent(RemoteWorkerContract.self, forKey: .workerContract)
     }
 }
 
@@ -98,7 +147,7 @@ struct RemoteWorkerContract: Codable, Hashable, Sendable {
 struct RemoteTrainingJobRequest: Codable, Hashable, Sendable {
     static let schemaVersion = "1.0"
 
-    var anvilRemoteJobVersion: String
+    var pimpAudioRemoteJobVersion: String
     var jobID: String
     var createdAt: String
     var task: RemoteTrainingTask
@@ -109,7 +158,7 @@ struct RemoteTrainingJobRequest: Codable, Hashable, Sendable {
     var safety: RemoteTrainingJobSafety
 
     enum CodingKeys: String, CodingKey {
-        case anvilRemoteJobVersion = "anvil_remote_job_version"
+        case pimpAudioRemoteJobVersion = "pimp_audio_remote_job_version"
         case jobID = "job_id"
         case createdAt = "created_at"
         case task
@@ -118,6 +167,49 @@ struct RemoteTrainingJobRequest: Codable, Hashable, Sendable {
         case runtime
         case outputs
         case safety
+    }
+
+    private enum LegacyCodingKeys: String, CodingKey {
+        case anvilRemoteJobVersion = "anvil_remote_job_version"
+    }
+
+    init(
+        pimpAudioRemoteJobVersion: String,
+        jobID: String,
+        createdAt: String,
+        task: RemoteTrainingTask,
+        package: RemoteTrainingJobPackage,
+        training: RemoteTrainingJobTraining?,
+        runtime: RemoteTrainingJobRuntime,
+        outputs: RemoteTrainingJobOutputs,
+        safety: RemoteTrainingJobSafety
+    ) {
+        self.pimpAudioRemoteJobVersion = pimpAudioRemoteJobVersion
+        self.jobID = jobID
+        self.createdAt = createdAt
+        self.task = task
+        self.package = package
+        self.training = training
+        self.runtime = runtime
+        self.outputs = outputs
+        self.safety = safety
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let legacyContainer = try decoder.container(keyedBy: LegacyCodingKeys.self)
+        self.pimpAudioRemoteJobVersion = try container.decodeIfPresent(
+            String.self,
+            forKey: .pimpAudioRemoteJobVersion
+        ) ?? legacyContainer.decode(String.self, forKey: .anvilRemoteJobVersion)
+        self.jobID = try container.decode(String.self, forKey: .jobID)
+        self.createdAt = try container.decode(String.self, forKey: .createdAt)
+        self.task = try container.decode(RemoteTrainingTask.self, forKey: .task)
+        self.package = try container.decode(RemoteTrainingJobPackage.self, forKey: .package)
+        self.training = try container.decodeIfPresent(RemoteTrainingJobTraining.self, forKey: .training)
+        self.runtime = try container.decode(RemoteTrainingJobRuntime.self, forKey: .runtime)
+        self.outputs = try container.decode(RemoteTrainingJobOutputs.self, forKey: .outputs)
+        self.safety = try container.decode(RemoteTrainingJobSafety.self, forKey: .safety)
     }
 }
 
@@ -224,7 +316,7 @@ struct RemoteTrainingJobSafety: Codable, Hashable, Sendable {
 struct RemoteTrainingJobResult: Codable, Hashable, Sendable {
     static let schemaVersion = "1.0"
 
-    var anvilRemoteResultVersion: String
+    var pimpAudioRemoteResultVersion: String
     var jobID: String
     var task: RemoteTrainingTask
     var status: RemoteTrainingJobStatus
@@ -235,7 +327,7 @@ struct RemoteTrainingJobResult: Codable, Hashable, Sendable {
     var error: RemoteTrainingJobError?
 
     enum CodingKeys: String, CodingKey {
-        case anvilRemoteResultVersion = "anvil_remote_result_version"
+        case pimpAudioRemoteResultVersion = "pimp_audio_remote_result_version"
         case jobID = "job_id"
         case task
         case status
@@ -244,6 +336,49 @@ struct RemoteTrainingJobResult: Codable, Hashable, Sendable {
         case artifacts
         case metrics
         case error
+    }
+
+    private enum LegacyCodingKeys: String, CodingKey {
+        case anvilRemoteResultVersion = "anvil_remote_result_version"
+    }
+
+    init(
+        pimpAudioRemoteResultVersion: String,
+        jobID: String,
+        task: RemoteTrainingTask,
+        status: RemoteTrainingJobStatus,
+        startedAt: String?,
+        finishedAt: String?,
+        artifacts: [RemoteTrainingJobArtifact],
+        metrics: [String: Double],
+        error: RemoteTrainingJobError?
+    ) {
+        self.pimpAudioRemoteResultVersion = pimpAudioRemoteResultVersion
+        self.jobID = jobID
+        self.task = task
+        self.status = status
+        self.startedAt = startedAt
+        self.finishedAt = finishedAt
+        self.artifacts = artifacts
+        self.metrics = metrics
+        self.error = error
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let legacyContainer = try decoder.container(keyedBy: LegacyCodingKeys.self)
+        self.pimpAudioRemoteResultVersion = try container.decodeIfPresent(
+            String.self,
+            forKey: .pimpAudioRemoteResultVersion
+        ) ?? legacyContainer.decode(String.self, forKey: .anvilRemoteResultVersion)
+        self.jobID = try container.decode(String.self, forKey: .jobID)
+        self.task = try container.decode(RemoteTrainingTask.self, forKey: .task)
+        self.status = try container.decode(RemoteTrainingJobStatus.self, forKey: .status)
+        self.startedAt = try container.decodeIfPresent(String.self, forKey: .startedAt)
+        self.finishedAt = try container.decodeIfPresent(String.self, forKey: .finishedAt)
+        self.artifacts = try container.decode([RemoteTrainingJobArtifact].self, forKey: .artifacts)
+        self.metrics = try container.decode([String: Double].self, forKey: .metrics)
+        self.error = try container.decodeIfPresent(RemoteTrainingJobError.self, forKey: .error)
     }
 }
 
@@ -316,7 +451,7 @@ extension RemoteTrainingJobRequest {
             updatedPackageDirectory: "remote_artifacts/package"
         )
         return RemoteTrainingJobRequest(
-            anvilRemoteJobVersion: schemaVersion,
+            pimpAudioRemoteJobVersion: schemaVersion,
             jobID: jobID,
             createdAt: ISO8601DateFormatter().string(from: createdAt),
             task: task,

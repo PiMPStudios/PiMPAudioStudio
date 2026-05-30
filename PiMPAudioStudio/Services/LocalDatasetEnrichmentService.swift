@@ -501,7 +501,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         warnings: [String]
     ) -> [String: Any] {
         [
-            "anvil_dataset_version": "1.0",
+            "pimp_audio_dataset_version": "1.0",
             "generated_at": ISO8601DateFormatter().string(from: Date()),
             "backend": backend,
             "backend_version": backendVersion,
@@ -751,7 +751,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         }
 
         let bundle: [String: Any] = [
-            "anvil_training_bundle_version": "1.0",
+            "pimp_audio_training_bundle_version": "1.0",
             "created_at": createdAt,
             "dataset_dir": ".",
             "include": [role.includeName],
@@ -1839,7 +1839,7 @@ actor LyricsTranscriptionService: DatasetLyricsTranscribing, DatasetLyricsTransc
 
     private func timedLyricsPayload(result: LyricsTranscriptionResult, vocalsURL: URL) -> [String: Any] {
         var payload: [String: Any] = [
-            "anvil_lyrics_transcription_version": "1.0",
+            "pimp_audio_lyrics_transcription_version": "1.0",
             "generated_at": ISO8601DateFormatter().string(from: Date()),
             "source_vocals": vocalsURL.lastPathComponent,
             "backend": result.backend,
@@ -1867,7 +1867,7 @@ actor LyricsTranscriptionService: DatasetLyricsTranscribing, DatasetLyricsTransc
 
     private func cachedTimedLyricsPayload(text: String, vocalsURL: URL) -> [String: Any] {
         [
-            "anvil_lyrics_transcription_version": "1.0",
+            "pimp_audio_lyrics_transcription_version": "1.0",
             "generated_at": ISO8601DateFormatter().string(from: Date()),
             "source_vocals": vocalsURL.lastPathComponent,
             "backend": QwenLyricsTranscriber.backendName,

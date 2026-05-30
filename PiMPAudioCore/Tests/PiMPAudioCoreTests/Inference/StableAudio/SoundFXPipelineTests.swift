@@ -1,7 +1,7 @@
 // PiMPAudioCore/Tests/PiMPAudioCoreTests/Inference/StableAudio/SoundFXPipelineTests.swift
 //
 // Tests use SoundFXPipeline.generate(precomputedText:duration:config:) to
-// bypass T5 tokenisation and the file-backed AnvilTokenizer, making all
+// bypass T5 tokenisation and the file-backed PiMPAudioTokenizer, making all
 // tests runnable without downloading model weights.
 
 import Testing

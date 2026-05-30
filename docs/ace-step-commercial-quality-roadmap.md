@@ -85,9 +85,9 @@ explicitly flags this as the top remaining hypothesis.
 
 **Files:**
 
-- `AnvilCore/Sources/AnvilCore/Inference/VAE/VAETiledDecode.swift`
-- `AnvilCore/Sources/AnvilCore/Inference/VAE/VAEActor.swift`
-- `AnvilCore/Sources/AnvilCore/Inference/VAE/VAEComponents.swift`
+- `PiMPAudioCore/Sources/PiMPAudioCore/Inference/VAE/VAETiledDecode.swift`
+- `PiMPAudioCore/Sources/PiMPAudioCore/Inference/VAE/VAEActor.swift`
+- `PiMPAudioCore/Sources/PiMPAudioCore/Inference/VAE/VAEComponents.swift`
 
 ### 2. DiT Low-Level Parity (Patch Embed, GQA, Attention Details)
 
@@ -112,9 +112,9 @@ A/Bs unless a future multi-step probe contradicts this.
 
 **Files:**
 
-- `AnvilCore/Sources/AnvilCore/Inference/DiT/DiTModel.swift`
-- `AnvilCore/Sources/AnvilCore/Inference/DiT/DiTComponents.swift`
-- `AnvilCore/Sources/AnvilCore/Inference/DiT/DiTActor.swift`
+- `PiMPAudioCore/Sources/PiMPAudioCore/Inference/DiT/DiTModel.swift`
+- `PiMPAudioCore/Sources/PiMPAudioCore/Inference/DiT/DiTComponents.swift`
+- `PiMPAudioCore/Sources/PiMPAudioCore/Inference/DiT/DiTActor.swift`
 
 ### 3. Inference Recipe Is Still Basic
 
@@ -171,9 +171,9 @@ it removes the all-`N/A` baseline and gives future listening tests an
 
 **Files:**
 
-- `AnvilCore/Sources/AnvilCore/Inference/Conditioning/ConditioningActor.swift:67-92`
+- `PiMPAudioCore/Sources/PiMPAudioCore/Inference/Conditioning/ConditioningActor.swift:67-92`
   (`wrapPromptForSFT`, `wrapLyricsForSFT`)
-- `AnvilApp/Services/LyricWriter/` (all backends)
+- `PiMPAudioStudio/Services/LyricWriter/` (all backends)
 
 ### 5. Lack of a Perceptual Evaluation Flywheel
 
@@ -339,15 +339,15 @@ territory and is cheap to iterate.
 
 1. **Create the minimal parity harness** (highest leverage single task).
    - Codex implementation note (2026-05-18): first pass implemented as
-     `swift run --package-path AnvilCore QualityEval ...`, with docs in
+     `swift run --package-path PiMPAudioCore QualityEval ...`, with docs in
      `docs/quality-eval/README.md`.
    - Codex implementation note (2026-05-18): second pass added
-     `swift run --package-path AnvilCore DiTProbeEval ...`, documented in
+     `swift run --package-path PiMPAudioCore DiTProbeEval ...`, documented in
      `docs/quality-eval/README.md`. The first upstream export was generated
      locally from `../ACE-Step-1.5/scripts/export_dit_probe_case.py` and the
      resulting report is
      `docs/quality-eval/reports/sparse-dark-guitar-dit-step.md`.
-   - New file: `AnvilCore/Sources/QualityEval/main.swift`.
+   - New file: `PiMPAudioCore/Sources/QualityEval/main.swift`.
    - Export a 30-second latent from upstream on the golden prompt "slow dark
      guitar riff", seed 42, and compare Swift direct decode against upstream
      decode.
@@ -416,10 +416,10 @@ Commercial-grade for this product means:
 
 - `docs/ace-step-audio-quality-investigation.md` — complete history of the
   structural fixes that got us to recognizable music.
-- `AnvilCore/Sources/AnvilCore/Inference/Diffusion/DiffusionActor.swift`
-- `AnvilCore/Sources/AnvilCore/Inference/VAE/VAETiledDecode.swift`
-- `AnvilCore/Sources/AnvilCore/Inference/DiT/DiTComponents.swift`
-- `AnvilApp/UI/Components/GenerateView.swift` (advanced controls surface)
+- `PiMPAudioCore/Sources/PiMPAudioCore/Inference/Diffusion/DiffusionActor.swift`
+- `PiMPAudioCore/Sources/PiMPAudioCore/Inference/VAE/VAETiledDecode.swift`
+- `PiMPAudioCore/Sources/PiMPAudioCore/Inference/DiT/DiTComponents.swift`
+- `PiMPAudioStudio/UI/Components/GenerateView.swift` (advanced controls surface)
 - Upstream ACE-Step v1.5 MLX reference (models/mlx/dit_generate.py and
   modeling files)
 

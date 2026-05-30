@@ -38,7 +38,7 @@ enum PEFTKeyRemapper {
         return result
     }
 
-    /// Infer exact Anvil injection subpaths from already-remapped LoRA keys.
+    /// Infer exact PiMP Audio Studio injection subpaths from already-remapped LoRA keys.
     ///
     /// Remapped weights are keyed like `layers.0.selfAttn.qProj.loraA`.
     /// `LoRAConfig` needs only the layer-local path (`selfAttn.qProj`) because
@@ -100,10 +100,10 @@ enum PEFTKeyRemapper {
             (".lora_B.weight",         ".loraB"),
         ]
         var loraSuffix: String?
-        for (peft, anvil) in peftSuffixes {
+        for (peft, pimpAudio) in peftSuffixes {
             if rest.hasSuffix(peft) {
                 rest = String(rest.dropLast(peft.count))
-                loraSuffix = anvil
+                loraSuffix = pimpAudio
                 break
             }
         }
@@ -178,7 +178,7 @@ enum PEFTKeyRemapper {
         return layers.isEmpty ? [.selfAttention] : layers
     }
 
-    /// Infer target categories from exact Anvil module paths.
+    /// Infer target categories from exact PiMP Audio Studio module paths.
     static func inferTargetLayers(fromInjectionPatterns patterns: [String]) -> Set<TargetLayer> {
         var layers = Set<TargetLayer>()
 

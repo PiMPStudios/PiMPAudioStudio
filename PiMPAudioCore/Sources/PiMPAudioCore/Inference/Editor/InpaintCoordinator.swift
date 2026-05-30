@@ -29,7 +29,7 @@ public actor InpaintCoordinator {
     /// Stable Audio Open conditioning pipeline — set at init or via `setSFXPipeline`.
     private var sfxPipeline: SoundFXPipeline?
     /// T5 tokenizer for SAO conditioning.
-    private var sfxTokenizer: AnvilTokenizer?
+    private var sfxTokenizer: PiMPAudioTokenizer?
 
     public var hasLoadedAudio: Bool {
         currentLatents != nil || sfxCurrentLatents != nil || currentAudio != nil
@@ -48,7 +48,7 @@ public actor InpaintCoordinator {
         sfxDiffusionActor: SFXDiffusionActor? = nil,
         conditioningActor: ConditioningActor? = nil,
         sfxPipeline: SoundFXPipeline? = nil,
-        sfxTokenizer: AnvilTokenizer? = nil
+        sfxTokenizer: PiMPAudioTokenizer? = nil
     ) {
         self.vaeActor = vaeActor
         self.sfxVAEActor = sfxVAEActor
@@ -61,7 +61,7 @@ public actor InpaintCoordinator {
     }
 
     /// Update the SAO conditioning pipeline at runtime (called when SAO weights load).
-    public func setSFXPipeline(_ pipeline: SoundFXPipeline?, tokenizer: AnvilTokenizer?) {
+    public func setSFXPipeline(_ pipeline: SoundFXPipeline?, tokenizer: PiMPAudioTokenizer?) {
         sfxPipeline = pipeline
         sfxTokenizer = tokenizer
         // Invalidate cached SAO latents so they're re-encoded on next SAO inpaint

@@ -90,8 +90,8 @@ private struct Options {
     Example:
       swift run --package-path PiMPAudioCore QualityEval \\
         --case slow-dark-guitar-riff-direct \\
-        --latent /tmp/anvil-quality/direct-latents.safetensors \\
-        --reference /tmp/anvil-quality/direct-upstream.wav \\
+        --latent /tmp/pimp-audio-quality/direct-latents.safetensors \\
+        --reference /tmp/pimp-audio-quality/direct-upstream.wav \\
         --report docs/quality-eval/reports/slow-dark-guitar-riff-direct.md
     """
 

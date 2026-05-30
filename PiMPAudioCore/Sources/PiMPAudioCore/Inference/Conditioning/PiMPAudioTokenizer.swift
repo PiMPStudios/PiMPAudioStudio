@@ -8,7 +8,7 @@ import Tokenizers
 /// Loads a tokenizer from a local `tokenizer.json` file and provides
 /// `encodeText` and `encodeLyrics` convenience methods that return
 /// `MLXArray` tensors shaped `[1, tokenCount]`, capped by `maxLength`.
-public struct AnvilTokenizer: Sendable {
+public struct PiMPAudioTokenizer: Sendable {
     // Box the protocol existential so the struct stays Sendable without
     // requiring the upstream type to declare conformance itself.
     private final class Box: @unchecked Sendable {
@@ -107,8 +107,8 @@ public struct AnvilTokenizer: Sendable {
     ///
     /// Uses an in-memory scalar encoder so structural tests do not depend on
     /// swift-transformers BPE edge cases or external checkpoint files.
-    public static func forTesting() throws -> AnvilTokenizer {
-        AnvilTokenizer { text in
+    public static func forTesting() throws -> PiMPAudioTokenizer {
+        PiMPAudioTokenizer { text in
             text.unicodeScalars.compactMap { scalar in
                 guard !CharacterSet.whitespacesAndNewlines.contains(scalar) else { return nil }
                 return Int(scalar.value % 10_000) + 1

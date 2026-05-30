@@ -47,7 +47,7 @@ text prompt
 
 Upstream reference:
 
-- Local Python source: `~/Developer/GitRepos/AnvilApp/.venv/.../mlx_audiogen/models/stable_audio/`
+- Local Python source in the frozen legacy reference checkout: `~/Developer/GitRepos/AnvilApp/.venv/.../mlx_audiogen/models/stable_audio/`
   - `pipeline.py` — top-level `generate()`, `sigma_max=1.0`, `negative_prompt=""`
   - `conditioners.py` — `T5[:64]+totalToken+startToken` for cross-attn; `[total,start]` globalCond order
   - `sampling.py` — logSNR sigmoid schedule, Euler ODE step
@@ -668,7 +668,7 @@ from mlx_audiogen.models.stable_audio.pipeline import StableAudioPipeline
 ## File map (SAO-specific)
 
 ```text
-AnvilCore/Sources/AnvilCore/Inference/StableAudio/
+PiMPAudioCore/Sources/PiMPAudioCore/Inference/StableAudio/
   SoundFXPipeline.swift         — end-to-end orchestrator; conditioning build
   SFXDiTModel.swift             — SAOFourierFeatures, SAOBiasMLP, SAODiTLayer,
                                    SAODiTTransformer, SFXDiTModel
@@ -679,13 +679,13 @@ AnvilCore/Sources/AnvilCore/Inference/StableAudio/
   SFXVAEActor.swift             — actor wrapper; decode() with AUDIODIAG probes
   T5Encoder.swift               — SAO text conditioning (T5-base v1.0, 768-dim)
 
-AnvilCore/Sources/AnvilCore/Inference/Weights/
+PiMPAudioCore/Sources/PiMPAudioCore/Inference/Weights/
   SFXDiTNameMap.swift           — DiT key mapping (373/374 verified 2026-05-10)
   SFXVAENameMap.swift           — VAE key mapping (rewritten 2026-05-09, 145/145)
   SAOProjectionNameMap.swift    — conditioners key mapping
   T5NameMap.swift               — T5 encoder key mapping (final_layer_norm fixed 2026-05-10)
 
-AnvilApp/Services/
+PiMPAudioStudio/Services/
   SFXModelManager.swift         — loads all 4 components; builds SoundFXPipeline
 
 ~/.cache/anvil-audio/mlx-weights/stable-audio-open-1.0/

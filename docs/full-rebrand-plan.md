@@ -46,17 +46,14 @@ code rename pass:
 | MCP server | `AnvilMCPServer` | `PiMPAudioMCPServer` |
 | Tokenizer wrapper | `AnvilTokenizer` | `PiMPAudioTokenizer` |
 
-Open naming checks before execution:
+Resolved naming checks:
 
-- Confirm whether the bundle ID should use `com.pimpstudios.PiMPAudioStudio`,
-  `net.pimp.PiMPAudioStudio`, or another reverse-DNS identity tied to the final
-  developer account.
-- Confirm whether the MCP scheme should be `pimpaudio://` or something else.
-  `pimpaudio://` is the current recommendation because it is short, stable, and
-  less awkward than `pimp://`.
-- Confirm whether deep format keys such as `anvil_schema_version` should become
-  `pimp_audio_schema_version` immediately, or be version-bumped only when those
-  payloads materially change.
+- Bundle ID uses `com.pimpstudios.PiMPAudioStudio`.
+- MCP scheme uses `pimpaudio://` because it is short, stable, and less awkward
+  than `pimp://`.
+- Deep format keys owned by the app now use `pimp_audio_*` names. Targeted
+  readers keep legacy `anvil_*` compatibility only where importing old local
+  packages or descriptors matters.
 
 ## Option Comparison
 
@@ -251,14 +248,20 @@ Validation notes:
 
 ### Phase 5: Source Symbols And Product Language
 
+Status: Complete as of 2026-05-30.
+
 - Rename internal symbols that still carry product identity:
-  - `AnvilTokenizer`
-  - `AnvilCommandFacadeError`
-  - `AnvilResourceURI`
+  - `AnvilTokenizer` renamed to `PiMPAudioTokenizer`.
+  - `AnvilCommandFacadeError` renamed to `PiMPAudioCommandFacadeError`.
+  - `AnvilResourceURI` renamed to `PiMPAudioResourceURI`.
   - app-specific command, resource, and manifest names.
 - Update user-facing strings, README, docs, screenshots references, and comments.
 - Leave historical docs only when the historical name is meaningful; otherwise
   rewrite to the new product identity.
+- Remove active `ANVIL_*` environment fallbacks from new runtime code.
+- Move app-owned dataset, preprocessing, lyric transcription, package validation,
+  and remote job schema keys to `pimp_audio_*`, with targeted legacy readers for
+  existing local packages and remote descriptors.
 
 Exit criteria:
 
@@ -266,6 +269,18 @@ Exit criteria:
   - historical docs intentionally marked as legacy history,
   - migration compatibility constants,
   - third-party references such as old repo URLs.
+
+Validation notes:
+
+- `AnvilTokenizer` source/test symbols were renamed to `PiMPAudioTokenizer`.
+- Active Demucs/provider environment fallbacks now write/read only
+  `PIMP_AUDIO_*` names.
+- New dataset packages write `pimp_audio_*` schema keys; training-bundle and
+  remote-job readers still accept legacy `anvil_*` descriptors.
+- `xcodegen generate` passed.
+- `git diff --check` passed.
+- `xcodebuild -project PiMPAudioStudio.xcodeproj -scheme PiMPAudioStudio -destination 'platform=macOS' -derivedDataPath /tmp/PiMPAudioStudio-phase5-xcbuild -only-testing:PiMPAudioStudioTests test` passed with 59 Swift Testing tests.
+- `swift test --package-path PiMPAudioCore --scratch-path /tmp/PiMPAudioCore-phase5-spm-smoke --filter PiMPAudioTokenizerTests` compiled but hit the known SwiftPM MLX `default.metallib` runtime loader issue before executing assertions. The generated `PiMPAudioCore` Xcode scheme is not configured for the test action, so the app test target remains the reliable validation gate for now.
 
 ### Phase 6: External Cutover
 

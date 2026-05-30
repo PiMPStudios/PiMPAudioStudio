@@ -7,9 +7,9 @@
 
 ## Artifacts
 
-- Weights: `/Users/tweaver/Library/Containers/net.pimp.anvil.AnvilApp/Data/Library/Application Support/Anvil/models/ace-step-vae/vae.safetensors`
-- Latent: `/tmp/anvil-quality/sparse-dark-guitar-direct-latents.safetensors` (`latents`)
-- Reference: `/tmp/anvil-quality/sparse-dark-guitar-direct-upstream.wav`
+- Weights: `/Users/tweaver/Library/Containers/com.pimpstudios.PiMPAudioStudio/Data/Library/Application Support/PiMP Audio Studio/models/ace-step-vae/vae.safetensors`
+- Latent: `/tmp/pimp-audio-quality/sparse-dark-guitar-direct-latents.safetensors` (`latents`)
+- Reference: `/tmp/pimp-audio-quality/sparse-dark-guitar-direct-upstream.wav`
 
 ## Shapes
 

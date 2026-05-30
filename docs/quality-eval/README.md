@@ -8,7 +8,7 @@ run one fixed denoising forward pass and compare selected Swift tensors against
 upstream reference tensors from the same inputs.
 
 For everyday listening A/Bs inside the app, use the Generation Analyzer rather
-than this parity harness. Current Anvil builds write `.trace.json` sidecars next
+than this parity harness. Current PiMP Audio Studio builds write `.trace.json` sidecars next
 to generated WAVs; History can reopen those traces and compare two runs with
 changed settings, prompt/lyrics, audio summaries, A/B playback, and editor
 handoff. Compare mode also saves listening notes and preferred-take flags back
@@ -34,7 +34,7 @@ direct-decode case with:
 
 ```sh
 python3 ../ACE-Step-1.5/scripts/export_vae_parity_case.py \
-  --output-dir /tmp/anvil-quality \
+  --output-dir /tmp/pimp-audio-quality \
   --case-name sparse-dark-guitar-direct \
   --caption "slow dark guitar riff" \
   --lyrics "[Instrumental]" \
@@ -56,17 +56,17 @@ normalization, so the comparison stays focused on VAE parity.
 From the repo root:
 
 ```sh
-swift run --package-path AnvilCore QualityEval \
+swift run --package-path PiMPAudioCore QualityEval \
   --case sparse-dark-guitar-direct \
-  --latent /tmp/anvil-quality/sparse-dark-guitar-direct-latents.safetensors \
-  --reference /tmp/anvil-quality/sparse-dark-guitar-direct-upstream.wav \
+  --latent /tmp/pimp-audio-quality/sparse-dark-guitar-direct-latents.safetensors \
+  --reference /tmp/pimp-audio-quality/sparse-dark-guitar-direct-upstream.wav \
   --report docs/quality-eval/reports/sparse-dark-guitar-direct.md
 ```
 
 The VAE weights default to the app cache:
 
 ```text
-~/Library/Containers/net.pimp.anvil.AnvilApp/Data/Library/Application Support/Anvil/models/ace-step-vae/vae.safetensors
+~/Library/Containers/com.pimpstudios.PiMPAudioStudio/Data/Library/Application Support/PiMP Audio Studio/models/ace-step-vae/vae.safetensors
 ```
 
 Pass `--weights /path/to/vae.safetensors` to override it.
@@ -109,10 +109,10 @@ matching tensor keys. Missing keys are reported as `missing-reference` or
 From the repo root:
 
 ```sh
-swift run --package-path AnvilCore DiTProbeEval \
+swift run --package-path PiMPAudioCore DiTProbeEval \
   --case sparse-dark-guitar-dit-step \
-  --inputs /tmp/anvil-quality/dit-probe-inputs.safetensors \
-  --reference /tmp/anvil-quality/dit-probe-reference.safetensors \
+  --inputs /tmp/pimp-audio-quality/dit-probe-inputs.safetensors \
+  --reference /tmp/pimp-audio-quality/dit-probe-reference.safetensors \
   --layers 0,1,23 \
   --report docs/quality-eval/reports/sparse-dark-guitar-dit.md
 ```
@@ -120,7 +120,7 @@ swift run --package-path AnvilCore DiTProbeEval \
 The DiT weights default to the app cache:
 
 ```text
-~/Library/Containers/net.pimp.anvil.AnvilApp/Data/Library/Application Support/Anvil/models/ace-step-dit-sft/model.safetensors
+~/Library/Containers/com.pimpstudios.PiMPAudioStudio/Data/Library/Application Support/PiMP Audio Studio/models/ace-step-dit-sft/model.safetensors
 ```
 
 Pass `--weights /path/to/model.safetensors` and

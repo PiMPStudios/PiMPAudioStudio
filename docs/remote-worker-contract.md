@@ -48,7 +48,7 @@ Minimal shape:
 
 ```json
 {
-  "anvil_remote_job_version": "1.0",
+  "pimp_audio_remote_job_version": "1.0",
   "job_id": "uuid",
   "created_at": "2026-05-29T19:00:00Z",
   "task": "train_lora",
@@ -129,7 +129,7 @@ Workers may fill or reuse `preprocessed/<bundle>/samples/*.safetensors` and `pre
 
 ```json
 {
-  "anvil_remote_result_version": "1.0",
+  "pimp_audio_remote_result_version": "1.0",
   "job_id": "uuid",
   "task": "train_lora",
   "status": "succeeded",
@@ -139,7 +139,7 @@ Workers may fill or reuse `preprocessed/<bundle>/samples/*.safetensors` and `pre
     {
       "kind": "final_adapter",
       "path": "remote_artifacts/final_adapter",
-      "media_type": "application/vnd.anvil.adapter"
+      "media_type": "application/vnd.pimp-audio.adapter"
     }
   ],
   "metrics": {
@@ -197,7 +197,7 @@ Provider adapters are thin. A RunPod adapter and a DigitalOcean adapter should i
 - download `remote_artifacts/**`
 - clean up remote resources
 
-Provider adapters may store provider-specific IDs locally in Anvil, but those IDs do not belong in the dataset package or `remote_job.json`.
+Provider adapters may store provider-specific IDs locally in PiMP Audio Studio, but those IDs do not belong in the dataset package or `remote_job.json`.
 
 ## Security And Privacy
 

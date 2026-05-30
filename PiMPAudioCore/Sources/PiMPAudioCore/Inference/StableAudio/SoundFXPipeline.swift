@@ -62,7 +62,7 @@ public actor SoundFXPipeline {
         text: String,
         duration: TimeInterval,
         config: SFXDiffusionConfig,
-        tokenizer: AnvilTokenizer
+        tokenizer: PiMPAudioTokenizer
     ) async throws -> AudioResult {
         // T5 encoding — pad to max_length=128 BEFORE encoding so T5 processes
         // PAD tokens in context (matches Python `padding="max_length"`).
@@ -223,7 +223,7 @@ public actor SoundFXPipeline {
     public func buildConditioning(
         text: String,
         duration: TimeInterval,
-        tokenizer: AnvilTokenizer
+        tokenizer: PiMPAudioTokenizer
     ) async -> SFXInpaintConditioning {
         let clampedDuration = min(duration, Self.maxDuration)
 

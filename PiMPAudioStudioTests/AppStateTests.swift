@@ -591,7 +591,7 @@ private extension JSONDecoder {
     )
     try """
     {
-      "anvil_preprocess_index_version": "1.0",
+      "pimp_audio_preprocess_index_version": "1.0",
       "entries": [
         {
           "clip_id": "f001_clip_001",
@@ -604,6 +604,8 @@ private extension JSONDecoder {
 
     let refreshedPreprocessData = try Data(contentsOf: datasetDir.appendingPathComponent("preprocess_cache.json"))
     let refreshedPreprocess = try JSONSerialization.jsonObject(with: refreshedPreprocessData) as? [String: Any]
+    #expect(refreshedPreprocess?["pimp_audio_preprocess_cache_version"] as? String == "1.0")
+    #expect(refreshedPreprocess?["anvil_preprocess_cache_version"] == nil)
     #expect(refreshedPreprocess?["status"] as? String == "partial")
     let refreshedBundles = refreshedPreprocess?["bundles"] as? [[String: Any]] ?? []
     let fullMixBundle = refreshedBundles.first { ($0["name"] as? String) == "full_mix" }
@@ -612,6 +614,8 @@ private extension JSONDecoder {
 
     let remoteData = try Data(contentsOf: datasetDir.appendingPathComponent("remote_training_package.json"))
     let remoteJSON = try JSONSerialization.jsonObject(with: remoteData) as? [String: Any]
+    #expect(remoteJSON?["pimp_audio_remote_package_version"] as? String == "1.0")
+    #expect(remoteJSON?["anvil_remote_package_version"] == nil)
     let providerTargets = remoteJSON?["provider_targets"] as? [String] ?? []
     #expect(providerTargets.contains("runpod"))
     #expect(providerTargets.contains("digitalocean_gpu"))
@@ -639,6 +643,18 @@ private extension JSONDecoder {
         RemoteTrainingPackageDescriptor.self,
         from: remoteData
     )
+    #expect(descriptor.pimpAudioRemotePackageVersion == "1.0")
+    var legacyRemoteJSON = remoteJSON ?? [:]
+    legacyRemoteJSON["anvil_remote_package_version"] = legacyRemoteJSON.removeValue(
+        forKey: "pimp_audio_remote_package_version"
+    )
+    let legacyRemoteData = try JSONSerialization.data(withJSONObject: legacyRemoteJSON)
+    let legacyDescriptor = try RemoteTrainingJobCodec.decoder.decode(
+        RemoteTrainingPackageDescriptor.self,
+        from: legacyRemoteData
+    )
+    #expect(legacyDescriptor.pimpAudioRemotePackageVersion == "1.0")
+
     let job = RemoteTrainingJobRequest.makeTemplate(
         from: descriptor,
         jobID: "job-test-1",
@@ -646,7 +662,7 @@ private extension JSONDecoder {
         maxRuntimeSeconds: 7_200,
         maxCostUSD: 12.50
     )
-    #expect(job.anvilRemoteJobVersion == "1.0")
+    #expect(job.pimpAudioRemoteJobVersion == "1.0")
     #expect(job.task == .trainLoRA)
     #expect(job.package.entryBundle == "training_bundle_full_mix.json")
     #expect(job.package.selectedBundle.name == "full_mix")
@@ -660,9 +676,19 @@ private extension JSONDecoder {
     #expect(job.safety.writeProviderSecretsToPackage == false)
 
     let encodedJob = try RemoteTrainingJobCodec.encoder.encode(job)
+    let encodedJobJSON = try JSONSerialization.jsonObject(with: encodedJob) as? [String: Any]
+    #expect(encodedJobJSON?["pimp_audio_remote_job_version"] as? String == "1.0")
+    #expect(encodedJobJSON?["anvil_remote_job_version"] == nil)
     let decodedJob = try RemoteTrainingJobCodec.decoder.decode(RemoteTrainingJobRequest.self, from: encodedJob)
     #expect(decodedJob.jobID == "job-test-1")
     #expect(decodedJob.package.copyRules.include.contains("preprocessed/**"))
+    var legacyJobJSON = encodedJobJSON ?? [:]
+    legacyJobJSON["anvil_remote_job_version"] = legacyJobJSON.removeValue(
+        forKey: "pimp_audio_remote_job_version"
+    )
+    let legacyJobData = try JSONSerialization.data(withJSONObject: legacyJobJSON)
+    let legacyJob = try RemoteTrainingJobCodec.decoder.decode(RemoteTrainingJobRequest.self, from: legacyJobData)
+    #expect(legacyJob.pimpAudioRemoteJobVersion == "1.0")
 
     let backupDirectory = datasetDir
         .appendingPathComponent("review_backups", isDirectory: true)
@@ -698,6 +724,8 @@ private extension JSONDecoder {
 
     let manifestData = try Data(contentsOf: datasetDir.appendingPathComponent("dataset_manifest.json"))
     let manifestJSON = try JSONSerialization.jsonObject(with: manifestData) as? [String: Any]
+    #expect(manifestJSON?["pimp_audio_dataset_version"] as? String == "1.0")
+    #expect(manifestJSON?["anvil_dataset_version"] == nil)
     let audioJSON = manifestJSON?["audio"] as? [String: Any]
     #expect(audioJSON?["metadata_status"] as? String == "audio_properties_unavailable")
     #expect(audioJSON?["format"] as? String == "m4a")

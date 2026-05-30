@@ -105,8 +105,8 @@ private struct Options {
     Example:
       swift run --package-path PiMPAudioCore DiTProbeEval \\
         --case sparse-dark-guitar-dit-step \\
-        --inputs /tmp/anvil-quality/dit-probe-inputs.safetensors \\
-        --reference /tmp/anvil-quality/dit-probe-reference.safetensors \\
+        --inputs /tmp/pimp-audio-quality/dit-probe-inputs.safetensors \\
+        --reference /tmp/pimp-audio-quality/dit-probe-reference.safetensors \\
         --layers 0,1,23 \\
         --report docs/quality-eval/reports/sparse-dark-guitar-dit.md
     """

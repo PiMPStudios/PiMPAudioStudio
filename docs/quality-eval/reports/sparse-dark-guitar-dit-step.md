@@ -4,10 +4,10 @@ Generated: 2026-05-19 02:58:48 +0000
 
 ## Inputs
 
-- Inputs: `/tmp/anvil-quality/sparse-dark-guitar-dit-step-dit-probe-inputs.safetensors`
-- Reference: `/tmp/anvil-quality/sparse-dark-guitar-dit-step-dit-probe-reference.safetensors`
-- Weights: `/Users/tweaver/Library/Containers/net.pimp.anvil.AnvilApp/Data/Library/Application Support/Anvil/models/ace-step-dit-sft/model.safetensors`
-- Config: `/Users/tweaver/Library/Containers/net.pimp.anvil.AnvilApp/Data/Library/Application Support/Anvil/models/ace-step-dit-sft/config.json`
+- Inputs: `/tmp/pimp-audio-quality/sparse-dark-guitar-dit-step-dit-probe-inputs.safetensors`
+- Reference: `/tmp/pimp-audio-quality/sparse-dark-guitar-dit-step-dit-probe-reference.safetensors`
+- Weights: `/Users/tweaver/Library/Containers/com.pimpstudios.PiMPAudioStudio/Data/Library/Application Support/PiMP Audio Studio/models/ace-step-dit-sft/model.safetensors`
+- Config: `/Users/tweaver/Library/Containers/com.pimpstudios.PiMPAudioStudio/Data/Library/Application Support/PiMP Audio Studio/models/ace-step-dit-sft/config.json`
 - Layers: `0,1,23`
 - DiT variant: `ace-step-1.5` (`hiddenSize=2048`, `layers=24`, `heads=16`, `kvHeads=8`)
 

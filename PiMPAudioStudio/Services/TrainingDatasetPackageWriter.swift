@@ -280,7 +280,7 @@ enum TrainingDatasetPackageWriter {
         }
         try writeJSONObject(
             [
-                "anvil_review_backup_version": "1.0",
+                "pimp_audio_review_backup_version": "1.0",
                 "created_at": ISO8601DateFormatter().string(from: createdAt),
                 "reason": reason,
                 "files": filesToCopy,
@@ -331,7 +331,7 @@ enum TrainingDatasetPackageWriter {
         }
 
         let manifest: [String: Any] = [
-            "anvil_preprocess_cache_version": preprocessCacheVersion,
+            "pimp_audio_preprocess_cache_version": preprocessCacheVersion,
             "created_at": createdAtString,
             "updated_at": createdAtString,
             "dataset_dir": ".",
@@ -478,7 +478,7 @@ enum TrainingDatasetPackageWriter {
 
     private static func datasetConfig() -> [String: Any] {
         [
-            "anvil_dataset_config_version": "1.0",
+            "pimp_audio_dataset_config_version": "1.0",
             "dataset_type": "audio_dir",
             "datasets": [
                 [
@@ -507,7 +507,7 @@ enum TrainingDatasetPackageWriter {
             fallbackClipLength: config.clipLength
         )
         return [
-            "anvil_dataset_version": "1.0",
+            "pimp_audio_dataset_version": "1.0",
             "name": outputDirectory.lastPathComponent,
             "created_at": createdAt,
             "source": [
@@ -571,7 +571,7 @@ enum TrainingDatasetPackageWriter {
 
     private static func trainingBundle(clips: [[String: Any]], createdAt: String) -> [String: Any] {
         [
-            "anvil_training_bundle_version": "1.0",
+            "pimp_audio_training_bundle_version": "1.0",
             "created_at": createdAt,
             "dataset_dir": ".",
             "include": ["full_mix"],
@@ -590,7 +590,7 @@ enum TrainingDatasetPackageWriter {
         createdAt: String
     ) -> [String: Any] {
         [
-            "anvil_remote_package_version": "1.0",
+            "pimp_audio_remote_package_version": "1.0",
             "created_at": createdAt,
             "package_name": outputDirectory.lastPathComponent,
             "package_root": ".",
@@ -1361,7 +1361,7 @@ enum TrainingDatasetPackageWriter {
         to outputDirectory: URL
     ) throws {
         let object: [String: Any] = [
-            "anvil_package_validation_version": "1.0",
+            "pimp_audio_package_validation_version": "1.0",
             "checked_at": validation.checkedAt,
             "is_valid": validation.isValid,
             "summary": validation.summary,

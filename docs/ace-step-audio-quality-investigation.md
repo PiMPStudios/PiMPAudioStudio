@@ -52,7 +52,7 @@ diagnostics: `config/tailGuard`, `diff/final_latent_abs_mean_per_sec`, and
 
 ## Project context
 
-Porting **ACE-Step v1.5** (audio diffusion model — text→music) from PyTorch+upstream-MLX into a native Swift + MLX-Swift macOS app (`AnvilApp`). Pipeline:
+Porting **ACE-Step v1.5** (audio diffusion model — text→music) from PyTorch+upstream-MLX into a native Swift + MLX-Swift macOS app (`PiMPAudioStudio`). Pipeline:
 
 ```
 text prompt
@@ -153,7 +153,7 @@ Each commit message has full reasoning. Key ones for the audio path:
 | `5faf163` | **Timestep schedule** trajectory tail | Used `1 - i/N` (stops at 1/N ≈ 0.125 for N=8); upstream uses `linspace(1.0, 1/num_train_timesteps, N)` (stops at ~0.001). Diffusion walked only 70% of trajectory; finalStep leaped the rest in one Euler step → noise. Now matches `scheduling_flow_match_euler_discrete.py`. |
 | `89c79da` → `3629cec` | Cross-attn pre-norm REMOVED then RESTORED | I read public `attention.py:308-315` (raw hidden_states into cross_attn). **GPT-5.5 caught:** safetensors has 24 `cross_attn_norm.weight` tensors, and v1.5-specific source (`models/turbo/modeling_acestep_v15_turbo.py:512`, `models/mlx/dit_model.py:332`) DOES apply norm. Public attention.py is a newer refactor. **Reverted.** |
 | `a1a22a2` → `4920923` | Cross-attn RoPE ADDED then REMOVED | I read public `customer_attention_processor.py:353-358` which rotates both Q and K. **GPT-5.5 caught:** local `models/mlx/dit_model.py:196-222` does NOT apply RoPE in cross-attn at all. Same public-vs-v1.5 divergence. **Reverted.** |
-| `ae66c24` | **Tokenizer longest-padding** | `AnvilTokenizer.encode` always padded to fixed maxLength with zeros. Combined with our (correct) decision to skip cross-attn encoder mask, we fed 2298 padding-derived "ghost tokens" through cross-attn (conditionEmbedder.bias makes them non-inert). Upstream uses `padding="longest"` with maxLength as truncation cap (`conditioning_text.py:128-142`). Result: encoderStates `[1, 2309, 2048]` → `[1, ~10, 2048]` for typical short prompts. |
+| `ae66c24` | **Tokenizer longest-padding** | `PiMPAudioTokenizer.encode` always padded to fixed maxLength with zeros. Combined with our (correct) decision to skip cross-attn encoder mask, we fed 2298 padding-derived "ghost tokens" through cross-attn (conditionEmbedder.bias makes them non-inert). Upstream uses `padding="longest"` with maxLength as truncation cap (`conditioning_text.py:128-142`). Result: encoderStates `[1, 2309, 2048]` → `[1, ~10, 2048]` for typical short prompts. |
 | `66c3162` | **SFT_GEN_PROMPT template wrap** | Tokenizing raw user prompt — DiT was trained on `# Instruction / # Caption / # Metas / <\|endoftext\|>` scaffold (`acestep/constants.py:SFT_GEN_PROMPT`) plus `# Languages / # Lyric / <\|endoftext\|>` for lyrics (`prompt_utils.py:_format_lyrics`). Now wraps both. Lyrics default to `en`, metas all N/A except duration. encoderStates seq grew ~10 → ~73 (longer wrapped prompt); abs_mean 1.5 → 2.4. |
 | `461b198` | chunk_mask = ones, not zeros (smoke test) | Upstream text2music: `context_latents = cat([silence_latent_slice, chunk_mask_ones], axis=-1)` (`models/turbo/modeling_acestep_v15_turbo.py:1680, 1931`). We had all zeros. Smoke test flipped mask half to ones. contextLatents abs_mean 0 → 0.5; vt step 7 abs_mean 0.57 → 1.53 (model now confidently shaping output near t=0). |
 | `9757bac` | **`silence_latent.pt` loader for text2music context body** | Final piece of `cat([silence_latent_slice, ones])`. New `SilenceLatentLoader.swift` reads the `.pt` file via `/usr/bin/unzip -p` (no third-party zip lib, no pickle parsing), extracts raw float32 at `*/data/0`, returns `[1, 15000, 64]` (transposed from stored `[1, 64, 15000]`). `ConditioningActor.silenceLatent` field; encode() slices `[:, :tFrames, :]` (tiles if duration > 600s). `ACEStepGenerationService` loads it next to model.safetensors. ModelRegistry: added to all 3 DiT specs (3.84 MB each, auto-downloads). Result: contextLatents `abs_mean=0.787, abs_max=6.73` — matches GPT-5.5's predicted `~0.78 / ~6.7`. VAE output `abs_max=0.30` (was 1.7 → 1.10 → 0.80 → 0.30 across the session). User: "starts off slow, builds up, drops down slow, builds back up. It's like it's trying." |
@@ -311,16 +311,17 @@ The biggest conditioning bugs are fixed, but still worth verifying:
 To reset to fresh-user state for testing:
 
 ```bash
-ANVIL_BASE="$HOME/Library/Containers/net.pimp.anvil.AnvilApp/Data/Library/Application Support/Anvil"
-rm -rf "$ANVIL_BASE/models"
-defaults delete net.pimp.anvil.AnvilApp com.pimp.AnvilApp.modelMigration.v1 2>/dev/null
+PIMP_AUDIO_BASE="$HOME/Library/Containers/com.pimpstudios.PiMPAudioStudio/Data/Library/Application Support/PiMP Audio Studio"
+rm -rf "$PIMP_AUDIO_BASE/models"
+defaults delete com.pimpstudios.PiMPAudioStudio com.pimpstudios.PiMPAudioStudio.migration.runtimeIdentity.v1 2>/dev/null
+defaults delete com.pimpstudios.PiMPAudioStudio com.pimpstudios.PiMPAudioStudio.migration.dataDirectories.v2 2>/dev/null
 ```
 
 The user's local checkpoint mirrors at `~/Developer/GitRepos/ACE-Step-1.5/checkpoints/` which can be copied into the sandbox to skip downloads:
 
 ```bash
 SRC=~/Developer/GitRepos/ACE-Step-1.5/checkpoints
-DST="$HOME/Library/Containers/net.pimp.anvil.AnvilApp/Data/Library/Application Support/Anvil/models"
+DST="$HOME/Library/Containers/com.pimpstudios.PiMPAudioStudio/Data/Library/Application Support/PiMP Audio Studio/models"
 
 # Qwen3 text encoder
 mkdir -p "$DST/ace-step-vae"
@@ -346,7 +347,7 @@ Or simply let the app download from HuggingFace — Phase 2/3 download infrastru
 
 ```python
 import wave, struct, math
-fn = "anvil_TIMESTAMP_PROMPT.wav"
+fn = "pimp_audio_TIMESTAMP_PROMPT.wav"
 with wave.open(fn, 'rb') as w:
     n, ch, sw, sr = w.getnframes(), w.getnchannels(), w.getsampwidth(), w.getframerate()
     raw = w.readframes(n)

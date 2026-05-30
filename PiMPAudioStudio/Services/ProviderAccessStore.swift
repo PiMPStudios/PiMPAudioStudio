@@ -1113,8 +1113,7 @@ enum ProviderCLIPaths {
         let processHome = primaryHomeDirectory ?? processHomeDirectory(environment: environment)
         let userHome = realUserHomeDirectory(environment: environment)
         let includeGrantedDirectories =
-            environment["PIMP_AUDIO_DISABLE_PROVIDER_CLI_GRANTS"] != "1" &&
-            environment["ANVIL_DISABLE_PROVIDER_CLI_GRANTS"] != "1"
+            environment["PIMP_AUDIO_DISABLE_PROVIDER_CLI_GRANTS"] != "1"
         var directories = includeGrantedDirectories ? ProviderCLIAccessGrants.grantedDirectoryPaths() : []
         directories.append(contentsOf: [
             "\(processHome)/.grok/bin",

@@ -17,7 +17,7 @@ The package contains:
 - `dataset_config.json` - generic audio-directory training config.
 - `dataset_manifest.json` - full package metadata, source file list, clip list, audio header metadata, and package status.
 - `training_bundle.json` - PiMP Audio Studio training bundle for the generated full-mix clips.
-- `training_bundle_full_mix.json` - explicit full-mix bundle; this is the safest file to re-import into Anvil.
+- `training_bundle_full_mix.json` - explicit full-mix bundle; this is the safest file to re-import into PiMP Audio Studio's trainer.
 - `training_bundle_vocals.json` - optional vocal-stem bundle written after local enrichment.
 - `training_bundle_instrumental.json` - optional instrumental-stem bundle written after local enrichment.
 - `remote_training_package.json` - provider-neutral descriptor for future RunPod/DigitalOcean GPU workers.
@@ -46,7 +46,7 @@ The exported JSON carries caption, prompt, lyrics, transcript, BPM, keyscale, la
 
 ## Preprocess Cache
 
-Training from an Anvil dataset bundle now fills the package cache instead of only declaring it. When a clip is preprocessed, Anvil writes a sample-level `.safetensors` file and updates a bundle index:
+Training from a PiMP Audio Studio dataset bundle now fills the package cache instead of only declaring it. When a clip is preprocessed, PiMP Audio Studio writes a sample-level `.safetensors` file and updates a bundle index:
 
 ```text
 preprocessed/<bundle>/samples/<clip>_<fingerprint>.safetensors
@@ -63,7 +63,7 @@ After a local-file package is built, use **Review Dataset** from the build sheet
 
 The enrichment backend is native Swift/MLX Demucs via `demucs-mlx-swift`, using `htdemucs` in vocals-plus-instrumental mode. PiMP Audio Studio writes `stems/`, `separation.json`, `training_bundle_vocals.json`, `training_bundle_instrumental.json`, refreshed manifest metadata, and package validation itself.
 
-Native Demucs model selection can be overridden with `PIMP_AUDIO_DEMUCS_MODEL_NAME`; the optional `PIMP_AUDIO_DEMUCS_MODEL_DIR` points at a local Demucs MLX model directory. The legacy `ANVIL_DEMUCS_MODEL_NAME` and `ANVIL_DEMUCS_MODEL_DIR` variables are still accepted during the rebrand migration. The default model remains `htdemucs`.
+Native Demucs model selection can be overridden with `PIMP_AUDIO_DEMUCS_MODEL_NAME`; the optional `PIMP_AUDIO_DEMUCS_MODEL_DIR` points at a local Demucs MLX model directory. The default model remains `htdemucs`.
 
 Before enrichment starts from the app UI, PiMP Audio Studio releases idle generation, cover-song, SFX, LoRA, and LLM model weights through the same GPU-memory release path used by Settings. The enrichment loop also compacts the MLX allocator between Demucs separation and Qwen transcription work so dataset builds do not stack avoidable model/cache memory on top of the active generation pipeline.
 
@@ -82,7 +82,7 @@ Recommended JSON entry points:
 - Use `training_bundle_vocals.json` for vocal-stem training. PiMP Audio Studio selects `vocals.wav` assets and uses transcripts/lyrics from each clip.
 - Use `training_bundle_instrumental.json` for instrumental-stem training. PiMP Audio Studio selects instrumental assets and intentionally leaves lyrics empty.
 - Use `training_bundle_full_mix.json` for PiMP Audio Studio local-file packages created by **From Local Files...**.
-- `dataset_config.json` is also supported. If a `caption_file` is provided, or a sibling `captions.json` exists, Anvil uses those captions and preserves lyrics for vocal file paths.
+- `dataset_config.json` is also supported. If a `caption_file` is provided, or a sibling `captions.json` exists, PiMP Audio Studio uses those captions and preserves lyrics for vocal file paths.
 
 The training sheet reports how many files were imported from JSON, how many include lyrics, and how many duplicate paths were skipped.
 

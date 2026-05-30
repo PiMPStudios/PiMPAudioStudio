@@ -18,7 +18,7 @@ final class SFXModelManager: ObservableObject {
     /// HF tokenizer for the T5-base text encoder (loads from `tokenizer.json`
     /// shipped under SAO's `tokenizer/` dir). Replaces the previous
     /// CLAPTokenizer wiring.
-    private(set) var tokenizer: AnvilTokenizer?
+    private(set) var tokenizer: PiMPAudioTokenizer?
 
     private let registry: ModelRegistry
     private var loadedModelID: String?
@@ -153,7 +153,7 @@ final class SFXModelManager: ObservableObject {
         // T5 tokenizer ships at `tokenizer/tokenizer.json` upstream; saved
         // locally as `tokenizer.json` alongside the other SAO model files.
         let tokenizerURL = modelPath.appendingPathComponent("tokenizer.json")
-        self.tokenizer = try AnvilTokenizer(configURL: tokenizerURL)
+        self.tokenizer = try PiMPAudioTokenizer(configURL: tokenizerURL)
 
         self.pipeline = SoundFXPipeline(
             t5: t5,

@@ -19,7 +19,7 @@ public actor ConditioningActor {
     private var lyricEncoder: LyricEncoder?
     private var timbreEncoder: TimbreEncoder?
     private var conditionEncoder: ConditionEncoder?
-    private let tokenizer: AnvilTokenizer
+    private let tokenizer: PiMPAudioTokenizer
     /// Trained "silence" latent prior (shape `[1, 15000, 64]`) — used as the
     /// `src_latents` half of `context_latents` when generating from text
     /// only (no reference audio). Loaded from `silence_latent.pt` shipped
@@ -64,7 +64,7 @@ public actor ConditioningActor {
             conditionEncoder: conditionEncoder,
             lyricEncoder: lyricEncoder,
             timbreEncoder: timbreEncoder,
-            tokenizer: AnvilTokenizer(configURL: tokenizerURL)
+            tokenizer: PiMPAudioTokenizer(configURL: tokenizerURL)
         )
     }
 
@@ -74,7 +74,7 @@ public actor ConditioningActor {
         conditionEncoder: ConditionEncoder,
         lyricEncoder: LyricEncoder,
         timbreEncoder: TimbreEncoder,
-        tokenizer: AnvilTokenizer
+        tokenizer: PiMPAudioTokenizer
     ) {
         self.vae = vae
         self.qwen3 = qwen3
@@ -530,7 +530,7 @@ extension ConditioningActor {
             conditionEncoder: ConditionEncoder(),
             lyricEncoder: LyricEncoder(),
             timbreEncoder: TimbreEncoder(),
-            tokenizer: try AnvilTokenizer.forTesting()
+            tokenizer: try PiMPAudioTokenizer.forTesting()
         )
     }
 }
