@@ -3,6 +3,8 @@ import PiMPAudioCore
 import MLX
 
 struct AdapterRegistry {
+    static let trainingRunLogFileName = "training_log.json"
+
     static var adaptersDirectory: URL {
         AppStorageLocations.adaptersDirectory
     }
@@ -193,6 +195,14 @@ struct AdapterRegistry {
         let metaSource = sourceDir.appending(path: "adapter.json")
         let metaDest = destination.appending(path: "adapter.json")
         try fm.copyItem(at: metaSource, to: metaDest)
+
+        for sidecarName in ["training_manifest.json", trainingRunLogFileName] {
+            let sidecarSource = sourceDir.appending(path: sidecarName)
+            guard fm.fileExists(atPath: sidecarSource.path(percentEncoded: false)) else {
+                continue
+            }
+            try fm.copyItem(at: sidecarSource, to: destination.appending(path: sidecarName))
+        }
     }
 
     // MARK: - Training Manifest
@@ -212,6 +222,31 @@ struct AdapterRegistry {
         let url = adapterDirectory(id: adapterID).appending(path: "training_manifest.json")
         guard let data = try? Data(contentsOf: url) else { return nil }
         return try? JSONDecoder().decode(TrainingManifest.self, from: data)
+    }
+
+    // MARK: - Training Run Logs
+
+    static func trainingRunLogURL(adapterID: String) -> URL {
+        adapterDirectory(id: adapterID).appending(path: trainingRunLogFileName)
+    }
+
+    static func saveTrainingRunLog(_ log: TrainingRunLog, adapterID: String) throws {
+        let dir = adapterDirectory(id: adapterID)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try encoder.encode(log)
+        try data.write(to: trainingRunLogURL(adapterID: adapterID), options: .atomic)
+    }
+
+    static func loadTrainingRunLog(adapterID: String) -> TrainingRunLog? {
+        guard let data = try? Data(contentsOf: trainingRunLogURL(adapterID: adapterID)) else {
+            return nil
+        }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try? decoder.decode(TrainingRunLog.self, from: data)
     }
 
     // MARK: - Training Checkpoints

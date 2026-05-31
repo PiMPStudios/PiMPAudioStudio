@@ -1,6 +1,7 @@
 import SwiftUI
 import PiMPAudioCore
 import UniformTypeIdentifiers
+import AppKit
 
 /// Drives `.sheet(item:)` for any training sheet presentation.
 /// Carrying all data as value types ensures the sheet closure sees the
@@ -576,6 +577,14 @@ struct TrainingSheet: View {
             Spacer()
 
             HStack(spacing: 12) {
+                Button {
+                    showAdapterInFinder(adapter)
+                } label: {
+                    Label("Finder", systemImage: "folder")
+                }
+                .buttonStyle(.bordered)
+                .help("Reveal the adapter folder, including training_log.json")
+
                 Button("Train Again") {
                     trainingService.resetToIdle()
                 }
@@ -616,6 +625,12 @@ struct TrainingSheet: View {
         } else {
             dismiss()
         }
+    }
+
+    private func showAdapterInFinder(_ adapter: LoRAAdapter) {
+        NSWorkspace.shared.activateFileViewerSelecting([
+            AdapterRegistry.adapterDirectory(id: adapter.id)
+        ])
     }
 
     private func statView(value: String, label: String) -> some View {

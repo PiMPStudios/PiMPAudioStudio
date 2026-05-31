@@ -576,6 +576,62 @@ private extension JSONDecoder {
     #expect(manifest.importedFiles[0].lyrics == "")
 }
 
+@Test func trainingRunLogRoundTripsNativeTrainingMetadata() throws {
+    var log = TrainingRunLog(
+        adapterID: "darkgentlemen-lokr",
+        adapterName: "Dark Gentlemen LoKR",
+        adapterKind: .lokr,
+        baseModelID: "ace-step-dit-xl",
+        sampleCount: 12,
+        config: LoRAConfig(rank: 64, maxEpochs: 50, trainingLayerCount: 8),
+        lokrConfig: LoKRConfig(linearDim: 64, maxEpochs: 50, trainingLayerCount: 8),
+        resumedFromCheckpoint: false,
+        startedAt: Date(timeIntervalSince1970: 0)
+    )
+    log.recordProgress(
+        TrainingRunProgressEntry(
+            timestamp: Date(timeIntervalSince1970: 10),
+            epoch: 2,
+            totalEpochs: 50,
+            step: 25,
+            loss: 1.25,
+            learningRate: 0.00008,
+            elapsed: 10,
+            estimatedRemaining: 240
+        ),
+        lossHistory: [1.5, 1.25]
+    )
+    log.finish(
+        status: .completed,
+        finalLoss: 0.75,
+        trainedPaths: [
+            "layers.28.selfAttn.qProj",
+            "layers.29.crossAttn.vProj",
+        ],
+        trainedLayerIndices: [28, 29],
+        weightsTensorCount: 4,
+        message: "Training completed.",
+        finishedAt: Date(timeIntervalSince1970: 20)
+    )
+
+    let encoder = JSONEncoder()
+    encoder.dateEncodingStrategy = .iso8601
+    let data = try encoder.encode(log)
+    let decoder = JSONDecoder()
+    decoder.dateDecodingStrategy = .iso8601
+    let decoded = try decoder.decode(TrainingRunLog.self, from: data)
+
+    #expect(decoded.schemaVersion == TrainingRunLog.currentSchemaVersion)
+    #expect(decoded.adapterKind == .lokr)
+    #expect(decoded.status == .completed)
+    #expect(decoded.lokrConfig?.linearDim == 64)
+    #expect(decoded.progress.count == 1)
+    #expect(decoded.lossHistory == [1.5, 1.25])
+    #expect(decoded.finalLoss == 0.75)
+    #expect(decoded.trainedLayerIndices == [28, 29])
+    #expect(decoded.weightsTensorCount == 4)
+}
+
 @Test func localDatasetPackageWriterEmitsImportableFullMixBundle() throws {
     let datasetDir = FileManager.default.temporaryDirectory
         .appendingPathComponent(UUID().uuidString, isDirectory: true)

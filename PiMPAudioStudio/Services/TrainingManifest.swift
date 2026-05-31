@@ -1,4 +1,5 @@
 import Foundation
+import PiMPAudioCore
 
 /// Audio file selected or resolved for LoRA training.
 struct TrainingImportedFile: Codable, Hashable, Sendable {
@@ -119,6 +120,130 @@ struct TrainingManifest: Codable {
 
     /// Imported audio files (not from history) with their training captions.
     let importedFiles: [TrainingImportedFile]
+}
+
+enum TrainingRunStatus: String, Codable, Equatable {
+    case running
+    case completed
+    case paused
+    case cancelled
+    case failed
+}
+
+struct TrainingRunProgressEntry: Codable, Equatable {
+    var timestamp: Date
+    var epoch: Int
+    var totalEpochs: Int
+    var step: Int
+    var loss: Float
+    var learningRate: Float
+    var elapsed: TimeInterval
+    var estimatedRemaining: TimeInterval?
+}
+
+struct TrainingRunEvent: Codable, Equatable {
+    var timestamp: Date
+    var status: TrainingRunStatus
+    var message: String
+}
+
+/// Durable sidecar written beside each trained adapter for debugging,
+/// support, and reproducible local training history.
+struct TrainingRunLog: Codable, Equatable {
+    static let currentSchemaVersion = "1.0"
+
+    var schemaVersion: String
+    var adapterID: String
+    var adapterName: String
+    var adapterKind: AdapterKind
+    var status: TrainingRunStatus
+    var baseModelID: String
+    var sampleCount: Int
+    var config: LoRAConfig
+    var lokrConfig: LoKRConfig?
+    var resumedFromCheckpoint: Bool
+    var startedAt: Date
+    var updatedAt: Date
+    var finishedAt: Date?
+    var progress: [TrainingRunProgressEntry]
+    var lossHistory: [Float]
+    var events: [TrainingRunEvent]
+    var finalLoss: Float?
+    var trainedPaths: [String]
+    var trainedLayerIndices: [Int]
+    var weightsTensorCount: Int?
+    var errorMessage: String?
+
+    init(
+        adapterID: String,
+        adapterName: String,
+        adapterKind: AdapterKind,
+        baseModelID: String,
+        sampleCount: Int,
+        config: LoRAConfig,
+        lokrConfig: LoKRConfig?,
+        resumedFromCheckpoint: Bool,
+        startedAt: Date = Date()
+    ) {
+        self.schemaVersion = Self.currentSchemaVersion
+        self.adapterID = adapterID
+        self.adapterName = adapterName
+        self.adapterKind = adapterKind
+        self.status = .running
+        self.baseModelID = baseModelID
+        self.sampleCount = sampleCount
+        self.config = config
+        self.lokrConfig = lokrConfig
+        self.resumedFromCheckpoint = resumedFromCheckpoint
+        self.startedAt = startedAt
+        self.updatedAt = startedAt
+        self.finishedAt = nil
+        self.progress = []
+        self.lossHistory = []
+        self.events = [
+            TrainingRunEvent(
+                timestamp: startedAt,
+                status: .running,
+                message: resumedFromCheckpoint ? "Training resumed from checkpoint." : "Training started."
+            )
+        ]
+        self.finalLoss = nil
+        self.trainedPaths = []
+        self.trainedLayerIndices = []
+        self.weightsTensorCount = nil
+        self.errorMessage = nil
+    }
+
+    mutating func recordProgress(_ entry: TrainingRunProgressEntry, lossHistory: [Float]) {
+        progress.append(entry)
+        self.lossHistory = lossHistory
+        updatedAt = entry.timestamp
+    }
+
+    mutating func finish(
+        status: TrainingRunStatus,
+        finalLoss: Float? = nil,
+        trainedPaths: [String] = [],
+        trainedLayerIndices: [Int] = [],
+        weightsTensorCount: Int? = nil,
+        message: String,
+        errorMessage: String? = nil,
+        finishedAt: Date = Date()
+    ) {
+        self.status = status
+        self.finalLoss = finalLoss ?? self.finalLoss
+        self.trainedPaths = trainedPaths.isEmpty ? self.trainedPaths : trainedPaths
+        self.trainedLayerIndices = trainedLayerIndices.isEmpty ? self.trainedLayerIndices : trainedLayerIndices
+        self.weightsTensorCount = weightsTensorCount ?? self.weightsTensorCount
+        self.errorMessage = errorMessage
+        self.finishedAt = finishedAt
+        self.updatedAt = finishedAt
+        self.events.append(TrainingRunEvent(
+            timestamp: finishedAt,
+            status: status,
+            message: message
+        ))
+    }
 }
 
 enum TrainingDatasetImportError: LocalizedError {

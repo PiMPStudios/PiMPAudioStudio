@@ -31,6 +31,7 @@ All notable changes to PiMP Audio Studio are documented here.
 - **Dataset key metadata is reflected in package status** — imported or manually reviewed key/keyscale values now update manifest analysis status as metadata-backed key information instead of leaving key status stuck at `not_run`.
 - **Dataset enrichment now fills clip BPM and key metadata** — Enrich Dataset now promotes native stem tempo estimates into clip-level BPM fields and estimates instrumental key/keyscale with an in-app DSP pass, preserving imported or manually reviewed values when present.
 - **LoKR workspace now trains native experimental adapters** — the Training workspace's experimental LoKR tab now opens reviewed packages in a local Swift/MLX LoKR trainer, stores LoKR metadata with adapters, and keeps LoRA/LoKR adapter stacks separated at generation time.
+- **Adapter training runs now write durable logs** — local LoRA/LoKR training saves a `training_log.json` sidecar beside each adapter with the adapter kind, base model, config, progress samples, loss history, final status, trained paths/layers, tensor count, and errors when available. Adapter export includes this log, and training completion plus Adapter settings can reveal the adapter folder in Finder.
 - **Training workspace now opens local LoRA setup inline** — the Training view now uses its main canvas for the Train from Files flow instead of presenting a centered modal, with a tab-ready mode switch for future LoKR and remote GPU training options.
 - **Remote GPU training tab now prepares package handoff** — the Training workspace's Remote GPU mode now scans local dataset packages, opens package folders, blocks exports until review blockers are cleared, and writes the same remote-ready zip archives as the Datasets workspace.
 - **Remote worker jobs now have a provider-neutral contract** — `remote_training_package.json` now advertises standard `remote_job.json`, result, log, and metrics paths; the new remote job schema models LoRA, LoKR, preprocess, and annotation jobs without baking in RunPod or DigitalOcean details.
@@ -126,6 +127,7 @@ All notable changes to PiMP Audio Studio are documented here.
   tool/resource registration, lifecycle handling, structured tool results,
   JSON-RPC dispatch, and stateful HTTP/SSE response shaping now run through the
   official Swift MCP SDK.
+- **Training roadmap now makes native implementation non-negotiable** — ACE-Step, Side-Step, StemForge, DEMON, and similar projects are documented as behavior/format/UX references only. PiMP Audio Studio should not copy license-incompatible code or add Python, `uv`, CUDA, TensorRT, or browser-server dependencies; training, annotation, preprocessing, and adapter auditioning stay Swift/MLX, Core ML, or another App Store-friendly native/compiled path.
 - **Cover-song preprocessing follows the upstream source-audio hint path** —
   the native Swift cover path tokenizes source latents to 5 Hz FSQ vectors,
   detokenizes them to 25 Hz acoustic hints, then blends them into the diffusion

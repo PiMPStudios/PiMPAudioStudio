@@ -1,5 +1,6 @@
 import SwiftUI
 import PiMPAudioCore
+import AppKit
 
 struct AdaptersSettingsView: View {
     enum Tab: String, CaseIterable {
@@ -141,6 +142,7 @@ private struct MyAdaptersListView: View {
                             Button("Resume Training…") { beginResume(adapter) }
                         }
                         Button("Retrain…") { beginRetrain(adapter) }
+                        Button("Show in Finder") { showInFinder(adapter) }
                         Divider()
                         Button("Rename...") {
                             renameText = adapter.name
@@ -347,5 +349,11 @@ private struct MyAdaptersListView: View {
                 errorMessage = error.localizedDescription
             }
         }
+    }
+
+    private func showInFinder(_ adapter: LoRAAdapter) {
+        NSWorkspace.shared.activateFileViewerSelecting([
+            AdapterRegistry.adapterDirectory(id: adapter.id)
+        ])
     }
 }

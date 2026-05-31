@@ -67,6 +67,7 @@ final class TrainingService: ObservableObject {
     private let stackManager: AdapterStackManager?
     private var savedStack: [(adapter: LoRAAdapter, strength: Float)] = []
     private var lastTrainingProgressLogStep = 0
+    private var activeRunLog: TrainingRunLog?
 
     init(
         pipeline: MusicPipeline,
@@ -152,9 +153,11 @@ final class TrainingService: ObservableObject {
         isStopping = false
         shouldSaveCheckpointOnStop = false
         activeAdapterKind = kind
+        activeRunLog = nil
 
         trainingTask = Task { [weak self] in
             guard let self else { return }
+            let adapterID = effectiveResumeAdapterID ?? Self.adapterID(from: adapterName)
             defer {
                 if let sm = self.stackManager, !self.savedStack.isEmpty {
                     for entry in self.savedStack {
@@ -164,6 +167,7 @@ final class TrainingService: ObservableObject {
                 }
                 self.trainingTask = nil
                 self.activeAdapterKind = nil
+                self.activeRunLog = nil
                 if let onTrainingFinished {
                     Task {
                         await onTrainingFinished()
@@ -259,6 +263,20 @@ final class TrainingService: ObservableObject {
                     self.state = .failed("No valid training samples")
                     return
                 }
+                let manifest = TrainingManifest(
+                    historyEntryIDs: entries.map(\.id),
+                    importedFiles: importedFiles
+                )
+                self.activeRunLog = TrainingRunLog(
+                    adapterID: adapterID,
+                    adapterName: adapterName,
+                    adapterKind: kind,
+                    baseModelID: activeModelID,
+                    sampleCount: samples.count,
+                    config: sessionConfig,
+                    lokrConfig: sessionLoKRConfig,
+                    resumedFromCheckpoint: resumeCheckpoint != nil
+                )
                 self.logTrainingStart(
                     kind: kind,
                     adapterName: adapterName,
@@ -322,11 +340,6 @@ final class TrainingService: ObservableObject {
 
                 try Task.checkCancellation()
 
-                let adapterID = effectiveResumeAdapterID ?? Self.adapterID(from: adapterName)
-                let manifest = TrainingManifest(
-                    historyEntryIDs: entries.map(\.id),
-                    importedFiles: importedFiles
-                )
                 let adapter = LoRAAdapter(
                     id: adapterID,
                     name: adapterName,
@@ -355,9 +368,20 @@ final class TrainingService: ObservableObject {
                         try AdapterRegistry.save(adapter: adapter, weights: result.weights)
                         AdapterRegistry.saveManifest(manifest, adapterID: adapterID)
                         try AdapterRegistry.saveCheckpoint(checkpoint, adapterID: adapterID)
+                        self.finishActiveRunLog(
+                            status: .paused,
+                            result: result,
+                            message: "Training paused and checkpoint saved."
+                        )
+                        self.saveActiveRunLog(adapterID: adapterID)
                         self.state = .paused(checkpoint)
                     } else {
                         trainingLogger.info("Training cancelled for '\(adapterName)'")
+                        self.finishActiveRunLog(
+                            status: .cancelled,
+                            result: result,
+                            message: "Training stopped without saving a checkpoint."
+                        )
                         self.state = .cancelled
                     }
                     return
@@ -373,15 +397,32 @@ final class TrainingService: ObservableObject {
                 // later for retraining with the same (or expanded) dataset.
                 AdapterRegistry.saveManifest(manifest, adapterID: adapterID)
                 AdapterRegistry.deleteCheckpoint(adapterID: adapterID)
+                self.finishActiveRunLog(
+                    status: .completed,
+                    result: result,
+                    message: "Training completed and adapter was saved."
+                )
+                self.saveActiveRunLog(adapterID: adapterID)
 
                 self.state = .complete(adapter)
 
             } catch is CancellationError {
                 trainingLogger.info("Training task cancelled")
+                self.finishActiveRunLog(
+                    status: .cancelled,
+                    message: "Training task was cancelled."
+                )
+                self.saveActiveRunLogIfAdapterDirectoryExists(adapterID: adapterID)
                 self.state = .cancelled
             } catch {
                 trainingLogger.error("Training failed: \(error.localizedDescription)")
                 AudioDiagnostics.note("training/error", "error=\(error.localizedDescription)")
+                self.finishActiveRunLog(
+                    status: .failed,
+                    message: "Training failed.",
+                    errorMessage: error.localizedDescription
+                )
+                self.saveActiveRunLogIfAdapterDirectoryExists(adapterID: adapterID)
                 self.state = .failed(error.localizedDescription)
             }
         }
@@ -428,10 +469,27 @@ final class TrainingService: ObservableObject {
             lossHistory: progress.lossHistory
         ))
 
+        let now = Date()
+        activeRunLog?.lossHistory = progress.lossHistory
+        activeRunLog?.updatedAt = now
+
         guard progress.step == 1 || progress.step - lastTrainingProgressLogStep >= 25 else {
             return
         }
         lastTrainingProgressLogStep = progress.step
+        activeRunLog?.recordProgress(
+            TrainingRunProgressEntry(
+                timestamp: now,
+                epoch: progress.epoch,
+                totalEpochs: progress.totalEpochs,
+                step: progress.step,
+                loss: progress.loss,
+                learningRate: progress.learningRate,
+                elapsed: progress.elapsedTime,
+                estimatedRemaining: progress.estimatedTimeRemaining
+            ),
+            lossHistory: progress.lossHistory
+        )
         let lossText = String(format: "%.5f", progress.loss)
         let lrText = String(format: "%.2e", progress.learningRate)
         trainingLogger.info(
@@ -478,6 +536,43 @@ final class TrainingService: ObservableObject {
             "training/complete",
             "kind=\(kind.rawValue) name=\(adapterName) tensors=\(result.weights.count) trainedPaths=\(result.trainedPaths.count) finalLoss=\(lossText)"
         )
+    }
+
+    private func finishActiveRunLog(
+        status: TrainingRunStatus,
+        result: LoRATrainingResult? = nil,
+        message: String,
+        errorMessage: String? = nil
+    ) {
+        guard var log = activeRunLog else { return }
+        let trainedPaths = result?.trainedPaths ?? []
+        log.finish(
+            status: status,
+            finalLoss: result?.finalLoss,
+            trainedPaths: trainedPaths,
+            trainedLayerIndices: LoRAAdapter.layerIndices(from: trainedPaths),
+            weightsTensorCount: result?.weights.count,
+            message: message,
+            errorMessage: errorMessage
+        )
+        activeRunLog = log
+    }
+
+    private func saveActiveRunLog(adapterID: String) {
+        guard let activeRunLog else { return }
+        do {
+            try AdapterRegistry.saveTrainingRunLog(activeRunLog, adapterID: adapterID)
+        } catch {
+            trainingLogger.warning("Could not save training log for '\(adapterID)': \(error.localizedDescription)")
+        }
+    }
+
+    private func saveActiveRunLogIfAdapterDirectoryExists(adapterID: String) {
+        let directory = AdapterRegistry.adapterDirectory(id: adapterID)
+        guard FileManager.default.fileExists(atPath: directory.path(percentEncoded: false)) else {
+            return
+        }
+        saveActiveRunLog(adapterID: adapterID)
     }
 
     /// Stop training. When requested, persists the current LoRA weights and checkpoint.

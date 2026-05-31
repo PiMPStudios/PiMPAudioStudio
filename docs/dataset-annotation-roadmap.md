@@ -2,20 +2,20 @@
 
 This document captures external references that may shape PiMP Audio Studio's local dataset builder, annotation pass, and future remote training workflow.
 
-The working principle stays the same: PiMP Audio Studio should keep a native, App Store-friendly local path by default, while allowing larger Python/Transformers/CUDA workflows to live behind explicit optional or remote backends.
+The working principle stays the same: PiMP Audio Studio should keep a native, App Store-friendly path end to end. External training projects are reference material for behavior, formats, and UX only; do not copy code unless its license explicitly allows commercial reuse, and do not add Python, `uv`, CUDA, TensorRT, or browser-server runtime dependencies to the app.
 
 ## Sources Reviewed
 
 | Reference | What It Is | Relevant Ideas | Integration Fit |
 | --- | --- | --- | --- |
 | [ace-step/awesome-ace-step](https://github.com/ace-step/awesome-ace-step) | Curated ecosystem index for ACE-Step projects, models, UIs, training tools, integrations, tutorials, and related open-source music models. | Model tiering, GGUF/C++ runtimes, DAW/VST paths, ComfyUI training graphs, hosted/remote runners, Swift/MLX competitors, style-tag browsers, radio modes, and adjacent model landscape. | Strong product radar. Use it to pick references to evaluate; do not treat every listed project as a dependency target. |
-| [ACE-Step/acestep-captioner](https://huggingface.co/ACE-Step/acestep-captioner) | ACE-Step 1.5 music caption annotation model based on Qwen2.5-Omni. MIT license, 11B params, roughly 22.4 GB repo. | Official-style music captions covering genre, instruments, arrangement, structure, timbre, and production character. | Best as an optional annotation backend first, likely remote GPU before local. |
-| [ACE-Step/acestep-transcriber](https://huggingface.co/ACE-Step/acestep-transcriber) | ACE-Step 1.5 multilingual lyrics and singing transcription model based on Qwen2.5-Omni. MIT license, 11B params, roughly 22.4 GB repo. | Lyrics plus song-section tags like intro, verse, chorus, bridge, instrumental, and language metadata. | Best as an optional lyrics backend first, likely remote GPU before local. |
+| [ACE-Step/acestep-captioner](https://huggingface.co/ACE-Step/acestep-captioner) | ACE-Step 1.5 music caption annotation model based on Qwen2.5-Omni. MIT license, 11B params, roughly 22.4 GB repo. | Official-style music captions covering genre, instruments, arrangement, structure, timbre, and production character. | Useful as an annotation-quality reference; implementation requires a native Swift/MLX/Core ML path or a separately approved native worker. |
+| [ACE-Step/acestep-transcriber](https://huggingface.co/ACE-Step/acestep-transcriber) | ACE-Step 1.5 multilingual lyrics and singing transcription model based on Qwen2.5-Omni. MIT license, 11B params, roughly 22.4 GB repo. | Lyrics plus song-section tags like intro, verse, chorus, bridge, instrumental, and language metadata. | Useful as a lyrics-quality reference; implementation requires a native Swift/MLX/Core ML path or a separately approved native worker. |
 | [ACE-Step 1.5 LoRA Training Tutorial](https://github.com/PiMPStudios/ACE-Step-1.5/blob/main/docs/en/LoRA_Training_Tutorial.md) | Official ACE-Step LoRA workflow tutorial. | Dataset sidecar conventions, scanner behavior, review requirements, BPM/key CSV import, tensor preprocessing, training parameter guidance, and adapter loading flow. | Strong reference for PiMP Audio Studio's local Training UX and package compatibility. |
-| [ACE-Step 1.5 Side-Step Training Guide](https://github.com/PiMPStudios/ACE-Step-1.5/blob/main/docs/sidestep/Training%20Guide.md) | ACE-Step LoRA/LoKR training reference. | Corrected vs Vanilla training modes, adapter-agnostic preprocessing, LoRA/LoKR split, rank/epoch guidance, VRAM options, TensorBoard metrics, checkpoint resume, and gradient sensitivity estimation. | Strong reference for PiMP Audio Studio's Training workspace; do not mirror the Python/uv dependency path. |
-| [Neyroslav/Ace-Step-1.5-Dataset-Manager](https://github.com/Neyroslav/Ace-Step-1.5-Dataset-Manager) | Qt/C++ desktop editor for ACE Step 1.5 dataset JSON and per-track metadata. | Track cards, audio preview, caption/lyrics editing, metadata fields, backup/reload, focus/lyrics-only review modes. | Strong UI and JSON-compatibility reference; not a runtime dependency. |
-| [tsondo/StemForge](https://github.com/tsondo/StemForge) | Local browser-based AI audio workstation using Python/FastAPI/uv with many audio pipelines. | End-to-end pipeline UX: stem separation, MIDI extraction, enhancement, compose/rework, LoRA/LoKR training, snapshots, loss charts, adapter management, mix/export. | Strong workflow reference; not a dependency for the native app. |
-| [daydreamlive/DEMON](https://github.com/daydreamlive/DEMON) and [project page](https://daydreamlive.github.io/DEMON/) | Streaming ACE-Step 1.5 engine and live control surface for real-time musical generation. | Ring-buffer streaming, prompt blends, per-frame automation curves, source preservation, x0 target morphing, hot LoRA refit, session snapshots, MCP-driven controls, MIDI learn, and live recording. | Mostly a future creative-runtime reference. Do not inherit its Python/TensorRT/NVIDIA requirements for PiMP Audio Studio's default local path. |
+| [ACE-Step 1.5 Side-Step Training Guide](https://github.com/PiMPStudios/ACE-Step-1.5/blob/main/docs/sidestep/Training%20Guide.md) | ACE-Step LoRA/LoKR training reference. | Corrected vs Vanilla training modes, adapter-agnostic preprocessing, LoRA/LoKR split, rank/epoch guidance, VRAM options, TensorBoard metrics, checkpoint resume, and gradient sensitivity estimation. | Strong reference for PiMP Audio Studio's Training workspace; reimplement useful behavior natively in Swift/MLX and do not mirror the Python/uv dependency path. |
+| [Neyroslav/Ace-Step-1.5-Dataset-Manager](https://github.com/Neyroslav/Ace-Step-1.5-Dataset-Manager) | Qt/C++ desktop editor for ACE Step 1.5 dataset JSON and per-track metadata. | Track cards, audio preview, caption/lyrics editing, metadata fields, backup/reload, focus/lyrics-only review modes. | Strong UI and JSON-compatibility reference; not a runtime dependency or source-code donor. |
+| [tsondo/StemForge](https://github.com/tsondo/StemForge) | Local browser-based AI audio workstation using Python/FastAPI/uv with many audio pipelines. | End-to-end pipeline UX: stem separation, MIDI extraction, enhancement, compose/rework, LoRA/LoKR training, snapshots, loss charts, adapter management, mix/export. | Strong workflow reference; not a dependency or source-code donor for the native app. |
+| [daydreamlive/DEMON](https://github.com/daydreamlive/DEMON) and [project page](https://daydreamlive.github.io/DEMON/) | Streaming ACE-Step 1.5 engine and live control surface for real-time musical generation. | Ring-buffer streaming, prompt blends, per-frame automation curves, source preservation, x0 target morphing, hot LoRA refit, session snapshots, MCP-driven controls, MIDI learn, and live recording. | Mostly a future creative-runtime reference. Do not inherit its Python/TensorRT/NVIDIA requirements. |
 
 ## Simplest Architecture That Works
 
@@ -33,7 +33,7 @@ Add a provider-neutral annotation layer around this path so the app can later sw
 
 - Native local captioner/transcriber.
 - Official ACE-Step annotation models.
-- A remote GPU worker for huge models.
+- A future remote worker for huge models, only if its implementation is explicitly approved and does not become a Python dependency of the app.
 - Manual/human-edited metadata.
 
 ## Recommended Architecture
@@ -88,14 +88,14 @@ Suggested shape:
 | Option | User Experience | Quality Potential | Local/App Store Fit | Engineering Cost | Notes |
 | --- | --- | --- | --- | --- | --- |
 | Current native enrichment | Best default. No external setup. | Good enough for initial datasets. | Strong. | Already mostly built. | Keep improving this first. |
-| ACE-Step captioner/transcriber local | Advanced opt-in model download. | Likely high, because models match ACE-Step annotation style. | Unclear until MLX/Core ML conversion is proven. | High. | 11B models and Transformers-first packaging make this heavy. |
-| ACE-Step captioner/transcriber remote | Cleanest path for large annotation jobs. | High. | Strong if optional and privacy-explicit. | Medium/high. | Fits RunPod/DigitalOcean workflow. Needs job packaging and credentials. |
+| ACE-Step captioner/transcriber local | Advanced opt-in model download. | Likely high, because models match ACE-Step annotation style. | Only acceptable after a native Swift/MLX or Core ML path is proven. | High. | 11B models and Transformers-first packaging make this heavy; do not ship Python/Transformers in the app. |
+| ACE-Step captioner/transcriber remote | Potential path for large annotation jobs. | High. | Strong only if optional, privacy-explicit, and not a Python dependency for the app. | Medium/high. | Needs a provider-neutral job package, credentials, and a separately approved worker implementation. |
 | ACE-compatible sidecar import/export | Familiar to ACE users and easy to inspect. | High if users review data. | Strong. | Low/medium. | Support `.lyrics.txt`, `.caption.txt`, per-track `.json`, and BPM/key CSV as first-class package inputs. |
 | Dataset Manager-style editor | Great review UX. | Improves human quality. | Strong. | Medium. | Pure Anvil UI work; no model risk. |
-| Side-Step-style LoKR training | Advanced option for smaller/different adapter behavior. | Unknown until tested in PiMP Audio Studio's pipeline. | Strong if implemented in native/local or optional remote worker. | Medium/high. | Keep LoRA as the stable default and label LoKR experimental. |
-| StemForge-style workstation | Powerful creative workflow. | High for broader audio work. | Mixed. | Large. | Borrow workflow ideas, not the Python app architecture. |
-| DEMON-style live runtime | Excellent for interactive cover/remix exploration. | High for auditioning trained adapters and creative edits. | Mixed locally; better as long-term native/remote target. | Very high. | Borrow control concepts: automation curves, hot adapter strength, prompt blending, state snapshots, MCP tools. |
-| GGUF/C++ ACE runtime path | Better App Store story than Python if quality and feature support are good enough. | Unknown until tested against MLX path. | Potentially strong. | High. | Track `acestep.cpp`, `acestep.vst3`, and GGUF model coverage as a possible future runtime option. |
+| Side-Step-style LoKR training | Advanced option for smaller/different adapter behavior. | Unknown until tested in PiMP Audio Studio's pipeline. | Strong if implemented in native Swift/MLX or another compiled Apple-friendly path. | Medium/high. | Keep LoRA as the stable default and label LoKR experimental. |
+| StemForge-style workstation | Powerful creative workflow. | High for broader audio work. | Mixed. | Large. | Borrow workflow ideas, not the Python app architecture or source code. |
+| DEMON-style live runtime | Excellent for interactive cover/remix exploration. | High for auditioning trained adapters and creative edits. | Mixed locally; better as long-term native target. | Very high. | Borrow control concepts: automation curves, hot adapter strength, prompt blending, state snapshots, MCP tools. |
+| GGUF/C++ ACE runtime path | Potential App Store-friendly companion runtime if quality and feature support are good enough. | Unknown until tested against MLX path. | Potentially strong. | High. | Track `acestep.cpp`, `acestep.vst3`, and GGUF model coverage as possible future native/compiled runtime options. |
 | ComfyUI-style workflow graph | Great for advanced users who want visible pipelines. | Good for reproducibility/debugging. | Strong if native, poor if requiring ComfyUI. | Medium/high. | Borrow graph/run-history ideas, not the dependency stack. |
 
 ## Things To Borrow
@@ -108,7 +108,7 @@ Suggested shape:
   - adapter type: LoRA, LoKR, GGUF/quantized where applicable
   - capability flags: generate, cover, repaint, edit, extend, stream, train
 - Add capability-aware model selection. The UI should not let users choose a model variant that cannot support the current task without warning.
-- Track `acestep.cpp`, `acestep.vst3`, and GGUF quantized models as a future zero-Python runtime investigation. This may matter if a C++/Metal/GGML path becomes easier to ship than a full Python or Transformers stack.
+- Track `acestep.cpp`, `acestep.vst3`, and GGUF quantized models as future zero-Python runtime investigations. This may matter if a C++/Metal/GGML path becomes easier to ship than the current Swift/MLX path for a specific feature.
 - Add style-tag search/select inspired by Windows and studio UIs, but keep prompts editable as plain text.
 - Add friendlier labels for advanced parameters:
   - "Creativity" for generation freedom
@@ -296,12 +296,14 @@ DEMON is not primarily a dataset-builder reference. It is more useful as a futur
 ## Things Not To Inherit
 
 - Do not require Python for the default local app workflow.
+- Do not add Python as an optional app workflow either. Training, annotation, preprocessing, and adapter auditioning should be implemented in Swift/MLX, Core ML, or another App Store-friendly native/compiled path.
 - Do not require users to install `uv`, FFmpeg headers, FluidSynth, CUDA, TensorRT, Node.js, or a browser server for basic dataset building.
+- Do not copy source code from external projects unless the license explicitly permits commercial reuse and the copied code has been reviewed. Prefer clean-room Swift implementations based on documented behavior, file formats, and observed outputs.
 - Do not make official ACE annotation models mandatory. They are too large for the baseline path.
 - Do not couple PiMP Audio Studio to sibling apps or external repositories. Use them as references only.
 - Do not silently upload audio to remote GPUs. Remote annotation/training must be explicit and reviewable.
 - Do not make LoKR the default training path until it has the same reliability as LoRA in PiMP Audio Studio's own tests.
-- Do not expose every Python CLI flag directly. Convert the important ones into native training presets and advanced controls.
+- Do not expose every upstream CLI flag directly. Convert the important behavior into native training presets and advanced controls.
 - Do not make live streaming generation part of the dataset-builder MVP. It belongs in the Generate/Edit/Training audition surface later.
 - Do not assume NVIDIA/TensorRT performance claims transfer to Apple Silicon MLX without separate profiling.
 - Do not build a ComfyUI clone. A small native pipeline/status graph is enough unless users prove they need arbitrary node authoring.
@@ -340,7 +342,7 @@ DEMON is not primarily a dataset-builder reference. It is more useful as a futur
   - `manual`
 - Build request/response structs independent of any one model.
 - Add an "Annotate with ACE-Step models" action that is disabled until a backend exists.
-- Start with remote GPU first unless MLX/Core ML conversion proves easy.
+- Prefer native MLX/Core ML conversion first. Use remote execution only after the worker contract and implementation are approved under the zero-Python dependency rule.
 
 ### Phase 4: Remote GPU Annotation/Training
 
@@ -416,7 +418,7 @@ DEMON is not primarily a dataset-builder reference. It is more useful as a futur
 - Session snapshot schema: model, adapter, source, reference, seed, and curve fields should be stable enough to reload old creative sessions.
 - Remote package layout: RunPod/DigitalOcean workers should consume the same package shape we can re-import locally.
 - Privacy boundary: remote upload must be explicit and auditable from day one.
-- Dependency boundary: Python/Transformers backends should remain optional workers, not required app components.
+- Dependency boundary: external projects remain reference material unless they are license-compatible, App Store-friendly, and deliberately adopted as native/compiled dependencies.
 
 ## Security And Privacy Notes
 
@@ -429,7 +431,7 @@ DEMON is not primarily a dataset-builder reference. It is more useful as a futur
 
 ## Rough Cost Signal
 
-The official ACE annotation models are 11B-class models. Treat them as remote GPU jobs until proven otherwise.
+The official ACE annotation models are 11B-class models. Treat them as heavy optional jobs until a native local or approved remote implementation is proven.
 
 Approximate direction:
 
