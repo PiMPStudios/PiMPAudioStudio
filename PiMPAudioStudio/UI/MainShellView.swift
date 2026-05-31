@@ -464,7 +464,7 @@ private struct BuildTrainingView: View {
             refreshRemotePackages()
         }
         .onChange(of: selectedTrainingMode) { _, mode in
-            if mode == .remote || mode == .lokr {
+            if mode == .remote || mode == .lora || mode == .lokr {
                 refreshRemotePackages()
             }
         }
@@ -517,7 +517,7 @@ private struct BuildTrainingView: View {
 
     @ViewBuilder
     private var loraWorkspace: some View {
-        if let presentation = trainingPresentation {
+        if let presentation = trainingPresentation, presentation.adapterKind == .lora {
             TrainingSheet(
                 selectedEntries: presentation.selectedEntries,
                 initialImportedFiles: presentation.files,
@@ -530,7 +530,13 @@ private struct BuildTrainingView: View {
                 trainingPresentation = nil
             }
         } else {
-            statusView
+            packageTrainingWorkspace(
+                adapterKind: .lora,
+                actionTitle: "Train LoRA",
+                actionSystemImage: "graduationcap",
+                emptyMessage: "Build or open a reviewed dataset package before training LoRA adapters.",
+                footer: "LoRA uses the reviewed package and `preprocess_cache.json` contract, then trains a local low-rank adapter through the native Swift/MLX loop."
+            )
         }
     }
 
@@ -627,70 +633,86 @@ private struct BuildTrainingView: View {
                 trainingPresentation = nil
             }
         } else {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 10) {
-                    Text("\(remotePackages.count) package\(remotePackages.count == 1 ? "" : "s")")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+            packageTrainingWorkspace(
+                adapterKind: .lokr,
+                actionTitle: "Train LoKR",
+                actionSystemImage: "bolt.badge.clock",
+                emptyMessage: "Build or open a reviewed dataset package before training LoKR adapters.",
+                footer: "Experimental LoKR uses the same reviewed package and `preprocess_cache.json` contract as LoRA, then trains a local Kronecker adapter through the native Swift/MLX loop."
+            )
+        }
+    }
 
-                    Spacer()
-
-                    Button {
-                        refreshRemotePackages()
-                    } label: {
-                        Label("Refresh", systemImage: "arrow.clockwise")
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-
-                    Button {
-                        openRemotePackageFolder()
-                    } label: {
-                        Label("Finder", systemImage: "folder")
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .disabled(selectedRemotePackage == nil)
-
-                    Button {
-                        openSelectedPackageInLoKRTraining()
-                    } label: {
-                        Label("Train LoKR", systemImage: "bolt.badge.clock")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-                    .disabled(selectedRemotePackage == nil || selectedRemotePackage?.isValid == false)
-                }
-                .padding()
-
-                Divider()
-
-                if remotePackages.isEmpty {
-                    statusMessage(
-                        "No Dataset Packages",
-                        message: "Build or open a reviewed dataset package before training LoKR adapters.",
-                        systemImage: "tray",
-                        color: .secondary
-                    )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    List(selection: $selectedRemotePackageID) {
-                        ForEach(remotePackages) { package in
-                            lokrPackageRow(package)
-                                .tag(package.id)
-                        }
-                    }
-                    .listStyle(.inset)
-                }
-
-                Divider()
-                Text("Experimental LoKR uses the same reviewed package and `preprocess_cache.json` contract as LoRA, then trains a local Kronecker adapter through the native Swift/MLX loop.")
+    private func packageTrainingWorkspace(
+        adapterKind: AdapterKind,
+        actionTitle: String,
+        actionSystemImage: String,
+        emptyMessage: String,
+        footer: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 10) {
+                Text("\(remotePackages.count) package\(remotePackages.count == 1 ? "" : "s")")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .padding()
+
+                Spacer()
+
+                Button {
+                    refreshRemotePackages()
+                } label: {
+                    Label("Refresh", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+
+                Button {
+                    openRemotePackageFolder()
+                } label: {
+                    Label("Finder", systemImage: "folder")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(selectedRemotePackage == nil)
+
+                Button {
+                    openSelectedPackageInTraining(adapterKind: adapterKind)
+                } label: {
+                    Label(actionTitle, systemImage: actionSystemImage)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .disabled(selectedRemotePackage == nil || selectedRemotePackage?.isValid == false)
             }
-            .onAppear(perform: refreshRemotePackages)
+            .padding()
+
+            Divider()
+
+            if remotePackages.isEmpty {
+                statusMessage(
+                    "No Dataset Packages",
+                    message: emptyMessage,
+                    systemImage: "tray",
+                    color: .secondary
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                List(selection: $selectedRemotePackageID) {
+                    ForEach(remotePackages) { package in
+                        trainingPackageRow(package)
+                            .tag(package.id)
+                    }
+                }
+                .listStyle(.inset)
+            }
+
+            Divider()
+            Text(footer)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding()
         }
+        .onAppear(perform: refreshRemotePackages)
     }
 
     private var remoteWorkspace: some View {
@@ -797,7 +819,7 @@ private struct BuildTrainingView: View {
         .padding(.vertical, 4)
     }
 
-    private func lokrPackageRow(_ package: DatasetPackageSummary) -> some View {
+    private func trainingPackageRow(_ package: DatasetPackageSummary) -> some View {
         HStack(spacing: 10) {
             Image(systemName: package.isValid ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                 .foregroundStyle(package.isValid ? .green : .orange)
@@ -856,7 +878,7 @@ private struct BuildTrainingView: View {
         NSWorkspace.shared.open(package.directory)
     }
 
-    private func openSelectedPackageInLoKRTraining() {
+    private func openSelectedPackageInTraining(adapterKind: AdapterKind) {
         guard let package = selectedRemotePackage else { return }
         let bundleURL = package.directory.appendingPathComponent(TrainingDatasetPackageWriter.fullMixBundleFileName)
         do {
@@ -864,11 +886,20 @@ private struct BuildTrainingView: View {
             let baseName = package.name.replacingOccurrences(of: "_local_", with: " ")
             trainingPresentation = TrainingPresentation(
                 files: imported,
-                adapterKind: .lokr,
-                initialName: "\(baseName) LoKR"
+                adapterKind: adapterKind,
+                initialName: "\(baseName) \(adapterTitle(for: adapterKind))"
             )
         } catch {
             remoteNotice = error.localizedDescription
+        }
+    }
+
+    private func adapterTitle(for adapterKind: AdapterKind) -> String {
+        switch adapterKind {
+        case .lora:
+            return "LoRA"
+        case .lokr:
+            return "LoKR"
         }
     }
 
