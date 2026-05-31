@@ -43,7 +43,8 @@ import MLX
         learningRate: 2e-4,
         maxEpochs: 75,
         warmupFraction: 0.2,
-        gradientAccumulationSteps: 4
+        gradientAccumulationSteps: 4,
+        trainingLayerCount: 12
     )
 
     let compatible = config.loraCompatibleConfig
@@ -54,6 +55,7 @@ import MLX
     #expect(compatible.maxEpochs == 75)
     #expect(compatible.warmupFraction == 0.2)
     #expect(compatible.gradientAccumulationSteps == 4)
+    #expect(compatible.trainingLayerCount == 12)
 }
 
 @Test func lokrKroneckerWeightCropsToBaseShape() {
@@ -105,4 +107,92 @@ import MLX
     #expect(adapter.kind == .lora)
     #expect(adapter.lokrConfig == nil)
     #expect(adapter.source == .local)
+    #expect(adapter.trainedPaths == nil)
+    #expect(adapter.trainedLayerIndices == nil)
+    #expect(adapter.config.trainingLayerCount == nil)
+}
+
+@Test func adapterMetadataRoundTripsTrainedLayerFootprint() throws {
+    let adapter = LoRAAdapter(
+        id: "layered",
+        name: "Layered",
+        config: LoRAConfig(rank: 16, trainingLayerCount: 8),
+        kind: .lokr,
+        lokrConfig: LoKRConfig(linearDim: 32, trainingLayerCount: 8),
+        baseModelID: "ace-step-dit-xl",
+        baseModelCategory: .aceStepDiT,
+        createdAt: Date(timeIntervalSince1970: 0),
+        sampleCount: 10,
+        finalLoss: 0.25,
+        trainedPaths: [
+            "layers.28.selfAttn.qProj",
+            "layers.28.selfAttn.vProj",
+            "layers.29.selfAttn.qProj",
+        ],
+        trainedLayerIndices: [28, 29]
+    )
+
+    let encoder = JSONEncoder()
+    encoder.dateEncodingStrategy = .iso8601
+    let data = try encoder.encode(adapter)
+    let decoder = JSONDecoder()
+    decoder.dateDecodingStrategy = .iso8601
+    let decoded = try decoder.decode(LoRAAdapter.self, from: data)
+
+    #expect(decoded.config.trainingLayerCount == 8)
+    #expect(decoded.lokrConfig?.trainingLayerCount == 8)
+    #expect(decoded.effectiveTrainedLayerIndices == [28, 29])
+    #expect(decoded.effectiveTrainedPaths?.count == 3)
+}
+
+@Test func adapterDerivesTrainedPathsFromWeightKeys() {
+    let paths = LoRAAdapter.trainedPaths(
+        fromWeightKeys: [
+            "layers.28.selfAttn.qProj.lokrW1",
+            "layers.28.selfAttn.qProj.lokrW2",
+            "layers.29.crossAttn.vProj.lokrW1",
+            "metadata"
+        ],
+        kind: .lokr
+    )
+
+    #expect(paths == [
+        "layers.28.selfAttn.qProj",
+        "layers.29.crossAttn.vProj",
+    ])
+    #expect(LoRAAdapter.layerIndices(from: paths) == [28, 29])
+}
+
+@Test func adapterCompatibilityRejectsWrongACEVariant() {
+    let xlSpec = ModelSpec(
+        id: "ace-step-acestep-v15-xl-sft",
+        displayName: "ACE-Step v1.5 XL SFT",
+        huggingFaceRepo: "ACE-Step/Ace-Step1.5",
+        files: [],
+        category: .aceStepDiT,
+        variantFamily: "ace-step-1.5-xl"
+    )
+    let xlAdapter = LoRAAdapter(
+        id: "xl",
+        name: "XL",
+        config: LoRAConfig(),
+        baseModelID: "ace-step-dit-xl",
+        baseModelCategory: .aceStepDiT,
+        createdAt: Date(timeIntervalSince1970: 0),
+        sampleCount: 0,
+        finalLoss: nil
+    )
+    let turboAdapter = LoRAAdapter(
+        id: "turbo",
+        name: "Turbo",
+        config: LoRAConfig(),
+        baseModelID: "ace-step-dit-turbo",
+        baseModelCategory: .aceStepDiT,
+        createdAt: Date(timeIntervalSince1970: 0),
+        sampleCount: 0,
+        finalLoss: nil
+    )
+
+    #expect(xlAdapter.isCompatible(with: xlSpec.id, activeSpec: xlSpec))
+    #expect(!turboAdapter.isCompatible(with: xlSpec.id, activeSpec: xlSpec))
 }

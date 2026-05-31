@@ -1176,6 +1176,9 @@ private struct ModelInspectorSection: View {
         isSwitching = true
         Task {
             try? await appState.registry.setActiveModel(id: id, for: .aceStepDiT)
+            await MainActor.run {
+                NotificationCenter.default.post(name: .modelRegistryDidChange, object: nil)
+            }
             await loadModelInfo()
             isSwitching = false
         }

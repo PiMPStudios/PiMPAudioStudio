@@ -69,6 +69,7 @@ struct TrainingSheet: View {
     private let resumeAdapterID: String?
     @State private var selectedRank: Int = 16
     @State private var selectedEpochs: Int = 10
+    @State private var selectedLayerCount: Int = 8
     @State private var selectedTargetLayers: Set<TargetLayer> = [.selfAttention, .crossAttention]
     @State private var warmupFraction: Float = 0.10
     @State private var gradientAccumulationSteps: Int = 1
@@ -99,6 +100,7 @@ struct TrainingSheet: View {
         if let config = initialConfig {
             self._selectedRank = State(initialValue: config.rank)
             self._selectedEpochs = State(initialValue: config.maxEpochs)
+            self._selectedLayerCount = State(initialValue: config.trainingLayerCount ?? (resumeAdapterID == nil ? 8 : 4))
             self._selectedTargetLayers = State(initialValue: config.targetLayers)
             self._warmupFraction = State(initialValue: config.warmupFraction)
             self._gradientAccumulationSteps = State(initialValue: config.gradientAccumulationSteps)
@@ -109,6 +111,7 @@ struct TrainingSheet: View {
         adapterKind == .lokr ? [16, 32, 64, 128] : [8, 16, 32, 64]
     }
     private let epochOptions = [5, 10, 20, 50, 75, 100]
+    private let layerCountOptions = [4, 8, 12, 16]
     private let accumOptions = [1, 2, 4, 8]
 
     var body: some View {
@@ -369,6 +372,16 @@ struct TrainingSheet: View {
                 .frame(maxWidth: 220)
                 .disabled(isCheckpointResume)
             }
+            LabeledContent("Layer Coverage") {
+                Picker("Layer Coverage", selection: $selectedLayerCount) {
+                    ForEach(layerCountOptions, id: \.self) { count in
+                        Text("Last \(count)").tag(count)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 280)
+                .disabled(isCheckpointResume)
+            }
 
             // Target layers
             LabeledContent("Target Layers") {
@@ -555,7 +568,7 @@ struct TrainingSheet: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                Text("\(adapter.kind == .lokr ? "Linear dim" : "Rank") \(adapter.kind == .lokr ? adapter.lokrConfig?.linearDim ?? adapter.config.rank : adapter.config.rank) \u{2022} \(adapter.sampleCount) tracks")
+                Text("\(adapter.kind == .lokr ? "Linear dim" : "Rank") \(adapter.kind == .lokr ? adapter.lokrConfig?.linearDim ?? adapter.config.rank : adapter.config.rank) \u{2022} last \(adapter.trainedLayerIndices?.count ?? adapter.config.trainingLayerCount ?? selectedLayerCount) layers \u{2022} \(adapter.sampleCount) tracks")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -630,7 +643,8 @@ struct TrainingSheet: View {
             targetLayers: selectedTargetLayers,
             maxEpochs: selectedEpochs,
             warmupFraction: warmupFraction,
-            gradientAccumulationSteps: gradientAccumulationSteps
+            gradientAccumulationSteps: gradientAccumulationSteps,
+            trainingLayerCount: selectedLayerCount
         )
         switch adapterKind {
         case .lora:
@@ -654,7 +668,8 @@ struct TrainingSheet: View {
                     targetLayers: selectedTargetLayers,
                     maxEpochs: selectedEpochs,
                     warmupFraction: warmupFraction,
-                    gradientAccumulationSteps: gradientAccumulationSteps
+                    gradientAccumulationSteps: gradientAccumulationSteps,
+                    trainingLayerCount: selectedLayerCount
                 )
             )
         }

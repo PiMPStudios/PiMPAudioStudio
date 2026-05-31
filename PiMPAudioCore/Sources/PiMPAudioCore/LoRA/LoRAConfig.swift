@@ -66,6 +66,13 @@ public struct LoRAConfig: Codable, Sendable, Equatable, Hashable {
     /// Number of mini-batches to accumulate gradients over before optimizer step. Default 1.
     public var gradientAccumulationSteps: Int
 
+    /// Number of DiT decoder layers to train from the end of the stack.
+    ///
+    /// `nil` means the caller did not specify a local training footprint. The
+    /// training actor may then use its legacy default, while imported adapters
+    /// can still be injected from their saved weight paths.
+    public var trainingLayerCount: Int?
+
     public init(
         rank: Int = 16,
         alpha: Float = 16.0,
@@ -76,7 +83,8 @@ public struct LoRAConfig: Codable, Sendable, Equatable, Hashable {
         maxEpochs: Int = 10,
         batchSize: Int = 1,
         warmupFraction: Float = 0.10,
-        gradientAccumulationSteps: Int = 1
+        gradientAccumulationSteps: Int = 1,
+        trainingLayerCount: Int? = nil
     ) {
         self.rank = rank
         self.alpha = alpha
@@ -88,6 +96,7 @@ public struct LoRAConfig: Codable, Sendable, Equatable, Hashable {
         self.batchSize = batchSize
         self.warmupFraction = warmupFraction
         self.gradientAccumulationSteps = gradientAccumulationSteps
+        self.trainingLayerCount = trainingLayerCount
     }
 
     /// Expands targetLayers into the full list of injection pattern strings
@@ -139,6 +148,9 @@ public struct LoKRConfig: Codable, Sendable, Equatable, Hashable {
     /// Number of mini-batches to accumulate gradients over before optimizer step.
     public var gradientAccumulationSteps: Int
 
+    /// Number of DiT decoder layers to train from the end of the stack.
+    public var trainingLayerCount: Int?
+
     public init(
         linearDim: Int = 64,
         alpha: Float = 64.0,
@@ -149,7 +161,8 @@ public struct LoKRConfig: Codable, Sendable, Equatable, Hashable {
         maxEpochs: Int = 10,
         batchSize: Int = 1,
         warmupFraction: Float = 0.10,
-        gradientAccumulationSteps: Int = 1
+        gradientAccumulationSteps: Int = 1,
+        trainingLayerCount: Int? = nil
     ) {
         self.linearDim = linearDim
         self.alpha = alpha
@@ -161,6 +174,7 @@ public struct LoKRConfig: Codable, Sendable, Equatable, Hashable {
         self.batchSize = batchSize
         self.warmupFraction = warmupFraction
         self.gradientAccumulationSteps = gradientAccumulationSteps
+        self.trainingLayerCount = trainingLayerCount
     }
 
     public var injectionPatterns: [String] {
@@ -182,7 +196,8 @@ public struct LoKRConfig: Codable, Sendable, Equatable, Hashable {
             maxEpochs: maxEpochs,
             batchSize: batchSize,
             warmupFraction: warmupFraction,
-            gradientAccumulationSteps: gradientAccumulationSteps
+            gradientAccumulationSteps: gradientAccumulationSteps,
+            trainingLayerCount: trainingLayerCount
         )
     }
 }
@@ -225,6 +240,16 @@ public struct LoRAAdapter: Codable, Sendable, Identifiable, Equatable, Hashable 
     /// Original HuggingFace repo URL if imported from HF.
     public var remoteRepoURL: URL?
 
+    /// Exact module paths that were trained for this adapter.
+    ///
+    /// Local training fills this with paths such as
+    /// `layers.28.selfAttn.qProj`. Older adapters may leave it nil; callers
+    /// can derive the same information from saved weight keys.
+    public var trainedPaths: [String]?
+
+    /// Decoder layer indices covered by `trainedPaths`.
+    public var trainedLayerIndices: [Int]?
+
     public init(
         id: String,
         name: String,
@@ -237,7 +262,9 @@ public struct LoRAAdapter: Codable, Sendable, Identifiable, Equatable, Hashable 
         sampleCount: Int,
         finalLoss: Float?,
         source: AdapterSource = .local,
-        remoteRepoURL: URL? = nil
+        remoteRepoURL: URL? = nil,
+        trainedPaths: [String]? = nil,
+        trainedLayerIndices: [Int]? = nil
     ) {
         self.id = id
         self.name = name
@@ -251,6 +278,8 @@ public struct LoRAAdapter: Codable, Sendable, Identifiable, Equatable, Hashable 
         self.finalLoss = finalLoss
         self.source = source
         self.remoteRepoURL = remoteRepoURL
+        self.trainedPaths = trainedPaths
+        self.trainedLayerIndices = trainedLayerIndices
     }
 
     // Custom Codable for backward compatibility — existing adapters without
@@ -258,6 +287,7 @@ public struct LoRAAdapter: Codable, Sendable, Identifiable, Equatable, Hashable 
     enum CodingKeys: String, CodingKey {
         case id, name, config, kind, lokrConfig, baseModelID, baseModelCategory
         case createdAt, sampleCount, finalLoss, source, remoteRepoURL
+        case trainedPaths, trainedLayerIndices
     }
 
     public init(from decoder: Decoder) throws {
@@ -274,5 +304,97 @@ public struct LoRAAdapter: Codable, Sendable, Identifiable, Equatable, Hashable 
         finalLoss = try container.decodeIfPresent(Float.self, forKey: .finalLoss)
         source = try container.decodeIfPresent(AdapterSource.self, forKey: .source) ?? .local
         remoteRepoURL = try container.decodeIfPresent(URL.self, forKey: .remoteRepoURL)
+        trainedPaths = try container.decodeIfPresent([String].self, forKey: .trainedPaths)
+        trainedLayerIndices = try container.decodeIfPresent([Int].self, forKey: .trainedLayerIndices)
+    }
+}
+
+public extension LoRAAdapter {
+    /// Trained layer indices from metadata, or parsed from trained paths.
+    var effectiveTrainedLayerIndices: [Int]? {
+        if let trainedLayerIndices, !trainedLayerIndices.isEmpty {
+            return Array(Set(trainedLayerIndices)).sorted()
+        }
+        guard let trainedPaths, !trainedPaths.isEmpty else { return nil }
+        let parsed = Self.layerIndices(from: trainedPaths)
+        return parsed.isEmpty ? nil : parsed
+    }
+
+    /// Exact paths from metadata, if available.
+    var effectiveTrainedPaths: [String]? {
+        guard let trainedPaths, !trainedPaths.isEmpty else { return nil }
+        return trainedPaths.sorted()
+    }
+
+    /// Parse `layers.N.*` module paths into sorted unique layer indices.
+    static func layerIndices(from paths: [String]) -> [Int] {
+        let indices = paths.compactMap { path -> Int? in
+            let parts = path.split(separator: ".")
+            guard parts.count >= 3, parts[0] == "layers" else { return nil }
+            return Int(parts[1])
+        }
+        return Array(Set(indices)).sorted()
+    }
+
+    /// Derive trained module paths from adapter weight keys.
+    static func trainedPaths(fromWeightKeys keys: [String], kind: AdapterKind) -> [String] {
+        let suffixes: [String]
+        switch kind {
+        case .lora:
+            suffixes = [".loraA", ".loraB"]
+        case .lokr:
+            suffixes = [".lokrW1", ".lokrW2"]
+        }
+
+        var paths = Set<String>()
+        for key in keys {
+            guard let suffix = suffixes.first(where: { key.hasSuffix($0) }) else {
+                continue
+            }
+            paths.insert(String(key.dropLast(suffix.count)))
+        }
+        return paths.sorted()
+    }
+
+    /// Checks whether this adapter can run against the active base model.
+    func isCompatible(with activeBaseID: String?, activeSpec: ModelSpec?) -> Bool {
+        guard let activeBaseID else { return true }
+        guard baseModelCategory == .aceStepDiT else {
+            return baseModelID == activeBaseID
+        }
+        if baseModelID == activeBaseID { return true }
+
+        guard let adapterVariant = Self.canonicalACEVariant(baseModelID),
+              let activeVariant = Self.canonicalACEVariant(activeBaseID, spec: activeSpec) else {
+            return false
+        }
+        return adapterVariant == activeVariant
+    }
+
+    private static func canonicalACEVariant(_ id: String, spec: ModelSpec? = nil) -> String? {
+        let values = [
+            id,
+            spec?.id,
+            spec?.displayName,
+            spec?.huggingFaceRepo,
+            spec?.variantFamily,
+        ]
+        let haystack = values
+            .compactMap { $0?.lowercased() }
+            .joined(separator: " ")
+
+        if haystack.contains("xl") || haystack.contains("ace-step-1.5-xl") {
+            return "ace-step-dit-xl"
+        }
+        if haystack.contains("turbo") {
+            return "ace-step-dit-turbo"
+        }
+        if haystack.contains("sft") {
+            return "ace-step-dit-sft"
+        }
+        if haystack.contains("base") || haystack.contains("full") {
+            return "ace-step-dit-base"
+        }
+        return nil
     }
 }

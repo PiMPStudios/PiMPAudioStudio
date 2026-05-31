@@ -1,6 +1,12 @@
 import Foundation
 import PiMPAudioCore
 import MLX
+import OSLog
+
+private let trainingLogger = Logger(
+    subsystem: "com.pimpstudios.PiMPAudioStudio",
+    category: "TrainingService"
+)
 
 /// Training state for UI observation.
 enum TrainingState: Equatable {
@@ -27,9 +33,10 @@ struct TrainingUIState: Equatable {
 }
 
 /// Result returned from the pipeline's training method (added in Task 10).
-struct LoRATrainingResult: Sendable {
+struct LoRATrainingResult {
     let weights: [(String, MLXArray)]
     let finalLoss: Float?
+    let trainedPaths: [String]
 }
 
 /// Orchestrates LoRA training: dataset preparation, training execution, and adapter saving.
@@ -59,6 +66,7 @@ final class TrainingService: ObservableObject {
     private var activeAdapterKind: AdapterKind?
     private let stackManager: AdapterStackManager?
     private var savedStack: [(adapter: LoRAAdapter, strength: Float)] = []
+    private var lastTrainingProgressLogStep = 0
 
     init(
         pipeline: MusicPipeline,
@@ -251,22 +259,26 @@ final class TrainingService: ObservableObject {
                     self.state = .failed("No valid training samples")
                     return
                 }
+                self.logTrainingStart(
+                    kind: kind,
+                    adapterName: adapterName,
+                    activeModelID: activeModelID,
+                    sampleCount: samples.count,
+                    config: sessionConfig,
+                    lokrConfig: sessionLoKRConfig
+                )
 
                 // 2. Run training through pipeline
                 try Task.checkCancellation()
+                self.lastTrainingProgressLogStep = 0
 
                 let progressHandler: @Sendable (TrainingProgress) -> Void = { [weak self] progress in
                     Task { @MainActor in
-                        self?.state = .training(TrainingUIState(
-                            epoch: progress.epoch,
-                            totalEpochs: progress.totalEpochs,
-                            step: progress.step,
-                            loss: progress.loss,
-                            learningRate: progress.learningRate,
-                            elapsed: progress.elapsedTime,
-                            remaining: progress.estimatedTimeRemaining,
-                            lossHistory: progress.lossHistory
-                        ))
+                        self?.handleTrainingProgress(
+                            progress,
+                            kind: kind,
+                            adapterName: adapterName
+                        )
                     }
                 }
 
@@ -280,7 +292,11 @@ final class TrainingService: ObservableObject {
                         initialWeights: initialWeights,
                         onProgress: progressHandler
                     )
-                    result = LoRATrainingResult(weights: trained.weights, finalLoss: trained.finalLoss)
+                    result = LoRATrainingResult(
+                        weights: trained.weights,
+                        finalLoss: trained.finalLoss,
+                        trainedPaths: trained.trainedPaths
+                    )
                 case .lokr:
                     guard let sessionLoKRConfig else {
                         self.state = .failed("LoKR training configuration was missing.")
@@ -292,8 +308,17 @@ final class TrainingService: ObservableObject {
                         initialWeights: initialWeights,
                         onProgress: progressHandler
                     )
-                    result = LoRATrainingResult(weights: trained.weights, finalLoss: trained.finalLoss)
+                    result = LoRATrainingResult(
+                        weights: trained.weights,
+                        finalLoss: trained.finalLoss,
+                        trainedPaths: trained.trainedPaths
+                    )
                 }
+                self.logTrainingComplete(
+                    kind: kind,
+                    adapterName: adapterName,
+                    result: result
+                )
 
                 try Task.checkCancellation()
 
@@ -312,11 +337,14 @@ final class TrainingService: ObservableObject {
                     baseModelCategory: .aceStepDiT,
                     createdAt: Date(),
                     sampleCount: samples.count,
-                    finalLoss: result.finalLoss
+                    finalLoss: result.finalLoss,
+                    trainedPaths: result.trainedPaths,
+                    trainedLayerIndices: LoRAAdapter.layerIndices(from: result.trainedPaths)
                 )
 
                 if self.isStopping {
                     if kind == .lora, self.shouldSaveCheckpointOnStop {
+                        trainingLogger.info("Training paused and checkpoint saved for '\(adapterName)'")
                         let checkpoint = self.makeCheckpoint(
                             adapterID: adapterID,
                             config: sessionConfig,
@@ -329,6 +357,7 @@ final class TrainingService: ObservableObject {
                         try AdapterRegistry.saveCheckpoint(checkpoint, adapterID: adapterID)
                         self.state = .paused(checkpoint)
                     } else {
+                        trainingLogger.info("Training cancelled for '\(adapterName)'")
                         self.state = .cancelled
                     }
                     return
@@ -338,6 +367,7 @@ final class TrainingService: ObservableObject {
                 self.state = .saving
 
                 try AdapterRegistry.save(adapter: adapter, weights: result.weights)
+                trainingLogger.info("Saved \(kind.rawValue.uppercased()) adapter '\(adapterName)' id=\(adapterID)")
 
                 // Persist the training manifest so the session can be reloaded
                 // later for retraining with the same (or expanded) dataset.
@@ -347,8 +377,11 @@ final class TrainingService: ObservableObject {
                 self.state = .complete(adapter)
 
             } catch is CancellationError {
+                trainingLogger.info("Training task cancelled")
                 self.state = .cancelled
             } catch {
+                trainingLogger.error("Training failed: \(error.localizedDescription)")
+                AudioDiagnostics.note("training/error", "error=\(error.localizedDescription)")
                 self.state = .failed(error.localizedDescription)
             }
         }
@@ -377,6 +410,74 @@ final class TrainingService: ObservableObject {
     func resetToIdle() {
         guard case .complete = state else { return }
         state = .idle
+    }
+
+    private func handleTrainingProgress(
+        _ progress: TrainingProgress,
+        kind: AdapterKind,
+        adapterName: String
+    ) {
+        state = .training(TrainingUIState(
+            epoch: progress.epoch,
+            totalEpochs: progress.totalEpochs,
+            step: progress.step,
+            loss: progress.loss,
+            learningRate: progress.learningRate,
+            elapsed: progress.elapsedTime,
+            remaining: progress.estimatedTimeRemaining,
+            lossHistory: progress.lossHistory
+        ))
+
+        guard progress.step == 1 || progress.step - lastTrainingProgressLogStep >= 25 else {
+            return
+        }
+        lastTrainingProgressLogStep = progress.step
+        let lossText = String(format: "%.5f", progress.loss)
+        let lrText = String(format: "%.2e", progress.learningRate)
+        trainingLogger.info(
+            "\(kind.rawValue.uppercased()) training progress name='\(adapterName)' epoch=\(progress.epoch)/\(progress.totalEpochs) step=\(progress.step) loss=\(lossText) lr=\(lrText)"
+        )
+        AudioDiagnostics.note(
+            "training/progress",
+            "kind=\(kind.rawValue) name=\(adapterName) epoch=\(progress.epoch)/\(progress.totalEpochs) step=\(progress.step) loss=\(lossText) lr=\(lrText)"
+        )
+    }
+
+    private func logTrainingStart(
+        kind: AdapterKind,
+        adapterName: String,
+        activeModelID: String,
+        sampleCount: Int,
+        config: LoRAConfig,
+        lokrConfig: LoKRConfig?
+    ) {
+        let rankLabel = kind == .lokr
+            ? "linearDim=\(lokrConfig?.linearDim ?? config.rank)"
+            : "rank=\(config.rank)"
+        let layerCount = lokrConfig?.trainingLayerCount ?? config.trainingLayerCount
+        let targets = config.injectionPatterns.joined(separator: ",")
+        trainingLogger.info(
+            "Starting \(kind.rawValue.uppercased()) training name='\(adapterName)' base=\(activeModelID) samples=\(sampleCount) \(rankLabel) epochs=\(config.maxEpochs) layerCoverage=\(layerCount ?? 0) targets=\(targets)"
+        )
+        AudioDiagnostics.note(
+            "training/start",
+            "kind=\(kind.rawValue) name=\(adapterName) base=\(activeModelID) samples=\(sampleCount) \(rankLabel) epochs=\(config.maxEpochs) layerCoverage=\(layerCount ?? 0) targets=\(config.injectionPatterns)"
+        )
+    }
+
+    private func logTrainingComplete(
+        kind: AdapterKind,
+        adapterName: String,
+        result: LoRATrainingResult
+    ) {
+        let lossText = result.finalLoss.map { String(format: "%.5f", $0) } ?? "nil"
+        trainingLogger.info(
+            "\(kind.rawValue.uppercased()) training complete name='\(adapterName)' tensors=\(result.weights.count) trainedPaths=\(result.trainedPaths.count) finalLoss=\(lossText)"
+        )
+        AudioDiagnostics.note(
+            "training/complete",
+            "kind=\(kind.rawValue) name=\(adapterName) tensors=\(result.weights.count) trainedPaths=\(result.trainedPaths.count) finalLoss=\(lossText)"
+        )
     }
 
     /// Stop training. When requested, persists the current LoRA weights and checkpoint.

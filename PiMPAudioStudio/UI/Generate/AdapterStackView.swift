@@ -7,8 +7,11 @@ struct AdapterStackView: View {
     @ObservedObject var stackManager: AdapterStackManager
     let activeModelCategory: ModelCategory
 
+    @EnvironmentObject private var appState: AppState
     @State private var showingAdapterPicker = false
     @State private var adapterListVersion = 0
+    @State private var activeModelID: String?
+    @State private var activeModelSpec: ModelSpec?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -43,51 +46,66 @@ struct AdapterStackView: View {
         .sheet(isPresented: $showingAdapterPicker) {
             adapterPickerSheet
         }
+        .onAppear {
+            Task { await refreshActiveModel() }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .adapterRegistryDidChange)) { _ in
             adapterListVersion += 1
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .modelRegistryDidChange)) { _ in
+            Task { await refreshActiveModel() }
         }
     }
 
     private func stackedAdapterRow(_ adapter: LoRAAdapter, strength: Float) -> some View {
-        HStack(spacing: 8) {
-            // Name + source badge
-            VStack(alignment: .leading, spacing: 2) {
-                Text(adapter.name)
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .lineLimit(1)
-                if adapter.source != .local {
-                    Text(adapter.source.rawValue.capitalized)
-                        .font(.caption2)
-                        .foregroundStyle(.blue)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                // Name + source badge
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(adapter.name)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .lineLimit(1)
+                    if adapter.source != .local {
+                        Text(adapter.source.rawValue.capitalized)
+                            .font(.caption2)
+                            .foregroundStyle(.blue)
+                    }
                 }
+                .frame(width: 100, alignment: .leading)
+
+                // Strength slider
+                Slider(
+                    value: Binding(
+                        get: { strength },
+                        set: { stackManager.setStrength(adapterID: adapter.id, strength: $0) }
+                    ),
+                    in: 0.0...1.0,
+                    step: 0.05
+                )
+
+                // Strength label
+                Text(String(format: "%.2f", strength))
+                    .font(.caption)
+                    .monospacedDigit()
+                    .frame(width: 32)
+
+                // Remove button
+                Button {
+                    stackManager.removeFromStack(adapterID: adapter.id)
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
             }
-            .frame(width: 100, alignment: .leading)
 
-            // Strength slider
-            Slider(
-                value: Binding(
-                    get: { strength },
-                    set: { stackManager.setStrength(adapterID: adapter.id, strength: $0) }
-                ),
-                in: 0.0...1.0,
-                step: 0.05
-            )
-
-            // Strength label
-            Text(String(format: "%.2f", strength))
-                .font(.caption)
-                .monospacedDigit()
-                .frame(width: 32)
-
-            // Remove button
-            Button {
-                stackManager.removeFromStack(adapterID: adapter.id)
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundStyle(.secondary)
+            if let warning = compatibilityWarning(for: adapter) {
+                Label(warning, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .buttonStyle(.plain)
         }
     }
 
@@ -144,10 +162,30 @@ struct AdapterStackView: View {
         let stackedIDs = Set(stackManager.allStackedAdapters.map(\.adapter.id))
         return allCompatible.filter { adapter in
             guard !stackedIDs.contains(adapter.id) else { return false }
+            guard adapter.isCompatible(with: activeModelID, activeSpec: activeModelSpec) else {
+                return false
+            }
             if let primary = stackManager.primaryAdapter {
                 return adapter.kind == primary.kind
             }
             return true
         }
+    }
+
+    @MainActor
+    private func refreshActiveModel() async {
+        let id = await appState.registry.activeModelID(for: activeModelCategory)
+        let spec = await appState.registry.activeSpec(for: activeModelCategory)
+        activeModelID = id
+        activeModelSpec = spec
+        adapterListVersion += 1
+    }
+
+    private func compatibilityWarning(for adapter: LoRAAdapter) -> String? {
+        guard !adapter.isCompatible(with: activeModelID, activeSpec: activeModelSpec) else {
+            return nil
+        }
+        let activeName = activeModelSpec?.displayName ?? activeModelID ?? "active model"
+        return "Trained for \(adapter.baseModelID); active model is \(activeName)."
     }
 }

@@ -1,5 +1,6 @@
 // PiMPAudioStudio/Services/LoRACoordinator.swift
 import Foundation
+import MLX
 import PiMPAudioCore
 import OSLog
 
@@ -13,7 +14,16 @@ final class LoRACoordinator {
     private let pipeline: MusicPipeline
     private let registry: ModelRegistry
     private var currentlyInjectedAdapterID: String?
+    private var currentlyInjectedKind: AdapterKind?
+    private var currentlyInjectedLayerIndices: Set<Int>?
     private var lastKnownBaseModelID: String?
+
+    private struct LoadedAdapterEntry {
+        let adapter: LoRAAdapter
+        let strength: Float
+        let weights: [(String, MLXArray)]
+        let trainedPaths: [String]?
+    }
 
     init(pipeline: MusicPipeline, registry: ModelRegistry) {
         self.pipeline = pipeline
@@ -37,6 +47,8 @@ final class LoRACoordinator {
                 AudioDiagnostics.note("lora/ensureAdapter/baseChanged", "clearing injected=\(currentlyInjectedAdapterID ?? "nil")")
                 await pipeline.removeLoRA()
                 currentlyInjectedAdapterID = nil
+                currentlyInjectedKind = nil
+                currentlyInjectedLayerIndices = nil
             }
             lastKnownBaseModelID = activeBaseID
         }
@@ -55,6 +67,8 @@ final class LoRACoordinator {
             AudioDiagnostics.note("lora/ensureAdapter/removeCurrent", "current=\(current ?? "nil")")
             await pipeline.removeLoRA()
             currentlyInjectedAdapterID = nil
+            currentlyInjectedKind = nil
+            currentlyInjectedLayerIndices = nil
         }
 
         // Inject the new adapter if one was selected
@@ -84,16 +98,37 @@ final class LoRACoordinator {
             }
             AudioDiagnostics.memory("lora/ensureAdapter/beforeInject")
             let weights = try await AdapterRegistry.loadWeights(adapterID: adapterID)
-            AudioDiagnostics.note("lora/ensureAdapter/weights", "adapter=\(adapterID) tensors=\(weights.count)")
+            let trainedPaths = trainedPaths(for: adapter, weightKeys: weights.map(\.0))
+            let layerIndices = layerIndices(for: adapter, trainedPaths: trainedPaths)
+            AudioDiagnostics.note(
+                "lora/ensureAdapter/weights",
+                "adapter=\(adapterID) tensors=\(weights.count) trainedPaths=\(trainedPaths?.count ?? 0) layers=\(layerIndices?.sorted() ?? [])"
+            )
             switch adapter.kind {
             case .lora:
-                let _ = try await pipeline.injectLoRA(config: adapter.config)
-                try await pipeline.loadLoRAWeights(weights, adapterID: adapterID)
+                let injectedPaths = try await pipeline.injectLoRA(
+                    config: adapter.config,
+                    layerIndices: layerIndices
+                )
+                try await pipeline.loadLoRAWeights(
+                    weights,
+                    adapterID: adapterID,
+                    paths: trainedPaths ?? injectedPaths
+                )
             case .lokr:
-                let _ = try await pipeline.injectLoKR(config: lokrConfig(for: adapter))
-                try await pipeline.loadLoKRWeights(weights, adapterID: adapterID)
+                let injectedPaths = try await pipeline.injectLoKR(
+                    config: lokrConfig(for: adapter),
+                    layerIndices: layerIndices
+                )
+                try await pipeline.loadLoKRWeights(
+                    weights,
+                    adapterID: adapterID,
+                    paths: trainedPaths ?? injectedPaths
+                )
             }
             currentlyInjectedAdapterID = adapterID
+            currentlyInjectedKind = adapter.kind
+            currentlyInjectedLayerIndices = layerIndices
             logger.info("Injected \(adapter.kind.rawValue.uppercased()) adapter '\(adapterID)'")
             AudioDiagnostics.memory("lora/ensureAdapter/end")
         } catch {
@@ -101,6 +136,8 @@ final class LoRACoordinator {
             AudioDiagnostics.note("lora/ensureAdapter/error", "adapter=\(adapterID) error=\(error.localizedDescription)")
             await pipeline.removeLoRA()
             currentlyInjectedAdapterID = nil
+            currentlyInjectedKind = nil
+            currentlyInjectedLayerIndices = nil
             AudioDiagnostics.memory("lora/ensureAdapter/end")
         }
     }
@@ -129,6 +166,8 @@ final class LoRACoordinator {
                 AudioDiagnostics.note("lora/ensureStack/baseChanged", "clearing injected=\(currentlyInjectedAdapterID ?? "nil")")
                 await pipeline.removeLoRA()
                 currentlyInjectedAdapterID = nil
+                currentlyInjectedKind = nil
+                currentlyInjectedLayerIndices = nil
             }
             lastKnownBaseModelID = activeBaseID
         }
@@ -139,6 +178,8 @@ final class LoRACoordinator {
                 AudioDiagnostics.note("lora/ensureStack/empty", "removing current=\(currentlyInjectedAdapterID ?? "nil")")
                 await pipeline.removeLoRA()
                 currentlyInjectedAdapterID = nil
+                currentlyInjectedKind = nil
+                currentlyInjectedLayerIndices = nil
             }
             AudioDiagnostics.memory("lora/ensureStack/end")
             return
@@ -185,15 +226,54 @@ final class LoRACoordinator {
             if currentlyInjectedAdapterID != nil {
                 await pipeline.removeLoRA()
                 currentlyInjectedAdapterID = nil
+                currentlyInjectedKind = nil
+                currentlyInjectedLayerIndices = nil
             }
             AudioDiagnostics.note("lora/ensureStack/noValidEntries", "cleared=\(currentlyInjectedAdapterID == nil)")
             AudioDiagnostics.memory("lora/ensureStack/end")
             return
         }
 
-        // Inject LoRALinear layers if the primary adapter changed or nothing is injected
-        let primaryAdapter = sameKindEntries[0].adapter
-        if currentlyInjectedAdapterID != primaryAdapter.id {
+        var loadedEntries: [LoadedAdapterEntry] = []
+        for (adapter, strength) in sameKindEntries {
+            do {
+                let weights = try await AdapterRegistry.loadWeights(adapterID: adapter.id)
+                let paths = trainedPaths(for: adapter, weightKeys: weights.map(\.0))
+                loadedEntries.append(LoadedAdapterEntry(
+                    adapter: adapter,
+                    strength: strength,
+                    weights: weights,
+                    trainedPaths: paths
+                ))
+                AudioDiagnostics.note(
+                    "lora/ensureStack/weights",
+                    "adapter=\(adapter.id) tensors=\(weights.count) strength=\(String(format: "%.3f", strength)) trainedPaths=\(paths?.count ?? 0)"
+                )
+            } catch {
+                logger.error("Failed to load weights for '\(adapter.id)': \(error.localizedDescription)")
+                AudioDiagnostics.note("lora/ensureStack/loadError", "adapter=\(adapter.id) error=\(error.localizedDescription)")
+            }
+        }
+
+        guard !loadedEntries.isEmpty else {
+            if currentlyInjectedAdapterID != nil {
+                await pipeline.removeLoRA()
+                currentlyInjectedAdapterID = nil
+                currentlyInjectedKind = nil
+                currentlyInjectedLayerIndices = nil
+            }
+            AudioDiagnostics.note("lora/ensureStack/noLoadedEntries", "cleared=\(currentlyInjectedAdapterID == nil)")
+            AudioDiagnostics.memory("lora/ensureStack/end")
+            return
+        }
+
+        // Inject LoRA/LoKR layers if the primary adapter or layer footprint changed.
+        let primaryAdapter = loadedEntries[0].adapter
+        let injectionLayerIndices = unionLayerIndices(for: loadedEntries)
+        let needsInjection = currentlyInjectedAdapterID != primaryAdapter.id
+            || currentlyInjectedKind != primaryAdapter.kind
+            || currentlyInjectedLayerIndices != injectionLayerIndices
+        if needsInjection {
             if currentlyInjectedAdapterID != nil {
                 await pipeline.removeLoRA()
             }
@@ -201,17 +281,27 @@ final class LoRACoordinator {
                 AudioDiagnostics.memory("lora/ensureStack/beforeInject")
                 switch primaryAdapter.kind {
                 case .lora:
-                    let _ = try await pipeline.injectLoRA(config: primaryAdapter.config)
+                    let _ = try await pipeline.injectLoRA(
+                        config: primaryAdapter.config,
+                        layerIndices: injectionLayerIndices
+                    )
                 case .lokr:
-                    let _ = try await pipeline.injectLoKR(config: lokrConfig(for: primaryAdapter))
+                    let _ = try await pipeline.injectLoKR(
+                        config: lokrConfig(for: primaryAdapter),
+                        layerIndices: injectionLayerIndices
+                    )
                 }
                 currentlyInjectedAdapterID = primaryAdapter.id
+                currentlyInjectedKind = primaryAdapter.kind
+                currentlyInjectedLayerIndices = injectionLayerIndices
                 logger.info("Injected \(primaryAdapter.kind.rawValue.uppercased()) layers for '\(primaryAdapter.id)'")
                 AudioDiagnostics.memory("lora/ensureStack/afterInject")
             } catch {
                 logger.error("LoRA injection failed for '\(primaryAdapter.id)': \(error.localizedDescription)")
                 AudioDiagnostics.note("lora/ensureStack/injectError", "adapter=\(primaryAdapter.id) error=\(error.localizedDescription)")
                 currentlyInjectedAdapterID = nil
+                currentlyInjectedKind = nil
+                currentlyInjectedLayerIndices = nil
                 AudioDiagnostics.memory("lora/ensureStack/end")
                 return
             }
@@ -226,33 +316,28 @@ final class LoRACoordinator {
             await pipeline.clearLoKRContributions()
         }
 
-        for (adapter, strength) in sameKindEntries {
-            do {
-                let weights = try await AdapterRegistry.loadWeights(adapterID: adapter.id)
-                AudioDiagnostics.note("lora/ensureStack/weights", "adapter=\(adapter.id) tensors=\(weights.count) strength=\(String(format: "%.3f", strength))")
-                switch adapter.kind {
-                case .lora:
-                    await pipeline.addLoRAContribution(
-                        adapterID: adapter.id,
-                        displayName: adapter.name,
-                        source: adapter.source,
-                        weights: weights,
-                        strength: strength
-                    )
-                case .lokr:
-                    await pipeline.addLoKRContribution(
-                        adapterID: adapter.id,
-                        displayName: adapter.name,
-                        source: adapter.source,
-                        weights: weights,
-                        strength: strength
-                    )
-                }
-                logger.info("Added \(adapter.kind.rawValue.uppercased()) contribution '\(adapter.id)' strength=\(strength)")
-            } catch {
-                logger.error("Failed to load weights for '\(adapter.id)': \(error.localizedDescription)")
-                AudioDiagnostics.note("lora/ensureStack/loadError", "adapter=\(adapter.id) error=\(error.localizedDescription)")
+        for entry in loadedEntries {
+            switch entry.adapter.kind {
+            case .lora:
+                await pipeline.addLoRAContribution(
+                    adapterID: entry.adapter.id,
+                    displayName: entry.adapter.name,
+                    source: entry.adapter.source,
+                    weights: entry.weights,
+                    strength: entry.strength,
+                    paths: entry.trainedPaths
+                )
+            case .lokr:
+                await pipeline.addLoKRContribution(
+                    adapterID: entry.adapter.id,
+                    displayName: entry.adapter.name,
+                    source: entry.adapter.source,
+                    weights: entry.weights,
+                    strength: entry.strength,
+                    paths: entry.trainedPaths
+                )
             }
+            logger.info("Added \(entry.adapter.kind.rawValue.uppercased()) contribution '\(entry.adapter.id)' strength=\(entry.strength)")
         }
         AudioDiagnostics.memory("lora/ensureStack/end")
     }
@@ -265,13 +350,17 @@ final class LoRACoordinator {
             await pipeline.clearLoRAContributions()
             await pipeline.removeLoRA()
             currentlyInjectedAdapterID = nil
+            currentlyInjectedKind = nil
+            currentlyInjectedLayerIndices = nil
         }
         lastKnownBaseModelID = nil
+        currentlyInjectedKind = nil
+        currentlyInjectedLayerIndices = nil
         AudioDiagnostics.memory("lora/clearAll/end")
     }
 
     private func diagnosticsAdapterDescription(_ adapter: LoRAAdapter, strength: Float) -> String {
-        "id=\(adapter.id):name=\(adapter.name):kind=\(adapter.kind.rawValue):strength=\(String(format: "%.3f", strength)):source=\(adapter.source.rawValue):rank=\(adapter.config.rank):alpha=\(String(format: "%.3f", adapter.config.alpha)):dropout=\(String(format: "%.3f", adapter.config.dropout)):base=\(adapter.baseModelID):patterns=\(adapter.config.injectionPatterns)"
+        "id=\(adapter.id):name=\(adapter.name):kind=\(adapter.kind.rawValue):strength=\(String(format: "%.3f", strength)):source=\(adapter.source.rawValue):rank=\(adapter.config.rank):alpha=\(String(format: "%.3f", adapter.config.alpha)):dropout=\(String(format: "%.3f", adapter.config.dropout)):base=\(adapter.baseModelID):patterns=\(adapter.config.injectionPatterns):trainedLayers=\(adapter.effectiveTrainedLayerIndices ?? []):trainedPaths=\(adapter.effectiveTrainedPaths?.count ?? 0)"
     }
 
     private func lokrConfig(for adapter: LoRAAdapter) -> LoKRConfig {
@@ -285,55 +374,47 @@ final class LoRACoordinator {
             maxEpochs: adapter.config.maxEpochs,
             batchSize: adapter.config.batchSize,
             warmupFraction: adapter.config.warmupFraction,
-            gradientAccumulationSteps: adapter.config.gradientAccumulationSteps
+            gradientAccumulationSteps: adapter.config.gradientAccumulationSteps,
+            trainingLayerCount: adapter.config.trainingLayerCount
         )
     }
 
-    private func isCompatible(
-        adapter: LoRAAdapter,
-        activeBaseID: String?,
-        activeSpec: ModelSpec?
-    ) -> Bool {
-        guard let activeBaseID else { return true }
-        guard adapter.baseModelCategory == .aceStepDiT else {
-            return adapter.baseModelID == activeBaseID
-        }
-        if adapter.baseModelID == activeBaseID { return true }
-
-        guard let adapterVariant = canonicalACEVariant(adapter.baseModelID),
-              let activeVariant = canonicalACEVariant(
-                activeBaseID,
-                spec: activeSpec
-              ) else {
-            return false
-        }
-        return adapterVariant == activeVariant
+    private func isCompatible(adapter: LoRAAdapter, activeBaseID: String?, activeSpec: ModelSpec?) -> Bool {
+        adapter.isCompatible(with: activeBaseID, activeSpec: activeSpec)
     }
 
-    private func canonicalACEVariant(_ id: String, spec: ModelSpec? = nil) -> String? {
-        let values = [
-            id,
-            spec?.id,
-            spec?.displayName,
-            spec?.huggingFaceRepo,
-            spec?.variantFamily,
-        ]
-        let haystack = values
-            .compactMap { $0?.lowercased() }
-            .joined(separator: " ")
+    private func trainedPaths(for adapter: LoRAAdapter, weightKeys: [String]) -> [String]? {
+        if let paths = adapter.effectiveTrainedPaths {
+            return paths
+        }
+        let derived = LoRAAdapter.trainedPaths(fromWeightKeys: weightKeys, kind: adapter.kind)
+        return derived.isEmpty ? nil : derived
+    }
 
-        if haystack.contains("xl") || haystack.contains("ace-step-1.5-xl") {
-            return "ace-step-dit-xl"
+    private func layerIndices(for adapter: LoRAAdapter, trainedPaths: [String]?) -> Set<Int>? {
+        if let trainedPaths {
+            let parsed = LoRAAdapter.layerIndices(from: trainedPaths)
+            if !parsed.isEmpty {
+                return Set(parsed)
+            }
         }
-        if haystack.contains("turbo") {
-            return "ace-step-dit-turbo"
-        }
-        if haystack.contains("sft") {
-            return "ace-step-dit-sft"
-        }
-        if haystack.contains("base") || haystack.contains("full") {
-            return "ace-step-dit-base"
+        if let indices = adapter.effectiveTrainedLayerIndices {
+            return Set(indices)
         }
         return nil
+    }
+
+    private func unionLayerIndices(for entries: [LoadedAdapterEntry]) -> Set<Int>? {
+        var union = Set<Int>()
+        for entry in entries {
+            guard let indices = layerIndices(
+                for: entry.adapter,
+                trainedPaths: entry.trainedPaths
+            ) else {
+                return nil
+            }
+            union.formUnion(indices)
+        }
+        return union.isEmpty ? nil : union
     }
 }
