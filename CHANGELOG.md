@@ -142,6 +142,7 @@ All notable changes to PiMP Audio Studio are documented here.
 
 ### Fixed
 
+- **Training layer coverage controls no longer wrap awkwardly** — the LoRA/LoKR training sheet now hides duplicate segmented-picker labels and gives Layer Coverage a stable width, so the control stays as a single clean row in the inline Training workspace.
 - **Local dataset enrichment uses less peak memory** — Enrich Dataset now invokes the existing GPU-memory release path before loading Demucs/Qwen, compacts the MLX allocator between separation/transcription phases, and reuses one decoded stem sample buffer for BPM/key analysis instead of reading instrumental stems twice.
 - **Editor audio export keeps sandbox write permission alive** — exporting edited WAV/AIFF/M4A files now holds security-scoped access for the full async write/export operation, normalizes the output extension, and surfaces export failures in-app instead of only logging AVFoundation `-54` errors in Xcode.
 - **Local file build flow no longer hands stale captions to training** — the local dataset sheet now refreshes its preview from the package after enrichment, updates the full-mix training bundle when captions are auto-generated, and sends users into Dataset Review instead of bypassing approval with an outdated in-memory clip list.

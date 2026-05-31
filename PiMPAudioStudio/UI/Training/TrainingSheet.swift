@@ -361,6 +361,7 @@ struct TrainingSheet: View {
                 Picker(adapterKind == .lokr ? "Linear Dim" : "Rank", selection: $selectedRank) {
                     ForEach(rankOptions, id: \.self) { Text("\($0)").tag($0) }
                 }
+                .labelsHidden()
                 .pickerStyle(.segmented)
                 .frame(maxWidth: 150)
                 .disabled(isCheckpointResume)
@@ -369,6 +370,7 @@ struct TrainingSheet: View {
                 Picker("Epochs", selection: $selectedEpochs) {
                     ForEach(epochOptions, id: \.self) { Text("\($0)").tag($0) }
                 }
+                .labelsHidden()
                 .pickerStyle(.segmented)
                 .frame(maxWidth: 220)
                 .disabled(isCheckpointResume)
@@ -379,8 +381,9 @@ struct TrainingSheet: View {
                         Text("Last \(count)").tag(count)
                     }
                 }
+                .labelsHidden()
                 .pickerStyle(.segmented)
-                .frame(maxWidth: 280)
+                .frame(width: 280)
                 .disabled(isCheckpointResume)
             }
 
@@ -427,6 +430,7 @@ struct TrainingSheet: View {
                     Picker("Steps", selection: $gradientAccumulationSteps) {
                         ForEach(accumOptions, id: \.self) { Text("\($0)").tag($0) }
                     }
+                    .labelsHidden()
                     .pickerStyle(.segmented)
                     .frame(maxWidth: 200)
                     .disabled(isCheckpointResume)
