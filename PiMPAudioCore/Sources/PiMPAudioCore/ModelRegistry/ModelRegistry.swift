@@ -293,25 +293,43 @@ public actor ModelRegistry {
         self.baseDirectory = baseDirectory
         self.client = client
         self.tokenProvider = tokenProvider
-        loadUserSpecs()
-        loadActiveModels()
-        migrateLegacyModelIDsIfNeeded()
+        let loadedUserSpecs = Self.loadUserSpecs(from: baseDirectory)
+        self.userSpecs = loadedUserSpecs.specs
+        if loadedUserSpecs.shouldPersist {
+            Self.saveUserSpecs(
+                loadedUserSpecs.specs,
+                to: baseDirectory.appending(path: "user-models.json")
+            )
+        }
+        self.activeModels = Self.migratedActiveModelsIfNeeded(
+            activeModels: Self.loadActiveModels(from: baseDirectory),
+            userSpecs: loadedUserSpecs.specs,
+            baseDirectory: baseDirectory
+        )
     }
 
     /// One-shot migration from Phase-1 placeholder spec IDs to Phase-2 real IDs.
     /// Maps legacy `ace-step-dit` active ID to the new Turbo default and sweeps
     /// orphan model directories whose names don't match any current spec ID.
     /// Gated on `UserDefaults` flag so this runs exactly once.
-    private func migrateLegacyModelIDsIfNeeded() {
+    private static func migratedActiveModelsIfNeeded(
+        activeModels loadedActiveModels: [ModelCategory: String],
+        userSpecs: [ModelSpec],
+        baseDirectory: URL
+    ) -> [ModelCategory: String] {
         let migrationKey = "com.pimpstudios.PiMPAudioStudio.modelMigration.v1"
-        guard !UserDefaults.standard.bool(forKey: migrationKey) else { return }
+        guard !UserDefaults.standard.bool(forKey: migrationKey) else {
+            return loadedActiveModels
+        }
+
+        var activeModels = loadedActiveModels
 
         if activeModels[.aceStepDiT] == "ace-step-dit" {
             activeModels[.aceStepDiT] = "ace-step-dit-turbo"
             logger.info("Migrated legacy active DiT 'ace-step-dit' → 'ace-step-dit-turbo'")
         }
 
-        let validIDs = Set(allSpecs.map(\.id))
+        let validIDs = Set((Self.builtInSpecs + userSpecs).map(\.id))
         if let entries = try? FileManager.default.contentsOfDirectory(
             at: baseDirectory, includingPropertiesForKeys: nil
         ) {
@@ -328,6 +346,7 @@ public actor ModelRegistry {
         }
 
         UserDefaults.standard.set(true, forKey: migrationKey)
+        return activeModels
     }
 
     // MARK: - Status
@@ -554,25 +573,32 @@ public actor ModelRegistry {
 
     // MARK: - Persistence
 
-    private func loadUserSpecs() {
-        let url = userSpecsFileURL
-        guard FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) else { return }
+    private static func loadUserSpecs(from baseDirectory: URL) -> (specs: [ModelSpec], shouldPersist: Bool) {
+        let url = baseDirectory.appending(path: "user-models.json")
+        guard FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) else {
+            return ([], false)
+        }
 
         do {
             let data = try Data(contentsOf: url)
-            userSpecs = try JSONDecoder().decode([ModelSpec].self, from: data)
-            if refreshRuntimeMetadataForDownloadedACEModels() {
-                saveUserSpecs()
-            }
+            let decoded = try JSONDecoder().decode([ModelSpec].self, from: data)
+            let refreshed = refreshedRuntimeMetadataForDownloadedACEModels(
+                decoded,
+                baseDirectory: baseDirectory
+            )
+            return (refreshed.specs, refreshed.changed)
         } catch {
             logger.error("Failed to load user-models.json: \(error.localizedDescription). Starting with empty list.")
-            userSpecs = []
+            return ([], false)
         }
     }
 
-    private func refreshRuntimeMetadataForDownloadedACEModels() -> Bool {
+    private static func refreshedRuntimeMetadataForDownloadedACEModels(
+        _ specs: [ModelSpec],
+        baseDirectory: URL
+    ) -> (specs: [ModelSpec], changed: Bool) {
         var changed = false
-        userSpecs = userSpecs.map { spec in
+        let refreshedSpecs = specs.map { spec in
             guard spec.category == .aceStepDiT else { return spec }
             let configURL = spec.localPath(for: "config.json", base: baseDirectory)
             guard FileManager.default.fileExists(atPath: configURL.path(percentEncoded: false)),
@@ -602,30 +628,33 @@ public actor ModelRegistry {
                 runtimeNote: runtimeNote
             )
         }
-        return changed
+        return (refreshedSpecs, changed)
     }
 
     private func saveUserSpecs() {
+        Self.saveUserSpecs(userSpecs, to: userSpecsFileURL)
+    }
+
+    private static func saveUserSpecs(_ specs: [ModelSpec], to url: URL) {
         do {
-            let data = try JSONEncoder().encode(userSpecs)
-            try data.write(to: userSpecsFileURL, options: .atomic)
+            let data = try JSONEncoder().encode(specs)
+            try data.write(to: url, options: .atomic)
         } catch {
             logger.error("Failed to save user-models.json: \(error.localizedDescription)")
         }
     }
 
-    private func loadActiveModels() {
-        let url = activeModelsFileURL
+    private static func loadActiveModels(from baseDirectory: URL) -> [ModelCategory: String] {
+        let url = baseDirectory.appending(path: "active-models.json")
         guard FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) else {
             // First launch — default to built-in models
-            activeModels = Self.defaultActiveModels
-            return
+            return Self.defaultActiveModels
         }
 
         do {
             let data = try Data(contentsOf: url)
             let decoded = try JSONDecoder().decode([String: String].self, from: data)
-            activeModels = Dictionary(
+            return Dictionary(
                 uniqueKeysWithValues: decoded.compactMap { key, value in
                     guard let category = ModelCategory(rawValue: key) else { return nil }
                     return (category, value)
@@ -633,7 +662,7 @@ public actor ModelRegistry {
             )
         } catch {
             logger.error("Failed to load active-models.json: \(error.localizedDescription). Using defaults.")
-            activeModels = Self.defaultActiveModels
+            return Self.defaultActiveModels
         }
     }
 

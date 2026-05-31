@@ -168,7 +168,7 @@ public struct SFXVAEConfig: Codable, Sendable {
 
 /// Conditioning tensors built by `SoundFXPipeline.buildConditioning(text:duration:tokenizer:)`.
 /// Passed directly to `SFXDiffusionActor.inpaint`.
-public struct SFXInpaintConditioning: Sendable {
+public struct SFXInpaintConditioning: @unchecked Sendable {
     /// `[1, 66, 768]` — T5[:64] + total_time_token + start_time_token.
     public let crossCond: MLXArray
     /// `[1, 1536]` — concat(totalEmb, startEmb).

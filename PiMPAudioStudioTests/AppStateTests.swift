@@ -210,7 +210,12 @@ private extension JSONDecoder {
     #expect(FileManager.default.fileExists(
         atPath: destinationRoot.appendingPathComponent("MCPImports/imported.wav").path
     ))
-    #expect(try String(contentsOf: destinationRoot.appendingPathComponent("models/existing/keep.txt")) == "existing model")
+    #expect(
+        try String(
+            contentsOf: destinationRoot.appendingPathComponent("models/existing/keep.txt"),
+            encoding: .utf8
+        ) == "existing model"
+    )
 
     let migratedPaths = Set(report.entries.map(\.relativePath))
     #expect(migratedPaths == ["models", "presets", "LLM", "SourceAudioImports", "TrainingDatasets", "MCPImports"])
@@ -237,7 +242,7 @@ private extension JSONDecoder {
     _ = AppRuntimeMigration.migrateDataDirectories(from: [legacyRoot], into: destinationRoot)
     _ = AppRuntimeMigration.migrateDataDirectories(from: [legacyRoot], into: destinationRoot)
 
-    #expect(try String(contentsOf: destinationPreset) == "new preset")
+    #expect(try String(contentsOf: destinationPreset, encoding: .utf8) == "new preset")
 }
 
 @Test func appRuntimeMigrationTreatsMissingLegacyRootsAsNoOp() throws {
@@ -1719,6 +1724,7 @@ private extension JSONDecoder {
     #expect(plan.systemPrompt.contains("Do not collapse the whole song into one [Verse]"))
 }
 
+@MainActor
 @Test func lyricBackendProvidersExcludeHuggingFace() {
     let providerIDs = LyricWriterManager.remoteBackendProviders.map(\.id)
 

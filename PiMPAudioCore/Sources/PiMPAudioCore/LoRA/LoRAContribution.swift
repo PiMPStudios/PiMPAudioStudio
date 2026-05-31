@@ -5,7 +5,7 @@ import MLX
 ///
 /// Used by LoRALinear to compute additive low-rank contributions:
 /// `output += strength * (x @ loraA^T @ loraB^T)`
-public struct LoRAContribution: Sendable {
+public struct LoRAContribution: @unchecked Sendable {
     /// ID of the adapter providing this contribution.
     public let adapterID: String
 

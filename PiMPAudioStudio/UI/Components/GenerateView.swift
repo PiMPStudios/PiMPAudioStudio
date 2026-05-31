@@ -360,7 +360,7 @@ struct GenerateView: View {
         try? FileManager.default.removeItem(at: url)
     }
 
-    private static func copySourceAudioIntoAppContainer(from sourceURL: URL) throws -> URL {
+    nonisolated private static func copySourceAudioIntoAppContainer(from sourceURL: URL) throws -> URL {
         if isImportedSourceAudio(sourceURL) {
             return sourceURL
         }
@@ -384,11 +384,11 @@ struct GenerateView: View {
         return destinationURL
     }
 
-    private static func sourceAudioImportsDirectory() throws -> URL {
+    nonisolated private static func sourceAudioImportsDirectory() throws -> URL {
         AppStorageLocations.sourceAudioImportsDirectory
     }
 
-    private static func uniqueSourceAudioURL(for sourceURL: URL, in directory: URL) -> URL {
+    nonisolated private static func uniqueSourceAudioURL(for sourceURL: URL, in directory: URL) -> URL {
         let rawBaseName = sourceURL.deletingPathExtension().lastPathComponent
         let baseName = sanitizedFileComponent(rawBaseName, fallback: "source-audio")
         let rawExtension = sourceURL.pathExtension
@@ -397,7 +397,7 @@ struct GenerateView: View {
         return directory.appending(path: "\(baseName)-\(shortID).\(fileExtension)")
     }
 
-    private static func sanitizedFileComponent(_ value: String, fallback: String) -> String {
+    nonisolated private static func sanitizedFileComponent(_ value: String, fallback: String) -> String {
         let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: " -_"))
         let scalars = value.unicodeScalars.map { scalar in
             allowed.contains(scalar) ? Character(scalar) : "-"
@@ -407,7 +407,7 @@ struct GenerateView: View {
         return sanitized.isEmpty ? fallback : sanitized
     }
 
-    private static func isImportedSourceAudio(_ url: URL) -> Bool {
+    nonisolated private static func isImportedSourceAudio(_ url: URL) -> Bool {
         guard let importsDirectory = try? sourceAudioImportsDirectory() else {
             return false
         }

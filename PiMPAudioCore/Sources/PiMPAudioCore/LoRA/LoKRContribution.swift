@@ -2,7 +2,7 @@ import Foundation
 import MLX
 
 /// Represents a single LoKR adapter contribution in an inference stack.
-public struct LoKRContribution: Sendable {
+public struct LoKRContribution: @unchecked Sendable {
     public let adapterID: String
     public let displayName: String?
     public let source: AdapterSource

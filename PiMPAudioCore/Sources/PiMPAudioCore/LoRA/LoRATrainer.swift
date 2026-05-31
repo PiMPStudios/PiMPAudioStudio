@@ -5,7 +5,7 @@ import MLXOptimizers
 import MLXRandom
 
 /// A single training sample: preprocessed latent and conditioning data.
-public struct TrainingSample: Sendable {
+public struct TrainingSample: @unchecked Sendable {
     /// Clean latent from VAE encoder [1, frames, channels].
     public let latent: MLXArray
 
