@@ -24,6 +24,7 @@ struct GenerateView: View {
     @State private var shiftOverride: Double = 3.0
     @State private var advancedExpanded: Bool = false
     @AppStorage(AppUserDefaultsKeys.audioDebugVerbose) private var audioDebugVerbose: Bool = false
+    @State private var audioDebugLogPath: String?
     @State private var modeSelection: ModeSelection = .auto
     @State private var selectedAdapterID: String?
     @AppStorage(AppUserDefaultsKeys.selectedAdapterID) private var persistedAdapterID: String = ""
@@ -55,10 +56,13 @@ struct GenerateView: View {
             intentRouter.classify(prompt: newValue)
         }
         .onAppear {
+            AudioDiagnostics.setLogDirectory(AppStorageLocations.diagnosticsDirectory)
             AudioDiagnostics.refreshFileLoggingState()
+            updateAudioDebugLogPath()
         }
         .onChange(of: audioDebugVerbose) { _, newValue in
             AudioDiagnostics.setVerboseLoggingEnabled(newValue)
+            updateAudioDebugLogPath()
         }
         .onReceive(presetStore.$presetToLoad) { preset in
             guard let preset else { return }
@@ -641,9 +645,12 @@ struct GenerateView: View {
                             .font(.caption)
                     }
                     .toggleStyle(.checkbox)
-                    Text("(AUDIODIAG logs also write to /tmp)")
+                    Text(audioDebugLogPath.map { "(logs: \($0))" } ?? "(logs write to Diagnostics)")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .help(audioDebugLogPath ?? AppStorageLocations.diagnosticsDirectory.path)
                     Spacer()
                 }
             }
@@ -737,6 +744,12 @@ struct GenerateView: View {
 
         let adapter = AdapterRegistry.listAdapters().first { $0.id == id }
         stackManager.setPrimary(adapter)
+    }
+
+    private func updateAudioDebugLogPath() {
+        audioDebugLogPath = AudioDiagnostics.activeLogFileURL?.path
+            ?? AudioDiagnostics.configuredLogDirectoryURL?.path
+            ?? AppStorageLocations.diagnosticsDirectory.path
     }
 
     private func restorePersistedAdapterSelection() {

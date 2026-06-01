@@ -10,7 +10,8 @@ import OSLog
 ///   defaults write com.pimpstudios.PiMPAudioStudio com.pimpstudios.PiMPAudioStudio.audioDebugVerbose -bool YES
 ///
 /// In Xcode, filter the console with: subsystem:com.pimpstudios.PiMPAudioStudio [AUDIODIAG]
-/// When enabled, the same lines are mirrored to /tmp/PiMPAudioStudio-AUDIODIAG-*.log.
+/// When enabled, the same lines are mirrored to PiMPAudioStudio-AUDIODIAG-*.log
+/// files in the app-configured diagnostics folder.
 ///
 /// Output format (single line per boundary):
 ///   [AUDIODIAG] <tag> shape=[…] dtype=… abs_mean=… abs_max=… any_nan=… any_inf=… first5=[…]
@@ -29,6 +30,14 @@ public enum AudioDiagnostics {
 
     public static var activeLogFileURL: URL? {
         fileSink.activeLogFileURL
+    }
+
+    public static var configuredLogDirectoryURL: URL? {
+        fileSink.configuredLogDirectoryURL
+    }
+
+    public static func setLogDirectory(_ url: URL?) {
+        fileSink.setLogDirectory(url)
     }
 
     public static func setVerboseLoggingEnabled(_ enabled: Bool) {
@@ -121,13 +130,13 @@ public enum AudioDiagnostics {
 private final class AudioDiagnosticsFileSink: @unchecked Sendable {
     private let lock = NSLock()
     private let fileManager = FileManager.default
-    private let logDirectory = URL(fileURLWithPath: "/tmp", isDirectory: true)
     private let fileNameFormatter: DateFormatter
     private let lineFormatter: DateFormatter
 
     private var isEnabled = false
     private var fileHandle: FileHandle?
     private var logFileURL: URL?
+    private var configuredLogDirectory: URL?
 
     init() {
         let locale = Locale(identifier: "en_US_POSIX")
@@ -147,6 +156,21 @@ private final class AudioDiagnosticsFileSink: @unchecked Sendable {
 
     var activeLogFileURL: URL? {
         withLock { logFileURL }
+    }
+
+    var configuredLogDirectoryURL: URL? {
+        withLock { configuredLogDirectory }
+    }
+
+    func setLogDirectory(_ url: URL?) {
+        let standardizedURL = url?.standardizedFileURL
+        withLock {
+            guard configuredLogDirectory != standardizedURL else { return }
+            configuredLogDirectory = standardizedURL
+            if isEnabled {
+                openNewLogFileLocked()
+            }
+        }
     }
 
     func setEnabled(_ enabled: Bool) {
@@ -177,22 +201,36 @@ private final class AudioDiagnosticsFileSink: @unchecked Sendable {
         let timestamp = fileNameFormatter.string(from: Date())
         let suffix = UUID().uuidString.prefix(8)
         let fileName = "PiMPAudioStudio-AUDIODIAG-\(timestamp)-\(suffix).log"
-        let url = logDirectory.appendingPathComponent(fileName, isDirectory: false)
 
-        guard fileManager.createFile(atPath: url.path, contents: nil) else {
-            logFileURL = nil
-            fileHandle = nil
-            return
+        for directory in candidateLogDirectories() {
+            let url = directory.appendingPathComponent(fileName, isDirectory: false)
+
+            do {
+                try fileManager.createDirectory(
+                    at: directory,
+                    withIntermediateDirectories: true
+                )
+                try Data().write(to: url, options: .withoutOverwriting)
+                fileHandle = try FileHandle(forWritingTo: url)
+                logFileURL = url
+                writeLocked("# PiMP Audio Studio audio diagnostics")
+                writeLocked("# Started \(lineFormatter.string(from: Date()))")
+                writeLocked("# Path \(url.path)")
+                return
+            } catch {
+                logFileURL = nil
+                fileHandle = nil
+            }
         }
+    }
 
-        do {
-            fileHandle = try FileHandle(forWritingTo: url)
-            logFileURL = url
-            writeLocked("# PiMP Audio Studio audio diagnostics")
-            writeLocked("# Started \(lineFormatter.string(from: Date()))")
-        } catch {
-            logFileURL = nil
-            fileHandle = nil
+    private func candidateLogDirectories() -> [URL] {
+        var seenPaths = Set<String>()
+        return [configuredLogDirectory, fileManager.temporaryDirectory].compactMap(\.self).filter { url in
+            let path = url.standardizedFileURL.path
+            guard !seenPaths.contains(path) else { return false }
+            seenPaths.insert(path)
+            return true
         }
     }
 

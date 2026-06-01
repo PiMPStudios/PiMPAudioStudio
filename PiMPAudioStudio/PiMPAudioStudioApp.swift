@@ -21,6 +21,8 @@ struct PiMPAudioStudioApp: App {
 
     init() {
         AppRuntimeMigration.migrateIfNeeded()
+        AudioDiagnostics.setLogDirectory(AppStorageLocations.diagnosticsDirectory)
+        AudioDiagnostics.refreshFileLoggingState()
 
         let apiKeys = APIKeyStore()
         let providerAccess = ProviderAccessStore()

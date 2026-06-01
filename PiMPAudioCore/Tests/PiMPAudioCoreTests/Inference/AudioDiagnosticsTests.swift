@@ -4,25 +4,31 @@ import Testing
 
 @Suite("AudioDiagnostics", .serialized)
 struct AudioDiagnosticsTests {
-    @Test("Verbose diagnostics mirror notes to timestamped tmp log files")
-    func verboseDiagnosticsMirrorNotesToTimestampedTmpLogFiles() throws {
+    @Test("Verbose diagnostics mirror notes to configured log folder")
+    func verboseDiagnosticsMirrorNotesToConfiguredLogFolder() throws {
         let defaults = UserDefaults.standard
         let defaultsKey = "com.pimpstudios.PiMPAudioStudio.audioDebugVerbose"
         let legacyDefaultsKey = "audioDebugVerbose"
         let originalValue = defaults.object(forKey: defaultsKey)
         let originalLegacyValue = defaults.object(forKey: legacyDefaultsKey)
+        let originalLogDirectory = AudioDiagnostics.configuredLogDirectoryURL
+        let logDirectory = FileManager.default.temporaryDirectory
+            .appending(path: "AudioDiagnosticsTests-\(UUID().uuidString)", directoryHint: .isDirectory)
         var createdURLs: [URL] = []
 
         defer {
             AudioDiagnostics.setVerboseLoggingEnabled(false)
+            AudioDiagnostics.setLogDirectory(originalLogDirectory)
             restore(originalValue, forKey: defaultsKey, in: defaults)
             restore(originalLegacyValue, forKey: legacyDefaultsKey, in: defaults)
             for url in createdURLs {
                 try? FileManager.default.removeItem(at: url)
             }
+            try? FileManager.default.removeItem(at: logDirectory)
         }
 
         defaults.removeObject(forKey: legacyDefaultsKey)
+        AudioDiagnostics.setLogDirectory(logDirectory)
         AudioDiagnostics.setVerboseLoggingEnabled(true)
 
         guard let firstURL = AudioDiagnostics.activeLogFileURL else {
@@ -36,7 +42,7 @@ struct AudioDiagnosticsTests {
         AudioDiagnostics.setVerboseLoggingEnabled(false)
 
         #expect(AudioDiagnostics.activeLogFileURL == nil)
-        #expect(firstURL.path.hasPrefix("/tmp/"))
+        #expect(firstURL.path.hasPrefix(logDirectory.path))
         #expect(firstURL.lastPathComponent.hasPrefix("PiMPAudioStudio-AUDIODIAG-"))
         #expect(firstURL.pathExtension == "log")
 

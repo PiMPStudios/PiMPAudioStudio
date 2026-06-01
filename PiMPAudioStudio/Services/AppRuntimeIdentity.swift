@@ -87,6 +87,10 @@ enum AppStorageLocations {
         rootDirectory.appendingPathComponent("TrainingDatasets", isDirectory: true)
     }
 
+    static var diagnosticsDirectory: URL {
+        rootDirectory.appendingPathComponent("Diagnostics", isDirectory: true)
+    }
+
     static var migrationReportURL: URL {
         rootDirectory.appendingPathComponent("runtime_migration.json")
     }
