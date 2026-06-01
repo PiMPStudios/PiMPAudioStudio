@@ -39,6 +39,11 @@ struct LoRATrainingResult {
     let trainedPaths: [String]
 }
 
+private struct TrainingPreprocessResult {
+    let sample: TrainingSample
+    let cacheHit: Bool
+}
+
 /// Orchestrates LoRA training: dataset preparation, training execution, and adapter saving.
 @MainActor
 final class TrainingService: ObservableObject {
@@ -159,7 +164,12 @@ final class TrainingService: ObservableObject {
             guard let self else { return }
             let adapterID = effectiveResumeAdapterID ?? Self.adapterID(from: adapterName)
             defer {
+                AudioDiagnostics.memory("training/defer/begin")
                 if let sm = self.stackManager, !self.savedStack.isEmpty {
+                    AudioDiagnostics.note(
+                        "training/restoreStack",
+                        "count=\(self.savedStack.count)"
+                    )
                     for entry in self.savedStack {
                         sm.addToStack(entry.adapter, strength: entry.strength)
                     }
@@ -171,40 +181,79 @@ final class TrainingService: ObservableObject {
                 if let onTrainingFinished {
                     Task {
                         await onTrainingFinished()
+                        AudioDiagnostics.memory("training/defer/afterFinishedHandler")
                     }
                 }
+                AudioDiagnostics.memory("training/defer/end")
             }
 
             do {
                 self.state = .loadingModels
+                self.logTrainingPhase(
+                    "loadingModels/begin",
+                    kind: kind,
+                    adapterID: adapterID,
+                    adapterName: adapterName
+                )
                 if let ensureModelsLoaded {
                     try await ensureModelsLoaded()
+                    AudioDiagnostics.memory("training/loadingModels/afterEnsureLoaded")
                 }
                 guard self.isConditioningReady else {
+                    AudioDiagnostics.note(
+                        "training/loadingModels/notReady",
+                        "kind=\(kind.rawValue) adapterID=\(adapterID)"
+                    )
                     self.state = .failed("Could not load the ACE-Step models needed for training.")
                     return
                 }
+                self.logTrainingPhase(
+                    "loadingModels/end",
+                    kind: kind,
+                    adapterID: adapterID,
+                    adapterName: adapterName
+                )
 
                 // Clear stack during training (restore after)
                 if let sm = self.stackManager, sm.isStacking {
                     self.savedStack = sm.additionalAdapters
                     sm.clearStack()
+                    AudioDiagnostics.note(
+                        "training/clearStack",
+                        "kind=\(kind.rawValue) adapterID=\(adapterID) savedCount=\(self.savedStack.count)"
+                    )
                 }
 
                 let activeModelID = await self.registry.activeModelID(
                     for: .aceStepDiT
                 ) ?? "unknown"
+                AudioDiagnostics.note(
+                    "training/baseModel",
+                    "kind=\(kind.rawValue) adapterID=\(adapterID) activeModel=\(activeModelID)"
+                )
                 let sessionConfig: LoRAConfig
                 let sessionLoKRConfig: LoKRConfig?
                 let resumeCheckpoint: TrainingCheckpoint?
                 let initialWeights: [(String, MLXArray)]?
 
                 if let resumeAdapterID = effectiveResumeAdapterID {
+                    AudioDiagnostics.note(
+                        "training/resume/begin",
+                        "kind=\(kind.rawValue) adapterID=\(resumeAdapterID)"
+                    )
                     guard let checkpoint = AdapterRegistry.loadCheckpoint(adapterID: resumeAdapterID) else {
+                        AudioDiagnostics.note(
+                            "training/resume/missingCheckpoint",
+                            "kind=\(kind.rawValue) adapterID=\(resumeAdapterID)"
+                        )
                         self.state = .failed("No paused training checkpoint found for this adapter.")
                         return
                     }
                     guard checkpoint.baseModelID == activeModelID else {
+                        AudioDiagnostics.note(
+                            "training/resume/modelMismatch",
+                            "kind=\(kind.rawValue) adapterID=\(resumeAdapterID) expected=\(checkpoint.baseModelID) actual=\(activeModelID)"
+                        )
                         self.state = .failed(
                             CheckpointError.modelMismatch(
                                 expected: checkpoint.baseModelID,
@@ -217,6 +266,10 @@ final class TrainingService: ObservableObject {
                     sessionConfig = checkpoint.config
                     sessionLoKRConfig = nil
                     initialWeights = try await AdapterRegistry.loadWeights(adapterID: resumeAdapterID)
+                    AudioDiagnostics.note(
+                        "training/resume/end",
+                        "kind=\(kind.rawValue) adapterID=\(resumeAdapterID) checkpointStep=\(checkpoint.globalStep) checkpointEpoch=\(checkpoint.epoch) initialWeights=\(initialWeights?.count ?? 0)"
+                    )
                 } else {
                     resumeCheckpoint = nil
                     sessionConfig = config
@@ -227,32 +280,59 @@ final class TrainingService: ObservableObject {
                 // 1. Prepare dataset
                 let totalSamples = entries.count + importedFiles.count
                 self.state = .preparingDataset(current: 0, total: totalSamples)
+                AudioDiagnostics.note(
+                    "training/dataset/begin",
+                    "kind=\(kind.rawValue) adapterID=\(adapterID) historyEntries=\(entries.count) importedFiles=\(importedFiles.count) total=\(totalSamples)"
+                )
+                AudioDiagnostics.memory("training/dataset/begin")
 
                 var samples: [TrainingSample] = []
 
                 for (idx, entry) in entries.enumerated() {
                     try Task.checkCancellation()
                     let url = audioURLs[idx]
-                    let sample = try await self.preprocessSample(
+                    let preprocessResult = try await self.preprocessSample(
                         audioURL: url,
                         prompt: entry.prompt,
                         lyrics: entry.lyrics,
                         duration: entry.duration
                     )
+                    let sample = preprocessResult.sample
                     samples.append(sample)
+                    self.logPreparedSample(
+                        sample,
+                        kind: kind,
+                        adapterID: adapterID,
+                        source: "history",
+                        index: idx + 1,
+                        total: totalSamples,
+                        cacheHit: preprocessResult.cacheHit,
+                        audioURL: url
+                    )
                     self.state = .preparingDataset(current: idx + 1, total: totalSamples)
                 }
 
                 for (idx, imported) in importedFiles.enumerated() {
                     try Task.checkCancellation()
-                    let sample = try await self.preprocessSample(
+                    let preprocessResult = try await self.preprocessSample(
                         audioURL: imported.url,
                         prompt: imported.description,
                         lyrics: imported.lyrics,
                         duration: 0,
                         cache: imported.preprocessCache
                     )
+                    let sample = preprocessResult.sample
                     samples.append(sample)
+                    self.logPreparedSample(
+                        sample,
+                        kind: kind,
+                        adapterID: adapterID,
+                        source: "imported",
+                        index: entries.count + idx + 1,
+                        total: totalSamples,
+                        cacheHit: preprocessResult.cacheHit,
+                        audioURL: imported.url
+                    )
                     self.state = .preparingDataset(
                         current: entries.count + idx + 1,
                         total: totalSamples
@@ -260,9 +340,18 @@ final class TrainingService: ObservableObject {
                 }
 
                 guard !samples.isEmpty else {
+                    AudioDiagnostics.note(
+                        "training/dataset/empty",
+                        "kind=\(kind.rawValue) adapterID=\(adapterID)"
+                    )
                     self.state = .failed("No valid training samples")
                     return
                 }
+                AudioDiagnostics.note(
+                    "training/dataset/end",
+                    "kind=\(kind.rawValue) adapterID=\(adapterID) samples=\(samples.count) \(Self.trainingDatasetShapeSummary(samples))"
+                )
+                AudioDiagnostics.memory("training/dataset/end")
                 let manifest = TrainingManifest(
                     historyEntryIDs: entries.map(\.id),
                     importedFiles: importedFiles
@@ -289,6 +378,12 @@ final class TrainingService: ObservableObject {
                 // 2. Run training through pipeline
                 try Task.checkCancellation()
                 self.lastTrainingProgressLogStep = 0
+                self.logTrainingPhase(
+                    "run/begin",
+                    kind: kind,
+                    adapterID: adapterID,
+                    adapterName: adapterName
+                )
 
                 let progressHandler: @Sendable (TrainingProgress) -> Void = { [weak self] progress in
                     Task { @MainActor in
@@ -332,6 +427,12 @@ final class TrainingService: ObservableObject {
                         trainedPaths: trained.trainedPaths
                     )
                 }
+                self.logTrainingPhase(
+                    "run/end",
+                    kind: kind,
+                    adapterID: adapterID,
+                    adapterName: adapterName
+                )
                 self.logTrainingComplete(
                     kind: kind,
                     adapterName: adapterName,
@@ -357,6 +458,10 @@ final class TrainingService: ObservableObject {
 
                 if self.isStopping {
                     if kind == .lora, self.shouldSaveCheckpointOnStop {
+                        AudioDiagnostics.note(
+                            "training/saveCheckpoint/begin",
+                            "kind=\(kind.rawValue) adapterID=\(adapterID)"
+                        )
                         trainingLogger.info("Training paused and checkpoint saved for '\(adapterName)'")
                         let checkpoint = self.makeCheckpoint(
                             adapterID: adapterID,
@@ -374,9 +479,17 @@ final class TrainingService: ObservableObject {
                             message: "Training paused and checkpoint saved."
                         )
                         self.saveActiveRunLog(adapterID: adapterID)
+                        AudioDiagnostics.note(
+                            "training/saveCheckpoint/end",
+                            "kind=\(kind.rawValue) adapterID=\(adapterID) weights=\(result.weights.count) paths=\(result.trainedPaths.count)"
+                        )
                         self.state = .paused(checkpoint)
                     } else {
                         trainingLogger.info("Training cancelled for '\(adapterName)'")
+                        AudioDiagnostics.note(
+                            "training/cancelled",
+                            "kind=\(kind.rawValue) adapterID=\(adapterID) saveCheckpoint=false"
+                        )
                         self.finishActiveRunLog(
                             status: .cancelled,
                             result: result,
@@ -389,6 +502,11 @@ final class TrainingService: ObservableObject {
 
                 // 3. Save adapter
                 self.state = .saving
+                AudioDiagnostics.note(
+                    "training/save/begin",
+                    "kind=\(kind.rawValue) adapterID=\(adapterID) weights=\(result.weights.count) paths=\(result.trainedPaths.count)"
+                )
+                AudioDiagnostics.memory("training/save/begin")
 
                 try AdapterRegistry.save(adapter: adapter, weights: result.weights)
                 trainingLogger.info("Saved \(kind.rawValue.uppercased()) adapter '\(adapterName)' id=\(adapterID)")
@@ -403,11 +521,20 @@ final class TrainingService: ObservableObject {
                     message: "Training completed and adapter was saved."
                 )
                 self.saveActiveRunLog(adapterID: adapterID)
+                AudioDiagnostics.note(
+                    "training/save/end",
+                    "kind=\(kind.rawValue) adapterID=\(adapterID) directory=\(AdapterRegistry.adapterDirectory(id: adapterID).path(percentEncoded: false))"
+                )
+                AudioDiagnostics.memory("training/save/end")
 
                 self.state = .complete(adapter)
 
             } catch is CancellationError {
                 trainingLogger.info("Training task cancelled")
+                AudioDiagnostics.note(
+                    "training/cancelled",
+                    "kind=\(kind.rawValue) adapterID=\(adapterID) taskCancellation=true"
+                )
                 self.finishActiveRunLog(
                     status: .cancelled,
                     message: "Training task was cancelled."
@@ -538,6 +665,55 @@ final class TrainingService: ObservableObject {
         )
     }
 
+    private func logTrainingPhase(
+        _ phase: String,
+        kind: AdapterKind,
+        adapterID: String,
+        adapterName: String
+    ) {
+        AudioDiagnostics.note(
+            "training/\(phase)",
+            "kind=\(kind.rawValue) adapterID=\(adapterID) name=\(adapterName)"
+        )
+        AudioDiagnostics.memory("training/\(phase)")
+    }
+
+    private func logPreparedSample(
+        _ sample: TrainingSample,
+        kind: AdapterKind,
+        adapterID: String,
+        source: String,
+        index: Int,
+        total: Int,
+        cacheHit: Bool,
+        audioURL: URL
+    ) {
+        AudioDiagnostics.note(
+            "training/dataset/sample",
+            "kind=\(kind.rawValue) adapterID=\(adapterID) index=\(index)/\(total) source=\(source) cacheHit=\(cacheHit) file=\(audioURL.lastPathComponent) latent=\(sample.latent.shape) encoder=\(sample.encoderStates.shape) context=\(sample.contextLatents.shape) mask=\(sample.encoderMask?.shape ?? [])"
+        )
+    }
+
+    private static func trainingDatasetShapeSummary(_ samples: [TrainingSample]) -> String {
+        let latentFrameCounts = samples.map { $0.latent.shape.dropFirst().first ?? 0 }
+        let minFrames = latentFrameCounts.min() ?? 0
+        let maxFrames = latentFrameCounts.max() ?? 0
+
+        return "latentFrames=\(minFrames)...\(maxFrames) "
+            + "latentShapes=\(shapeSummary(samples.map(\.latent.shape))) "
+            + "contextShapes=\(shapeSummary(samples.map(\.contextLatents.shape))) "
+            + "encoderShapes=\(shapeSummary(samples.map(\.encoderStates.shape)))"
+    }
+
+    private static func shapeSummary(_ shapes: [[Int]]) -> String {
+        let uniqueShapes = Set(shapes.map { "\($0)" }).sorted()
+        let shownShapes = uniqueShapes.prefix(5).joined(separator: ",")
+        guard uniqueShapes.count > 5 else {
+            return "[\(shownShapes)]"
+        }
+        return "[\(shownShapes),...+\(uniqueShapes.count - 5)]"
+    }
+
     private func finishActiveRunLog(
         status: TrainingRunStatus,
         result: LoRATrainingResult? = nil,
@@ -579,6 +755,10 @@ final class TrainingService: ObservableObject {
     func stopTraining(saveCheckpoint: Bool = false) {
         isStopping = true
         shouldSaveCheckpointOnStop = saveCheckpoint
+        AudioDiagnostics.note(
+            "training/stopRequested",
+            "saveCheckpoint=\(saveCheckpoint) activeKind=\(activeAdapterKind?.rawValue ?? "nil")"
+        )
         Task {
             await pipeline.cancelTraining()
         }
@@ -677,10 +857,26 @@ final class TrainingService: ObservableObject {
         lyrics: String,
         duration: TimeInterval,
         cache: TrainingPreprocessCacheReference? = nil
-    ) async throws -> TrainingSample {
-        if let cache,
-           let cachedSample = try? TrainingPreprocessCacheStore.load(reference: cache) {
-            return cachedSample
+    ) async throws -> TrainingPreprocessResult {
+        if let cache {
+            do {
+                if let cachedSample = try TrainingPreprocessCacheStore.load(reference: cache) {
+                    AudioDiagnostics.note(
+                        "training/preprocess/cacheHit",
+                        "clipID=\(cache.clipID) file=\(cache.sampleFile)"
+                    )
+                    return TrainingPreprocessResult(sample: cachedSample, cacheHit: true)
+                }
+                AudioDiagnostics.note(
+                    "training/preprocess/cacheMiss",
+                    "clipID=\(cache.clipID) file=\(cache.sampleFile)"
+                )
+            } catch {
+                AudioDiagnostics.note(
+                    "training/preprocess/cacheLoadError",
+                    "clipID=\(cache.clipID) error=\(error.localizedDescription)"
+                )
+            }
         }
 
         // Load + resample to 48 kHz stereo → [1, pcmFrames, 2] NLC layout.
@@ -737,11 +933,15 @@ final class TrainingService: ObservableObject {
                 try TrainingPreprocessCacheStore.save(sample: sample, reference: cache)
                 try TrainingDatasetPackageWriter.refreshPreprocessCacheManifest(at: cache.datasetDirectory)
             } catch {
-                print("[TrainingService] failed to save preprocess cache: \(error.localizedDescription)")
+                AudioDiagnostics.note(
+                    "training/preprocess/cacheSaveError",
+                    "clipID=\(cache.clipID) error=\(error.localizedDescription)"
+                )
+                trainingLogger.warning("Failed to save preprocess cache: \(error.localizedDescription)")
             }
         }
 
-        return sample
+        return TrainingPreprocessResult(sample: sample, cacheHit: false)
     }
 
     private static func trainingWindow(

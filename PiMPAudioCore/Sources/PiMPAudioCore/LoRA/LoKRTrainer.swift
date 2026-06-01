@@ -45,15 +45,29 @@ public final class LoKRTrainer {
         dataset: [TrainingSample],
         onProgress: @escaping @Sendable (TrainingProgress) -> Void
     ) async throws -> [(String, MLXArray)] {
-        print("[LoKRTrainer] train entered dataset=\(dataset.count)")
-        guard !dataset.isEmpty else { return [] }
+        AudioDiagnostics.note(
+            "training/trainer/begin",
+            "kind=lokr dataset=\(dataset.count) paths=\(injectedPaths.count) maxEpochs=\(config.maxEpochs) gradAccum=\(config.gradientAccumulationSteps)"
+        )
+        AudioDiagnostics.memory("training/trainer/begin")
+        guard !dataset.isEmpty else {
+            AudioDiagnostics.note("training/trainer/emptyDataset", "kind=lokr")
+            return []
+        }
 
         let accumSteps = max(1, min(config.gradientAccumulationSteps, dataset.count))
         let optimizer = AdamW(learningRate: scheduler.learningRate(atStep: globalStep))
         let startTime = Date()
 
         setTrainingMode(true)
-        defer { setTrainingMode(false) }
+        AudioDiagnostics.note(
+            "training/trainer/trainingMode",
+            "kind=lokr enabled=true accumSteps=\(accumSteps)"
+        )
+        defer {
+            setTrainingMode(false)
+            AudioDiagnostics.note("training/trainer/trainingMode", "kind=lokr enabled=false")
+        }
 
         var hasLoggedGradientClosure = false
         let trainingModel = model
@@ -64,7 +78,10 @@ public final class LoKRTrainer {
             let shouldLogGradientClosure = !hasLoggedGradientClosure
             if shouldLogGradientClosure {
                 hasLoggedGradientClosure = true
-                print("[LoKRTrainer] gradClosure entered paramKeys=\(trainableParameterKeys)")
+                AudioDiagnostics.note(
+                    "training/trainer/gradClosure",
+                    "kind=lokr paramCount=\(trainableParameterKeys.count) paramKeys=\(trainableParameterKeys)"
+                )
             }
             let parameterValues = Array(allArgs.prefix(trainableArgumentCount))
             let parameterPairs = zip(trainableParameterKeys, parameterValues).map { ($0.0, $0.1) }
@@ -91,8 +108,18 @@ public final class LoKRTrainer {
                 useCache: false
             )
             let diff = (vPred - vTarget).asType(.float32)
+            if shouldLogGradientClosure {
+                AudioDiagnostics.note(
+                    "training/trainer/gradClosureReady",
+                    "kind=lokr xt=\(xt.shape) encoder=\(encoderStates.shape) context=\(contextLatents.shape) mask=\(encoderMask?.shape ?? [])"
+                )
+            }
             return [(diff * diff).mean()]
         }, argumentNumbers: gradientArgumentNumbers)
+        AudioDiagnostics.note(
+            "training/trainer/valueAndGradReady",
+            "kind=lokr trainableArgumentCount=\(trainableArgumentCount)"
+        )
 
         var hasLoggedFirstProcessedSample = false
         for epoch in (currentEpoch + 1)...config.maxEpochs {
@@ -104,16 +131,22 @@ public final class LoKRTrainer {
             var windowLoss: Float = 0
             var windowSamples = 0
             var accumulatedFlatGrads: [MLXArray]?
+            let shuffledIndices = Array(0..<dataset.count).shuffled()
+            AudioDiagnostics.note(
+                "training/trainer/epochBegin",
+                "kind=lokr epoch=\(epoch)/\(config.maxEpochs) shuffled=\(shuffledIndices.count)"
+            )
 
-            for idx in Array(0..<dataset.count).shuffled() {
+            for idx in shuffledIndices {
                 guard !isCancelled else { break }
                 try Task.checkCancellation()
                 let sample = dataset[idx]
                 let shouldLogSample = !hasLoggedFirstProcessedSample
                 if shouldLogSample {
                     hasLoggedFirstProcessedSample = true
-                    print(
-                        "[LoKRTrainer] firstSample idx=\(idx) latent=\(sample.latent.shape) context=\(sample.contextLatents.shape) encoder=\(sample.encoderStates.shape) trainableKeys=\(model.trainableParameters().flattened().map(\.0))"
+                    AudioDiagnostics.note(
+                        "training/trainer/firstSample",
+                        "kind=lokr idx=\(idx) latent=\(sample.latent.shape) context=\(sample.contextLatents.shape) encoder=\(sample.encoderStates.shape) mask=\(sample.encoderMask?.shape ?? []) trainableKeys=\(model.trainableParameters().flattened().map(\.0))"
                     )
                 }
 
@@ -126,10 +159,22 @@ public final class LoKRTrainer {
                 if let mask = sample.encoderMask {
                     args.append(mask)
                 }
+                if shouldLogSample {
+                    AudioDiagnostics.note(
+                        "training/trainer/firstValueAndGrad",
+                        "kind=lokr argShapes=\(args.map { $0.shape })"
+                    )
+                }
 
                 let trainableValues = model.trainableParameters().flattened().map(\.1)
                 let (lossValues, flatGrads) = lossGrad(trainableValues + args)
                 let lossValue = lossValues[0].item(Float.self)
+                if shouldLogSample {
+                    AudioDiagnostics.note(
+                        "training/trainer/firstLoss",
+                        "kind=lokr loss=\(lossValue) flatGrads=\(flatGrads.count)"
+                    )
+                }
 
                 if let current = accumulatedFlatGrads {
                     accumulatedFlatGrads = Self.addFlatGradients(current, flatGrads)
@@ -179,9 +224,19 @@ public final class LoKRTrainer {
                 bestLoss = avgLoss
                 bestWeights = LoKRInjector.extractWeights(model: model, paths: injectedPaths)
             }
+            AudioDiagnostics.note(
+                "training/trainer/epochEnd",
+                "kind=lokr epoch=\(epoch)/\(config.maxEpochs) samples=\(epochSamples) avgLoss=\(avgLoss) bestLoss=\(bestLoss) globalStep=\(globalStep)"
+            )
+            AudioDiagnostics.memory("training/trainer/epochEnd")
             await Task.yield()
         }
 
+        AudioDiagnostics.note(
+            "training/trainer/end",
+            "kind=lokr cancelled=\(isCancelled) globalStep=\(globalStep) bestLoss=\(bestWeights != nil ? String(bestLoss) : "nil")"
+        )
+        AudioDiagnostics.memory("training/trainer/end")
         return bestWeights ?? LoKRInjector.extractWeights(model: model, paths: injectedPaths)
     }
 

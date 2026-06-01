@@ -114,20 +114,31 @@ public final class LoRATrainer {
         dataset: [TrainingSample],
         onProgress: @escaping @Sendable (TrainingProgress) -> Void
     ) async throws -> [(String, MLXArray)] {
-        print("[LoRATrainer] train entered dataset=\(dataset.count)")
-        guard !dataset.isEmpty else { return [] }
+        AudioDiagnostics.note(
+            "training/trainer/begin",
+            "kind=lora dataset=\(dataset.count) paths=\(injectedPaths.count) maxEpochs=\(config.maxEpochs) gradAccum=\(config.gradientAccumulationSteps)"
+        )
+        AudioDiagnostics.memory("training/trainer/begin")
+        guard !dataset.isEmpty else {
+            AudioDiagnostics.note("training/trainer/emptyDataset", "kind=lora")
+            return []
+        }
 
         let accumSteps = max(1, min(config.gradientAccumulationSteps, dataset.count))
-        print("[LoRATrainer] creating optimizer")
         let optimizer = AdamW(learningRate: scheduler.learningRate(atStep: globalStep))
         let startTime = Date()
 
-        print("[LoRATrainer] setTrainingMode begin")
         setTrainingMode(true)
-        print("[LoRATrainer] setTrainingMode complete")
+        AudioDiagnostics.note(
+            "training/trainer/trainingMode",
+            "kind=lora enabled=true accumSteps=\(accumSteps)"
+        )
+        defer {
+            setTrainingMode(false)
+            AudioDiagnostics.note("training/trainer/trainingMode", "kind=lora enabled=false")
+        }
 
         // Build the valueAndGrad closure
-        print("[LoRATrainer] building valueAndGrad")
         var hasLoggedGradientClosure = false
         let trainingModel = model
         let trainableParameterKeys = model.trainableParameters().flattened().map(\.0)
@@ -137,15 +148,14 @@ public final class LoRATrainer {
             let shouldLogGradientClosure = !hasLoggedGradientClosure
             if shouldLogGradientClosure {
                 hasLoggedGradientClosure = true
-                print("[LoRATrainer] gradClosure entered paramKeys=\(trainableParameterKeys)")
-                print("[LoRATrainer] gradClosure updating model parameters")
+                AudioDiagnostics.note(
+                    "training/trainer/gradClosure",
+                    "kind=lora paramCount=\(trainableParameterKeys.count) paramKeys=\(trainableParameterKeys)"
+                )
             }
             let parameterValues = Array(allArgs.prefix(trainableArgumentCount))
             let parameterPairs = zip(trainableParameterKeys, parameterValues).map { ($0.0, $0.1) }
             trainingModel.update(parameters: ModuleParameters.unflattened(parameterPairs))
-            if shouldLogGradientClosure {
-                print("[LoRATrainer] gradClosure model parameters updated")
-            }
 
             let argOffset = trainableArgumentCount
             let xt = allArgs[argOffset]
@@ -157,9 +167,6 @@ public final class LoRATrainer {
                 ? allArgs[argOffset + 5]
                 : nil
 
-            if shouldLogGradientClosure {
-                print("[LoRATrainer] gradClosure calling DiT forward")
-            }
             let (vPred, _) = trainingModel(
                 hiddenStates: xt,
                 timestep: t,
@@ -170,34 +177,40 @@ public final class LoRATrainer {
                 cache: nil,
                 useCache: false
             )
-            if shouldLogGradientClosure {
-                print("[LoRATrainer] gradClosure DiT forward returned")
-            }
 
             let diff = (vPred - vTarget).asType(.float32)
             let loss = (diff * diff).mean()
             if shouldLogGradientClosure {
-                print("[LoRATrainer] gradClosure loss graph built")
+                AudioDiagnostics.note(
+                    "training/trainer/gradClosureReady",
+                    "kind=lora xt=\(xt.shape) encoder=\(encoderStates.shape) context=\(contextLatents.shape) mask=\(encoderMask?.shape ?? [])"
+                )
             }
             return [loss]
         }, argumentNumbers: gradientArgumentNumbers)
-        print("[LoRATrainer] valueAndGrad built trainableArgumentCount=\(trainableArgumentCount)")
+        AudioDiagnostics.note(
+            "training/trainer/valueAndGradReady",
+            "kind=lora trainableArgumentCount=\(trainableArgumentCount)"
+        )
 
         let startEpoch = currentEpoch + 1
-        print(
-            "[LoRATrainer] loop startEpoch=\(startEpoch) maxEpochs=\(config.maxEpochs) globalStep=\(globalStep) lossHistory=\(lossHistory.count)"
+        AudioDiagnostics.note(
+            "training/trainer/loop",
+            "kind=lora startEpoch=\(startEpoch) maxEpochs=\(config.maxEpochs) globalStep=\(globalStep) lossHistory=\(lossHistory.count)"
         )
         var hasLoggedFirstProcessedSample = false
 
         for epoch in startEpoch...config.maxEpochs {
             guard !isCancelled else { break }
             currentEpoch = epoch
-            print("[LoRATrainer] epoch \(epoch) begin")
 
             var epochLoss: Float = 0
             var epochSamples: Int = 0
             let shuffledIndices = Array(0..<dataset.count).shuffled()
-            print("[LoRATrainer] epoch \(epoch) shuffled count=\(shuffledIndices.count)")
+            AudioDiagnostics.note(
+                "training/trainer/epochBegin",
+                "kind=lora epoch=\(epoch)/\(config.maxEpochs) shuffled=\(shuffledIndices.count)"
+            )
 
             // Per-window tracking for accurate loss reporting
             var windowLoss: Float = 0
@@ -212,31 +225,20 @@ public final class LoRATrainer {
                 if shouldLogSample {
                     hasLoggedFirstProcessedSample = true
                     let trainableKeys = model.trainableParameters().flattened().map(\.0)
-                    print(
-                        "[LoRATrainer] firstSample selected idx=\(idx) latent=\(sample.latent.shape) context=\(sample.contextLatents.shape) encoder=\(sample.encoderStates.shape) trainableKeys=\(trainableKeys)"
+                    AudioDiagnostics.note(
+                        "training/trainer/firstSample",
+                        "kind=lora idx=\(idx) latent=\(sample.latent.shape) context=\(sample.contextLatents.shape) encoder=\(sample.encoderStates.shape) mask=\(sample.encoderMask?.shape ?? []) trainableKeys=\(trainableKeys)"
                     )
                 }
 
                 // Sample random timestep t in [0, 1]
-                if shouldLogSample {
-                    print("[LoRATrainer] firstSample making timestep")
-                }
                 let t = MLXRandom.uniform(0..<1, [1])
 
                 // Interpolate: x_t = (1 - t) * x_0 + t * noise
-                if shouldLogSample {
-                    print("[LoRATrainer] firstSample making noise")
-                }
                 let noise = MLXRandom.normal(sample.latent.shape)
-                if shouldLogSample {
-                    print("[LoRATrainer] firstSample making xt")
-                }
                 let xt = (1.0 - t) * sample.latent + t * noise
 
                 // Target velocity: v_target = noise - x_0
-                if shouldLogSample {
-                    print("[LoRATrainer] firstSample making target")
-                }
                 let vTarget = noise - sample.latent
 
                 // Build args array
@@ -246,7 +248,10 @@ public final class LoRATrainer {
                 }
 
                 if shouldLogSample {
-                    print("[LoRATrainer] firstSample calling valueAndGrad args=\(args.map { $0.shape })")
+                    AudioDiagnostics.note(
+                        "training/trainer/firstValueAndGrad",
+                        "kind=lora argShapes=\(args.map { $0.shape })"
+                    )
                 }
 
                 // Forward + backward. The optimizer step happens once per
@@ -254,22 +259,19 @@ public final class LoRATrainer {
                 let trainableParameters = model.trainableParameters().flattened()
                 let trainableValues = trainableParameters.map(\.1)
                 let (lossValues, flatGrads) = lossGrad(trainableValues + args)
-                if shouldLogSample {
-                    print("[LoRATrainer] firstSample valueAndGrad returned flatGrads=\(flatGrads.count)")
-                }
                 let loss = lossValues[0]
                 let lossValue = loss.item(Float.self)
                 if shouldLogSample {
-                    print("[LoRATrainer] firstSample loss materialized \(lossValue)")
+                    AudioDiagnostics.note(
+                        "training/trainer/firstLoss",
+                        "kind=lora loss=\(lossValue) flatGrads=\(flatGrads.count)"
+                    )
                 }
 
                 if let current = accumulatedFlatGrads {
                     accumulatedFlatGrads = Self.addFlatGradients(current, flatGrads)
                 } else {
                     accumulatedFlatGrads = flatGrads
-                }
-                if shouldLogSample {
-                    print("[LoRATrainer] firstSample gradients accumulated")
                 }
 
                 epochLoss += lossValue
@@ -315,13 +317,22 @@ public final class LoRATrainer {
                 bestLoss = avgLoss
                 bestWeights = LoRAInjector.extractWeights(model: model, paths: injectedPaths)
             }
+            AudioDiagnostics.note(
+                "training/trainer/epochEnd",
+                "kind=lora epoch=\(epoch)/\(config.maxEpochs) samples=\(epochSamples) avgLoss=\(avgLoss) bestLoss=\(bestLoss) globalStep=\(globalStep)"
+            )
+            AudioDiagnostics.memory("training/trainer/epochEnd")
 
             // Yield at epoch boundary so the enclosing actor can process
             // pending messages (e.g. cancelTraining()) between epochs.
             await Task.yield()
         }
 
-        setTrainingMode(false)
+        AudioDiagnostics.note(
+            "training/trainer/end",
+            "kind=lora cancelled=\(isCancelled) globalStep=\(globalStep) bestLoss=\(bestWeights != nil ? String(bestLoss) : "nil")"
+        )
+        AudioDiagnostics.memory("training/trainer/end")
         return bestWeights ?? LoRAInjector.extractWeights(model: model, paths: injectedPaths)
     }
 

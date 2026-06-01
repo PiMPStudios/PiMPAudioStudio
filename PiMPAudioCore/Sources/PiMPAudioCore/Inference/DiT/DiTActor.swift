@@ -333,17 +333,22 @@ public actor DiTActor {
         decoder.freeze()
         LoRAInjector.unfreezeAdapters(model: decoder, paths: paths)
         let trainableCount = decoder.trainableParameters().flattened().count
-        print(
-            "[DiTActor.trainLoRA] injectedLoRALayers=\(paths.count) trainableParams=\(trainableCount) layers=\(trainableLayerIndices.sorted())"
+        AudioDiagnostics.note(
+            "training/dit/inject",
+            "kind=lora paths=\(paths.count) trainableParams=\(trainableCount) layers=\(trainableLayerIndices.sorted()) samples=\(samples.count) initialWeights=\(initialWeights?.count ?? 0)"
         )
+        AudioDiagnostics.memory("training/dit/afterInject")
         if let initialWeights {
-            print("[DiTActor.trainLoRA] loading initialWeights count=\(initialWeights.count)")
+            AudioDiagnostics.note(
+                "training/dit/loadInitialWeights/begin",
+                "kind=lora count=\(initialWeights.count)"
+            )
             LoRAInjector.loadWeights(model: decoder, paths: paths, weights: initialWeights)
-            print("[DiTActor.trainLoRA] loaded initialWeights")
-        } else {
-            print("[DiTActor.trainLoRA] no initialWeights")
+            AudioDiagnostics.note(
+                "training/dit/loadInitialWeights/end",
+                "kind=lora count=\(initialWeights.count)"
+            )
         }
-        print("[DiTActor.trainLoRA] creating trainer")
         let trainer = LoRATrainer(
             model: decoder,
             config: config,
@@ -351,10 +356,14 @@ public actor DiTActor {
             datasetSize: samples.count,
             resumeFrom: checkpoint
         )
-        print("[DiTActor.trainLoRA] trainer created")
         activeLoRATrainer = trainer
-        print("[DiTActor.trainLoRA] starting trainer.train samples=\(samples.count)")
+        AudioDiagnostics.note(
+            "training/dit/trainerReady",
+            "kind=lora paths=\(paths.count) samples=\(samples.count)"
+        )
+        AudioDiagnostics.memory("training/dit/beforeTrain")
         defer {
+            AudioDiagnostics.memory("training/dit/cleanup/begin")
             activeLoRATrainer = nil
             LoRAInjector.remove(model: decoder, paths: paths)
             decoder.unfreeze()
@@ -362,9 +371,15 @@ public actor DiTActor {
                 injectedPaths = []
                 injectedKind = nil
             }
+            AudioDiagnostics.memory("training/dit/cleanup/end")
         }
 
         let weights = try await trainer.train(dataset: samples, onProgress: onProgress)
+        AudioDiagnostics.note(
+            "training/dit/trainResult",
+            "kind=lora weights=\(weights.count) paths=\(paths.count) finalLoss=\(trainer.lowestLoss.map { String($0) } ?? "nil")"
+        )
+        AudioDiagnostics.memory("training/dit/afterTrain")
         return (weights, trainer.lowestLoss, paths)
     }
 
@@ -389,15 +404,21 @@ public actor DiTActor {
         decoder.freeze()
         LoKRInjector.unfreezeAdapters(model: decoder, paths: paths)
         let trainableCount = decoder.trainableParameters().flattened().count
-        print(
-            "[DiTActor.trainLoKR] injectedLoKRLayers=\(paths.count) trainableParams=\(trainableCount) layers=\(trainableLayerIndices.sorted())"
+        AudioDiagnostics.note(
+            "training/dit/inject",
+            "kind=lokr paths=\(paths.count) trainableParams=\(trainableCount) layers=\(trainableLayerIndices.sorted()) samples=\(samples.count) initialWeights=\(initialWeights?.count ?? 0)"
         )
+        AudioDiagnostics.memory("training/dit/afterInject")
         if let initialWeights {
-            print("[DiTActor.trainLoKR] loading initialWeights count=\(initialWeights.count)")
+            AudioDiagnostics.note(
+                "training/dit/loadInitialWeights/begin",
+                "kind=lokr count=\(initialWeights.count)"
+            )
             LoKRInjector.loadWeights(model: decoder, paths: paths, weights: initialWeights)
-            print("[DiTActor.trainLoKR] loaded initialWeights")
-        } else {
-            print("[DiTActor.trainLoKR] no initialWeights")
+            AudioDiagnostics.note(
+                "training/dit/loadInitialWeights/end",
+                "kind=lokr count=\(initialWeights.count)"
+            )
         }
         let trainer = LoKRTrainer(
             model: decoder,
@@ -406,7 +427,13 @@ public actor DiTActor {
             datasetSize: samples.count
         )
         activeLoKRTrainer = trainer
+        AudioDiagnostics.note(
+            "training/dit/trainerReady",
+            "kind=lokr paths=\(paths.count) samples=\(samples.count)"
+        )
+        AudioDiagnostics.memory("training/dit/beforeTrain")
         defer {
+            AudioDiagnostics.memory("training/dit/cleanup/begin")
             activeLoKRTrainer = nil
             LoKRInjector.remove(model: decoder, paths: paths)
             decoder.unfreeze()
@@ -414,9 +441,15 @@ public actor DiTActor {
                 injectedPaths = []
                 injectedKind = nil
             }
+            AudioDiagnostics.memory("training/dit/cleanup/end")
         }
 
         let weights = try await trainer.train(dataset: samples, onProgress: onProgress)
+        AudioDiagnostics.note(
+            "training/dit/trainResult",
+            "kind=lokr weights=\(weights.count) paths=\(paths.count) finalLoss=\(trainer.lowestLoss.map { String($0) } ?? "nil")"
+        )
+        AudioDiagnostics.memory("training/dit/afterTrain")
         return (weights, trainer.lowestLoss, paths)
     }
 
