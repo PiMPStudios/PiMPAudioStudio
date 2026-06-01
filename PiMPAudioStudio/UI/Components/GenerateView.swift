@@ -54,6 +54,12 @@ struct GenerateView: View {
         .onChange(of: promptText) { _, newValue in
             intentRouter.classify(prompt: newValue)
         }
+        .onAppear {
+            AudioDiagnostics.refreshFileLoggingState()
+        }
+        .onChange(of: audioDebugVerbose) { _, newValue in
+            AudioDiagnostics.setVerboseLoggingEnabled(newValue)
+        }
         .onReceive(presetStore.$presetToLoad) { preset in
             guard let preset else { return }
             applyPreset(preset)
@@ -635,7 +641,7 @@ struct GenerateView: View {
                             .font(.caption)
                     }
                     .toggleStyle(.checkbox)
-                    Text("(filter Xcode console: \"AUDIODIAG\")")
+                    Text("(AUDIODIAG logs also write to /tmp)")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                     Spacer()
