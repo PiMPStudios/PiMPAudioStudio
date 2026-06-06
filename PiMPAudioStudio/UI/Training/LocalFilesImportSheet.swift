@@ -232,11 +232,14 @@ struct LocalFilesImportSheet: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if config.samplingMode == .randomSeeded {
                     LabeledContent("Random Seed") {
-                        Stepper("\(config.samplingSeed)",
-                                value: $config.samplingSeed,
-                                in: 0...999_999)
-                        .disabled(isBusy)
-                        .frame(maxWidth: 130)
+                        TextField("1337", value: $config.samplingSeed, format: .number)
+                            .multilineTextAlignment(.trailing)
+                            .monospacedDigit()
+                            .disabled(isBusy)
+                            .frame(width: 130)
+                            .onChange(of: config.samplingSeed) { _, newValue in
+                                config.samplingSeed = min(max(newValue, 0), 999_999)
+                            }
                     }
                 }
                 LabeledContent("Max Total Clips") {
