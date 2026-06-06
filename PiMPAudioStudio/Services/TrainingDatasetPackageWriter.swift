@@ -1,6 +1,92 @@
 import AVFoundation
 import Foundation
 
+protocol DatasetAnnotationBackend: Sendable {
+    var annotationDescriptor: DatasetAnnotationBackendDescriptor { get }
+}
+
+struct DatasetAnnotationBackendDescriptor: Equatable, Sendable {
+    var id: String
+    var version: String
+    var modelID: String
+    var modelRevision: String
+
+    init(
+        id: String,
+        version: String = "",
+        modelID: String = "",
+        modelRevision: String = ""
+    ) {
+        self.id = id
+        self.version = version
+        self.modelID = modelID
+        self.modelRevision = modelRevision
+    }
+}
+
+struct DatasetAnnotationMetadata: Equatable, Sendable {
+    var schemaVersion: String = TrainingDatasetPackageWriter.annotationSchemaVersion
+    var updatedAt: Date
+    var backend: DatasetAnnotationBackendDescriptor
+    var captionSource: String
+    var lyricsSource: String
+    var language: String
+    var caption: String
+    var lyrics: String
+    var reviewStatus: String
+    var rawOutputFiles: [String: String]
+
+    init(
+        updatedAt: Date,
+        backend: DatasetAnnotationBackendDescriptor,
+        captionSource: String,
+        lyricsSource: String,
+        language: String,
+        caption: String,
+        lyrics: String,
+        reviewStatus: String,
+        rawOutputFiles: [String: String] = [:],
+        rawCaptionOutputFile: String = "",
+        rawLyricsOutputFile: String = ""
+    ) {
+        self.updatedAt = updatedAt
+        self.backend = backend
+        self.captionSource = captionSource
+        self.lyricsSource = lyricsSource
+        self.language = language
+        self.caption = caption
+        self.lyrics = lyrics
+        self.reviewStatus = reviewStatus
+
+        var rawOutputFiles = rawOutputFiles
+        if !rawCaptionOutputFile.isEmpty {
+            rawOutputFiles["caption"] = rawCaptionOutputFile
+        }
+        if !rawLyricsOutputFile.isEmpty {
+            rawOutputFiles["lyrics"] = rawLyricsOutputFile
+        }
+        self.rawOutputFiles = rawOutputFiles
+    }
+
+    var persistedObject: [String: Any] {
+        [
+            "schema_version": schemaVersion,
+            "updated_at": ISO8601DateFormatter().string(from: updatedAt),
+            "annotation_backend": backend.id,
+            "annotation_backend_version": backend.version,
+            "caption_source": captionSource,
+            "lyrics_source": lyricsSource,
+            "model_id": backend.modelID,
+            "model_revision": backend.modelRevision,
+            "language": language,
+            "caption_present": !caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            "lyrics_present": !lyrics.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            "review_status": reviewStatus,
+            "raw_output_files": rawOutputFiles,
+        ]
+    }
+}
+
 struct TrainingDatasetPackageValidationResult: Equatable {
     let packageDirectory: URL
     let checkedAt: String
@@ -1160,29 +1246,22 @@ enum TrainingDatasetPackageWriter {
         rawLyricsOutputFile: String,
         updatedAt: Date
     ) -> [String: Any] {
-        var rawOutputs: [String: Any] = [:]
-        if !rawCaptionOutputFile.isEmpty {
-            rawOutputs["caption"] = rawCaptionOutputFile
-        }
-        if !rawLyricsOutputFile.isEmpty {
-            rawOutputs["lyrics"] = rawLyricsOutputFile
-        }
-
-        return [
-            "schema_version": annotationSchemaVersion,
-            "updated_at": ISO8601DateFormatter().string(from: updatedAt),
-            "annotation_backend": backend,
-            "annotation_backend_version": "",
-            "caption_source": captionSource,
-            "lyrics_source": lyricsSource,
-            "model_id": modelID,
-            "model_revision": modelRevision,
-            "language": language,
-            "caption_present": !caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-            "lyrics_present": !lyrics.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-            "review_status": reviewStatus,
-            "raw_output_files": rawOutputs,
-        ]
+        DatasetAnnotationMetadata(
+            updatedAt: updatedAt,
+            backend: DatasetAnnotationBackendDescriptor(
+                id: backend,
+                modelID: modelID,
+                modelRevision: modelRevision
+            ),
+            captionSource: captionSource,
+            lyricsSource: lyricsSource,
+            language: language,
+            caption: caption,
+            lyrics: lyrics,
+            reviewStatus: reviewStatus,
+            rawCaptionOutputFile: rawCaptionOutputFile,
+            rawLyricsOutputFile: rawLyricsOutputFile
+        ).persistedObject
     }
 
     private static func annotationStatus(in captions: [[String: Any]]) -> String {

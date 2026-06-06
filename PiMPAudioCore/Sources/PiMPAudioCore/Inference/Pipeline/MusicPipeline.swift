@@ -167,12 +167,14 @@ public actor MusicPipeline {
     public func trainLoKR(
         samples: [TrainingSample],
         config: LoKRConfig,
+        resumeFrom checkpoint: TrainingCheckpoint? = nil,
         initialWeights: [(String, MLXArray)]? = nil,
         onProgress: @escaping @Sendable (TrainingProgress) -> Void
     ) async throws -> (weights: [(String, MLXArray)], finalLoss: Float?, trainedPaths: [String]) {
         try await diffusion.trainLoKR(
             samples: samples,
             config: config,
+            resumeFrom: checkpoint,
             initialWeights: initialWeights,
             onProgress: onProgress
         )

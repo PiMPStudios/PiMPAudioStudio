@@ -150,28 +150,25 @@ struct DatasetClipReview: Identifiable {
         object["analysis"] = analysis
 
         let persistedReviewStatus = isApproved ? "approved" : (reviewStatus.isEmpty ? "needs_review" : reviewStatus)
-        var rawOutputs = (object["annotation"] as? [String: Any])?["raw_output_files"] as? [String: Any] ?? [:]
-        if !rawCaptionOutputFile.isEmpty {
-            rawOutputs["caption"] = rawCaptionOutputFile
-        }
-        if !rawLyricsOutputFile.isEmpty {
-            rawOutputs["lyrics"] = rawLyricsOutputFile
-        }
-        object["annotation"] = [
-            "schema_version": TrainingDatasetPackageWriter.annotationSchemaVersion,
-            "updated_at": ISO8601DateFormatter().string(from: updatedAt),
-            "annotation_backend": annotationBackend.isEmpty ? "manual" : annotationBackend,
-            "annotation_backend_version": "",
-            "caption_source": trimmedCaption.isEmpty ? "none" : (captionSource.isEmpty ? "manual" : captionSource),
-            "lyrics_source": trimmedLyrics.isEmpty ? "none" : (lyricsSource.isEmpty ? "manual" : lyricsSource),
-            "model_id": annotationModelID,
-            "model_revision": annotationModelRevision,
-            "language": trimmedLanguage,
-            "caption_present": !trimmedCaption.isEmpty,
-            "lyrics_present": !trimmedLyrics.isEmpty,
-            "review_status": persistedReviewStatus,
-            "raw_output_files": rawOutputs,
-        ]
+        let rawOutputs = ((object["annotation"] as? [String: Any])?["raw_output_files"] as? [String: Any] ?? [:])
+            .compactMapValues { $0 as? String }
+        object["annotation"] = DatasetAnnotationMetadata(
+            updatedAt: updatedAt,
+            backend: DatasetAnnotationBackendDescriptor(
+                id: annotationBackend.isEmpty ? "manual" : annotationBackend,
+                modelID: annotationModelID,
+                modelRevision: annotationModelRevision
+            ),
+            captionSource: trimmedCaption.isEmpty ? "none" : (captionSource.isEmpty ? "manual" : captionSource),
+            lyricsSource: trimmedLyrics.isEmpty ? "none" : (lyricsSource.isEmpty ? "manual" : lyricsSource),
+            language: trimmedLanguage,
+            caption: trimmedCaption,
+            lyrics: trimmedLyrics,
+            reviewStatus: persistedReviewStatus,
+            rawOutputFiles: rawOutputs,
+            rawCaptionOutputFile: rawCaptionOutputFile,
+            rawLyricsOutputFile: rawLyricsOutputFile
+        ).persistedObject
 
         object["training_review"] = [
             "approved": isApproved,
@@ -553,6 +550,10 @@ enum TrainingDatasetPackageEditor {
         fields.lyrics = cleanLyricText(readTrimmedText(from: firstExisting([
             stemURL.appendingPathExtension("lyrics.txt"),
             rootStemURL.appendingPathExtension("lyrics.txt"),
+            stemURL.appendingPathExtension("lyrics.lrc"),
+            rootStemURL.appendingPathExtension("lyrics.lrc"),
+            stemURL.appendingPathExtension("lrc"),
+            rootStemURL.appendingPathExtension("lrc"),
             stemURL.appendingPathExtension("txt"),
             rootStemURL.appendingPathExtension("txt"),
         ])))
@@ -563,7 +564,7 @@ enum TrainingDatasetPackageEditor {
         ] {
             guard let json = readJSONObject(from: jsonURL) else { continue }
             fields.caption = firstString(json, keys: ["caption", "prompt"]) ?? fields.caption
-            fields.lyrics = firstString(json, keys: ["lyrics", "transcript"]) ?? fields.lyrics
+            fields.lyrics = cleanLyricText(firstString(json, keys: ["lyrics", "transcript"])) ?? fields.lyrics
             fields.bpm = stringValue(json["bpm"]) ?? fields.bpm
             fields.key = firstString(json, keys: ["key", "keyscale"]) ?? fields.key
             fields.language = firstString(json, keys: ["language"]) ?? fields.language
@@ -598,9 +599,10 @@ enum TrainingDatasetPackageEditor {
             for row in readCSVRows(from: csvURL) {
                 let path = firstCSV(row, keys: ["file", "path", "audio", "filename", "track", "name"])
                 guard let path, !path.isEmpty else { continue }
+                let lyrics = cleanLyricText(firstCSV(row, keys: ["lyrics", "transcript"]))
                 let fields = SidecarFields(
                     caption: firstCSV(row, keys: ["caption", "prompt"]),
-                    lyrics: firstCSV(row, keys: ["lyrics", "transcript"]),
+                    lyrics: lyrics,
                     bpm: firstCSV(row, keys: ["bpm", "tempo", "tempo_bpm"]),
                     key: firstCSV(row, keys: ["key", "keyscale"]),
                     language: firstCSV(row, keys: ["language", "lang"]),
@@ -608,7 +610,7 @@ enum TrainingDatasetPackageEditor {
                     role: firstCSV(row, keys: ["role"]),
                     notes: firstCSV(row, keys: ["notes"]),
                     captionSource: firstCSV(row, keys: ["caption", "prompt"]) == nil ? nil : "csv",
-                    lyricsSource: firstCSV(row, keys: ["lyrics", "transcript"]) == nil ? nil : "csv",
+                    lyricsSource: lyrics == nil ? nil : "csv",
                     metadataSource: "csv"
                 )
                 for key in lookupKeys(for: path, datasetDirectory: datasetDirectory) {
@@ -718,12 +720,22 @@ enum TrainingDatasetPackageEditor {
         guard let text else { return nil }
         let cleaned = text
             .components(separatedBy: .newlines)
-            .map {
-                $0.replacingOccurrences(
-                    of: #"^\s*\[[0-9]{1,2}:[0-9]{2}(?:\.[0-9]+)?\]\s*"#,
+            .compactMap { line -> String? in
+                let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                if trimmedLine.range(
+                    of: #"^\[[A-Za-z][A-Za-z0-9_-]*:.*\]$"#,
+                    options: .regularExpression
+                ) != nil {
+                    return nil
+                }
+
+                let withoutTimestamps = trimmedLine.replacingOccurrences(
+                    of: #"(?:\[[0-9]{1,3}:[0-9]{2}(?:[\.:][0-9]{1,3})?\]|<[0-9]{1,3}:[0-9]{2}(?:[\.:][0-9]{1,3})?>)"#,
                     with: "",
                     options: .regularExpression
                 )
+                let cleanedLine = withoutTimestamps.trimmingCharacters(in: .whitespacesAndNewlines)
+                return cleanedLine.isEmpty ? nil : cleanedLine
             }
             .joined(separator: "\n")
             .trimmingCharacters(in: .whitespacesAndNewlines)

@@ -23,7 +23,8 @@ public final class LoKRTrainer {
         model: DiTDecoder,
         config: LoKRConfig,
         injectedPaths: [String],
-        datasetSize: Int
+        datasetSize: Int,
+        resumeFrom checkpoint: TrainingCheckpoint? = nil
     ) {
         self.model = model
         self.config = config
@@ -39,6 +40,13 @@ public final class LoKRTrainer {
             warmupFraction: config.warmupFraction,
             totalSteps: totalSteps
         )
+
+        if let checkpoint {
+            self.globalStep = checkpoint.globalStep
+            self.currentEpoch = checkpoint.epoch
+            self.lossHistory = checkpoint.lossHistory
+            self.bestLoss = checkpoint.bestLoss ?? .infinity
+        }
     }
 
     public func train(
@@ -248,8 +256,54 @@ public final class LoKRTrainer {
         bestWeights != nil ? bestLoss : nil
     }
 
+    public func makeCheckpoint(
+        weightsURL: URL,
+        optimizerStateURL: URL,
+        baseModelID: String
+    ) -> TrainingCheckpoint {
+        TrainingCheckpoint(
+            epoch: currentEpoch,
+            globalStep: globalStep,
+            totalSteps: totalSteps,
+            bestLoss: bestWeights != nil ? bestLoss : nil,
+            lossHistory: lossHistory,
+            weightsURL: weightsURL,
+            optimizerStateURL: optimizerStateURL,
+            config: config.loraCompatibleConfig,
+            baseModelID: baseModelID
+        )
+    }
+
+    public var currentLossHistory: [Float] { lossHistory }
+
+    public var currentGlobalStep: Int { globalStep }
+
     private static func addFlatGradients(_ lhs: [MLXArray], _ rhs: [MLXArray]) -> [MLXArray] {
         zip(lhs, rhs).map { pair in pair.0 + pair.1 }
+    }
+
+    private static func l2Norm(_ arrays: [MLXArray]) -> Float? {
+        guard !arrays.isEmpty else { return nil }
+        var total = MLXArray(0.0)
+        for array in arrays {
+            let values = array.asType(.float32)
+            total = total + (values * values).sum()
+        }
+        return sqrt(max(total.item(Float.self), 0))
+    }
+
+    private static func l2NormOfDeltas(before: [MLXArray], after: [MLXArray]) -> Float? {
+        guard before.count == after.count, !before.isEmpty else { return nil }
+        let deltas = zip(before, after).map { oldValue, newValue in
+            (newValue - oldValue).asType(.float32)
+        }
+        return l2Norm(deltas)
+    }
+
+    private static func movingAverage(_ values: [Float], window: Int = 10) -> Float? {
+        let recent = values.suffix(max(1, window))
+        guard !recent.isEmpty else { return nil }
+        return recent.reduce(0, +) / Float(recent.count)
     }
 
     private func updateOptimizerForAccumulationWindow(
@@ -267,14 +321,20 @@ public final class LoKRTrainer {
 
         let scale = 1.0 / Float(max(1, windowSamples))
         let averagedFlatGrads = accumulatedFlatGrads.map { $0 * scale }
+        let beforeUpdate = model.trainableParameters().flattened().map(\.1)
         let gradPairs = zip(trainableParameterKeys, averagedFlatGrads).map { ($0.0, $0.1) }
         optimizer.update(model: model, gradients: ModuleParameters.unflattened(gradPairs))
         eval(model.trainableParameters(), optimizer.innerState())
+        let afterUpdate = model.trainableParameters().flattened().map(\.1)
+        let gradientNorm = Self.l2Norm(averagedFlatGrads)
+        let parameterNorm = Self.l2Norm(afterUpdate)
+        let updateNorm = Self.l2NormOfDeltas(before: beforeUpdate, after: afterUpdate)
 
         globalStep += 1
 
         let avgWindowLoss = windowLoss / Float(max(1, windowSamples))
         lossHistory.append(avgWindowLoss)
+        let lossMovingAverage = Self.movingAverage(lossHistory)
 
         let elapsed = Date().timeIntervalSince(startTime)
         let stepsRemaining = max(0, totalSteps - globalStep)
@@ -288,6 +348,10 @@ public final class LoKRTrainer {
             step: globalStep,
             loss: avgWindowLoss,
             learningRate: currentLR,
+            lossMovingAverage: lossMovingAverage,
+            gradientNorm: gradientNorm,
+            parameterNorm: parameterNorm,
+            updateNorm: updateNorm,
             estimatedTimeRemaining: eta,
             lossHistory: lossHistory,
             elapsedTime: elapsed

@@ -138,7 +138,7 @@ private struct MyAdaptersListView: View {
             ForEach(adapters) { adapter in
                 adapterRow(adapter)
                     .contextMenu {
-                        if adapter.kind == .lora, AdapterRegistry.hasCheckpoint(adapterID: adapter.id) {
+                        if AdapterRegistry.hasCheckpoint(adapterID: adapter.id) {
                             Button("Resume Training…") { beginResume(adapter) }
                         }
                         Button("Retrain…") { beginRetrain(adapter) }

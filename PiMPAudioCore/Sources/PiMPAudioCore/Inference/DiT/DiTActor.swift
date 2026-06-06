@@ -386,6 +386,7 @@ public actor DiTActor {
     public func trainLoKR(
         samples: [TrainingSample],
         config: LoKRConfig,
+        resumeFrom checkpoint: TrainingCheckpoint? = nil,
         initialWeights: [(String, MLXArray)]? = nil,
         onProgress: @escaping @Sendable (TrainingProgress) -> Void
     ) async throws -> (weights: [(String, MLXArray)], finalLoss: Float?, trainedPaths: [String]) {
@@ -424,7 +425,8 @@ public actor DiTActor {
             model: decoder,
             config: config,
             injectedPaths: paths,
-            datasetSize: samples.count
+            datasetSize: samples.count,
+            resumeFrom: checkpoint
         )
         activeLoKRTrainer = trainer
         AudioDiagnostics.note(

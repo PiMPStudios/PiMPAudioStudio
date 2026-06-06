@@ -547,6 +547,9 @@ struct TrainingSheet: View {
                     // Stats row
                     HStack(spacing: 20) {
                         statView(value: String(format: "%.4f", uiState.loss), label: "Loss")
+                        if let average = uiState.lossMovingAverage {
+                            statView(value: String(format: "%.4f", average), label: "Avg")
+                        }
                         statView(
                             value: String(format: "%.1e", uiState.learningRate),
                             label: "LR"
@@ -554,6 +557,19 @@ struct TrainingSheet: View {
                         statView(value: formatTime(uiState.elapsed), label: "Elapsed")
                         if let remaining = uiState.remaining {
                             statView(value: "~\(formatTime(remaining))", label: "ETA")
+                        }
+                    }
+                    if uiState.gradientNorm != nil || uiState.parameterNorm != nil || uiState.updateNorm != nil {
+                        HStack(spacing: 16) {
+                            if let gradientNorm = uiState.gradientNorm {
+                                statView(value: formatMetricNorm(gradientNorm), label: "Grad")
+                            }
+                            if let updateNorm = uiState.updateNorm {
+                                statView(value: formatMetricNorm(updateNorm), label: "Update")
+                            }
+                            if let parameterNorm = uiState.parameterNorm {
+                                statView(value: formatMetricNorm(parameterNorm), label: "Params")
+                            }
                         }
                     }
                 }
@@ -860,6 +876,17 @@ struct TrainingSheet: View {
         return "\(minutes):\(String(format: "%02d", seconds))"
     }
 
+    private func formatMetricNorm(_ value: Float) -> String {
+        if value == 0 {
+            return "0"
+        }
+        let magnitude = abs(value)
+        if magnitude >= 1_000 || magnitude < 0.01 {
+            return String(format: "%.1e", value)
+        }
+        return String(format: "%.3f", value)
+    }
+
     private func startTraining() {
         let audioURLs = selectedEntries.map { historyStore.fileURL(for: $0) }
         let config = LoRAConfig(
@@ -894,7 +921,8 @@ struct TrainingSheet: View {
                     warmupFraction: warmupFraction,
                     gradientAccumulationSteps: gradientAccumulationSteps,
                     trainingLayerCount: selectedLayerCount
-                )
+                ),
+                resumeAdapterID: resumeAdapterID
             )
         }
     }

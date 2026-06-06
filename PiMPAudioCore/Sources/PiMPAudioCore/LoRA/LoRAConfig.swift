@@ -177,6 +177,22 @@ public struct LoKRConfig: Codable, Sendable, Equatable, Hashable {
         self.trainingLayerCount = trainingLayerCount
     }
 
+    public init(loraCompatibleConfig config: LoRAConfig) {
+        self.init(
+            linearDim: config.rank,
+            alpha: config.alpha,
+            dropout: config.dropout,
+            targetLayers: config.targetLayers,
+            exactInjectionPatterns: config.exactInjectionPatterns,
+            learningRate: config.learningRate,
+            maxEpochs: config.maxEpochs,
+            batchSize: config.batchSize,
+            warmupFraction: config.warmupFraction,
+            gradientAccumulationSteps: config.gradientAccumulationSteps,
+            trainingLayerCount: config.trainingLayerCount
+        )
+    }
+
     public var injectionPatterns: [String] {
         if let exactInjectionPatterns, !exactInjectionPatterns.isEmpty {
             return exactInjectionPatterns

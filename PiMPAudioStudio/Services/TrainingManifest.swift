@@ -137,6 +137,10 @@ struct TrainingRunProgressEntry: Codable, Equatable {
     var step: Int
     var loss: Float
     var learningRate: Float
+    var lossMovingAverage: Float?
+    var gradientNorm: Float?
+    var parameterNorm: Float?
+    var updateNorm: Float?
     var elapsed: TimeInterval
     var estimatedRemaining: TimeInterval?
 }

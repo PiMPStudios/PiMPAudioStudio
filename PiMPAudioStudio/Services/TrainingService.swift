@@ -27,6 +27,10 @@ struct TrainingUIState: Equatable {
     let step: Int
     let loss: Float
     let learningRate: Float
+    let lossMovingAverage: Float?
+    let gradientNorm: Float?
+    let parameterNorm: Float?
+    let updateNorm: Float?
     let elapsed: TimeInterval
     let remaining: TimeInterval?
     let lossHistory: [Float]
@@ -121,7 +125,8 @@ final class TrainingService: ObservableObject {
         audioURLs: [URL],
         importedFiles: [TrainingImportedFile],
         adapterName: String,
-        config: LoKRConfig
+        config: LoKRConfig,
+        resumeAdapterID: String? = nil
     ) {
         startAdapterTraining(
             kind: .lokr,
@@ -131,7 +136,7 @@ final class TrainingService: ObservableObject {
             adapterName: adapterName,
             config: config.loraCompatibleConfig,
             lokrConfig: config,
-            resumeAdapterID: nil
+            resumeAdapterID: resumeAdapterID
         )
     }
 
@@ -146,9 +151,9 @@ final class TrainingService: ObservableObject {
         resumeAdapterID: String?
     ) {
         let effectiveResumeAdapterID: String?
-        if kind == .lora, let resumeAdapterID {
+        if let resumeAdapterID {
             effectiveResumeAdapterID = resumeAdapterID
-        } else if kind == .lora, case .paused = state {
+        } else if case .paused = state {
             effectiveResumeAdapterID = Self.adapterID(from: adapterName)
         } else {
             effectiveResumeAdapterID = nil
@@ -264,11 +269,17 @@ final class TrainingService: ObservableObject {
                     }
                     resumeCheckpoint = checkpoint
                     sessionConfig = checkpoint.config
-                    sessionLoKRConfig = nil
+                    if kind == .lokr {
+                        let savedAdapter = AdapterRegistry.listAdapters().first { $0.id == resumeAdapterID }
+                        sessionLoKRConfig = savedAdapter?.lokrConfig
+                            ?? LoKRConfig(loraCompatibleConfig: checkpoint.config)
+                    } else {
+                        sessionLoKRConfig = nil
+                    }
                     initialWeights = try await AdapterRegistry.loadWeights(adapterID: resumeAdapterID)
                     AudioDiagnostics.note(
                         "training/resume/end",
-                        "kind=\(kind.rawValue) adapterID=\(resumeAdapterID) checkpointStep=\(checkpoint.globalStep) checkpointEpoch=\(checkpoint.epoch) initialWeights=\(initialWeights?.count ?? 0)"
+                        "kind=\(kind.rawValue) adapterID=\(resumeAdapterID) checkpointStep=\(checkpoint.globalStep) checkpointEpoch=\(checkpoint.epoch) initialWeights=\(initialWeights?.count ?? 0) lokrConfig=\(sessionLoKRConfig != nil)"
                     )
                 } else {
                     resumeCheckpoint = nil
@@ -418,6 +429,7 @@ final class TrainingService: ObservableObject {
                     let trained = try await self.pipeline.trainLoKR(
                         samples: samples,
                         config: sessionLoKRConfig,
+                        resumeFrom: resumeCheckpoint,
                         initialWeights: initialWeights,
                         onProgress: progressHandler
                     )
@@ -457,7 +469,7 @@ final class TrainingService: ObservableObject {
                 )
 
                 if self.isStopping {
-                    if kind == .lora, self.shouldSaveCheckpointOnStop {
+                    if self.shouldSaveCheckpointOnStop {
                         AudioDiagnostics.note(
                             "training/saveCheckpoint/begin",
                             "kind=\(kind.rawValue) adapterID=\(adapterID)"
@@ -591,6 +603,10 @@ final class TrainingService: ObservableObject {
             step: progress.step,
             loss: progress.loss,
             learningRate: progress.learningRate,
+            lossMovingAverage: progress.lossMovingAverage,
+            gradientNorm: progress.gradientNorm,
+            parameterNorm: progress.parameterNorm,
+            updateNorm: progress.updateNorm,
             elapsed: progress.elapsedTime,
             remaining: progress.estimatedTimeRemaining,
             lossHistory: progress.lossHistory
@@ -612,6 +628,10 @@ final class TrainingService: ObservableObject {
                 step: progress.step,
                 loss: progress.loss,
                 learningRate: progress.learningRate,
+                lossMovingAverage: progress.lossMovingAverage,
+                gradientNorm: progress.gradientNorm,
+                parameterNorm: progress.parameterNorm,
+                updateNorm: progress.updateNorm,
                 elapsed: progress.elapsedTime,
                 estimatedRemaining: progress.estimatedTimeRemaining
             ),
@@ -619,12 +639,16 @@ final class TrainingService: ObservableObject {
         )
         let lossText = String(format: "%.5f", progress.loss)
         let lrText = String(format: "%.2e", progress.learningRate)
+        let movingLossText = progress.lossMovingAverage.map { String(format: "%.5f", $0) } ?? "nil"
+        let gradNormText = progress.gradientNorm.map { String(format: "%.3e", $0) } ?? "nil"
+        let paramNormText = progress.parameterNorm.map { String(format: "%.3e", $0) } ?? "nil"
+        let updateNormText = progress.updateNorm.map { String(format: "%.3e", $0) } ?? "nil"
         trainingLogger.info(
-            "\(kind.rawValue.uppercased()) training progress name='\(adapterName)' epoch=\(progress.epoch)/\(progress.totalEpochs) step=\(progress.step) loss=\(lossText) lr=\(lrText)"
+            "\(kind.rawValue.uppercased()) training progress name='\(adapterName)' epoch=\(progress.epoch)/\(progress.totalEpochs) step=\(progress.step) loss=\(lossText) avgLoss=\(movingLossText) lr=\(lrText) gradNorm=\(gradNormText) paramNorm=\(paramNormText) updateNorm=\(updateNormText)"
         )
         AudioDiagnostics.note(
             "training/progress",
-            "kind=\(kind.rawValue) name=\(adapterName) epoch=\(progress.epoch)/\(progress.totalEpochs) step=\(progress.step) loss=\(lossText) lr=\(lrText)"
+            "kind=\(kind.rawValue) name=\(adapterName) epoch=\(progress.epoch)/\(progress.totalEpochs) step=\(progress.step) loss=\(lossText) avgLoss=\(movingLossText) lr=\(lrText) gradNorm=\(gradNormText) paramNorm=\(paramNormText) updateNorm=\(updateNormText)"
         )
     }
 
@@ -751,7 +775,7 @@ final class TrainingService: ObservableObject {
         saveActiveRunLog(adapterID: adapterID)
     }
 
-    /// Stop training. When requested, persists the current LoRA weights and checkpoint.
+    /// Stop training. When requested, persists the current adapter weights and checkpoint.
     func stopTraining(saveCheckpoint: Bool = false) {
         isStopping = true
         shouldSaveCheckpointOnStop = saveCheckpoint
@@ -766,7 +790,7 @@ final class TrainingService: ObservableObject {
 
     /// Whether training can produce a persisted pause checkpoint on stop.
     var canSaveOnStop: Bool {
-        guard activeAdapterKind == .lora else { return false }
+        guard activeAdapterKind == .lora || activeAdapterKind == .lokr else { return false }
         if case .training(let uiState) = state {
             return uiState.step > 0
         }

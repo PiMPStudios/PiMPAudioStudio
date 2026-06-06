@@ -479,8 +479,13 @@ private extension JSONDecoder {
 
     try Data("smoky minor key blues trio".utf8)
         .write(to: clipsDir.appendingPathComponent("clip_0001.caption.txt"))
-    try Data("[00:01.00]I found the groove after midnight".utf8)
-        .write(to: clipsDir.appendingPathComponent("clip_0001.lyrics.txt"))
+    try Data("""
+    [ti:Sidecar Test]
+    [00:01.00]I found the groove
+    [00:03.00][00:04.00]after midnight
+    <00:06.50>still moving
+    """.utf8)
+        .write(to: clipsDir.appendingPathComponent("clip_0001.lyrics.lrc"))
     try Data("""
     file,bpm,keyscale,language,timesignature
     clips/clip_0001.wav,78,E minor,en,4/4
@@ -492,7 +497,7 @@ private extension JSONDecoder {
 
     #expect(changed >= 5)
     #expect(document.clips[0].caption == "smoky minor key blues trio")
-    #expect(document.clips[0].lyrics == "I found the groove after midnight")
+    #expect(document.clips[0].lyrics == "I found the groove\nafter midnight\nstill moving")
     #expect(document.clips[0].captionSource == "sidecar")
     #expect(document.clips[0].lyricsSource == "sidecar")
     #expect(document.clips[0].bpm == "78")
@@ -505,7 +510,7 @@ private extension JSONDecoder {
     let reloaded = try TrainingDatasetPackageEditor.loadPackage(at: datasetDir)
     #expect(reloaded.clips[0].isApproved)
     #expect(reloaded.clips[0].caption == "smoky minor key blues trio")
-    #expect(reloaded.clips[0].lyrics == "I found the groove after midnight")
+    #expect(reloaded.clips[0].lyrics == "I found the groove\nafter midnight\nstill moving")
     #expect(reloaded.clips[0].captionSource == "sidecar")
     #expect(reloaded.clips[0].lyricsSource == "sidecar")
     #expect(reloaded.clips[0].reviewStatus == "approved")
@@ -596,6 +601,10 @@ private extension JSONDecoder {
             step: 25,
             loss: 1.25,
             learningRate: 0.00008,
+            lossMovingAverage: 1.375,
+            gradientNorm: 0.125,
+            parameterNorm: 12.5,
+            updateNorm: 0.03125,
             elapsed: 10,
             estimatedRemaining: 240
         ),
@@ -626,10 +635,46 @@ private extension JSONDecoder {
     #expect(decoded.status == .completed)
     #expect(decoded.lokrConfig?.linearDim == 64)
     #expect(decoded.progress.count == 1)
+    #expect(decoded.progress.first?.lossMovingAverage == 1.375)
+    #expect(decoded.progress.first?.gradientNorm == 0.125)
+    #expect(decoded.progress.first?.parameterNorm == 12.5)
+    #expect(decoded.progress.first?.updateNorm == 0.03125)
     #expect(decoded.lossHistory == [1.5, 1.25])
     #expect(decoded.finalLoss == 0.75)
     #expect(decoded.trainedLayerIndices == [28, 29])
     #expect(decoded.weightsTensorCount == 4)
+}
+
+@Test func datasetAnnotationMetadataBuilderUsesSharedBackendDescriptor() throws {
+    let metadata = DatasetAnnotationMetadata(
+        updatedAt: Date(timeIntervalSince1970: 10),
+        backend: DatasetAnnotationBackendDescriptor(
+            id: "native-qwen3-asr",
+            version: "1.0",
+            modelID: "qwen3-asr",
+            modelRevision: "local"
+        ),
+        captionSource: "manual",
+        lyricsSource: "native-qwen3-asr",
+        language: "en",
+        caption: "slow dark blues",
+        lyrics: "I keep singing low",
+        reviewStatus: "approved",
+        rawOutputFiles: ["timed_lyrics": "lyrics.timed.json"],
+        rawLyricsOutputFile: "lyrics.txt"
+    )
+
+    let object = metadata.persistedObject
+    let rawOutputs = object["raw_output_files"] as? [String: String]
+
+    #expect(object["schema_version"] as? String == TrainingDatasetPackageWriter.annotationSchemaVersion)
+    #expect(object["annotation_backend"] as? String == "native-qwen3-asr")
+    #expect(object["annotation_backend_version"] as? String == "1.0")
+    #expect(object["model_id"] as? String == "qwen3-asr")
+    #expect(object["caption_present"] as? Bool == true)
+    #expect(object["lyrics_present"] as? Bool == true)
+    #expect(rawOutputs?["timed_lyrics"] == "lyrics.timed.json")
+    #expect(rawOutputs?["lyrics"] == "lyrics.txt")
 }
 
 @Test func localDatasetPackageWriterEmitsImportableFullMixBundle() throws {
