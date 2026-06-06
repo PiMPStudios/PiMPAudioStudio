@@ -75,7 +75,7 @@ public struct LoRAConfig: Codable, Sendable, Equatable, Hashable {
 
     public init(
         rank: Int = 16,
-        alpha: Float = 16.0,
+        alpha: Float? = nil,
         dropout: Float = 0.0,
         targetLayers: Set<TargetLayer> = [.selfAttention, .crossAttention],
         exactInjectionPatterns: [String]? = nil,
@@ -87,7 +87,7 @@ public struct LoRAConfig: Codable, Sendable, Equatable, Hashable {
         trainingLayerCount: Int? = nil
     ) {
         self.rank = rank
-        self.alpha = alpha
+        self.alpha = alpha ?? Float(rank)
         self.dropout = dropout
         self.targetLayers = targetLayers
         self.exactInjectionPatterns = exactInjectionPatterns

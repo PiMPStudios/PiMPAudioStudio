@@ -144,6 +144,7 @@ All notable changes to PiMP Audio Studio are documented here.
 
 ### Fixed
 
+- **New local LoRA trainings now scale alpha with rank** — LoRA configs created with a larger selected rank now default alpha to that same rank instead of keeping the old fixed `16`, so rank 64 adapters are no longer trained with a conservative `0.25` internal scale unless alpha is explicitly overridden.
 - **Training layer coverage controls no longer wrap awkwardly** — the LoRA/LoKR training sheet now hides duplicate segmented-picker labels and gives Layer Coverage a stable width, so the control stays as a single clean row in the inline Training workspace.
 - **Local dataset enrichment uses less peak memory** — Enrich Dataset now invokes the existing GPU-memory release path before loading Demucs/Qwen, compacts the MLX allocator between separation/transcription phases, and reuses one decoded stem sample buffer for BPM/key analysis instead of reading instrumental stems twice.
 - **Editor audio export keeps sandbox write permission alive** — exporting edited WAV/AIFF/M4A files now holds security-scoped access for the full async write/export operation, normalizes the output extension, and surfaces export failures in-app instead of only logging AVFoundation `-54` errors in Xcode.

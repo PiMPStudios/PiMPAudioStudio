@@ -35,6 +35,14 @@ import MLX
     ) == 1)
 }
 
+@Test func loraConfigDefaultsAlphaToRank() {
+    let rankOnly = LoRAConfig(rank: 64)
+    #expect(rankOnly.alpha == 64)
+
+    let explicitAlpha = LoRAConfig(rank: 64, alpha: 16)
+    #expect(explicitAlpha.alpha == 16)
+}
+
 @Test func lokrConfigMirrorsTrainingFieldsForCompatibility() {
     let config = LoKRConfig(
         linearDim: 128,
