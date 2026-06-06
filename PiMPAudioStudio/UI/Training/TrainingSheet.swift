@@ -57,6 +57,7 @@ enum TrainingSurfacePresentationStyle {
 struct TrainingSheet: View {
     @EnvironmentObject private var trainingService: TrainingService
     @EnvironmentObject private var historyStore: HistoryStore
+    @EnvironmentObject private var presetStore: PresetStore
 
     let selectedEntries: [HistoryEntry]
 
@@ -80,6 +81,7 @@ struct TrainingSheet: View {
     @State private var baseModelDisplayName: String = "ACE-Step DiT"
     @State private var importErrorMessage: String?
     @State private var importStatusMessage: String?
+    @State private var completionStatusMessage: String?
 
     init(
         selectedEntries: [HistoryEntry],
@@ -357,6 +359,9 @@ struct TrainingSheet: View {
                 Text(baseModelDisplayName)
                     .foregroundStyle(.secondary)
             }
+            if let recommendation = trainingRecommendation {
+                trainingRecommendationView(recommendation)
+            }
             LabeledContent(adapterKind == .lokr ? "Linear Dim" : "Rank") {
                 Picker(adapterKind == .lokr ? "Linear Dim" : "Rank", selection: $selectedRank) {
                     ForEach(rankOptions, id: \.self) { Text("\($0)").tag($0) }
@@ -437,6 +442,29 @@ struct TrainingSheet: View {
                 }
             }
         }
+    }
+
+    private func trainingRecommendationView(_ recommendation: TrainingPlanRecommendation) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Label("Suggested Start", systemImage: "slider.horizontal.2.square")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                Spacer()
+                Button("Apply") {
+                    applyRecommendation(recommendation)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.mini)
+                .disabled(isCheckpointResume || recommendationMatchesCurrentSelection(recommendation))
+            }
+            Text(recommendation.summary)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(8)
+        .background(.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
     }
 
     @ViewBuilder
@@ -580,23 +608,48 @@ struct TrainingSheet: View {
 
             Spacer()
 
-            HStack(spacing: 12) {
+            VStack(spacing: 8) {
                 Button {
-                    showAdapterInFinder(adapter)
+                    testAdapterInGenerate(adapter)
                 } label: {
-                    Label("Finder", systemImage: "folder")
+                    Label("Test in Generate", systemImage: "play.circle")
                 }
-                .buttonStyle(.bordered)
-                .help("Reveal the adapter folder, including training_log.json")
+                .buttonStyle(.borderedProminent)
+                .help("Open Generate with this adapter selected, strength 1.0, seed 42, and a training caption as the prompt")
 
-                Button("Train Again") {
-                    trainingService.resetToIdle()
+                HStack(spacing: 10) {
+                    Button {
+                        showAdapterInFinder(adapter)
+                    } label: {
+                        Label("Finder", systemImage: "folder")
+                    }
+                    .buttonStyle(.bordered)
+                    .help("Reveal the adapter folder, including training_log.json")
+
+                    Button {
+                        selectAdapterForGeneration(adapter)
+                    } label: {
+                        Label("Select Adapter", systemImage: "checkmark.circle")
+                    }
+                    .buttonStyle(.bordered)
+                    .help("Make this the selected Generate adapter at strength 1.0")
+
+                    Button("Train Again") {
+                        completionStatusMessage = nil
+                        trainingService.resetToIdle()
+                    }
+                    .buttonStyle(.bordered)
+                    .help("Return to config with the same dataset — adjust epochs or settings and retrain")
+
+                    Button("Done") { close() }
+                        .buttonStyle(.bordered)
                 }
-                .buttonStyle(.bordered)
-                .help("Return to config with the same dataset — adjust epochs or settings and retrain")
 
-                Button("Done") { close() }
-                    .buttonStyle(.borderedProminent)
+                if let completionStatusMessage {
+                    Text(completionStatusMessage)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .padding()
@@ -623,6 +676,14 @@ struct TrainingSheet: View {
         isResumeSession || isPausedState
     }
 
+    private var trainingRecommendation: TrainingPlanRecommendation? {
+        TrainingPlanRecommendation.make(
+            adapterKind: adapterKind,
+            sampleCount: selectedEntries.count + importedFiles.count,
+            knownDuration: selectedEntries.reduce(0.0) { $0 + max(0, $1.duration) }
+        )
+    }
+
     private func close() {
         if let onClose {
             onClose()
@@ -631,10 +692,81 @@ struct TrainingSheet: View {
         }
     }
 
+    private func applyRecommendation(_ recommendation: TrainingPlanRecommendation) {
+        selectedRank = recommendation.rank
+        selectedEpochs = recommendation.epochs
+        selectedLayerCount = recommendation.layerCount
+        gradientAccumulationSteps = recommendation.gradientAccumulationSteps
+    }
+
+    private func recommendationMatchesCurrentSelection(_ recommendation: TrainingPlanRecommendation) -> Bool {
+        selectedRank == recommendation.rank
+            && selectedEpochs == recommendation.epochs
+            && selectedLayerCount == recommendation.layerCount
+            && gradientAccumulationSteps == recommendation.gradientAccumulationSteps
+    }
+
     private func showAdapterInFinder(_ adapter: LoRAAdapter) {
         NSWorkspace.shared.activateFileViewerSelecting([
             AdapterRegistry.adapterDirectory(id: adapter.id)
         ])
+    }
+
+    private func selectAdapterForGeneration(_ adapter: LoRAAdapter) {
+        UserDefaults.standard.set(adapter.id, forKey: AppUserDefaultsKeys.selectedAdapterID)
+        UserDefaults.standard.set(1.0, forKey: AppUserDefaultsKeys.selectedAdapterStrength)
+        NotificationCenter.default.post(
+            name: .adapterSelectionDidChange,
+            object: nil,
+            userInfo: [
+                "adapters": [
+                    [
+                        "id": adapter.id,
+                        "strength": 1.0,
+                    ]
+                ]
+            ]
+        )
+        completionStatusMessage = "Selected for Generate at strength 1.0."
+    }
+
+    private func testAdapterInGenerate(_ adapter: LoRAAdapter) {
+        selectAdapterForGeneration(adapter)
+        presetStore.presetToLoad = GenerationPreset(
+            name: "\(adapter.name) Audition",
+            prompt: auditionPrompt(for: adapter),
+            lyrics: auditionLyrics,
+            mode: .music,
+            duration: 30,
+            seedText: "42",
+            guidanceScale: 7.5,
+            guidancePreset: .constant,
+            pipelineOverride: .aceStep,
+            method: .ode,
+            precision: .float32,
+            stepsOverride: "",
+            shiftOverride: 3.0,
+            adapterID: adapter.id,
+            adapterStrength: 1.0,
+            coverStrength: 0.7
+        )
+        close()
+    }
+
+    private func auditionPrompt(for adapter: LoRAAdapter) -> String {
+        let candidates = importedFiles.map(\.description) + selectedEntries.map(\.prompt)
+        return candidates
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
+            ?? "\(adapter.name) music style"
+    }
+
+    private var auditionLyrics: String {
+        importedFiles
+            .map(\.lyrics)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
+            ?? ""
     }
 
     private func statView(value: String, label: String) -> some View {
@@ -780,6 +912,140 @@ private extension AdapterKind {
         switch self {
         case .lora: return "LoRA"
         case .lokr: return "LoKR"
+        }
+    }
+}
+
+struct TrainingPlanRecommendation: Equatable {
+    let adapterKind: AdapterKind
+    let sampleCount: Int
+    let knownDuration: TimeInterval
+    let rank: Int
+    let epochs: Int
+    let layerCount: Int
+    let gradientAccumulationSteps: Int
+    let rationale: String
+
+    var summary: String {
+        let dimensionName = adapterKind == .lokr ? "dim" : "rank"
+        let duration = durationSummary
+        return "\(sampleCount) tracks\(duration): \(dimensionName) \(rank), \(epochs) epochs, last \(layerCount) layers, grad accum \(gradientAccumulationSteps). \(rationale)"
+    }
+
+    static func make(
+        adapterKind: AdapterKind,
+        sampleCount: Int,
+        knownDuration: TimeInterval = 0
+    ) -> TrainingPlanRecommendation? {
+        guard sampleCount > 0 else { return nil }
+
+        let tier = DatasetTier(sampleCount: sampleCount)
+        return TrainingPlanRecommendation(
+            adapterKind: adapterKind,
+            sampleCount: sampleCount,
+            knownDuration: max(0, knownDuration),
+            rank: tier.dimension(for: adapterKind),
+            epochs: tier.epochs,
+            layerCount: tier.layerCount,
+            gradientAccumulationSteps: tier.gradientAccumulationSteps,
+            rationale: tier.rationale
+        )
+    }
+
+    private var durationSummary: String {
+        guard knownDuration >= 1 else { return "" }
+        let minutes = Int((knownDuration / 60).rounded())
+        guard minutes > 0 else { return "" }
+        return ", ~\(minutes)m known audio"
+    }
+
+    private enum DatasetTier {
+        case tiny
+        case small
+        case medium
+        case large
+        case huge
+
+        init(sampleCount: Int) {
+            switch sampleCount {
+            case ..<20:
+                self = .tiny
+            case ..<80:
+                self = .small
+            case ..<200:
+                self = .medium
+            case ..<500:
+                self = .large
+            default:
+                self = .huge
+            }
+        }
+
+        func dimension(for adapterKind: AdapterKind) -> Int {
+            switch (self, adapterKind) {
+            case (.tiny, _), (.small, _):
+                return 16
+            case (.medium, .lora):
+                return 32
+            case (.medium, .lokr):
+                return 16
+            case (.large, .lora), (.huge, .lora):
+                return 64
+            case (.large, .lokr), (.huge, .lokr):
+                return 32
+            }
+        }
+
+        var epochs: Int {
+            switch self {
+            case .tiny:
+                return 75
+            case .small:
+                return 50
+            case .medium, .large:
+                return 20
+            case .huge:
+                return 10
+            }
+        }
+
+        var layerCount: Int {
+            switch self {
+            case .tiny:
+                return 4
+            case .small, .medium:
+                return 8
+            case .large:
+                return 12
+            case .huge:
+                return 16
+            }
+        }
+
+        var gradientAccumulationSteps: Int {
+            switch self {
+            case .tiny, .small:
+                return 1
+            case .medium, .large:
+                return 2
+            case .huge:
+                return 4
+            }
+        }
+
+        var rationale: String {
+            switch self {
+            case .tiny:
+                return "Use more passes and fewer layers to avoid spreading a tiny set too thin."
+            case .small:
+                return "A longer run helps the adapter catch the style without widening too much."
+            case .medium:
+                return "Enough data for a wider adapter and moderate passes."
+            case .large:
+                return "Use stronger capacity and broader coverage while keeping the run bounded."
+            case .huge:
+                return "Favor coverage and fewer passes because the dataset already supplies many steps."
+            }
         }
     }
 }

@@ -2121,3 +2121,29 @@ private func traceForComparison(
         listeningNote: nil
     )
 }
+
+@Test func trainingPlanRecommendationScalesLargeLoRADatasets() {
+    let recommendation = TrainingPlanRecommendation.make(
+        adapterKind: .lora,
+        sampleCount: 200,
+        knownDuration: 1_800
+    )
+
+    #expect(recommendation?.rank == 64)
+    #expect(recommendation?.epochs == 20)
+    #expect(recommendation?.layerCount == 12)
+    #expect(recommendation?.gradientAccumulationSteps == 2)
+    #expect(recommendation?.summary.contains("~30m known audio") == true)
+}
+
+@Test func trainingPlanRecommendationKeepsLoKRTinyRunsNarrow() {
+    let recommendation = TrainingPlanRecommendation.make(
+        adapterKind: .lokr,
+        sampleCount: 8
+    )
+
+    #expect(recommendation?.rank == 16)
+    #expect(recommendation?.epochs == 75)
+    #expect(recommendation?.layerCount == 4)
+    #expect(recommendation?.gradientAccumulationSteps == 1)
+}

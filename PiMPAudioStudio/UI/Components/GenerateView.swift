@@ -70,7 +70,10 @@ struct GenerateView: View {
             presetStore.presetToLoad = nil
         }
         .onReceive(NotificationCenter.default.publisher(for: .mcpAdapterSelectionDidChange)) { notification in
-            applyMCPAdapterSelection(notification)
+            applyAdapterSelection(notification)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .adapterSelectionDidChange)) { notification in
+            applyAdapterSelection(notification)
         }
         .alert("Save as Preset", isPresented: $showingSavePreset) {
             TextField("Preset name", text: $presetName)
@@ -780,7 +783,7 @@ struct GenerateView: View {
             .first(where: { $0.id == id })
     }
 
-    private func applyMCPAdapterSelection(_ notification: Notification) {
+    private func applyAdapterSelection(_ notification: Notification) {
         guard let payload = notification.userInfo?["adapters"] as? [[String: Any]] else {
             return
         }

@@ -397,5 +397,6 @@ struct AdapterRegistry {
 
 extension Notification.Name {
     static let adapterRegistryDidChange = Notification.Name("adapterRegistryDidChange")
+    static let adapterSelectionDidChange = Notification.Name("adapterSelectionDidChange")
     static let mcpAdapterSelectionDidChange = Notification.Name("mcpAdapterSelectionDidChange")
 }
