@@ -245,11 +245,12 @@ struct LocalFilesImportSheet: View {
                 LabeledContent("Max Total Clips") {
                         Stepper("\(config.maxTotalClips)",
                                 value: $config.maxTotalClips,
-                                in: 5...200,
+                                in: 5...LocalFilesDatasetConfig.maximumTotalClips,
                                 step: 5)
                         .disabled(isBusy)
                         .frame(maxWidth: 130)
                 }
+                datasetCoverageSummary
                 LabeledContent("Clip Format") {
                     Picker("Clip Format", selection: $config.clipFormat) {
                         ForEach(LocalDatasetClipFormat.allCases) { format in
@@ -290,6 +291,44 @@ struct LocalFilesImportSheet: View {
                 }
             }
         }
+    }
+
+    private var datasetCoverageSummary: some View {
+        let summary = coverageSummary
+
+        return HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Image(systemName: summary.isCapped ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                .foregroundStyle(summary.isCapped ? .orange : .green)
+            Text(summary.message)
+                .font(.caption)
+                .foregroundStyle(summary.isCapped ? .orange : .secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var coverageSummary: (message: String, isCapped: Bool) {
+        let fileCount = selectedFiles.count
+        guard fileCount > 0 else {
+            return ("Add source files to preview dataset coverage.", false)
+        }
+
+        let requestedClips = fileCount * config.clipsPerTrack
+        let plannedClips = min(requestedClips, config.maxTotalClips)
+        if requestedClips <= config.maxTotalClips {
+            return (
+                "Will create up to \(plannedClips) clip\(plannedClips == 1 ? "" : "s") across all \(fileCount) file\(fileCount == 1 ? "" : "s").",
+                false
+            )
+        }
+
+        let fullFiles = config.maxTotalClips / max(1, config.clipsPerTrack)
+        let partialFileCount = config.maxTotalClips % max(1, config.clipsPerTrack) == 0 ? 0 : 1
+        let reachedFiles = min(fileCount, fullFiles + partialFileCount)
+        return (
+            "Max Total Clips will create \(plannedClips) clips and stop after about \(reachedFiles) of \(fileCount) files. Raise the cap or lower Clips per File for full coverage.",
+            true
+        )
     }
 
     private var progressSection: some View {

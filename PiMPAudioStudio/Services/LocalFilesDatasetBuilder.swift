@@ -52,6 +52,8 @@ enum LocalDatasetClipSamplingMode: String, CaseIterable, Hashable, Identifiable 
 }
 
 struct LocalFilesDatasetConfig {
+    static let maximumTotalClips = 1_000
+
     var clipLength: TimeInterval = 35
     var clipsPerTrack: Int = 8
     var maxTotalClips: Int = 40
