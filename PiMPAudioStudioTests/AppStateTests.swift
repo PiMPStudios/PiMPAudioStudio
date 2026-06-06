@@ -2126,14 +2126,45 @@ private func traceForComparison(
     let recommendation = TrainingPlanRecommendation.make(
         adapterKind: .lora,
         sampleCount: 200,
-        knownDuration: 1_800
+        knownDuration: 6_000
     )
 
     #expect(recommendation?.rank == 64)
     #expect(recommendation?.epochs == 20)
     #expect(recommendation?.layerCount == 12)
     #expect(recommendation?.gradientAccumulationSteps == 2)
-    #expect(recommendation?.summary.contains("~30m known audio") == true)
+    #expect(recommendation?.estimatedOptimizerUpdates == 2_000)
+    #expect(recommendation?.summary.contains("~100m audio") == true)
+}
+
+@Test func trainingPlanRecommendationDownshiftsShortAudioDatasets() {
+    let recommendation = TrainingPlanRecommendation.make(
+        adapterKind: .lora,
+        sampleCount: 200,
+        knownDuration: 600
+    )
+
+    #expect(recommendation?.rank == 16)
+    #expect(recommendation?.epochs == 10)
+    #expect(recommendation?.layerCount == 8)
+    #expect(recommendation?.gradientAccumulationSteps == 2)
+    #expect(recommendation?.estimatedOptimizerUpdates == 1_000)
+}
+
+@Test func trainingPlanRecommendationIgnoresSparseDurationCoverage() {
+    let recommendation = TrainingPlanRecommendation.make(
+        adapterKind: .lora,
+        profile: TrainingDatasetProfile(
+            sampleCount: 200,
+            knownDuration: 600,
+            knownDurationSampleCount: 20
+        )
+    )
+
+    #expect(recommendation?.rank == 64)
+    #expect(recommendation?.epochs == 20)
+    #expect(recommendation?.layerCount == 12)
+    #expect(recommendation?.summary.contains("known audio from 20/200") == true)
 }
 
 @Test func trainingPlanRecommendationKeepsLoKRTinyRunsNarrow() {
@@ -2146,4 +2177,5 @@ private func traceForComparison(
     #expect(recommendation?.epochs == 75)
     #expect(recommendation?.layerCount == 4)
     #expect(recommendation?.gradientAccumulationSteps == 1)
+    #expect(recommendation?.estimatedOptimizerUpdates == 600)
 }

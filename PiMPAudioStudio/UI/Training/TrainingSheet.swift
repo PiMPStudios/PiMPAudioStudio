@@ -2,6 +2,7 @@ import SwiftUI
 import PiMPAudioCore
 import UniformTypeIdentifiers
 import AppKit
+import AVFoundation
 
 /// Drives `.sheet(item:)` for any training sheet presentation.
 /// Carrying all data as value types ensures the sheet closure sees the
@@ -82,6 +83,7 @@ struct TrainingSheet: View {
     @State private var importErrorMessage: String?
     @State private var importStatusMessage: String?
     @State private var completionStatusMessage: String?
+    @State private var importedFileDurations: [String: TimeInterval] = [:]
 
     init(
         selectedEntries: [HistoryEntry],
@@ -160,6 +162,9 @@ struct TrainingSheet: View {
         }
         .task {
             await refreshBaseModelDisplayName()
+        }
+        .task(id: importedDurationRefreshKey) {
+            await refreshImportedFileDurations()
         }
         .onReceive(NotificationCenter.default.publisher(for: .modelRegistryDidChange)) { _ in
             Task { await refreshBaseModelDisplayName() }
@@ -679,9 +684,30 @@ struct TrainingSheet: View {
     private var trainingRecommendation: TrainingPlanRecommendation? {
         TrainingPlanRecommendation.make(
             adapterKind: adapterKind,
-            sampleCount: selectedEntries.count + importedFiles.count,
-            knownDuration: selectedEntries.reduce(0.0) { $0 + max(0, $1.duration) }
+            profile: trainingDatasetProfile
         )
+    }
+
+    private var trainingDatasetProfile: TrainingDatasetProfile {
+        let selectedDurations = selectedEntries
+            .map(\.duration)
+            .filter { $0 > 0 }
+        let importedDurations = importedFiles
+            .compactMap { importedFileDurations[durationKey(for: $0.url)] }
+            .filter { $0 > 0 }
+
+        return TrainingDatasetProfile(
+            sampleCount: selectedEntries.count + importedFiles.count,
+            knownDuration: selectedDurations.reduce(0, +) + importedDurations.reduce(0, +),
+            knownDurationSampleCount: selectedDurations.count + importedDurations.count
+        )
+    }
+
+    private var importedDurationRefreshKey: String {
+        importedFiles
+            .map { durationKey(for: $0.url) }
+            .sorted()
+            .joined(separator: "\n")
     }
 
     private func close() {
@@ -710,6 +736,53 @@ struct TrainingSheet: View {
         NSWorkspace.shared.activateFileViewerSelecting([
             AdapterRegistry.adapterDirectory(id: adapter.id)
         ])
+    }
+
+    private func refreshImportedFileDurations() async {
+        let urls = importedFiles.map(\.url)
+        guard !urls.isEmpty else {
+            importedFileDurations = [:]
+            return
+        }
+
+        let durations = await Task.detached(priority: .utility) {
+            var result: [String: TimeInterval] = [:]
+            for url in urls {
+                guard let duration = Self.audioDuration(for: url), duration > 0 else {
+                    continue
+                }
+                result[Self.durationKey(for: url)] = duration
+            }
+            return result
+        }.value
+
+        importedFileDurations = durations
+    }
+
+    nonisolated private static func audioDuration(for url: URL) -> TimeInterval? {
+        let didAccess = url.startAccessingSecurityScopedResource()
+        defer {
+            if didAccess {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        guard let audioFile = try? AVAudioFile(forReading: url) else {
+            return nil
+        }
+        let sampleRate = audioFile.fileFormat.sampleRate
+        guard sampleRate > 0 else {
+            return nil
+        }
+        return Double(audioFile.length) / sampleRate
+    }
+
+    private func durationKey(for url: URL) -> String {
+        Self.durationKey(for: url)
+    }
+
+    nonisolated private static func durationKey(for url: URL) -> String {
+        url.standardizedFileURL.path(percentEncoded: false)
     }
 
     private func selectAdapterForGeneration(_ adapter: LoRAAdapter) {
@@ -916,20 +989,35 @@ private extension AdapterKind {
     }
 }
 
-struct TrainingPlanRecommendation: Equatable {
-    let adapterKind: AdapterKind
+struct TrainingDatasetProfile: Equatable {
     let sampleCount: Int
     let knownDuration: TimeInterval
+    let knownDurationSampleCount: Int
+
+    var durationCoverage: Double {
+        guard sampleCount > 0 else { return 0 }
+        return Double(min(knownDurationSampleCount, sampleCount)) / Double(sampleCount)
+    }
+
+    var hasUsableDurationCoverage: Bool {
+        knownDuration > 0 && durationCoverage >= 0.80
+    }
+}
+
+struct TrainingPlanRecommendation: Equatable {
+    let adapterKind: AdapterKind
+    let profile: TrainingDatasetProfile
     let rank: Int
     let epochs: Int
     let layerCount: Int
     let gradientAccumulationSteps: Int
+    let estimatedOptimizerUpdates: Int
     let rationale: String
 
     var summary: String {
         let dimensionName = adapterKind == .lokr ? "dim" : "rank"
         let duration = durationSummary
-        return "\(sampleCount) tracks\(duration): \(dimensionName) \(rank), \(epochs) epochs, last \(layerCount) layers, grad accum \(gradientAccumulationSteps). \(rationale)"
+        return "\(profile.sampleCount) tracks\(duration): \(dimensionName) \(rank), \(epochs) epochs, last \(layerCount) layers, grad accum \(gradientAccumulationSteps), ~\(estimatedOptimizerUpdates) updates. \(rationale)"
     }
 
     static func make(
@@ -937,34 +1025,93 @@ struct TrainingPlanRecommendation: Equatable {
         sampleCount: Int,
         knownDuration: TimeInterval = 0
     ) -> TrainingPlanRecommendation? {
-        guard sampleCount > 0 else { return nil }
+        make(
+            adapterKind: adapterKind,
+            profile: TrainingDatasetProfile(
+                sampleCount: sampleCount,
+                knownDuration: knownDuration,
+                knownDurationSampleCount: knownDuration > 0 ? sampleCount : 0
+            )
+        )
+    }
 
-        let tier = DatasetTier(sampleCount: sampleCount)
+    static func make(
+        adapterKind: AdapterKind,
+        profile: TrainingDatasetProfile
+    ) -> TrainingPlanRecommendation? {
+        guard profile.sampleCount > 0 else { return nil }
+
+        let sampleTier = DatasetTier(sampleCount: profile.sampleCount)
+        let diversityTier = DatasetTier.diversityTier(for: profile, fallback: sampleTier)
+        let gradientAccumulationSteps = sampleTier.gradientAccumulationSteps
+        let updatesPerEpoch = optimizerStepsPerEpoch(
+            datasetSize: profile.sampleCount,
+            gradientAccumulationSteps: gradientAccumulationSteps
+        )
+        let rawEpochs = Int(ceil(Double(diversityTier.targetOptimizerUpdates) / Double(updatesPerEpoch)))
+        let epochs = nearestEpochOption(to: rawEpochs)
+        let estimatedOptimizerUpdates = updatesPerEpoch * epochs
+
         return TrainingPlanRecommendation(
             adapterKind: adapterKind,
-            sampleCount: sampleCount,
-            knownDuration: max(0, knownDuration),
-            rank: tier.dimension(for: adapterKind),
-            epochs: tier.epochs,
-            layerCount: tier.layerCount,
-            gradientAccumulationSteps: tier.gradientAccumulationSteps,
-            rationale: tier.rationale
+            profile: TrainingDatasetProfile(
+                sampleCount: profile.sampleCount,
+                knownDuration: max(0, profile.knownDuration),
+                knownDurationSampleCount: max(0, min(profile.knownDurationSampleCount, profile.sampleCount))
+            ),
+            rank: diversityTier.dimension(for: adapterKind),
+            epochs: epochs,
+            layerCount: diversityTier.layerCount,
+            gradientAccumulationSteps: gradientAccumulationSteps,
+            estimatedOptimizerUpdates: estimatedOptimizerUpdates,
+            rationale: diversityTier.rationale
         )
     }
 
     private var durationSummary: String {
-        guard knownDuration >= 1 else { return "" }
-        let minutes = Int((knownDuration / 60).rounded())
+        guard profile.knownDuration >= 1 else { return "" }
+        let minutes = Int((profile.knownDuration / 60).rounded())
         guard minutes > 0 else { return "" }
-        return ", ~\(minutes)m known audio"
+        if profile.knownDurationSampleCount >= profile.sampleCount {
+            return ", ~\(minutes)m audio"
+        }
+        return ", ~\(minutes)m known audio from \(profile.knownDurationSampleCount)/\(profile.sampleCount)"
     }
 
-    private enum DatasetTier {
+    private static let epochOptions = [5, 10, 20, 50, 75, 100]
+
+    private static func optimizerStepsPerEpoch(
+        datasetSize: Int,
+        gradientAccumulationSteps: Int
+    ) -> Int {
+        let sampleCount = max(1, datasetSize)
+        let requestedAccumulation = max(1, gradientAccumulationSteps)
+        let accumulation = min(requestedAccumulation, sampleCount)
+        return max(1, (sampleCount + accumulation - 1) / accumulation)
+    }
+
+    private static func nearestEpochOption(to rawEpochs: Int) -> Int {
+        let clamped = max(epochOptions.first ?? 5, min(epochOptions.last ?? 100, rawEpochs))
+        return epochOptions.min { lhs, rhs in
+            let lhsDistance = abs(lhs - clamped)
+            let rhsDistance = abs(rhs - clamped)
+            if lhsDistance == rhsDistance {
+                return lhs < rhs
+            }
+            return lhsDistance < rhsDistance
+        } ?? 10
+    }
+
+    private enum DatasetTier: Int, Comparable {
         case tiny
         case small
         case medium
         case large
         case huge
+
+        static func < (lhs: DatasetTier, rhs: DatasetTier) -> Bool {
+            lhs.rawValue < rhs.rawValue
+        }
 
         init(sampleCount: Int) {
             switch sampleCount {
@@ -979,6 +1126,32 @@ struct TrainingPlanRecommendation: Equatable {
             default:
                 self = .huge
             }
+        }
+
+        init(duration: TimeInterval) {
+            let minutes = max(0, duration / 60)
+            switch minutes {
+            case ..<10:
+                self = .tiny
+            case ..<40:
+                self = .small
+            case ..<100:
+                self = .medium
+            case ..<240:
+                self = .large
+            default:
+                self = .huge
+            }
+        }
+
+        static func diversityTier(
+            for profile: TrainingDatasetProfile,
+            fallback sampleTier: DatasetTier
+        ) -> DatasetTier {
+            guard profile.hasUsableDurationCoverage else {
+                return sampleTier
+            }
+            return min(sampleTier, DatasetTier(duration: profile.knownDuration))
         }
 
         func dimension(for adapterKind: AdapterKind) -> Int {
@@ -996,16 +1169,18 @@ struct TrainingPlanRecommendation: Equatable {
             }
         }
 
-        var epochs: Int {
+        var targetOptimizerUpdates: Int {
             switch self {
             case .tiny:
-                return 75
+                return 600
             case .small:
-                return 50
-            case .medium, .large:
-                return 20
+                return 900
+            case .medium:
+                return 1_400
+            case .large:
+                return 2_200
             case .huge:
-                return 10
+                return 3_200
             }
         }
 
