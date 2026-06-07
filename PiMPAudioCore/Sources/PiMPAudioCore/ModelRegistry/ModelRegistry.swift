@@ -253,6 +253,60 @@ public actor ModelRegistry {
             variantFamily: "ace-step-lm"
         ),
         ModelSpec(
+            id: "ace-step-lm-1.7b",
+            displayName: "ACE-Step LM 1.7B",
+            huggingFaceRepo: "ACE-Step/Ace-Step1.5",
+            files: [
+                ModelFileSpec(
+                    remotePath: "acestep-5Hz-lm-1.7B/model.safetensors",
+                    localName: "model.safetensors",
+                    sizeBytes: 3_708_521_528
+                ),
+                ModelFileSpec(
+                    remotePath: "acestep-5Hz-lm-1.7B/config.json",
+                    localName: "config.json",
+                    sizeBytes: 1_385
+                ),
+                ModelFileSpec(
+                    remotePath: "acestep-5Hz-lm-1.7B/tokenizer.json",
+                    localName: "tokenizer.json",
+                    sizeBytes: 24_321_939
+                ),
+                ModelFileSpec(
+                    remotePath: "acestep-5Hz-lm-1.7B/tokenizer_config.json",
+                    localName: "tokenizer_config.json",
+                    sizeBytes: 14_072_925
+                ),
+                ModelFileSpec(
+                    remotePath: "acestep-5Hz-lm-1.7B/special_tokens_map.json",
+                    localName: "special_tokens_map.json",
+                    sizeBytes: 1_824_199
+                ),
+                ModelFileSpec(
+                    remotePath: "acestep-5Hz-lm-1.7B/added_tokens.json",
+                    localName: "added_tokens.json",
+                    sizeBytes: 2_217_787
+                ),
+                ModelFileSpec(
+                    remotePath: "acestep-5Hz-lm-1.7B/merges.txt",
+                    localName: "merges.txt",
+                    sizeBytes: 1_671_853
+                ),
+                ModelFileSpec(
+                    remotePath: "acestep-5Hz-lm-1.7B/vocab.json",
+                    localName: "vocab.json",
+                    sizeBytes: 2_776_833
+                ),
+                ModelFileSpec(
+                    remotePath: "acestep-5Hz-lm-1.7B/chat_template.jinja",
+                    localName: "chat_template.jinja",
+                    sizeBytes: 4_168
+                )
+            ],
+            category: .aceStepLM,
+            variantFamily: "ace-step-lm"
+        ),
+        ModelSpec(
             id: "ace-step-lm-4b",
             displayName: "ACE-Step LM 4B",
             huggingFaceRepo: "ACE-Step/acestep-5Hz-lm-4B",

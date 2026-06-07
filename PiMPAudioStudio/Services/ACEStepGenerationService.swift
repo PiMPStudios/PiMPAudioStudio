@@ -392,8 +392,8 @@ actor ACEStepGenerationService {
             detok.update(parameters: ModuleParameters.unflattened(detokWeights))
             eval(detok.parameters())
 
-            // LM (try 0.6B first, fall back to 4B if only that one is downloaded)
-            let lmIDs = ["ace-step-lm-0.6b", "ace-step-lm-4b"]
+            // LM (try smaller variants first, fall back upward if only a larger one is downloaded)
+            let lmIDs = ["ace-step-lm-0.6b", "ace-step-lm-1.7b", "ace-step-lm-4b"]
             var lmLoaded = false
             for lmID in lmIDs {
                 let allSpecs = await registry.allSpecs
