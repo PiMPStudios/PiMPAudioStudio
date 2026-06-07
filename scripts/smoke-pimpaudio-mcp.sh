@@ -10,18 +10,25 @@ SESSION_ID=""
 
 cleanup_session() {
   if [[ -n "$SESSION_ID" ]]; then
+    delete_session "$SESSION_ID" >/dev/null 2>&1 || true
+  fi
+}
+
+delete_session() {
+  local session_id="$1"
+  if [[ -n "$session_id" ]]; then
     local curl_args=(
       -fsS
       -X DELETE
       "$ENDPOINT"
       -H 'Accept: application/json, text/event-stream'
       -H 'MCP-Protocol-Version: 2025-06-18'
-      -H "MCP-Session-Id: $SESSION_ID"
+      -H "MCP-Session-Id: $session_id"
     )
     if [[ -n "$TOKEN" ]]; then
       curl_args+=(-H "Authorization: Bearer $TOKEN")
     fi
-    curl "${curl_args[@]}" >/dev/null 2>&1 || true
+    curl "${curl_args[@]}"
   fi
 }
 
@@ -679,5 +686,24 @@ if [[ "$STREAM_EXIT" != "0" && "$STREAM_EXIT" != "28" ]]; then
 fi
 grep -q 'notifications/progress' "$TMP_DIR/get-mcp.sse"
 grep -q 'pimpaudio-smoke-progress' "$TMP_DIR/get-mcp.sse"
+
+echo "20. DELETE /mcp + fresh initialize"
+delete_session "$SESSION_ID" >/dev/null
+SESSION_ID=""
+rpc '{
+  "jsonrpc": "2.0",
+  "id": 21,
+  "method": "initialize",
+  "params": {
+    "protocolVersion": "2025-06-18",
+    "capabilities": {},
+    "clientInfo": { "name": "pimpaudio-smoke-mcp-reinit", "version": "1.0" }
+  }
+}' 21 >/dev/null
+
+if [[ -z "$SESSION_ID" ]]; then
+  echo "fresh initialize did not return MCP-Session-Id" >&2
+  exit 1
+fi
 
 echo "MCP smoke test passed."

@@ -214,6 +214,7 @@ private final class PiMPAudioMCPSDKBridge {
     private var transport: StatefulHTTPServerTransport
     private var isStarted = false
     private var hasActiveSession = false
+    private var activeSessionID: String?
     private var clientSupportsFormElicitation = false
     private var clientSupportsRoots = false
     private var clientRootsListChanged = false
@@ -262,17 +263,75 @@ private final class PiMPAudioMCPSDKBridge {
     }
 
     func handle(_ request: MCP.HTTPRequest) async -> MCP.HTTPResponse {
+        let isInitialize = isInitializeRequest(request)
+        if isInitialize, hasActiveSession {
+            if let resetError = await resetSessionTransport() {
+                return resetError
+            }
+        }
+
         let response = await transport.handleRequest(request)
 
-        if isInitializeRequest(request), response.statusCode == 200 {
-            hasActiveSession = true
+        if isInitialize {
+            if response.statusCode == 200 {
+                recordActiveSession(from: response)
+            } else if isAlreadyInitializedResponse(response) {
+                if let resetError = await resetSessionTransport() {
+                    return resetError
+                }
+                let retryResponse = await transport.handleRequest(request)
+                if retryResponse.statusCode == 200 {
+                    recordActiveSession(from: retryResponse)
+                }
+                return retryResponse
+            }
         } else if request.method.uppercased() == "DELETE", (200..<300).contains(response.statusCode) {
-            hasActiveSession = false
-            resetClientSessionState()
-            _ = await resetSessionTransport()
+            let previousSessionID = activeSessionID ?? request.header(MCP.HTTPHeaderName.sessionID)
+            if let resetError = await resetSessionTransport() {
+                return resetError
+            }
+            return response.statusCode == 200 ? response : .ok(headers: sessionHeaders(for: previousSessionID))
+        } else if request.method.uppercased() == "DELETE", shouldForceResetAfterDelete(request: request, response: response) {
+            let previousSessionID = activeSessionID ?? request.header(MCP.HTTPHeaderName.sessionID)
+            if let resetError = await resetSessionTransport() {
+                return resetError
+            }
+            return .ok(headers: sessionHeaders(for: previousSessionID))
         }
 
         return response
+    }
+
+    private func recordActiveSession(from response: MCP.HTTPResponse) {
+        hasActiveSession = true
+        activeSessionID = Self.headerValue(MCP.HTTPHeaderName.sessionID, in: response.headers)
+    }
+
+    private func shouldForceResetAfterDelete(request: MCP.HTTPRequest, response: MCP.HTTPResponse) -> Bool {
+        guard hasActiveSession else { return false }
+        let requestSessionID = request.header(MCP.HTTPHeaderName.sessionID)
+        guard requestSessionID == nil || requestSessionID == activeSessionID else { return false }
+        return response.statusCode == 400 || response.statusCode == 404
+    }
+
+    private func isAlreadyInitializedResponse(_ response: MCP.HTTPResponse) -> Bool {
+        guard response.statusCode == 400,
+              let body = response.bodyData,
+              let text = String(data: body, encoding: .utf8) else {
+            return false
+        }
+        return text.contains("Session already initialized")
+            || text.contains("Server is already initialized")
+    }
+
+    private func sessionHeaders(for sessionID: String?) -> [String: String] {
+        guard let sessionID, !sessionID.isEmpty else { return [:] }
+        return [MCP.HTTPHeaderName.sessionID: sessionID]
+    }
+
+    private static func headerValue(_ name: String, in headers: [String: String]) -> String? {
+        let lowercased = name.lowercased()
+        return headers.first { $0.key.lowercased() == lowercased }?.value
     }
 
     private func resetSessionTransport() async -> MCP.HTTPResponse? {
@@ -313,6 +372,7 @@ private final class PiMPAudioMCPSDKBridge {
 
     private func resetClientSessionState() {
         hasActiveSession = false
+        activeSessionID = nil
         clientSupportsFormElicitation = false
         clientSupportsRoots = false
         clientRootsListChanged = false

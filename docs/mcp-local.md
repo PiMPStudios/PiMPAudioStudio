@@ -41,6 +41,9 @@ transport:
 - `DELETE /mcp` terminates the session. PiMP Audio Studio resets the embedded SDK
   transport afterward so another local client can initialize without an app
   restart.
+- If a local client abandons a session without a clean shutdown, the next
+  `initialize` also rebuilds the embedded SDK transport instead of requiring an
+  app restart.
 - Raw curl callers should parse SSE `data:` events as JSON-RPC messages.
   `scripts/smoke-pimpaudio-mcp.sh` is the canonical shell example.
 
@@ -325,7 +328,8 @@ PIMP_AUDIO_MCP_TOKEN='<token>' scripts/smoke-pimpaudio-mcp.sh
 The smoke script initializes a session, parses POST SSE responses, checks the
 tool/resource/prompt catalog, verifies editor and operation resources, dry-runs
 editor audio loading when a history WAV is available, opens `GET /mcp`, and
-checks a `notifications/progress` event.
+checks a `notifications/progress` event. It then deletes the session and
+verifies that a fresh `initialize` succeeds.
 
 Manual curl testing is possible, but every request after initialize must send
 the returned `MCP-Session-Id`. The raw response body may be SSE, so inspect
