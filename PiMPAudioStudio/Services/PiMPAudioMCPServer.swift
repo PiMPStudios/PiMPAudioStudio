@@ -828,6 +828,12 @@ private final class PiMPAudioMCPSDKBridge {
             return facade.listTrainingDatasets(arguments: arguments)
         case "list_training_runs":
             return facade.listTrainingRuns(arguments: arguments)
+        case "inspect_training_dataset":
+            return try facade.inspectTrainingDataset(arguments: arguments)
+        case "inspect_training_run":
+            return try facade.inspectTrainingRun(arguments: arguments)
+        case "compare_training_runs":
+            return try facade.compareTrainingRuns(arguments: arguments)
         case "tail_training_log":
             return try facade.tailTrainingLog(arguments: arguments)
         case "list_history":
@@ -1365,6 +1371,18 @@ private enum MCPResourceCatalog {
             name: "adapter",
             title: "PiMP Audio Studio Adapter",
             description: "LoRA adapter registry entry by adapter id or name."
+        ),
+        template(
+            uriTemplate: "pimpaudio://training-dataset/{id}",
+            name: "training-dataset",
+            title: "Training Dataset Detail",
+            description: "Detailed local dataset package inspection by id, folder name, or latest."
+        ),
+        template(
+            uriTemplate: "pimpaudio://training-run/{id}",
+            name: "training-run",
+            title: "Training Run Detail",
+            description: "Detailed adapter training run inspection by adapter id, name, or latest."
         ),
         template(
             uriTemplate: "pimpaudio://history/{id}",
@@ -1973,6 +1991,89 @@ private enum MCPToolCatalog {
                     "minimum": 1,
                     "maximum": 100,
                     "description": "Maximum number of training runs to return. Defaults to 25."
+                ],
+                "includeAdaptersWithoutLogs": [
+                    "type": "boolean",
+                    "description": "Include installed adapters that do not have training_log.json. Defaults to false."
+                ]
+            ]
+        ),
+        tool(
+            name: "inspect_training_dataset",
+            title: "Inspect Training Dataset",
+            description: "Return detailed read-only health, annotation coverage, recommendation, and sample-clip metadata for a local dataset package.",
+            properties: [
+                "id": [
+                    "type": "string",
+                    "description": "Dataset id, folder name, or partial dataset name. Defaults to the newest visible dataset."
+                ],
+                "name": [
+                    "type": "string",
+                    "description": "Alias for id."
+                ],
+                "path": [
+                    "type": "string",
+                    "description": "Optional full path to a dataset package containing captions.json."
+                ],
+                "sampleLimit": [
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 50,
+                    "description": "Maximum number of sample clip rows to include. Defaults to 12."
+                ]
+            ]
+        ),
+        tool(
+            name: "inspect_training_run",
+            title: "Inspect Training Run",
+            description: "Return detailed read-only adapter training metadata, configuration, health metrics, progress tail, and event tail.",
+            properties: [
+                "id": [
+                    "type": "string",
+                    "description": "Adapter id, adapter name, or partial adapter name. Defaults to the newest installed training run."
+                ],
+                "adapterID": [
+                    "type": "string",
+                    "description": "Alias for id."
+                ],
+                "name": [
+                    "type": "string",
+                    "description": "Alias for id."
+                ],
+                "progressLimit": [
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 500,
+                    "description": "Maximum number of progress rows from the end of training_log.json. Defaults to 50."
+                ],
+                "eventLimit": [
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100,
+                    "description": "Maximum number of run events from the end of training_log.json. Defaults to 25."
+                ]
+            ]
+        ),
+        tool(
+            name: "compare_training_runs",
+            title: "Compare Training Runs",
+            description: "Return a compact read-only comparison table for recent or selected adapter training runs.",
+            properties: [
+                "ids": [
+                    "type": "array",
+                    "items": ["type": "string"],
+                    "description": "Optional adapter ids or names to compare. Defaults to recent logged runs."
+                ],
+                "adapterIDs": [
+                    "type": "array",
+                    "items": ["type": "string"],
+                    "description": "Alias for ids."
+                ],
+                "limit": [
+                    "type": "integer",
+                    "minimum": 2,
+                    "maximum": 20,
+                    "description": "Maximum number of recent runs to compare when ids are omitted. Defaults to 6."
                 ],
                 "includeAdaptersWithoutLogs": [
                     "type": "boolean",

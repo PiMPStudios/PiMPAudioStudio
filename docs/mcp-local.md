@@ -53,6 +53,9 @@ The local MCP endpoint exposes read/status tools:
 - `training_status`
 - `list_training_datasets`
 - `list_training_runs`
+- `inspect_training_dataset`
+- `inspect_training_run`
+- `compare_training_runs`
 - `tail_training_log`
 - `list_history`
 - `get_trace`
@@ -82,9 +85,14 @@ operation record.
 progress metrics, active run-log summary, and AUDIODIAG paths. `list_training_datasets`
 returns visible local dataset packages from the current output folder plus the
 app support fallback, `list_training_runs` returns installed adapters with
-`training_log.json` summaries, and `tail_training_log` returns recent lines from
-the active or latest Diagnostics log filtered to training lines by default.
-These tools are read-only; MCP does not start local training yet.
+`training_log.json` summaries, `inspect_training_dataset` returns package
+validation, annotation coverage, sample rows, and dataset-size-aware LoRA/LoKR
+recommendations, `inspect_training_run` returns adapter config, progress/event
+tails, and health metrics, `compare_training_runs` returns a compact comparison
+table for recent or selected adapter runs, and `tail_training_log` returns
+recent lines from the active or latest Diagnostics log filtered to training
+lines by default. These tools are read-only; MCP does not start local training
+yet.
 
 `editor_status` returns editor readiness, loaded audio metadata, supported
 editor action descriptors, and the active editor operation when present.
@@ -215,7 +223,9 @@ The same data is also available as MCP resources:
 - `pimpaudio://adapter/{id}`
 - `pimpaudio://training`
 - `pimpaudio://training-datasets`
+- `pimpaudio://training-dataset/{id}`
 - `pimpaudio://training-runs`
+- `pimpaudio://training-run/{id}`
 - `pimpaudio://history`
 - `pimpaudio://history/{id}`
 - `pimpaudio://project/current`

@@ -2310,6 +2310,8 @@ private func traceForComparison(
     #expect(uris.contains("pimpaudio://training"))
     #expect(uris.contains("pimpaudio://training-datasets"))
     #expect(uris.contains("pimpaudio://training-runs"))
+    #expect(uris.contains("pimpaudio://training-dataset/latest"))
+    #expect(uris.contains("pimpaudio://training-run/latest"))
 
     let directStatus = facade.trainingStatus()
     #expect(directStatus["available"] as? Bool == false)
@@ -2361,4 +2363,65 @@ private func traceForComparison(
     #expect(dataset?["name"] as? String == "MCP Dataset")
     #expect(dataset?["clipCount"] as? Int == 1)
     #expect(dataset?["enrichmentStatus"] as? String == "ready_for_preprocess")
+}
+
+@Test @MainActor func mcpTrainingDatasetInspectionReportsCoverageAndRecommendations() async throws {
+    let tempRoot = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+    let packageDirectory = tempRoot
+        .appendingPathComponent("History", isDirectory: true)
+        .appendingPathComponent("TrainingDatasets", isDirectory: true)
+        .appendingPathComponent("mcp-dataset", isDirectory: true)
+    try writeFixture(
+        """
+        [
+          {
+            "id": "clip-1",
+            "file": "clips/f001_clip_001.wav",
+            "caption": "dark test clip",
+            "lyrics": "line one\\nline two",
+            "audio": { "duration_seconds": 60 },
+            "analysis": { "bpm": 110, "key": "D minor" },
+            "training_review": { "approved": true, "status": "approved" }
+          }
+        ]
+        """,
+        to: packageDirectory.appendingPathComponent(TrainingDatasetPackageWriter.captionsFileName)
+    )
+    try writeFixture(
+        """
+        {
+          "name": "MCP Dataset",
+          "created_at": "2026-06-07T00:00:00Z",
+          "clip_count": 1,
+          "enrichment": { "status": "ready_for_preprocess" }
+        }
+        """,
+        to: packageDirectory.appendingPathComponent(TrainingDatasetPackageWriter.datasetManifestFileName)
+    )
+
+    let facade = makeTestCommandFacade(root: tempRoot)
+    let detail = try facade.inspectTrainingDataset(arguments: [
+        "path": packageDirectory.path(percentEncoded: false),
+        "sampleLimit": 1
+    ])
+    let profile = detail["profile"] as? [String: Any]
+    let annotations = detail["annotations"] as? [String: Any]
+    let recommendations = detail["recommendations"] as? [String: Any]
+    let loraRecommendation = recommendations?["lora"] as? [String: Any]
+    let sampleClips = detail["sampleClips"] as? [[String: Any]]
+
+    #expect(profile?["sampleCount"] as? Int == 1)
+    #expect(profile?["knownDurationSampleCount"] as? Int == 1)
+    #expect(annotations?["captionCount"] as? Int == 1)
+    #expect(annotations?["lyricsCount"] as? Int == 1)
+    #expect(annotations?["approvedCount"] as? Int == 1)
+    #expect(loraRecommendation?["adapterKind"] as? String == "lora")
+    #expect(sampleClips?.first?["lyricsLineCount"] as? Int == 2)
+
+    let resourceDetail = try await facade.readResource(uri: "pimpaudio://training-dataset/latest")
+    let summary = resourceDetail["summary"] as? [String: Any]
+    #expect(summary?["name"] as? String == "MCP Dataset")
 }

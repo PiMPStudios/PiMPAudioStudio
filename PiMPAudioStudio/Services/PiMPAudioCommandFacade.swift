@@ -251,6 +251,48 @@ final class PiMPAudioCommandFacade {
         ]
     }
 
+    func inspectTrainingDataset(arguments: [String: Any]) throws -> [String: Any] {
+        let sampleLimit = max(0, min(integerValue(arguments["sampleLimit"]) ?? 12, 50))
+        let directory = try resolveTrainingDatasetDirectory(arguments: arguments)
+        let document = try TrainingDatasetPackageEditor.loadPackage(at: directory)
+        return trainingDatasetDetailPayload(document, sampleLimit: sampleLimit)
+    }
+
+    func inspectTrainingRun(arguments: [String: Any]) throws -> [String: Any] {
+        let progressLimit = max(0, min(integerValue(arguments["progressLimit"]) ?? 50, 500))
+        let eventLimit = max(0, min(integerValue(arguments["eventLimit"]) ?? 25, 100))
+        let adapter = try resolveTrainingRunAdapter(arguments: arguments)
+        let log = AdapterRegistry.loadTrainingRunLog(adapterID: adapter.id)
+        return trainingRunDetailPayload(
+            adapter: adapter,
+            log: log,
+            progressLimit: progressLimit,
+            eventLimit: eventLimit
+        )
+    }
+
+    func compareTrainingRuns(arguments: [String: Any]) throws -> [String: Any] {
+        let limit = max(2, min(integerValue(arguments["limit"]) ?? 6, 20))
+        let includeMissingLogs = boolValue(arguments["includeAdaptersWithoutLogs"]) ?? false
+        let adapters = try resolveTrainingRunComparisonAdapters(
+            arguments: arguments,
+            limit: limit,
+            includeMissingLogs: includeMissingLogs
+        )
+        let rows = adapters.map { adapter in
+            trainingRunComparisonPayload(
+                adapter: adapter,
+                log: AdapterRegistry.loadTrainingRunLog(adapterID: adapter.id)
+            )
+        }
+
+        return [
+            "count": rows.count,
+            "runs": rows,
+            "note": "Read-only comparison of installed adapter metadata and training_log.json metrics."
+        ]
+    }
+
     func tailTrainingLog(arguments: [String: Any]) throws -> [String: Any] {
         let limit = max(1, min(integerValue(arguments["limit"]) ?? 120, 500))
         let contains = stringValue(arguments["contains"] ?? arguments["filter"])?
@@ -301,6 +343,18 @@ final class PiMPAudioCommandFacade {
                 name: "training-runs",
                 title: "Training Runs",
                 description: "Installed adapter training logs with latest progress and health metrics."
+            ),
+            resource(
+                uri: "pimpaudio://training-dataset/latest",
+                name: "latest-training-dataset",
+                title: "Latest Training Dataset",
+                description: "Detailed inspection payload for the newest visible local dataset package."
+            ),
+            resource(
+                uri: "pimpaudio://training-run/latest",
+                name: "latest-training-run",
+                title: "Latest Training Run",
+                description: "Detailed inspection payload for the newest installed adapter training log."
             ),
             resource(
                 uri: "pimpaudio://history",
@@ -473,6 +527,18 @@ final class PiMPAudioCommandFacade {
             return listTrainingDatasets(arguments: [:])
         case "training-runs":
             return listTrainingRuns(arguments: [:])
+        case "training-dataset":
+            var arguments: [String: Any] = ["sampleLimit": 12]
+            if let identifier = parsed.identifier, identifier != "latest" {
+                arguments["id"] = identifier
+            }
+            return try inspectTrainingDataset(arguments: arguments)
+        case "training-run":
+            var arguments: [String: Any] = ["progressLimit": 50, "eventLimit": 25]
+            if let identifier = parsed.identifier, identifier != "latest" {
+                arguments["id"] = identifier
+            }
+            return try inspectTrainingRun(arguments: arguments)
         case "history":
             guard let identifier = parsed.identifier else {
                 return listHistory(limit: 200)
@@ -1557,6 +1623,229 @@ final class PiMPAudioCommandFacade {
         ]
     }
 
+    private func resolveTrainingDatasetDirectory(arguments: [String: Any]) throws -> URL {
+        if let rawPath = stringValue(arguments["path"] ?? arguments["directory"] ?? arguments["datasetPath"])?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !rawPath.isEmpty {
+            let expanded = (rawPath as NSString).expandingTildeInPath
+            let url = URL(fileURLWithPath: expanded).standardizedFileURL
+            guard FileManager.default.fileExists(
+                atPath: url.appendingPathComponent(TrainingDatasetPackageWriter.captionsFileName)
+                    .path(percentEncoded: false)
+            ) else {
+                throw PiMPAudioCommandFacadeError.resourceNotFound(rawPath)
+            }
+            return url
+        }
+
+        let packages = trainingDatasetSearchRoots()
+            .flatMap { TrainingDatasetPackageEditor.listPackages(in: $0) }
+            .sorted { lhs, rhs in
+                modificationDate(lhs.directory) > modificationDate(rhs.directory)
+            }
+        guard !packages.isEmpty else {
+            throw PiMPAudioCommandFacadeError.resourceNotFound("training datasets")
+        }
+
+        guard let identifier = stringValue(arguments["id"] ?? arguments["name"] ?? arguments["dataset"])?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !identifier.isEmpty,
+              identifier.lowercased() != "latest" else {
+            return packages[0].directory
+        }
+
+        let needle = identifier.lowercased()
+        if let exact = packages.first(where: { package in
+            package.id.lowercased() == needle ||
+                package.name.lowercased() == needle ||
+                package.directory.lastPathComponent.lowercased() == needle ||
+                package.directory.path(percentEncoded: false).lowercased() == needle
+        }) {
+            return exact.directory
+        }
+        if let partial = packages.first(where: { package in
+            package.name.lowercased().contains(needle) ||
+                package.directory.lastPathComponent.lowercased().contains(needle)
+        }) {
+            return partial.directory
+        }
+        throw PiMPAudioCommandFacadeError.resourceNotFound(identifier)
+    }
+
+    private func trainingDatasetDetailPayload(
+        _ document: DatasetPackageDocument,
+        sampleLimit: Int
+    ) -> [String: Any] {
+        let profile = trainingDatasetProfile(for: document)
+        let recommendations: [String: Any] = [
+            "lora": TrainingPlanRecommendation.make(adapterKind: .lora, profile: profile)
+                .map(trainingPlanRecommendationPayload) ?? NSNull(),
+            "lokr": TrainingPlanRecommendation.make(adapterKind: .lokr, profile: profile)
+                .map(trainingPlanRecommendationPayload) ?? NSNull()
+        ]
+        let clips = document.clips.prefix(sampleLimit).map(trainingDatasetClipPayload)
+
+        return [
+            "summary": trainingDatasetPayload(TrainingDatasetPackageEditor.packageSummary(at: document.directory)),
+            "validation": trainingDatasetValidationPayload(document.validation),
+            "profile": trainingDatasetProfilePayload(profile),
+            "annotations": trainingDatasetAnnotationStatsPayload(document),
+            "recommendations": recommendations,
+            "sampleClipLimit": sampleLimit,
+            "sampleClips": Array(clips),
+            "paths": trainingDatasetPathsPayload(document.directory),
+            "resources": [
+                "collection": "pimpaudio://training-datasets",
+                "latest": "pimpaudio://training-dataset/latest"
+            ]
+        ]
+    }
+
+    private func trainingDatasetValidationPayload(_ validation: TrainingDatasetPackageValidationResult) -> [String: Any] {
+        [
+            "isValid": validation.isValid,
+            "summary": validation.summary,
+            "checkedAt": validation.checkedAt,
+            "clipCount": validation.clipCount,
+            "importableClipCount": validation.importableClipCount,
+            "missingPackageFiles": validation.missingPackageFiles,
+            "missingClipFiles": validation.missingClipFiles,
+            "errors": validation.errors
+        ]
+    }
+
+    private func trainingDatasetProfile(for document: DatasetPackageDocument) -> TrainingDatasetProfile {
+        var knownDuration: TimeInterval = 0
+        var knownDurationSampleCount = 0
+        for clip in document.clips {
+            guard let duration = clip.durationSeconds, duration > 0 else { continue }
+            knownDuration += duration
+            knownDurationSampleCount += 1
+        }
+        return TrainingDatasetProfile(
+            sampleCount: document.clips.count,
+            knownDuration: knownDuration,
+            knownDurationSampleCount: knownDurationSampleCount
+        )
+    }
+
+    private func trainingDatasetProfilePayload(_ profile: TrainingDatasetProfile) -> [String: Any] {
+        [
+            "sampleCount": profile.sampleCount,
+            "knownDurationSeconds": profile.knownDuration,
+            "knownDurationMinutes": profile.knownDuration / 60,
+            "knownDurationSampleCount": profile.knownDurationSampleCount,
+            "durationCoverage": profile.durationCoverage,
+            "hasUsableDurationCoverage": profile.hasUsableDurationCoverage
+        ]
+    }
+
+    private func trainingDatasetAnnotationStatsPayload(_ document: DatasetPackageDocument) -> [String: Any] {
+        var captionCount = 0
+        var lyricsCount = 0
+        var durationCount = 0
+        var bpmCount = 0
+        var keyCount = 0
+        var approvedCount = 0
+        var captionSources: [String: Int] = [:]
+        var lyricsSources: [String: Int] = [:]
+        var transcriptionStatuses: [String: Int] = [:]
+        var audioStatuses: [String: Int] = [:]
+
+        for clip in document.clips {
+            if !clip.caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { captionCount += 1 }
+            if !clip.lyrics.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { lyricsCount += 1 }
+            if let duration = clip.durationSeconds, duration > 0 { durationCount += 1 }
+            if !clip.bpm.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { bpmCount += 1 }
+            if !clip.key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { keyCount += 1 }
+            if clip.isApproved { approvedCount += 1 }
+            increment(&captionSources, key: clip.captionSource.isEmpty ? "unknown" : clip.captionSource)
+            increment(&lyricsSources, key: clip.lyricsSource.isEmpty ? "unknown" : clip.lyricsSource)
+            increment(&transcriptionStatuses, key: clip.transcriptionStatus.isEmpty ? "unknown" : clip.transcriptionStatus)
+            increment(&audioStatuses, key: clip.audioStatus.isEmpty ? "unknown" : clip.audioStatus)
+        }
+
+        let total = document.clips.count
+        return [
+            "clipCount": total,
+            "approvedCount": approvedCount,
+            "blockerCount": document.blockerCount,
+            "warningCount": document.warningCount,
+            "captionCount": captionCount,
+            "missingCaptionCount": max(0, total - captionCount),
+            "lyricsCount": lyricsCount,
+            "missingLyricsCount": max(0, total - lyricsCount),
+            "durationKnownCount": durationCount,
+            "bpmKnownCount": bpmCount,
+            "keyKnownCount": keyCount,
+            "captionSources": captionSources,
+            "lyricsSources": lyricsSources,
+            "transcriptionStatuses": transcriptionStatuses,
+            "audioStatuses": audioStatuses
+        ]
+    }
+
+    private func trainingDatasetClipPayload(_ clip: DatasetClipReview) -> [String: Any] {
+        [
+            "id": clip.id,
+            "file": clip.file,
+            "displayName": clip.displayName,
+            "caption": compact(clip.caption, limit: 220),
+            "lyricsLineCount": lyricLineCount(clip.lyrics),
+            "durationSeconds": clip.durationSeconds ?? NSNull(),
+            "bpm": clip.bpm.isEmpty ? NSNull() : clip.bpm,
+            "key": clip.key.isEmpty ? NSNull() : clip.key,
+            "language": clip.language.isEmpty ? NSNull() : clip.language,
+            "role": clip.role.isEmpty ? NSNull() : clip.role,
+            "reviewStatus": clip.reviewStatus,
+            "isApproved": clip.isApproved,
+            "captionSource": clip.captionSource,
+            "lyricsSource": clip.lyricsSource,
+            "audioStatus": clip.audioStatus,
+            "separationStatus": clip.separationStatus,
+            "transcriptionStatus": clip.transcriptionStatus
+        ]
+    }
+
+    private func trainingDatasetPathsPayload(_ directory: URL) -> [String: Any] {
+        let files = [
+            TrainingDatasetPackageWriter.captionsFileName,
+            TrainingDatasetPackageWriter.datasetManifestFileName,
+            TrainingDatasetPackageWriter.validationReportFileName,
+            TrainingDatasetPackageWriter.fullMixBundleFileName,
+            TrainingDatasetPackageWriter.vocalBundleFileName,
+            TrainingDatasetPackageWriter.instrumentalBundleFileName,
+            TrainingDatasetPackageWriter.remotePackageFileName,
+            TrainingDatasetPackageWriter.preprocessCacheFileName
+        ]
+        let entries = files.reduce(into: [String: Any]()) { result, fileName in
+            let url = directory.appendingPathComponent(fileName)
+            result[fileName] = [
+                "path": url.path(percentEncoded: false),
+                "exists": FileManager.default.fileExists(atPath: url.path(percentEncoded: false))
+            ]
+        }
+        return [
+            "directory": directory.path(percentEncoded: false),
+            "files": entries
+        ]
+    }
+
+    private func trainingPlanRecommendationPayload(_ recommendation: TrainingPlanRecommendation) -> [String: Any] {
+        [
+            "adapterKind": recommendation.adapterKind.rawValue,
+            "sampleCount": recommendation.profile.sampleCount,
+            "knownDurationSeconds": recommendation.profile.knownDuration,
+            "rankOrLinearDim": recommendation.rank,
+            "epochs": recommendation.epochs,
+            "layerCount": recommendation.layerCount,
+            "gradientAccumulationSteps": recommendation.gradientAccumulationSteps,
+            "estimatedOptimizerUpdates": recommendation.estimatedOptimizerUpdates,
+            "summary": recommendation.summary,
+            "rationale": recommendation.rationale
+        ]
+    }
+
     private func trainingRunPayload(adapter: LoRAAdapter, log: TrainingRunLog?) -> [String: Any] {
         var payload = trainingAdapterSummaryPayload(adapter)
         payload["runLogPath"] = AdapterRegistry.trainingRunLogURL(adapterID: adapter.id).path(percentEncoded: false)
@@ -1569,6 +1858,252 @@ final class PiMPAudioCommandFacade {
         payload["updatedAt"] = log.map { dateFormatter.string(from: $0.updatedAt) }
             ?? dateFormatter.string(from: adapter.createdAt)
         return payload
+    }
+
+    private func resolveTrainingRunAdapter(arguments: [String: Any]) throws -> LoRAAdapter {
+        let installed = AdapterRegistry.listAdapters()
+        guard !installed.isEmpty else {
+            throw PiMPAudioCommandFacadeError.resourceNotFound("training runs")
+        }
+
+        guard let identifier = stringValue(arguments["id"] ?? arguments["adapterID"] ?? arguments["name"] ?? arguments["adapter"])?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !identifier.isEmpty,
+              identifier.lowercased() != "latest" else {
+            return installed.sorted {
+                trainingRunUpdatedAt($0) > trainingRunUpdatedAt($1)
+            }[0]
+        }
+
+        return try resolveAdapter(identifier, installed: installed)
+    }
+
+    private func resolveTrainingRunComparisonAdapters(
+        arguments: [String: Any],
+        limit: Int,
+        includeMissingLogs: Bool
+    ) throws -> [LoRAAdapter] {
+        let installed = AdapterRegistry.listAdapters()
+        guard !installed.isEmpty else {
+            throw PiMPAudioCommandFacadeError.resourceNotFound("training runs")
+        }
+
+        let rawIDs = arguments["ids"] ?? arguments["adapterIDs"] ?? arguments["adapters"]
+        let identifiers: [String]
+        if let strings = rawIDs as? [String] {
+            identifiers = strings
+        } else if let values = rawIDs as? [Any] {
+            identifiers = values.compactMap { value in
+                if let dict = value as? [String: Any] {
+                    return stringValue(dict["id"] ?? dict["adapterID"] ?? dict["name"])
+                }
+                return stringValue(value)
+            }
+        } else {
+            identifiers = []
+        }
+
+        if !identifiers.isEmpty {
+            var seen = Set<String>()
+            return try identifiers.compactMap { identifier in
+                let adapter = try resolveAdapter(identifier, installed: installed)
+                guard seen.insert(adapter.id).inserted else { return nil }
+                return adapter
+            }
+        }
+
+        return installed
+            .filter { includeMissingLogs || AdapterRegistry.loadTrainingRunLog(adapterID: $0.id) != nil }
+            .sorted { trainingRunUpdatedAt($0) > trainingRunUpdatedAt($1) }
+            .prefix(limit)
+            .map { $0 }
+    }
+
+    private func trainingRunUpdatedAt(_ adapter: LoRAAdapter) -> Date {
+        AdapterRegistry.loadTrainingRunLog(adapterID: adapter.id)?.updatedAt ?? adapter.createdAt
+    }
+
+    private func trainingRunDetailPayload(
+        adapter: LoRAAdapter,
+        log: TrainingRunLog?,
+        progressLimit: Int,
+        eventLimit: Int
+    ) -> [String: Any] {
+        var payload = trainingRunPayload(adapter: adapter, log: log)
+        payload["configuration"] = trainingAdapterConfigurationPayload(adapter)
+        payload["paths"] = trainingRunPathsPayload(adapter)
+        payload["health"] = trainingRunHealthPayload(adapter: adapter, log: log)
+        if let log {
+            payload["progressTailLimit"] = progressLimit
+            payload["progressTail"] = log.progress.suffix(progressLimit).map(trainingRunProgressPayload)
+            payload["eventTailLimit"] = eventLimit
+            payload["eventTail"] = log.events.suffix(eventLimit).map(trainingRunEventPayload)
+        } else {
+            payload["progressTailLimit"] = progressLimit
+            payload["progressTail"] = []
+            payload["eventTailLimit"] = eventLimit
+            payload["eventTail"] = []
+        }
+        payload["resources"] = [
+            "collection": "pimpaudio://training-runs",
+            "latest": "pimpaudio://training-run/latest",
+            "adapter": resourceURI(kind: "adapter", identifier: adapter.id)
+        ]
+        return payload
+    }
+
+    private func trainingRunComparisonPayload(adapter: LoRAAdapter, log: TrainingRunLog?) -> [String: Any] {
+        let health = trainingRunHealthPayload(adapter: adapter, log: log)
+        return [
+            "id": adapter.id,
+            "name": adapter.name,
+            "kind": adapter.kind.rawValue,
+            "baseModelID": adapter.baseModelID,
+            "sampleCount": log?.sampleCount ?? adapter.sampleCount,
+            "hasRunLog": log != nil,
+            "status": log?.status.rawValue ?? "unknown",
+            "updatedAt": dateFormatter.string(from: log?.updatedAt ?? adapter.createdAt),
+            "createdAt": dateFormatter.string(from: adapter.createdAt),
+            "rank": adapter.config.rank,
+            "alpha": Double(adapter.config.alpha),
+            "lokrLinearDim": adapter.lokrConfig?.linearDim ?? NSNull(),
+            "learningRate": Double(adapter.lokrConfig?.learningRate ?? adapter.config.learningRate),
+            "epochs": adapter.lokrConfig?.maxEpochs ?? adapter.config.maxEpochs,
+            "gradientAccumulationSteps": adapter.lokrConfig?.gradientAccumulationSteps ?? adapter.config.gradientAccumulationSteps,
+            "trainingLayerCount": adapter.lokrConfig?.trainingLayerCount ?? adapter.config.trainingLayerCount ?? NSNull(),
+            "injectionPatterns": adapter.lokrConfig?.injectionPatterns ?? adapter.config.injectionPatterns,
+            "trainedPathCount": log?.trainedPaths.count ?? adapter.trainedPaths?.count ?? 0,
+            "trainedLayerIndices": log?.trainedLayerIndices ?? adapter.trainedLayerIndices ?? [],
+            "finalLoss": log?.finalLoss.map { Double($0) } ?? adapter.finalLoss.map { Double($0) } ?? NSNull(),
+            "latestLoss": health["latestLoss"] ?? NSNull(),
+            "bestLoss": health["bestLoss"] ?? NSNull(),
+            "latestUpdateNorm": health["latestUpdateNorm"] ?? NSNull(),
+            "zeroUpdateNormCount": health["zeroUpdateNormCount"] ?? NSNull(),
+            "progressCount": log?.progress.count ?? 0,
+            "hasCheckpoint": AdapterRegistry.hasCheckpoint(adapterID: adapter.id)
+        ]
+    }
+
+    private func trainingAdapterConfigurationPayload(_ adapter: LoRAAdapter) -> [String: Any] {
+        [
+            "kind": adapter.kind.rawValue,
+            "lora": loraConfigPayload(adapter.config),
+            "lokr": adapter.lokrConfig.map(lokrConfigPayload) ?? NSNull(),
+            "effectiveInjectionPatterns": adapter.lokrConfig?.injectionPatterns ?? adapter.config.injectionPatterns,
+            "trainedPaths": adapter.trainedPaths ?? [],
+            "trainedLayerIndices": adapter.trainedLayerIndices ?? []
+        ]
+    }
+
+    private func loraConfigPayload(_ config: LoRAConfig) -> [String: Any] {
+        [
+            "rank": config.rank,
+            "alpha": Double(config.alpha),
+            "scale": Double(config.alpha) / Double(max(1, config.rank)),
+            "dropout": Double(config.dropout),
+            "targetLayers": targetLayerPayload(config.targetLayers),
+            "exactInjectionPatterns": config.exactInjectionPatterns ?? NSNull(),
+            "injectionPatterns": config.injectionPatterns,
+            "learningRate": Double(config.learningRate),
+            "maxEpochs": config.maxEpochs,
+            "batchSize": config.batchSize,
+            "warmupFraction": Double(config.warmupFraction),
+            "gradientAccumulationSteps": config.gradientAccumulationSteps,
+            "trainingLayerCount": config.trainingLayerCount ?? NSNull()
+        ]
+    }
+
+    private func lokrConfigPayload(_ config: LoKRConfig) -> [String: Any] {
+        [
+            "linearDim": config.linearDim,
+            "alpha": Double(config.alpha),
+            "scale": Double(config.alpha) / Double(max(1, config.linearDim)),
+            "dropout": Double(config.dropout),
+            "targetLayers": targetLayerPayload(config.targetLayers),
+            "exactInjectionPatterns": config.exactInjectionPatterns ?? NSNull(),
+            "injectionPatterns": config.injectionPatterns,
+            "learningRate": Double(config.learningRate),
+            "maxEpochs": config.maxEpochs,
+            "batchSize": config.batchSize,
+            "warmupFraction": Double(config.warmupFraction),
+            "gradientAccumulationSteps": config.gradientAccumulationSteps,
+            "trainingLayerCount": config.trainingLayerCount ?? NSNull()
+        ]
+    }
+
+    private func targetLayerPayload(_ layers: Set<TargetLayer>) -> [String] {
+        layers.map(\.rawValue).sorted()
+    }
+
+    private func trainingRunPathsPayload(_ adapter: LoRAAdapter) -> [String: Any] {
+        let directory = AdapterRegistry.adapterDirectory(id: adapter.id)
+        let logURL = AdapterRegistry.trainingRunLogURL(adapterID: adapter.id)
+        let checkpointURL = AdapterRegistry.checkpointURL(adapterID: adapter.id)
+        let optimizerURL = AdapterRegistry.optimizerStateURL(adapterID: adapter.id)
+        let weightsURL = AdapterRegistry.weightsURL(adapterID: adapter.id)
+        return [
+            "directory": directory.path(percentEncoded: false),
+            "trainingLog": [
+                "path": logURL.path(percentEncoded: false),
+                "exists": FileManager.default.fileExists(atPath: logURL.path(percentEncoded: false))
+            ],
+            "checkpoint": [
+                "path": checkpointURL.path(percentEncoded: false),
+                "exists": FileManager.default.fileExists(atPath: checkpointURL.path(percentEncoded: false))
+            ],
+            "optimizerState": [
+                "path": optimizerURL.path(percentEncoded: false),
+                "exists": FileManager.default.fileExists(atPath: optimizerURL.path(percentEncoded: false))
+            ],
+            "weights": [
+                "path": weightsURL.path(percentEncoded: false),
+                "exists": FileManager.default.fileExists(atPath: weightsURL.path(percentEncoded: false))
+            ]
+        ]
+    }
+
+    private func trainingRunHealthPayload(adapter: LoRAAdapter, log: TrainingRunLog?) -> [String: Any] {
+        guard let log else {
+            return [
+                "hasRunLog": false,
+                "finalLoss": adapter.finalLoss.map { Double($0) } ?? NSNull(),
+                "progressCount": 0
+            ]
+        }
+
+        let losses = log.progress.map { Double($0.loss) }
+        let updateNorms = log.progress.compactMap(\.updateNorm).map(Double.init)
+        let recentLosses = losses.suffix(10)
+        let firstLoss = losses.first
+        let latestLoss = losses.last ?? log.finalLoss.map(Double.init)
+        let bestLoss = losses.min() ?? log.finalLoss.map(Double.init)
+        let recentAverage = recentLosses.isEmpty
+            ? nil
+            : recentLosses.reduce(0, +) / Double(recentLosses.count)
+        let zeroUpdateNormCount = updateNorms.filter { abs($0) <= 1.0e-12 }.count
+
+        return [
+            "hasRunLog": true,
+            "status": log.status.rawValue,
+            "progressCount": log.progress.count,
+            "eventCount": log.events.count,
+            "firstLoss": firstLoss ?? NSNull(),
+            "latestLoss": latestLoss ?? NSNull(),
+            "bestLoss": bestLoss ?? NSNull(),
+            "finalLoss": log.finalLoss.map { Double($0) } ?? NSNull(),
+            "lossDelta": (firstLoss != nil && latestLoss != nil) ? latestLoss! - firstLoss! : NSNull(),
+            "recentAverageLoss": recentAverage ?? NSNull(),
+            "latestLearningRate": log.progress.last.map { Double($0.learningRate) } ?? NSNull(),
+            "latestGradientNorm": log.progress.last?.gradientNorm.map { Double($0) } ?? NSNull(),
+            "latestParameterNorm": log.progress.last?.parameterNorm.map { Double($0) } ?? NSNull(),
+            "latestUpdateNorm": log.progress.last?.updateNorm.map { Double($0) } ?? NSNull(),
+            "updateNormSampleCount": updateNorms.count,
+            "zeroUpdateNormCount": zeroUpdateNormCount,
+            "trainedPathCount": log.trainedPaths.count,
+            "trainedLayerCount": Set(log.trainedLayerIndices).count,
+            "weightsTensorCount": log.weightsTensorCount ?? NSNull(),
+            "errorMessage": log.errorMessage ?? NSNull()
+        ]
     }
 
     private func trainingRunLogPayload(_ log: TrainingRunLog) -> [String: Any] {
@@ -4352,6 +4887,10 @@ final class PiMPAudioCommandFacade {
     private func modificationDate(_ url: URL) -> Date {
         (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
             .contentModificationDate ?? .distantPast
+    }
+
+    private func increment(_ dictionary: inout [String: Int], key: String) {
+        dictionary[key, default: 0] += 1
     }
 
     private func compact(_ text: String, limit: Int) -> String {
