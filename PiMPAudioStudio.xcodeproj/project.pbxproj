@@ -10,6 +10,7 @@
 		02E720C4E915E4FC5E80E083 /* AdapterStackManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 170EDAB12E02A75BD53997D2 /* AdapterStackManager.swift */; };
 		02E87C9D466A616553A78B5F /* DSPParameters.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AC731FD1A3D2361C508EC75 /* DSPParameters.swift */; };
 		03BFFDD33F2CE2AAD253E055 /* MLX in Frameworks */ = {isa = PBXBuildFile; productRef = D9661A97DE1522B5DE5D2159 /* MLX */; };
+		03E16519A3104E2FB476D1D2 /* MLXOptimizers in Frameworks */ = {isa = PBXBuildFile; productRef = 34B51A8F76354779A31DD989 /* MLXOptimizers */; };
 		044DD3512D53A2C5A383B5A2 /* IntentRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = BABE791CEF9D675C31B253AD /* IntentRouter.swift */; };
 		057FB5A3410F8551F372E358 /* PiMPAudioStudioApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C5A6EF10A9C21E6D06F6E19 /* PiMPAudioStudioApp.swift */; };
 		07669B652228A1D5565052CF /* OutputDirectoryPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3D2834B74CF98F9E5E1D54C /* OutputDirectoryPicker.swift */; };
@@ -47,6 +48,7 @@
 		57E03D391DA4E957BC629F4C /* GenerationParameters.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8AB5D51C2A7489C08F838AA /* GenerationParameters.swift */; };
 		5A070AD3A3AEB8DB6CC65D9E /* GenerationMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC75490F20431028EE7D22E5 /* GenerationMode.swift */; };
 		5B573BB31749507DE2F409E2 /* PiMPAudioCore in Frameworks */ = {isa = PBXBuildFile; productRef = 0145F438B5266523C61E64FB /* PiMPAudioCore */; };
+		5C289BA1F5A045578C19030B /* MLX in Frameworks */ = {isa = PBXBuildFile; productRef = D9661A97DE1522B5DE5D2159 /* MLX */; };
 		5CE03EB345AC6B066A1F8E93 /* GenerationState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 514E3F918492C3A0CCF277BC /* GenerationState.swift */; };
 		5E713D888FCE546BB2CEC0B5 /* MCPSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F022A9AD7928468C806ACE5 /* MCPSettingsView.swift */; };
 		5F63F276747766345BCC1AF9 /* AdapterPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FF893DD498546C7659EDCE0 /* AdapterPicker.swift */; };
@@ -93,6 +95,7 @@
 		C81C2E0DD27E3B4C15A74216 /* WSOLAProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0BAE2D98D7CB4D300D75CCF /* WSOLAProcessor.swift */; };
 		CA2D2590A6B840D225550B6E /* PitchShiftControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0258ADFE79C7081A0E21313D /* PitchShiftControlView.swift */; };
 		D40862C7EEC3480CDEF32BE6 /* MLXNN in Frameworks */ = {isa = PBXBuildFile; productRef = EA965B8EEA2CED94FC7C3D6E /* MLXNN */; };
+		D7E39805DE154177A609A468 /* MLXNN in Frameworks */ = {isa = PBXBuildFile; productRef = EA965B8EEA2CED94FC7C3D6E /* MLXNN */; };
 		D416F5AFC82DAA00C55334D2 /* AdaptersSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B2F09BDCEDAF886F83A9186 /* AdaptersSettingsView.swift */; };
 		D4B8839DE8DCEC1070FEFACF /* LiveGenerationTrace.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4331AE5019A96224C031C32B /* LiveGenerationTrace.swift */; };
 		D7171847A5705B83ED02A22C /* HistoryEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A7E845F117460DE0679EC50 /* HistoryEntry.swift */; };
@@ -231,6 +234,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				5B573BB31749507DE2F409E2 /* PiMPAudioCore in Frameworks */,
+				5C289BA1F5A045578C19030B /* MLX in Frameworks */,
+				D7E39805DE154177A609A468 /* MLXNN in Frameworks */,
+				03E16519A3104E2FB476D1D2 /* MLXOptimizers in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -515,6 +521,9 @@
 			name = PiMPAudioStudioTests;
 			packageProductDependencies = (
 				0145F438B5266523C61E64FB /* PiMPAudioCore */,
+				D9661A97DE1522B5DE5D2159 /* MLX */,
+				EA965B8EEA2CED94FC7C3D6E /* MLXNN */,
+				34B51A8F76354779A31DD989 /* MLXOptimizers */,
 			);
 			productName = PiMPAudioStudioTests;
 			productReference = 7F318EE06916402DA1BE7B5A /* PiMPAudioStudioTests.xctest */;
@@ -951,6 +960,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A118E4DFB556B49F86D1786A /* XCRemoteSwiftPackageReference "swift-sdk" */;
 			productName = MCP;
+		};
+		34B51A8F76354779A31DD989 /* MLXOptimizers */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7D2580702EA587396CC6A2CA /* XCRemoteSwiftPackageReference "mlx-swift" */;
+			productName = MLXOptimizers;
 		};
 		D9661A97DE1522B5DE5D2159 /* MLX */ = {
 			isa = XCSwiftPackageProductDependency;

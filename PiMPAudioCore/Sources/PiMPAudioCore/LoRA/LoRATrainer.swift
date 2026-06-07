@@ -399,24 +399,6 @@ public final class LoRATrainer {
         zip(lhs, rhs).map { pair in pair.0 + pair.1 }
     }
 
-    private static func l2Norm(_ arrays: [MLXArray]) -> Float? {
-        guard !arrays.isEmpty else { return nil }
-        var total = MLXArray(0.0)
-        for array in arrays {
-            let values = array.asType(.float32)
-            total = total + (values * values).sum()
-        }
-        return sqrt(max(total.item(Float.self), 0))
-    }
-
-    private static func l2NormOfDeltas(before: [MLXArray], after: [MLXArray]) -> Float? {
-        guard before.count == after.count, !before.isEmpty else { return nil }
-        let deltas = zip(before, after).map { oldValue, newValue in
-            (newValue - oldValue).asType(.float32)
-        }
-        return l2Norm(deltas)
-    }
-
     private static func movingAverage(_ values: [Float], window: Int = 10) -> Float? {
         let recent = values.suffix(max(1, window))
         guard !recent.isEmpty else { return nil }
@@ -438,14 +420,14 @@ public final class LoRATrainer {
 
         let scale = 1.0 / Float(max(1, windowSamples))
         let averagedFlatGrads = accumulatedFlatGrads.map { $0 * scale }
-        let beforeUpdate = model.trainableParameters().flattened().map(\.1)
+        let beforeUpdate = TrainingMetricMath.materializedSnapshot(model.trainableParameters().flattened().map(\.1))
         let gradPairs = zip(trainableParameterKeys, averagedFlatGrads).map { ($0.0, $0.1) }
         optimizer.update(model: model, gradients: ModuleParameters.unflattened(gradPairs))
         eval(model.trainableParameters(), optimizer.innerState())
         let afterUpdate = model.trainableParameters().flattened().map(\.1)
-        let gradientNorm = Self.l2Norm(averagedFlatGrads)
-        let parameterNorm = Self.l2Norm(afterUpdate)
-        let updateNorm = Self.l2NormOfDeltas(before: beforeUpdate, after: afterUpdate)
+        let gradientNorm = TrainingMetricMath.l2Norm(averagedFlatGrads)
+        let parameterNorm = TrainingMetricMath.l2Norm(afterUpdate)
+        let updateNorm = TrainingMetricMath.l2NormOfDeltas(before: beforeUpdate, after: afterUpdate)
 
         globalStep += 1
 

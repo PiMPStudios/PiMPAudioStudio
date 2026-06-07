@@ -1,6 +1,9 @@
 import Testing
 import Foundation
 import AVFoundation
+import MLX
+import MLXNN
+import MLXOptimizers
 @testable import PiMPAudioStudio
 @testable import PiMPAudioCore
 
@@ -643,6 +646,25 @@ private extension JSONDecoder {
     #expect(decoded.finalLoss == 0.75)
     #expect(decoded.trainedLayerIndices == [28, 29])
     #expect(decoded.weightsTensorCount == 4)
+}
+
+@Test func trainingMetricSnapshotCapturesOptimizerParameterMovement() {
+    let model = Linear(2, 1)
+    let optimizer = AdamW(learningRate: 0.01)
+    let trainable = model.trainableParameters().flattened()
+    let keys = trainable.map(\.0)
+    let before = TrainingMetricMath.materializedSnapshot(trainable.map(\.1))
+    let gradients = trainable.map { _, value in MLXArray.ones(like: value) }
+
+    let gradientPairs = zip(keys, gradients).map { ($0.0, $0.1) }
+    optimizer.update(model: model, gradients: ModuleParameters.unflattened(gradientPairs))
+    eval(model.trainableParameters(), optimizer.innerState())
+
+    let after = model.trainableParameters().flattened().map(\.1)
+    let updateNorm = TrainingMetricMath.l2NormOfDeltas(before: before, after: after)
+
+    #expect(updateNorm != nil)
+    #expect((updateNorm ?? 0) > 0)
 }
 
 @Test func datasetAnnotationMetadataBuilderUsesSharedBackendDescriptor() throws {
