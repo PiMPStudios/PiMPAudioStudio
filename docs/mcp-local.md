@@ -50,6 +50,10 @@ The local MCP endpoint exposes read/status tools:
 
 - `list_models`
 - `list_adapters`
+- `training_status`
+- `list_training_datasets`
+- `list_training_runs`
+- `tail_training_log`
 - `list_history`
 - `get_trace`
 - `compare_traces`
@@ -73,6 +77,14 @@ not update the current prompt, lyric field, history, traces, models, or audio.
 completed result metadata, including local audio/trace paths when available.
 When a generation was submitted through MCP, it also returns the current
 operation record.
+
+`training_status` returns the current local LoRA/LoKR training state, active
+progress metrics, active run-log summary, and AUDIODIAG paths. `list_training_datasets`
+returns visible local dataset packages from the current output folder plus the
+app support fallback, `list_training_runs` returns installed adapters with
+`training_log.json` summaries, and `tail_training_log` returns recent lines from
+the active or latest Diagnostics log filtered to training lines by default.
+These tools are read-only; MCP does not start local training yet.
 
 `editor_status` returns editor readiness, loaded audio metadata, supported
 editor action descriptors, and the active editor operation when present.
@@ -201,6 +213,9 @@ The same data is also available as MCP resources:
 - `pimpaudio://model/{id}`
 - `pimpaudio://adapters`
 - `pimpaudio://adapter/{id}`
+- `pimpaudio://training`
+- `pimpaudio://training-datasets`
+- `pimpaudio://training-runs`
 - `pimpaudio://history`
 - `pimpaudio://history/{id}`
 - `pimpaudio://project/current`
@@ -404,6 +419,8 @@ curl -s -X DELETE "$ENDPOINT" \
 
 - The server binds to `127.0.0.1` only.
 - It does not expose raw tensors, model weights, or remote/LAN access.
+- Training MCP tools are read-only diagnostics and dataset/run discovery; they
+  do not start training, cancel training, or upload audio.
 - Destructive and expensive actions are intentionally deferred.
 - `compare_traces` uses the same Model, Adapters, Sampling, Prompt &
   Lyrics, and Audio grouping as the Generation Analyzer compare view.

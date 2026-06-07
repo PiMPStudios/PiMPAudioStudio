@@ -10,6 +10,7 @@ final class PiMPAudioCommandFacade {
     private var historyStore: HistoryStore
     private var generationService: GenerationService?
     private var editorService: EditorService?
+    private var trainingService: TrainingService?
     private let dateFormatter = ISO8601DateFormatter()
     private let renderFileDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -98,6 +99,10 @@ final class PiMPAudioCommandFacade {
         self.editorService = editorService
     }
 
+    func configure(trainingService: TrainingService) {
+        self.trainingService = trainingService
+    }
+
     func listModels() async -> [String: Any] {
         let specs = await registry.allSpecs
         var activeByCategory: [String: String] = [:]
@@ -168,6 +173,103 @@ final class PiMPAudioCommandFacade {
         ]
     }
 
+    func trainingStatus() -> [String: Any] {
+        guard let trainingService else {
+            return [
+                "available": false,
+                "state": "unavailable",
+                "message": "Training service is not wired into MCP."
+            ]
+        }
+
+        let activeRun: Any
+        if let log = trainingService.activeRunLogSnapshot {
+            activeRun = trainingRunLogPayload(log)
+        } else {
+            activeRun = NSNull()
+        }
+        return [
+            "available": true,
+            "state": trainingStatePayload(trainingService.state),
+            "canSaveCheckpointOnStop": trainingService.canSaveOnStop,
+            "activeRun": activeRun,
+            "diagnostics": diagnosticsStatusPayload(),
+            "resources": [
+                "datasets": "pimpaudio://training-datasets",
+                "runs": "pimpaudio://training-runs",
+                "operations": "pimpaudio://operations"
+            ]
+        ]
+    }
+
+    func listTrainingDatasets(arguments: [String: Any]) -> [String: Any] {
+        let limit = max(1, min(integerValue(arguments["limit"]) ?? 50, 200))
+        let roots = trainingDatasetSearchRoots()
+        var seen = Set<String>()
+        var packages: [DatasetPackageSummary] = []
+
+        for root in roots {
+            for package in TrainingDatasetPackageEditor.listPackages(in: root) {
+                guard seen.insert(package.id).inserted else { continue }
+                packages.append(package)
+            }
+        }
+
+        let rows = packages
+            .sorted { lhs, rhs in
+                modificationDate(lhs.directory) > modificationDate(rhs.directory)
+            }
+            .prefix(limit)
+            .map(trainingDatasetPayload)
+
+        return [
+            "count": rows.count,
+            "roots": roots.map { $0.path(percentEncoded: false) },
+            "datasets": Array(rows)
+        ]
+    }
+
+    func listTrainingRuns(arguments: [String: Any]) -> [String: Any] {
+        let limit = max(1, min(integerValue(arguments["limit"]) ?? 25, 100))
+        let includeMissingLogs = boolValue(arguments["includeAdaptersWithoutLogs"]) ?? false
+        let adapters = AdapterRegistry.listAdapters()
+        let rows = adapters.compactMap { adapter -> [String: Any]? in
+            if let log = AdapterRegistry.loadTrainingRunLog(adapterID: adapter.id) {
+                return trainingRunPayload(adapter: adapter, log: log)
+            }
+            guard includeMissingLogs else { return nil }
+            return trainingRunPayload(adapter: adapter, log: nil)
+        }
+        .sorted { lhs, rhs in
+            String(describing: lhs["updatedAt"] ?? "") > String(describing: rhs["updatedAt"] ?? "")
+        }
+        .prefix(limit)
+
+        return [
+            "count": rows.count,
+            "runs": Array(rows)
+        ]
+    }
+
+    func tailTrainingLog(arguments: [String: Any]) throws -> [String: Any] {
+        let limit = max(1, min(integerValue(arguments["limit"]) ?? 120, 500))
+        let contains = stringValue(arguments["contains"] ?? arguments["filter"])?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? "training"
+        let url = try resolveDiagnosticLogURL(arguments: arguments)
+        let lines = try tailLines(
+            from: url,
+            limit: limit,
+            containing: contains.isEmpty ? nil : contains
+        )
+
+        return [
+            "path": url.path(percentEncoded: false),
+            "filter": contains.isEmpty ? NSNull() : contains,
+            "lineCount": lines.count,
+            "lines": lines
+        ]
+    }
+
     func listResources() async -> [[String: Any]] {
         var resources: [[String: Any]] = [
             resource(
@@ -181,6 +283,24 @@ final class PiMPAudioCommandFacade {
                 name: "adapters",
                 title: "PiMP Audio Studio LoRA Adapters",
                 description: "Installed LoRA adapters and checkpoint metadata."
+            ),
+            resource(
+                uri: "pimpaudio://training",
+                name: "training",
+                title: "Training Status",
+                description: "Current local LoRA/LoKR training state, active run summary, and diagnostics log pointers."
+            ),
+            resource(
+                uri: "pimpaudio://training-datasets",
+                name: "training-datasets",
+                title: "Training Datasets",
+                description: "Local dataset packages visible from the current output folder."
+            ),
+            resource(
+                uri: "pimpaudio://training-runs",
+                name: "training-runs",
+                title: "Training Runs",
+                description: "Installed adapter training logs with latest progress and health metrics."
             ),
             resource(
                 uri: "pimpaudio://history",
@@ -347,6 +467,12 @@ final class PiMPAudioCommandFacade {
                 throw PiMPAudioCommandFacadeError.invalidResourceURI(uri)
             }
             return try await adapterResource(id: identifier)
+        case "training":
+            return trainingStatus()
+        case "training-datasets":
+            return listTrainingDatasets(arguments: [:])
+        case "training-runs":
+            return listTrainingRuns(arguments: [:])
         case "history":
             guard let identifier = parsed.identifier else {
                 return listHistory(limit: 200)
@@ -1275,6 +1401,9 @@ final class PiMPAudioCommandFacade {
             "resources": [
                 "models": "pimpaudio://models",
                 "adapters": "pimpaudio://adapters",
+                "training": "pimpaudio://training",
+                "trainingDatasets": "pimpaudio://training-datasets",
+                "trainingRuns": "pimpaudio://training-runs",
                 "history": "pimpaudio://history",
                 "takes": "pimpaudio://takes",
                 "track": resourceURI(kind: "track", identifier: "current"),
@@ -1288,12 +1417,208 @@ final class PiMPAudioCommandFacade {
             "counts": [
                 "history": historyStore.entries.count,
                 "takes": historyStore.entries.count,
+                "trainingDatasets": (listTrainingDatasets(arguments: ["limit": 200])["datasets"] as? [[String: Any]])?.count ?? 0,
+                "trainingRuns": (listTrainingRuns(arguments: ["limit": 100])["runs"] as? [[String: Any]])?.count ?? 0,
                 "presets": loadGenerationPresets().count,
                 "workflows": workflowPromptDefinitions.count,
                 "operations": operationSnapshot(limit: maxOperationRecords).count
             ],
+            "training": trainingStatus(),
             "editor": editorPayload,
             "operations": listOperations(arguments: ["limit": 10])
+        ]
+    }
+
+    private func trainingStatePayload(_ state: TrainingState) -> [String: Any] {
+        switch state {
+        case .idle:
+            return ["status": "idle", "active": false]
+        case .loadingModels:
+            return ["status": "loadingModels", "active": true]
+        case .preparingDataset(let current, let total):
+            return [
+                "status": "preparingDataset",
+                "active": true,
+                "current": current,
+                "total": total,
+                "progress": progressFraction(current: current, total: total)
+            ]
+        case .training(let uiState):
+            return [
+                "status": "training",
+                "active": true,
+                "progress": trainingUIStatePayload(uiState)
+            ]
+        case .saving:
+            return ["status": "saving", "active": true]
+        case .complete(let adapter):
+            return [
+                "status": "complete",
+                "active": false,
+                "adapter": trainingAdapterSummaryPayload(adapter)
+            ]
+        case .failed(let message):
+            return [
+                "status": "failed",
+                "active": false,
+                "message": message
+            ]
+        case .cancelled:
+            return ["status": "cancelled", "active": false]
+        case .paused(let checkpoint):
+            return [
+                "status": "paused",
+                "active": false,
+                "checkpoint": trainingCheckpointPayload(checkpoint)
+            ]
+        }
+    }
+
+    private func trainingUIStatePayload(_ uiState: TrainingUIState) -> [String: Any] {
+        [
+            "epoch": uiState.epoch,
+            "totalEpochs": uiState.totalEpochs,
+            "step": uiState.step,
+            "loss": Double(uiState.loss),
+            "learningRate": Double(uiState.learningRate),
+            "lossMovingAverage": uiState.lossMovingAverage.map { Double($0) } ?? NSNull(),
+            "gradientNorm": uiState.gradientNorm.map { Double($0) } ?? NSNull(),
+            "parameterNorm": uiState.parameterNorm.map { Double($0) } ?? NSNull(),
+            "updateNorm": uiState.updateNorm.map { Double($0) } ?? NSNull(),
+            "elapsedSeconds": uiState.elapsed,
+            "remainingSeconds": uiState.remaining.map { $0 as Any } ?? NSNull(),
+            "lossHistoryCount": uiState.lossHistory.count,
+            "latestLossHistory": Array(uiState.lossHistory.suffix(25)).map(Double.init)
+        ]
+    }
+
+    private func trainingCheckpointPayload(_ checkpoint: TrainingCheckpoint) -> [String: Any] {
+        [
+            "epoch": checkpoint.epoch,
+            "globalStep": checkpoint.globalStep,
+            "totalSteps": checkpoint.totalSteps,
+            "bestLoss": checkpoint.bestLoss.map { Double($0) } ?? NSNull(),
+            "lossHistoryCount": checkpoint.lossHistory.count,
+            "weightsPath": checkpoint.weightsURL.path(percentEncoded: false),
+            "optimizerStatePath": checkpoint.optimizerStateURL.path(percentEncoded: false),
+            "baseModelID": checkpoint.baseModelID
+        ]
+    }
+
+    private func trainingAdapterSummaryPayload(_ adapter: LoRAAdapter) -> [String: Any] {
+        [
+            "id": adapter.id,
+            "name": adapter.name,
+            "kind": adapter.kind.rawValue,
+            "baseModelID": adapter.baseModelID,
+            "baseModelCategory": adapter.baseModelCategory.rawValue,
+            "rank": adapter.config.rank,
+            "alpha": Double(adapter.config.alpha),
+            "sampleCount": adapter.sampleCount,
+            "finalLoss": adapter.finalLoss.map { Double($0) } ?? NSNull(),
+            "createdAt": dateFormatter.string(from: adapter.createdAt),
+            "hasCheckpoint": AdapterRegistry.hasCheckpoint(adapterID: adapter.id),
+            "directory": AdapterRegistry.adapterDirectory(id: adapter.id).path(percentEncoded: false)
+        ]
+    }
+
+    private func trainingDatasetSearchRoots() -> [URL] {
+        let roots = [
+            historyStore.storageDirectory,
+            AppStorageLocations.rootDirectory
+        ]
+        var seen = Set<String>()
+        return roots.filter { url in
+            let path = url.standardizedFileURL.path(percentEncoded: false)
+            return seen.insert(path).inserted
+        }
+    }
+
+    private func trainingDatasetPayload(_ summary: DatasetPackageSummary) -> [String: Any] {
+        [
+            "id": summary.id,
+            "name": summary.name,
+            "path": summary.directory.path(percentEncoded: false),
+            "createdAt": summary.createdAt ?? NSNull(),
+            "modifiedAt": dateFormatter.string(from: modificationDate(summary.directory)),
+            "clipCount": summary.clipCount,
+            "isValid": summary.isValid,
+            "validationSummary": summary.validationSummary,
+            "enrichmentStatus": summary.enrichmentStatus,
+            "transcriptionStatus": summary.transcriptionStatus,
+            "bpmStatus": summary.bpmStatus,
+            "keyStatus": summary.keyStatus,
+            "trainingBundlePath": summary.directory
+                .appendingPathComponent(TrainingDatasetPackageWriter.fullMixBundleFileName)
+                .path(percentEncoded: false),
+            "remotePackagePath": summary.directory
+                .appendingPathComponent(TrainingDatasetPackageWriter.remotePackageFileName)
+                .path(percentEncoded: false)
+        ]
+    }
+
+    private func trainingRunPayload(adapter: LoRAAdapter, log: TrainingRunLog?) -> [String: Any] {
+        var payload = trainingAdapterSummaryPayload(adapter)
+        payload["runLogPath"] = AdapterRegistry.trainingRunLogURL(adapterID: adapter.id).path(percentEncoded: false)
+        payload["hasRunLog"] = log != nil
+        if let log {
+            payload["runLog"] = trainingRunLogPayload(log)
+        } else {
+            payload["runLog"] = NSNull()
+        }
+        payload["updatedAt"] = log.map { dateFormatter.string(from: $0.updatedAt) }
+            ?? dateFormatter.string(from: adapter.createdAt)
+        return payload
+    }
+
+    private func trainingRunLogPayload(_ log: TrainingRunLog) -> [String: Any] {
+        [
+            "schemaVersion": log.schemaVersion,
+            "adapterID": log.adapterID,
+            "adapterName": log.adapterName,
+            "adapterKind": log.adapterKind.rawValue,
+            "status": log.status.rawValue,
+            "baseModelID": log.baseModelID,
+            "sampleCount": log.sampleCount,
+            "resumedFromCheckpoint": log.resumedFromCheckpoint,
+            "startedAt": dateFormatter.string(from: log.startedAt),
+            "updatedAt": dateFormatter.string(from: log.updatedAt),
+            "finishedAt": log.finishedAt.map { dateFormatter.string(from: $0) } ?? NSNull(),
+            "progressCount": log.progress.count,
+            "latestProgress": log.progress.last.map { trainingRunProgressPayload($0) as Any } ?? NSNull(),
+            "lossHistoryCount": log.lossHistory.count,
+            "latestLossHistory": Array(log.lossHistory.suffix(25)).map(Double.init),
+            "events": log.events.suffix(10).map(trainingRunEventPayload),
+            "finalLoss": log.finalLoss.map { Double($0) } ?? NSNull(),
+            "trainedPaths": log.trainedPaths,
+            "trainedLayerIndices": log.trainedLayerIndices,
+            "weightsTensorCount": log.weightsTensorCount ?? NSNull(),
+            "errorMessage": log.errorMessage ?? NSNull()
+        ]
+    }
+
+    private func trainingRunProgressPayload(_ progress: TrainingRunProgressEntry) -> [String: Any] {
+        [
+            "timestamp": dateFormatter.string(from: progress.timestamp),
+            "epoch": progress.epoch,
+            "totalEpochs": progress.totalEpochs,
+            "step": progress.step,
+            "loss": Double(progress.loss),
+            "learningRate": Double(progress.learningRate),
+            "lossMovingAverage": progress.lossMovingAverage.map { Double($0) } ?? NSNull(),
+            "gradientNorm": progress.gradientNorm.map { Double($0) } ?? NSNull(),
+            "parameterNorm": progress.parameterNorm.map { Double($0) } ?? NSNull(),
+            "updateNorm": progress.updateNorm.map { Double($0) } ?? NSNull(),
+            "elapsedSeconds": progress.elapsed,
+            "estimatedRemainingSeconds": progress.estimatedRemaining.map { $0 as Any } ?? NSNull()
+        ]
+    }
+
+    private func trainingRunEventPayload(_ event: TrainingRunEvent) -> [String: Any] {
+        [
+            "timestamp": dateFormatter.string(from: event.timestamp),
+            "status": event.status.rawValue,
+            "message": event.message
         ]
     }
 
@@ -3765,6 +4090,19 @@ final class PiMPAudioCommandFacade {
         }
     }
 
+    private func integerValue(_ value: Any?) -> Int? {
+        switch value {
+        case let value as Int:
+            return value
+        case let value as NSNumber:
+            return value.intValue
+        case let value as String:
+            return Int(value.trimmingCharacters(in: .whitespacesAndNewlines))
+        default:
+            return nil
+        }
+    }
+
     private func hasArgument(_ key: String, in arguments: [String: Any]) -> Bool {
         arguments.keys.contains(key)
     }
@@ -3890,6 +4228,130 @@ final class PiMPAudioCommandFacade {
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty && !$0.hasPrefix("[") }
             .count
+    }
+
+    private func progressFraction(current: Int, total: Int) -> Double {
+        guard total > 0 else { return 0 }
+        return min(1, max(0, Double(current) / Double(total)))
+    }
+
+    private func diagnosticsStatusPayload() -> [String: Any] {
+        [
+            "enabled": AudioDiagnostics.isEnabled,
+            "directory": (AudioDiagnostics.configuredLogDirectoryURL ?? AppStorageLocations.diagnosticsDirectory)
+                .path(percentEncoded: false),
+            "activeLogPath": AudioDiagnostics.activeLogFileURL?.path(percentEncoded: false) ?? NSNull(),
+            "latestLogPath": latestDiagnosticLogURL()?.path(percentEncoded: false) ?? NSNull()
+        ]
+    }
+
+    private func resolveDiagnosticLogURL(arguments: [String: Any]) throws -> URL {
+        let diagnosticsDirectory = AudioDiagnostics.configuredLogDirectoryURL
+            ?? AppStorageLocations.diagnosticsDirectory
+
+        if let path = stringValue(arguments["path"] ?? arguments["logPath"])?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !path.isEmpty {
+            let url = URL(fileURLWithPath: path)
+            guard isInDiagnosticsDirectory(url) else {
+                throw PiMPAudioCommandFacadeError.resourceNotFound(path)
+            }
+            guard FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) else {
+                throw PiMPAudioCommandFacadeError.resourceNotFound(path)
+            }
+            return url
+        }
+
+        if let fileName = stringValue(arguments["fileName"] ?? arguments["name"])?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !fileName.isEmpty {
+            let url = diagnosticsDirectory.appendingPathComponent(fileName)
+            guard FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) else {
+                throw PiMPAudioCommandFacadeError.resourceNotFound(fileName)
+            }
+            return url
+        }
+
+        if let activeURL = AudioDiagnostics.activeLogFileURL,
+           FileManager.default.fileExists(atPath: activeURL.path(percentEncoded: false)) {
+            return activeURL
+        }
+
+        if let latestURL = latestDiagnosticLogURL() {
+            return latestURL
+        }
+
+        throw PiMPAudioCommandFacadeError.resourceNotFound("latest diagnostics log")
+    }
+
+    private func latestDiagnosticLogURL() -> URL? {
+        let diagnosticsDirectory = AudioDiagnostics.configuredLogDirectoryURL
+            ?? AppStorageLocations.diagnosticsDirectory
+        guard let contents = try? FileManager.default.contentsOfDirectory(
+            at: diagnosticsDirectory,
+            includingPropertiesForKeys: [.contentModificationDateKey, .isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return nil
+        }
+
+        return contents
+            .filter { url in
+                let values = try? url.resourceValues(forKeys: [.isRegularFileKey])
+                return values?.isRegularFile == true
+                    && url.lastPathComponent.hasPrefix("PiMPAudioStudio-AUDIODIAG-")
+                    && url.pathExtension == "log"
+            }
+            .sorted { modificationDate($0) > modificationDate($1) }
+            .first
+    }
+
+    private func tailLines(
+        from url: URL,
+        limit: Int,
+        containing filter: String?
+    ) throws -> [String] {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+
+        let fileSize = try handle.seekToEnd()
+        let maxBytes: UInt64 = 1_048_576
+        let readSize = min(fileSize, maxBytes)
+        try handle.seek(toOffset: fileSize - readSize)
+        let data = handle.readDataToEndOfFile()
+
+        var text = String(decoding: data, as: UTF8.self)
+        if readSize < fileSize, let firstNewline = text.firstIndex(of: "\n") {
+            text = String(text[text.index(after: firstNewline)...])
+        }
+
+        let allLines = text
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map(String.init)
+        let filteredLines: [String]
+        if let filter, !filter.isEmpty {
+            filteredLines = allLines.filter {
+                $0.localizedCaseInsensitiveContains(filter)
+            }
+        } else {
+            filteredLines = allLines
+        }
+        return Array(filteredLines.suffix(limit))
+    }
+
+    private func isInDiagnosticsDirectory(_ url: URL) -> Bool {
+        let diagnosticsDirectory = (AudioDiagnostics.configuredLogDirectoryURL
+            ?? AppStorageLocations.diagnosticsDirectory)
+            .standardizedFileURL
+            .path(percentEncoded: false)
+        let candidate = url.standardizedFileURL.path(percentEncoded: false)
+        return candidate == diagnosticsDirectory
+            || candidate.hasPrefix(diagnosticsDirectory + "/")
+    }
+
+    private func modificationDate(_ url: URL) -> Date {
+        (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
+            .contentModificationDate ?? .distantPast
     }
 
     private func compact(_ text: String, limit: Int) -> String {

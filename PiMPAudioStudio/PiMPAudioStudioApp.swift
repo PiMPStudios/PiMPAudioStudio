@@ -261,6 +261,7 @@ final class AppServices: ObservableObject {
             lyricWriterManager: lyricWriterManager
         )
         facade.configure(editorService: editorSvc)
+        facade.configure(trainingService: self.trainingService)
         self.commandFacade = facade
         self.mcpServer = PiMPAudioMCPServer(facade: facade)
         let generationService = Self.makeGenerationService(

@@ -123,6 +123,20 @@ private func writeFixture(_ value: String, to url: URL) throws {
     try Data(value.utf8).write(to: url)
 }
 
+@MainActor
+private func makeTestCommandFacade(root: URL) -> PiMPAudioCommandFacade {
+    let historyStore = HistoryStore(directory: root.appendingPathComponent("History", isDirectory: true))
+    return PiMPAudioCommandFacade(
+        registry: ModelRegistry(baseDirectory: root.appendingPathComponent("Models", isDirectory: true)),
+        historyStore: historyStore,
+        promptEnhancer: PromptEnhancer(llm: nil),
+        lyricWriterManager: LyricWriterManager(
+            apiKeyStore: APIKeyStore(),
+            providerAccessStore: ProviderAccessStore()
+        )
+    )
+}
+
 private extension JSONDecoder {
     static var withISO8601Dates: JSONDecoder {
         let decoder = JSONDecoder()
@@ -2282,4 +2296,69 @@ private func traceForComparison(
     #expect(recommendation?.layerCount == 4)
     #expect(recommendation?.gradientAccumulationSteps == 1)
     #expect(recommendation?.estimatedOptimizerUpdates == 600)
+}
+
+@Test @MainActor func mcpTrainingResourcesAreAdvertisedAndReadable() async throws {
+    let tempRoot = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+    let facade = makeTestCommandFacade(root: tempRoot)
+    let resources = await facade.listResources()
+    let uris = Set(resources.compactMap { $0["uri"] as? String })
+
+    #expect(uris.contains("pimpaudio://training"))
+    #expect(uris.contains("pimpaudio://training-datasets"))
+    #expect(uris.contains("pimpaudio://training-runs"))
+
+    let directStatus = facade.trainingStatus()
+    #expect(directStatus["available"] as? Bool == false)
+
+    let resourceStatus = try await facade.readResource(uri: "pimpaudio://training")
+    #expect(resourceStatus["available"] as? Bool == false)
+}
+
+@Test @MainActor func mcpTrainingDatasetListingUsesOutputFolderPackages() throws {
+    let tempRoot = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+    let packageDirectory = tempRoot
+        .appendingPathComponent("History", isDirectory: true)
+        .appendingPathComponent("TrainingDatasets", isDirectory: true)
+        .appendingPathComponent("mcp-dataset", isDirectory: true)
+    try writeFixture(
+        """
+        [
+          {
+            "id": "clip-1",
+            "file": "clips/f001_clip_001.wav",
+            "caption": "dark test clip"
+          }
+        ]
+        """,
+        to: packageDirectory.appendingPathComponent(TrainingDatasetPackageWriter.captionsFileName)
+    )
+    try writeFixture(
+        """
+        {
+          "name": "MCP Dataset",
+          "created_at": "2026-06-07T00:00:00Z",
+          "clip_count": 1,
+          "enrichment": { "status": "ready_for_preprocess" }
+        }
+        """,
+        to: packageDirectory.appendingPathComponent(TrainingDatasetPackageWriter.datasetManifestFileName)
+    )
+
+    let facade = makeTestCommandFacade(root: tempRoot)
+    let payload = facade.listTrainingDatasets(arguments: ["limit": 50])
+    let datasets = payload["datasets"] as? [[String: Any]] ?? []
+    let dataset = datasets.first {
+        $0["path"] as? String == packageDirectory.path(percentEncoded: false)
+    }
+
+    #expect(dataset?["name"] as? String == "MCP Dataset")
+    #expect(dataset?["clipCount"] as? Int == 1)
+    #expect(dataset?["enrichmentStatus"] as? String == "ready_for_preprocess")
 }

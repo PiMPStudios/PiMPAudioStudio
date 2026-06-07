@@ -831,6 +831,11 @@ final class TrainingService: ObservableObject {
         return false
     }
 
+    /// Snapshot of the in-memory run log for MCP/read-only diagnostics.
+    var activeRunLogSnapshot: TrainingRunLog? {
+        activeRunLog
+    }
+
     func activeBaseModelDisplayName() async -> String {
         guard let spec = await registry.activeSpec(for: .aceStepDiT) else {
             return "ACE-Step DiT (not selected)"

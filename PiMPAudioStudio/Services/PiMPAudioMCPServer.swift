@@ -822,6 +822,14 @@ private final class PiMPAudioMCPSDKBridge {
             return await facade.listModels()
         case "list_adapters":
             return await facade.listAdapters()
+        case "training_status":
+            return facade.trainingStatus()
+        case "list_training_datasets":
+            return facade.listTrainingDatasets(arguments: arguments)
+        case "list_training_runs":
+            return facade.listTrainingRuns(arguments: arguments)
+        case "tail_training_log":
+            return try facade.tailTrainingLog(arguments: arguments)
         case "list_history":
             return facade.listHistory(limit: intValue(arguments["limit"]) ?? 25)
         case "get_trace":
@@ -1935,6 +1943,75 @@ private enum MCPToolCatalog {
             title: "List Adapters",
             description: "Return installed LoRA adapters with base model, rank, provenance, and checkpoint status.",
             properties: [:]
+        ),
+        tool(
+            name: "training_status",
+            title: "Training Status",
+            description: "Return the current local LoRA/LoKR training state, active progress metrics, run-log summary, and diagnostics log paths.",
+            properties: [:]
+        ),
+        tool(
+            name: "list_training_datasets",
+            title: "List Training Datasets",
+            description: "Return local training dataset packages from the current output folder and app support fallback.",
+            properties: [
+                "limit": [
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 200,
+                    "description": "Maximum number of dataset packages to return. Defaults to 50."
+                ]
+            ]
+        ),
+        tool(
+            name: "list_training_runs",
+            title: "List Training Runs",
+            description: "Return installed adapter training logs with latest loss/LR/norm metrics and checkpoint status.",
+            properties: [
+                "limit": [
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100,
+                    "description": "Maximum number of training runs to return. Defaults to 25."
+                ],
+                "includeAdaptersWithoutLogs": [
+                    "type": "boolean",
+                    "description": "Include installed adapters that do not have training_log.json. Defaults to false."
+                ]
+            ]
+        ),
+        tool(
+            name: "tail_training_log",
+            title: "Tail Training Log",
+            description: "Return recent lines from the active or latest AUDIODIAG diagnostics log, filtered to training lines by default.",
+            properties: [
+                "limit": [
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 500,
+                    "description": "Maximum number of matching lines to return. Defaults to 120."
+                ],
+                "contains": [
+                    "type": "string",
+                    "description": "Case-insensitive line filter. Defaults to training. Pass an empty string for unfiltered lines."
+                ],
+                "filter": [
+                    "type": "string",
+                    "description": "Alias for contains."
+                ],
+                "fileName": [
+                    "type": "string",
+                    "description": "Optional diagnostics log file name under the app Diagnostics folder."
+                ],
+                "path": [
+                    "type": "string",
+                    "description": "Optional full path to a diagnostics log under the app Diagnostics folder."
+                ],
+                "logPath": [
+                    "type": "string",
+                    "description": "Alias for path."
+                ]
+            ]
         ),
         tool(
             name: "list_history",

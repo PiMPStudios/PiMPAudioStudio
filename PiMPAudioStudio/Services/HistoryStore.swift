@@ -8,6 +8,7 @@ final class HistoryStore: ObservableObject {
     @Published var entries: [HistoryEntry] = []
 
     private let directory: URL
+    var storageDirectory: URL { directory }
     private var historyFileURL: URL { directory.appending(path: "history.json") }
 
     init(directory: URL) {
