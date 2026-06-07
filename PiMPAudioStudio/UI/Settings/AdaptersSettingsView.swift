@@ -230,10 +230,13 @@ private struct MyAdaptersListView: View {
     /// Short display name for the model variant, or nil for unknown / non-ACE-Step IDs.
     private func modelVariant(for baseModelID: String) -> String? {
         switch baseModelID {
-        case "ace-step-dit-turbo": return "Turbo"
-        case "ace-step-dit-sft":   return "SFT"
-        case "ace-step-dit-base":  return "Base"
-        case "ace-step-dit-xl":    return "XL"
+        case "ace-step-dit-turbo":    return "Turbo"
+        case "ace-step-dit-sft":      return "SFT"
+        case "ace-step-dit-base":     return "Base"
+        case "ace-step-dit-xl-turbo": return "XL Turbo"
+        case "ace-step-dit-xl-sft":   return "XL SFT"
+        case "ace-step-dit-xl-base":  return "XL Base"
+        case "ace-step-dit-xl":       return "XL"
         default:                   return nil
         }
     }

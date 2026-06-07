@@ -384,6 +384,12 @@ public extension LoRAAdapter {
               let activeVariant = Self.canonicalACEVariant(activeBaseID, spec: activeSpec) else {
             return false
         }
+        if adapterVariant == "ace-step-dit-xl" && activeVariant.hasPrefix("ace-step-dit-xl") {
+            return true
+        }
+        if activeVariant == "ace-step-dit-xl" && adapterVariant.hasPrefix("ace-step-dit-xl") {
+            return true
+        }
         return adapterVariant == activeVariant
     }
 
@@ -400,6 +406,15 @@ public extension LoRAAdapter {
             .joined(separator: " ")
 
         if haystack.contains("xl") || haystack.contains("ace-step-1.5-xl") {
+            if haystack.contains("turbo") {
+                return "ace-step-dit-xl-turbo"
+            }
+            if haystack.contains("sft") {
+                return "ace-step-dit-xl-sft"
+            }
+            if haystack.contains("base") || haystack.contains("full") {
+                return "ace-step-dit-xl-base"
+            }
             return "ace-step-dit-xl"
         }
         if haystack.contains("turbo") {

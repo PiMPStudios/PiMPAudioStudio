@@ -173,9 +173,9 @@ import MLX
 
 @Test func adapterCompatibilityRejectsWrongACEVariant() {
     let xlSpec = ModelSpec(
-        id: "ace-step-acestep-v15-xl-sft",
+        id: "ace-step-dit-xl-sft",
         displayName: "ACE-Step v1.5 XL SFT",
-        huggingFaceRepo: "ACE-Step/Ace-Step1.5",
+        huggingFaceRepo: "ACE-Step/acestep-v15-xl-sft",
         files: [],
         category: .aceStepDiT,
         variantFamily: "ace-step-1.5-xl"
@@ -185,6 +185,26 @@ import MLX
         name: "XL",
         config: LoRAConfig(),
         baseModelID: "ace-step-dit-xl",
+        baseModelCategory: .aceStepDiT,
+        createdAt: Date(timeIntervalSince1970: 0),
+        sampleCount: 0,
+        finalLoss: nil
+    )
+    let xlSFTAdapter = LoRAAdapter(
+        id: "xl-sft",
+        name: "XL SFT",
+        config: LoRAConfig(),
+        baseModelID: "ace-step-dit-xl-sft",
+        baseModelCategory: .aceStepDiT,
+        createdAt: Date(timeIntervalSince1970: 0),
+        sampleCount: 0,
+        finalLoss: nil
+    )
+    let xlBaseAdapter = LoRAAdapter(
+        id: "xl-base",
+        name: "XL Base",
+        config: LoRAConfig(),
+        baseModelID: "ace-step-dit-xl-base",
         baseModelCategory: .aceStepDiT,
         createdAt: Date(timeIntervalSince1970: 0),
         sampleCount: 0,
@@ -202,5 +222,7 @@ import MLX
     )
 
     #expect(xlAdapter.isCompatible(with: xlSpec.id, activeSpec: xlSpec))
+    #expect(xlSFTAdapter.isCompatible(with: xlSpec.id, activeSpec: xlSpec))
+    #expect(!xlBaseAdapter.isCompatible(with: xlSpec.id, activeSpec: xlSpec))
     #expect(!turboAdapter.isCompatible(with: xlSpec.id, activeSpec: xlSpec))
 }

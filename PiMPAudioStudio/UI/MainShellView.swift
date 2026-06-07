@@ -1036,7 +1036,9 @@ private struct ModelInspectorSection: View {
 
     /// Only runnable variants that are fully downloaded appear in the quick picker.
     private var readyDiTSpecs: [ModelSpec] {
-        ditSpecs.filter { ditStatuses[$0.id] == .ready }
+        ditSpecs
+            .filter { ditStatuses[$0.id] == .ready }
+            .sorted(by: modelTierSort)
     }
 
     var body: some View {
@@ -1149,12 +1151,31 @@ private struct ModelInspectorSection: View {
 
     private func shortVariantName(_ spec: ModelSpec) -> String {
         switch spec.id {
-        case "ace-step-dit-turbo": return "Turbo  –  8 steps"
-        case "ace-step-dit-base":  return "Full  –  50 steps"
-        case "ace-step-dit-sft":   return "SFT  –  50 steps"
+        case "ace-step-dit-turbo":    return "Turbo  –  8 steps"
+        case "ace-step-dit-base":     return "Full  –  50 steps"
+        case "ace-step-dit-sft":      return "SFT  –  50 steps"
+        case "ace-step-dit-xl-turbo": return "XL Turbo  –  8 steps"
+        case "ace-step-dit-xl-base":  return "XL Base  –  50 steps"
+        case "ace-step-dit-xl-sft":   return "XL SFT  –  50 steps"
         default:
             return spec.id.contains("xl") ? "XL  –  50 steps" : spec.displayName
         }
+    }
+
+    private func modelTierSort(_ lhs: ModelSpec, _ rhs: ModelSpec) -> Bool {
+        let lhsRank = modelTierRank(lhs.id)
+        let rhsRank = modelTierRank(rhs.id)
+        if lhsRank != rhsRank {
+            return lhsRank < rhsRank
+        }
+        return lhs.displayName.localizedStandardCompare(rhs.displayName) == .orderedAscending
+    }
+
+    private func modelTierRank(_ id: String) -> Int {
+        if id.contains("turbo") { return 0 }
+        if id.contains("base") { return 1 }
+        if id.contains("sft") { return 2 }
+        return 50
     }
 
     private func loadModelInfo() async {

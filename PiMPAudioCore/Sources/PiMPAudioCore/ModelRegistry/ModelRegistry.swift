@@ -19,6 +19,18 @@ public actor ModelRegistry {
 
     // MARK: - Built-in Models
 
+    private static func aceStepXLFiles(configSizeBytes: Int64) -> [ModelFileSpec] {
+        [
+            ModelFileSpec(remotePath: "model.safetensors.index.json", sizeBytes: 71_471),
+            ModelFileSpec(remotePath: "model-00001-of-00004.safetensors", sizeBytes: 4_986_971_456),
+            ModelFileSpec(remotePath: "model-00002-of-00004.safetensors", sizeBytes: 4_986_942_776),
+            ModelFileSpec(remotePath: "model-00003-of-00004.safetensors", sizeBytes: 4_986_942_808),
+            ModelFileSpec(remotePath: "model-00004-of-00004.safetensors", sizeBytes: 4_988_483_464),
+            ModelFileSpec(remotePath: "config.json", sizeBytes: configSizeBytes),
+            ModelFileSpec(remotePath: "silence_latent.pt", sizeBytes: 3_841_215)
+        ]
+    }
+
     public static let builtInSpecs: [ModelSpec] = [
         ModelSpec(
             id: "ace-step-dit-turbo",
@@ -91,6 +103,30 @@ public actor ModelRegistry {
             ],
             category: .aceStepDiT,
             variantFamily: "ace-step-1.5"
+        ),
+        ModelSpec(
+            id: "ace-step-dit-xl-turbo",
+            displayName: "ACE-Step v1.5 XL Turbo",
+            huggingFaceRepo: "ACE-Step/acestep-v15-xl-turbo",
+            files: aceStepXLFiles(configSizeBytes: 2_407),
+            category: .aceStepDiT,
+            variantFamily: "ace-step-1.5-xl"
+        ),
+        ModelSpec(
+            id: "ace-step-dit-xl-base",
+            displayName: "ACE-Step v1.5 XL Base",
+            huggingFaceRepo: "ACE-Step/acestep-v15-xl-base",
+            files: aceStepXLFiles(configSizeBytes: 2_525),
+            category: .aceStepDiT,
+            variantFamily: "ace-step-1.5-xl"
+        ),
+        ModelSpec(
+            id: "ace-step-dit-xl-sft",
+            displayName: "ACE-Step v1.5 XL SFT",
+            huggingFaceRepo: "ACE-Step/acestep-v15-xl-sft",
+            files: aceStepXLFiles(configSizeBytes: 2_525),
+            category: .aceStepDiT,
+            variantFamily: "ace-step-1.5-xl"
         ),
         ModelSpec(
             id: "ace-step-vae",

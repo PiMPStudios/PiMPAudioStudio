@@ -207,7 +207,12 @@ enum PEFTKeyRemapper {
             // Unknown model — preserve the HF path so the UI can show a mismatch warning
             return path
         }
-        if lower.contains("xl")    { return "ace-step-dit-xl" }
+        if lower.contains("xl") {
+            if lower.contains("turbo") { return "ace-step-dit-xl-turbo" }
+            if lower.contains("sft") { return "ace-step-dit-xl-sft" }
+            if lower.contains("base") || lower.contains("full") { return "ace-step-dit-xl-base" }
+            return "ace-step-dit-xl"
+        }
         if lower.contains("turbo") { return "ace-step-dit-turbo" }
         if lower.contains("sft")   { return "ace-step-dit-sft" }
         return "ace-step-dit-base"

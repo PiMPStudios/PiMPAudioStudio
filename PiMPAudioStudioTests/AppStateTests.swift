@@ -1173,6 +1173,22 @@ private extension JSONDecoder {
         category: .aceStepDiT,
         variantFamily: "ace-step-1.5-xl"
     )
+    let xlTurbo = ModelSpec(
+        id: "ace-step-dit-xl-turbo",
+        displayName: "ACE-Step v1.5 XL Turbo",
+        huggingFaceRepo: "ACE-Step/acestep-v15-xl-turbo",
+        files: [],
+        category: .aceStepDiT,
+        variantFamily: "ace-step-1.5-xl"
+    )
+    let xlBase = ModelSpec(
+        id: "ace-step-dit-xl-base",
+        displayName: "ACE-Step v1.5 XL Base",
+        huggingFaceRepo: "ACE-Step/acestep-v15-xl-base",
+        files: [],
+        category: .aceStepDiT,
+        variantFamily: "ace-step-1.5-xl"
+    )
     let turbo = ModelSpec(
         id: "ace-step-dit-turbo",
         displayName: "ACE-Step v1.5 Turbo",
@@ -1183,7 +1199,28 @@ private extension JSONDecoder {
     )
 
     #expect(TrainingService.baseModelDisplayName(for: xlSFT) == "ACE-Step XL SFT")
+    #expect(TrainingService.baseModelDisplayName(for: xlTurbo) == "ACE-Step XL Turbo")
+    #expect(TrainingService.baseModelDisplayName(for: xlBase) == "ACE-Step XL Base")
     #expect(TrainingService.baseModelDisplayName(for: turbo) == "ACE-Step Turbo")
+}
+
+@Test func peftBaseModelInferencePreservesXLVariant() {
+    #expect(
+        PEFTKeyRemapper.resolveBaseModelID(from: "ACE-Step/acestep-v15-xl-turbo")
+            == "ace-step-dit-xl-turbo"
+    )
+    #expect(
+        PEFTKeyRemapper.resolveBaseModelID(from: "ACE-Step/acestep-v15-xl-base")
+            == "ace-step-dit-xl-base"
+    )
+    #expect(
+        PEFTKeyRemapper.resolveBaseModelID(from: "ACE-Step/acestep-v15-xl-sft")
+            == "ace-step-dit-xl-sft"
+    )
+    #expect(
+        PEFTKeyRemapper.resolveBaseModelID(from: "ACE-Step/acestep-v15-xl")
+            == "ace-step-dit-xl"
+    )
 }
 
 @Test func localDatasetEnrichmentTranscribesCachedVocalStems() async throws {

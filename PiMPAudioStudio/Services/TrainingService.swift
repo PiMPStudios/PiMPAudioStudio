@@ -815,7 +815,16 @@ final class TrainingService: ObservableObject {
         .lowercased()
 
         if fingerprint.contains("xl") {
-            return fingerprint.contains("sft") ? "ACE-Step XL SFT" : "ACE-Step XL"
+            if fingerprint.contains("turbo") {
+                return "ACE-Step XL Turbo"
+            }
+            if fingerprint.contains("sft") {
+                return "ACE-Step XL SFT"
+            }
+            if fingerprint.contains("base") || fingerprint.contains("full") {
+                return "ACE-Step XL Base"
+            }
+            return "ACE-Step XL"
         }
         if fingerprint.contains("sft") {
             return "ACE-Step SFT"

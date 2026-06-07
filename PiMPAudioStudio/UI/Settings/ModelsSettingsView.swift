@@ -111,8 +111,8 @@ struct ModelsSettingsView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            ForEach(ditByFamily.keys.sorted(), id: \.self) { family in
-                let variants = (ditByFamily[family] ?? []).sorted(by: { $0.id < $1.id })
+            ForEach(ditByFamily.keys.sorted(by: familySort), id: \.self) { family in
+                let variants = (ditByFamily[family] ?? []).sorted(by: modelTierSort)
                 if variants.count > 1 {
                     Text(familyDisplayName(family))
                         .font(.headline)
@@ -161,6 +161,40 @@ struct ModelsSettingsView: View {
         case "ungrouped":    return ""
         default:             return family.replacingOccurrences(of: "-", with: " ").capitalized
         }
+    }
+
+    private func familySort(_ lhs: String, _ rhs: String) -> Bool {
+        func rank(_ family: String) -> Int {
+            switch family {
+            case "ace-step-1.5": return 0
+            case "ace-step-1.5-xl": return 1
+            case "ungrouped": return 99
+            default: return 50
+            }
+        }
+
+        let lhsRank = rank(lhs)
+        let rhsRank = rank(rhs)
+        if lhsRank != rhsRank {
+            return lhsRank < rhsRank
+        }
+        return lhs.localizedStandardCompare(rhs) == .orderedAscending
+    }
+
+    private func modelTierSort(_ lhs: ModelSpec, _ rhs: ModelSpec) -> Bool {
+        let lhsRank = modelTierRank(lhs.id)
+        let rhsRank = modelTierRank(rhs.id)
+        if lhsRank != rhsRank {
+            return lhsRank < rhsRank
+        }
+        return lhs.displayName.localizedStandardCompare(rhs.displayName) == .orderedAscending
+    }
+
+    private func modelTierRank(_ id: String) -> Int {
+        if id.contains("turbo") { return 0 }
+        if id.contains("base") { return 1 }
+        if id.contains("sft") { return 2 }
+        return 50
     }
 
     private var stableAudioSection: some View {
@@ -402,6 +436,9 @@ private struct ModelRow: View {
         case "ace-step-dit-turbo": return "Good / fastest"
         case "ace-step-dit-base":  return "Better"
         case "ace-step-dit-sft":   return "Best"
+        case "ace-step-dit-xl-turbo": return "XL / fastest"
+        case "ace-step-dit-xl-base":  return "XL / base"
+        case "ace-step-dit-xl-sft":   return "XL / best"
         case "ace-step-vae":       return "Shared"
         case let id where id.contains("xl"): return "XL / experimental"
         default:                   return nil
@@ -414,6 +451,9 @@ private struct ModelRow: View {
         case "ace-step-dit-turbo": return .blue
         case "ace-step-dit-base":  return .orange
         case "ace-step-dit-sft":   return .purple
+        case "ace-step-dit-xl-turbo": return .blue
+        case "ace-step-dit-xl-base":  return .orange
+        case "ace-step-dit-xl-sft":   return .purple
         case "ace-step-vae":       return .secondary
         case let id where id.contains("xl"): return .purple
         default:                   return .secondary
@@ -431,6 +471,12 @@ private struct ModelRow: View {
             return "Full 50-step base model; slower, usually more coherent than Turbo."
         case "ace-step-dit-sft":
             return "Instruction-tuned 50-step model; intended highest-quality text-to-music tier."
+        case "ace-step-dit-xl-turbo":
+            return "4B distilled XL model for faster high-capacity generation."
+        case "ace-step-dit-xl-base":
+            return "4B XL base model; broadest fine-tuning starting point."
+        case "ace-step-dit-xl-sft":
+            return "4B XL instruction-tuned model; quality-focused text-to-music tier."
         case "ace-step-vae":
             return "Shared VAE decoder + Qwen text encoder used by Turbo, Full, and SFT."
         case let id where id.contains("xl"):

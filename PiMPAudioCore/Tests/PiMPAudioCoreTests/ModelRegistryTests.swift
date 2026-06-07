@@ -8,9 +8,38 @@ import Foundation
 
     #expect(specs.isEmpty == false)
     #expect(specs.contains(where: { $0.id == "ace-step-dit-turbo" }))
+    #expect(specs.contains(where: { $0.id == "ace-step-dit-xl-base" }))
+    #expect(specs.contains(where: { $0.id == "ace-step-dit-xl-sft" }))
+    #expect(specs.contains(where: { $0.id == "ace-step-dit-xl-turbo" }))
     #expect(specs.contains(where: { $0.id == "ace-step-vae" }))
     #expect(specs.contains(where: { $0.id == "lyric-llm" }))
     #expect(specs.contains(where: { $0.id == "stable-audio-open" }))
+}
+
+@Test func registryIncludesOfficialACEv15XLVariants() async {
+    let registry = ModelRegistry(baseDirectory: FileManager.default.temporaryDirectory)
+    let specs = await registry.allSpecs.filter { $0.variantFamily == "ace-step-1.5-xl" }
+    let byID = Dictionary(uniqueKeysWithValues: specs.map { ($0.id, $0) })
+
+    #expect(Set(byID.keys) == [
+        "ace-step-dit-xl-base",
+        "ace-step-dit-xl-sft",
+        "ace-step-dit-xl-turbo",
+    ])
+    #expect(byID["ace-step-dit-xl-base"]?.huggingFaceRepo == "ACE-Step/acestep-v15-xl-base")
+    #expect(byID["ace-step-dit-xl-sft"]?.huggingFaceRepo == "ACE-Step/acestep-v15-xl-sft")
+    #expect(byID["ace-step-dit-xl-turbo"]?.huggingFaceRepo == "ACE-Step/acestep-v15-xl-turbo")
+
+    for spec in specs {
+        let fileNames = Set(spec.files.map(\.localName))
+        #expect(spec.category == .aceStepDiT)
+        #expect(spec.isRunnable)
+        #expect(fileNames.contains("model.safetensors.index.json"))
+        #expect(fileNames.contains("config.json"))
+        #expect(fileNames.contains("silence_latent.pt"))
+        #expect(fileNames.filter { $0.hasSuffix(".safetensors") }.count == 4)
+        #expect(spec.totalSizeBytes > 19_900_000_000)
+    }
 }
 
 @Test func registryDetectsModelNotDownloaded() async {
