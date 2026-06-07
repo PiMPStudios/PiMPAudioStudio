@@ -70,9 +70,13 @@ struct TrainingSheet: View {
 
     @State private var adapterName: String = ""
     private let resumeAdapterID: String?
+    @State private var selectedRecipe: TrainingRecipePreset = .balancedLocal
     @State private var selectedRank: Int = 16
     @State private var selectedEpochs: Int = 10
     @State private var selectedLayerCount: Int = 8
+    @State private var selectedProjectionCoverage: TrainingProjectionCoverage = .queryValue
+    @State private var selectedAlphaScale: TrainingAlphaScale = .rank
+    @State private var selectedDropout: TrainingDropoutPreset = .none
     @State private var selectedTargetLayers: Set<TargetLayer> = [.selfAttention, .crossAttention]
     @State private var warmupFraction: Float = 0.10
     @State private var gradientAccumulationSteps: Int = 1
@@ -103,9 +107,13 @@ struct TrainingSheet: View {
         self._importedFiles = State(initialValue: initialImportedFiles)
         self._adapterName = State(initialValue: initialName)
         if let config = initialConfig {
+            self._selectedRecipe = State(initialValue: TrainingRecipePreset.infer(from: config, adapterKind: adapterKind))
             self._selectedRank = State(initialValue: config.rank)
             self._selectedEpochs = State(initialValue: config.maxEpochs)
             self._selectedLayerCount = State(initialValue: config.trainingLayerCount ?? (resumeAdapterID == nil ? 8 : 4))
+            self._selectedProjectionCoverage = State(initialValue: TrainingProjectionCoverage.infer(from: config))
+            self._selectedAlphaScale = State(initialValue: TrainingAlphaScale.infer(from: config.alpha, dimension: config.rank))
+            self._selectedDropout = State(initialValue: TrainingDropoutPreset.closest(to: config.dropout))
             self._selectedTargetLayers = State(initialValue: config.targetLayers)
             self._warmupFraction = State(initialValue: config.warmupFraction)
             self._gradientAccumulationSteps = State(initialValue: config.gradientAccumulationSteps)
@@ -115,9 +123,13 @@ struct TrainingSheet: View {
     private var rankOptions: [Int] {
         adapterKind == .lokr ? [16, 32, 64, 128] : [8, 16, 32, 64, 96]
     }
-    private let epochOptions = [5, 10, 20, 50, 75, 100]
-    private let layerCountOptions = [4, 8, 12, 16]
+    private let epochOptions = [5, 10, 20, 50, 75, 100, 150]
+    private let layerCountOptions = [4, 8, 12, 16, 32]
     private let accumOptions = [1, 2, 4, 8]
+
+    private var recipeOptions: [TrainingRecipePreset] {
+        TrainingRecipePreset.options(for: adapterKind)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -165,6 +177,9 @@ struct TrainingSheet: View {
         }
         .task(id: importedDurationRefreshKey) {
             await refreshImportedFileDurations()
+        }
+        .onChange(of: selectedRecipe) { _, newRecipe in
+            applyRecipe(newRecipe)
         }
         .onReceive(NotificationCenter.default.publisher(for: .modelRegistryDidChange)) { _ in
             Task { await refreshBaseModelDisplayName() }
@@ -364,7 +379,25 @@ struct TrainingSheet: View {
                 Text(baseModelDisplayName)
                     .foregroundStyle(.secondary)
             }
-            if let recommendation = trainingRecommendation {
+            LabeledContent("Recipe") {
+                Picker("Recipe", selection: $selectedRecipe) {
+                    ForEach(recipeOptions, id: \.self) { recipe in
+                        Text(recipe.displayName(for: adapterKind)).tag(recipe)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .frame(maxWidth: adapterKind == .lora ? 320 : 220)
+                .disabled(isCheckpointResume)
+            }
+            if selectedRecipe != .balancedLocal {
+                Text(selectedRecipe.summary(for: adapterKind))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.vertical, 2)
+            }
+            if selectedRecipe == .balancedLocal, let recommendation = trainingRecommendation {
                 trainingRecommendationView(recommendation)
             }
             LabeledContent(adapterKind == .lokr ? "Linear Dim" : "Rank") {
@@ -383,18 +416,36 @@ struct TrainingSheet: View {
                 .labelsHidden()
                 .pickerStyle(.segmented)
                 .frame(maxWidth: 220)
+                .padding(.leading, 8)
                 .disabled(isCheckpointResume)
             }
             LabeledContent("Layer Coverage") {
                 Picker("Layer Coverage", selection: $selectedLayerCount) {
                     ForEach(layerCountOptions, id: \.self) { count in
-                        Text("Last \(count)").tag(count)
+                        Text(count >= 32 ? "All 32" : "Last \(count)").tag(count)
                     }
                 }
                 .labelsHidden()
                 .pickerStyle(.segmented)
-                .frame(width: 280)
+                .frame(width: 340)
                 .disabled(isCheckpointResume)
+            }
+            LabeledContent("Projections") {
+                Picker("Projections", selection: $selectedProjectionCoverage) {
+                    ForEach(TrainingProjectionCoverage.allCases, id: \.self) { coverage in
+                        Text(coverage.displayName).tag(coverage)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .frame(width: 220)
+                .disabled(isCheckpointResume)
+            }
+            if let trainingConfigurationWarning {
+                Label(trainingConfigurationWarning, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             // Target layers
@@ -419,6 +470,28 @@ struct TrainingSheet: View {
 
             // Advanced: warmup + accumulation
             DisclosureGroup("Advanced") {
+                LabeledContent("Alpha Scale") {
+                    Picker("Alpha Scale", selection: $selectedAlphaScale) {
+                        ForEach(TrainingAlphaScale.allCases, id: \.self) { scale in
+                            Text(scale.displayName).tag(scale)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .frame(maxWidth: 140)
+                    .disabled(isCheckpointResume)
+                }
+                LabeledContent("Dropout") {
+                    Picker("Dropout", selection: $selectedDropout) {
+                        ForEach(TrainingDropoutPreset.allCases, id: \.self) { dropout in
+                            Text(dropout.displayName).tag(dropout)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .frame(maxWidth: 240)
+                    .disabled(isCheckpointResume)
+                }
                 LabeledContent("LR Warmup") {
                     HStack {
                         Slider(
@@ -489,6 +562,7 @@ struct TrainingSheet: View {
                     startTraining()
                 }
                 .buttonStyle(.borderedProminent)
+                .disabled(!canStartTraining)
             } else {
                 Button("Start Training") {
                     startTraining()
@@ -682,6 +756,18 @@ struct TrainingSheet: View {
         !adapterName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !(selectedEntries.isEmpty && importedFiles.isEmpty)
             && !selectedTargetLayers.isEmpty
+            && trainingConfigurationWarning == nil
+    }
+
+    private var trainingConfigurationWarning: String? {
+        guard adapterKind == .lokr,
+              selectedProjectionCoverage == .fullAttention,
+              selectedLayerCount >= 32,
+              selectedRank > 64
+        else {
+            return nil
+        }
+        return "This LoKR shape is too heavy for local MLX training. Use Linear Dim 64, reduce layer coverage, or switch projections to Q/V."
     }
 
     private var isResumeSession: Bool {
@@ -735,16 +821,41 @@ struct TrainingSheet: View {
     }
 
     private func applyRecommendation(_ recommendation: TrainingPlanRecommendation) {
+        selectedRecipe = .balancedLocal
         selectedRank = recommendation.rank
         selectedEpochs = recommendation.epochs
         selectedLayerCount = recommendation.layerCount
+        selectedProjectionCoverage = .queryValue
+        selectedAlphaScale = .rank
+        selectedDropout = .none
         gradientAccumulationSteps = recommendation.gradientAccumulationSteps
+    }
+
+    private func applyRecipe(_ recipe: TrainingRecipePreset) {
+        guard !isCheckpointResume else { return }
+        let defaults = recipe.defaults(
+            for: adapterKind,
+            recommendation: trainingRecommendation
+        )
+        selectedRank = defaults.rank
+        selectedEpochs = defaults.epochs
+        selectedLayerCount = defaults.layerCount
+        selectedProjectionCoverage = defaults.projectionCoverage
+        selectedAlphaScale = defaults.alphaScale
+        selectedDropout = defaults.dropout
+        if let targetLayers = defaults.targetLayers {
+            selectedTargetLayers = targetLayers
+        }
+        gradientAccumulationSteps = defaults.gradientAccumulationSteps
     }
 
     private func recommendationMatchesCurrentSelection(_ recommendation: TrainingPlanRecommendation) -> Bool {
         selectedRank == recommendation.rank
             && selectedEpochs == recommendation.epochs
             && selectedLayerCount == recommendation.layerCount
+            && selectedProjectionCoverage == .queryValue
+            && selectedAlphaScale == .rank
+            && selectedDropout == .none
             && gradientAccumulationSteps == recommendation.gradientAccumulationSteps
     }
 
@@ -889,9 +1000,15 @@ struct TrainingSheet: View {
 
     private func startTraining() {
         let audioURLs = selectedEntries.map { historyStore.fileURL(for: $0) }
+        let exactInjectionPatterns = selectedProjectionCoverage.exactInjectionPatterns(for: selectedTargetLayers)
+        let alpha = selectedAlphaScale.alpha(for: selectedRank)
         let config = LoRAConfig(
             rank: selectedRank,
+            alpha: alpha,
+            dropout: selectedDropout.value,
             targetLayers: selectedTargetLayers,
+            exactInjectionPatterns: exactInjectionPatterns,
+            learningRate: selectedRecipe.learningRate(for: adapterKind),
             maxEpochs: selectedEpochs,
             warmupFraction: warmupFraction,
             gradientAccumulationSteps: gradientAccumulationSteps,
@@ -915,8 +1032,11 @@ struct TrainingSheet: View {
                 adapterName: adapterName,
                 config: LoKRConfig(
                     linearDim: selectedRank,
-                    alpha: Float(selectedRank),
+                    alpha: alpha,
+                    dropout: selectedDropout.value,
                     targetLayers: selectedTargetLayers,
+                    exactInjectionPatterns: exactInjectionPatterns,
+                    learningRate: selectedRecipe.learningRate(for: adapterKind),
                     maxEpochs: selectedEpochs,
                     warmupFraction: warmupFraction,
                     gradientAccumulationSteps: gradientAccumulationSteps,
@@ -1005,6 +1125,252 @@ struct TrainingSheet: View {
             parts.append("Skipped \(duplicateCount) duplicate\(duplicateCount == 1 ? "" : "s")")
         }
         return parts.joined(separator: ". ")
+    }
+}
+
+private enum TrainingRecipePreset: String, CaseIterable, Identifiable {
+    case balancedLocal
+    case cloudStyleQuality
+    case cloudVoiceBalanced
+    case expandedLoKR
+
+    var id: String { rawValue }
+
+    static func options(for adapterKind: AdapterKind) -> [TrainingRecipePreset] {
+        switch adapterKind {
+        case .lora:
+            return [.balancedLocal, .cloudStyleQuality, .cloudVoiceBalanced]
+        case .lokr:
+            return [.balancedLocal, .expandedLoKR]
+        }
+    }
+
+    static func infer(from config: LoRAConfig, adapterKind: AdapterKind) -> TrainingRecipePreset {
+        let projectionCoverage = TrainingProjectionCoverage.infer(from: config)
+        let alphaScale = TrainingAlphaScale.infer(from: config.alpha, dimension: config.rank)
+        let isWide = projectionCoverage == .fullAttention
+            && alphaScale == .doubleRank
+            && (config.trainingLayerCount ?? 0) >= 32
+
+        guard isWide else { return .balancedLocal }
+        switch adapterKind {
+        case .lora:
+            if config.rank >= 96 || config.maxEpochs >= 150 || config.dropout <= 0.09 {
+                return .cloudStyleQuality
+            }
+            return .cloudVoiceBalanced
+        case .lokr:
+            return .expandedLoKR
+        }
+    }
+
+    func displayName(for adapterKind: AdapterKind) -> String {
+        switch self {
+        case .balancedLocal:
+            return "Local"
+        case .cloudStyleQuality:
+            return adapterKind == .lora ? "Cloud Style" : "Wide"
+        case .cloudVoiceBalanced:
+            return "Cloud Voice"
+        case .expandedLoKR:
+            return "Wide"
+        }
+    }
+
+    func summary(for adapterKind: AdapterKind) -> String {
+        switch self {
+        case .balancedLocal:
+            return ""
+        case .cloudStyleQuality:
+            return adapterKind == .lora
+                ? "Matches the imported style-quality recipe: rank 96, alpha 192, dropout 0.08, all 32 layers, and q/k/v/o attention."
+                : "Uses a wider local footprint: double alpha, dropout, all 32 layers, and q/k/v/o attention."
+        case .cloudVoiceBalanced:
+            return "Matches the imported voice-balanced recipe: rank 64, alpha 128, dropout 0.10, all 32 layers, and q/k/v/o attention."
+        case .expandedLoKR:
+            return "Uses a wider local LoKR footprint: double alpha, dropout, all 32 layers, and q/k/v/o attention."
+        }
+    }
+
+    func defaults(
+        for adapterKind: AdapterKind,
+        recommendation: TrainingPlanRecommendation?
+    ) -> TrainingRecipeDefaults {
+        switch self {
+        case .balancedLocal:
+            return TrainingRecipeDefaults(
+                rank: recommendation?.rank ?? 16,
+                epochs: recommendation?.epochs ?? 10,
+                layerCount: recommendation?.layerCount ?? 8,
+                projectionCoverage: .queryValue,
+                alphaScale: .rank,
+                dropout: .none,
+                targetLayers: nil,
+                gradientAccumulationSteps: recommendation?.gradientAccumulationSteps ?? 1
+            )
+        case .cloudStyleQuality:
+            return TrainingRecipeDefaults(
+                rank: adapterKind == .lora ? 96 : 64,
+                epochs: adapterKind == .lora ? 150 : 100,
+                layerCount: 32,
+                projectionCoverage: .fullAttention,
+                alphaScale: .doubleRank,
+                dropout: .p08,
+                targetLayers: [.selfAttention, .crossAttention],
+                gradientAccumulationSteps: 4
+            )
+        case .cloudVoiceBalanced:
+            return TrainingRecipeDefaults(
+                rank: 64,
+                epochs: 100,
+                layerCount: 32,
+                projectionCoverage: .fullAttention,
+                alphaScale: .doubleRank,
+                dropout: .p10,
+                targetLayers: [.selfAttention, .crossAttention],
+                gradientAccumulationSteps: 4
+            )
+        case .expandedLoKR:
+            return TrainingRecipeDefaults(
+                rank: 64,
+                epochs: 100,
+                layerCount: 32,
+                projectionCoverage: .fullAttention,
+                alphaScale: .doubleRank,
+                dropout: .p08,
+                targetLayers: [.selfAttention, .crossAttention],
+                gradientAccumulationSteps: 4
+            )
+        }
+    }
+
+    func learningRate(for adapterKind: AdapterKind) -> Float {
+        switch self {
+        case .cloudStyleQuality where adapterKind == .lora:
+            return 0.000075
+        default:
+            return 0.0001
+        }
+    }
+}
+
+private struct TrainingRecipeDefaults {
+    let rank: Int
+    let epochs: Int
+    let layerCount: Int
+    let projectionCoverage: TrainingProjectionCoverage
+    let alphaScale: TrainingAlphaScale
+    let dropout: TrainingDropoutPreset
+    let targetLayers: Set<TargetLayer>?
+    let gradientAccumulationSteps: Int
+}
+
+private enum TrainingProjectionCoverage: String, CaseIterable, Identifiable {
+    case queryValue
+    case fullAttention
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .queryValue:
+            return "Q/V"
+        case .fullAttention:
+            return "Q/K/V/O"
+        }
+    }
+
+    static func infer(from config: LoRAConfig) -> TrainingProjectionCoverage {
+        let patterns = Set(config.injectionPatterns)
+        let hasKeyOrOutput = patterns.contains("selfAttn.kProj")
+            || patterns.contains("selfAttn.oProj")
+            || patterns.contains("crossAttn.kProj")
+            || patterns.contains("crossAttn.oProj")
+        return hasKeyOrOutput ? .fullAttention : .queryValue
+    }
+
+    func exactInjectionPatterns(for targetLayers: Set<TargetLayer>) -> [String]? {
+        switch self {
+        case .queryValue:
+            return nil
+        case .fullAttention:
+            var patterns: [String] = []
+            if targetLayers.contains(.selfAttention) {
+                patterns.append(contentsOf: [
+                    "selfAttn.qProj",
+                    "selfAttn.kProj",
+                    "selfAttn.vProj",
+                    "selfAttn.oProj",
+                ])
+            }
+            if targetLayers.contains(.crossAttention) {
+                patterns.append(contentsOf: [
+                    "crossAttn.qProj",
+                    "crossAttn.kProj",
+                    "crossAttn.vProj",
+                    "crossAttn.oProj",
+                ])
+            }
+            if targetLayers.contains(.mlp) {
+                patterns.append(contentsOf: TargetLayer.mlp.defaultPatterns)
+            }
+            return patterns.isEmpty ? nil : patterns
+        }
+    }
+}
+
+private enum TrainingAlphaScale: Float, CaseIterable, Identifiable {
+    case rank = 1
+    case doubleRank = 2
+
+    var id: Float { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .rank:
+            return "1x"
+        case .doubleRank:
+            return "2x"
+        }
+    }
+
+    static func infer(from alpha: Float, dimension: Int) -> TrainingAlphaScale {
+        let ratio = alpha / Float(max(1, dimension))
+        return ratio >= 1.5 ? .doubleRank : .rank
+    }
+
+    func alpha(for dimension: Int) -> Float {
+        Float(dimension) * rawValue
+    }
+}
+
+private enum TrainingDropoutPreset: Float, CaseIterable, Identifiable {
+    case none = 0
+    case p05 = 0.05
+    case p08 = 0.08
+    case p10 = 0.10
+
+    var id: Float { rawValue }
+
+    var value: Float { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .none:
+            return "0"
+        case .p05:
+            return "0.05"
+        case .p08:
+            return "0.08"
+        case .p10:
+            return "0.10"
+        }
+    }
+
+    static func closest(to value: Float) -> TrainingDropoutPreset {
+        allCases.min { lhs, rhs in
+            abs(lhs.value - value) < abs(rhs.value - value)
+        } ?? .none
     }
 }
 

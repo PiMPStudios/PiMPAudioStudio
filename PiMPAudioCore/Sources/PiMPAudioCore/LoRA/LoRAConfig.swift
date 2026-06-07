@@ -31,7 +31,7 @@ public enum TargetLayer: String, Codable, CaseIterable, Sendable, Hashable {
 
 /// Configuration for LoRA adapter training and injection.
 public struct LoRAConfig: Codable, Sendable, Equatable, Hashable {
-    /// Low-rank dimension. Higher = more expressive, more memory. Typical: 8, 16, 32, 64.
+    /// Low-rank dimension. Higher = more expressive, more memory. Typical: 8, 16, 32, 64, 96.
     public var rank: Int
 
     /// Scaling factor. The adapter contribution is scaled by alpha/rank.
@@ -72,6 +72,19 @@ public struct LoRAConfig: Codable, Sendable, Equatable, Hashable {
     /// training actor may then use its legacy default, while imported adapters
     /// can still be injected from their saved weight paths.
     public var trainingLayerCount: Int?
+
+    /// Full attention projection surface used by higher-capacity ACE-Step PEFT
+    /// recipes: q/k/v/o on both self-attention and cross-attention.
+    public static let fullAttentionInjectionPatterns: [String] = [
+        "selfAttn.qProj",
+        "selfAttn.kProj",
+        "selfAttn.vProj",
+        "selfAttn.oProj",
+        "crossAttn.qProj",
+        "crossAttn.kProj",
+        "crossAttn.vProj",
+        "crossAttn.oProj",
+    ]
 
     public init(
         rank: Int = 16,

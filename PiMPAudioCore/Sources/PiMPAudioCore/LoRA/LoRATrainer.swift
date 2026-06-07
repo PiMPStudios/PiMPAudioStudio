@@ -147,6 +147,8 @@ public final class LoRATrainer {
         let trainingModel = model
         let trainableParameterKeys = model.trainableParameters().flattened().map(\.0)
         let trainableArgumentCount = trainableParameterKeys.count
+        let trainableParameterKeyPreview = Array(trainableParameterKeys.prefix(24))
+        let omittedTrainableParameterKeyCount = max(0, trainableParameterKeys.count - trainableParameterKeyPreview.count)
         let gradientArgumentNumbers = Array(0..<trainableArgumentCount)
         let lossGrad = valueAndGrad({ (allArgs: [MLXArray]) -> [MLXArray] in
             let shouldLogGradientClosure = !hasLoggedGradientClosure
@@ -154,7 +156,7 @@ public final class LoRATrainer {
                 hasLoggedGradientClosure = true
                 AudioDiagnostics.note(
                     "training/trainer/gradClosure",
-                    "kind=lora paramCount=\(trainableParameterKeys.count) paramKeys=\(trainableParameterKeys)"
+                    "kind=lora paramCount=\(trainableParameterKeys.count) paramKeysPreview=\(trainableParameterKeyPreview) omitted=\(omittedTrainableParameterKeyCount)"
                 )
             }
             let parameterValues = Array(allArgs.prefix(trainableArgumentCount))

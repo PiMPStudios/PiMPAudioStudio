@@ -43,6 +43,33 @@ import MLX
     #expect(explicitAlpha.alpha == 16)
 }
 
+@Test func loraConfigCanRepresentCloudStyleFullAttentionRecipe() {
+    let config = LoRAConfig(
+        rank: 96,
+        alpha: 192,
+        dropout: 0.08,
+        exactInjectionPatterns: LoRAConfig.fullAttentionInjectionPatterns,
+        learningRate: 0.000075,
+        maxEpochs: 150,
+        gradientAccumulationSteps: 4,
+        trainingLayerCount: 32
+    )
+
+    #expect(config.injectionPatterns == [
+        "selfAttn.qProj",
+        "selfAttn.kProj",
+        "selfAttn.vProj",
+        "selfAttn.oProj",
+        "crossAttn.qProj",
+        "crossAttn.kProj",
+        "crossAttn.vProj",
+        "crossAttn.oProj",
+    ])
+    #expect(config.alpha == 192)
+    #expect(config.dropout == 0.08)
+    #expect(config.trainingLayerCount == 32)
+}
+
 @Test func lokrConfigMirrorsTrainingFieldsForCompatibility() {
     let config = LoKRConfig(
         linearDim: 128,
