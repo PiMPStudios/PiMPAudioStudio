@@ -126,6 +126,7 @@ struct TrainingSheet: View {
     private let epochOptions = [5, 10, 20, 50, 75, 100, 150]
     private let layerCountOptions = [4, 8, 12, 16, 32]
     private let accumOptions = [1, 2, 4, 8]
+    private let maxLocalLoKRTrainableTensorCount = 512
 
     private var recipeOptions: [TrainingRecipePreset] {
         TrainingRecipePreset.options(for: adapterKind)
@@ -760,14 +761,44 @@ struct TrainingSheet: View {
     }
 
     private var trainingConfigurationWarning: String? {
-        guard adapterKind == .lokr,
-              selectedProjectionCoverage == .fullAttention,
-              selectedLayerCount >= 32,
-              selectedRank > 64
+        if adapterKind == .lora,
+           selectedProjectionCoverage == .fullAttention,
+           selectedLayerCount >= 32 {
+            return "All-32 Q/K/V/O LoRA is a Remote GPU recipe locally. Use less layer coverage or Q/V projections for on-device training."
+        }
+
+        if adapterKind == .lokr,
+           selectedProjectionCoverage == .fullAttention,
+           selectedLayerCount >= 16 {
+            return "Full Q/K/V/O LoKR across 16+ layers stalls local MLX training. Use Q/V projections or reduce Layer Coverage to Last 8."
+        }
+
+        if adapterKind == .lokr,
+           selectedProjectionCoverage == .fullAttention,
+           selectedRank > 32 {
+            return "Full Q/K/V/O LoKR above Linear Dim 32 stalls local MLX training. Use Linear Dim 32 or switch Projections to Q/V."
+        }
+
+        guard let trainableTensorCount = estimatedLoKRTrainableTensorCount,
+              trainableTensorCount > maxLocalLoKRTrainableTensorCount
         else {
             return nil
         }
-        return "This LoKR shape is too heavy for local MLX training. Use Linear Dim 64, reduce layer coverage, or switch projections to Q/V."
+        return "This LoKR shape would train \(trainableTensorCount) tensors, which is above the local \(maxLocalLoKRTrainableTensorCount)-tensor cap. Reduce layer coverage, projections, or target layers."
+    }
+
+    private var estimatedLoKRTrainableTensorCount: Int? {
+        guard adapterKind == .lokr else { return nil }
+        let patterns = selectedInjectionPatternsForEstimate()
+        guard !patterns.isEmpty else { return nil }
+        return min(selectedLayerCount, 32) * patterns.count * 2
+    }
+
+    private func selectedInjectionPatternsForEstimate() -> [String] {
+        if let exactPatterns = selectedProjectionCoverage.exactInjectionPatterns(for: selectedTargetLayers) {
+            return exactPatterns
+        }
+        return selectedTargetLayers.flatMap(\.defaultPatterns)
     }
 
     private var isResumeSession: Bool {
@@ -1148,18 +1179,21 @@ private enum TrainingRecipePreset: String, CaseIterable, Identifiable {
     static func infer(from config: LoRAConfig, adapterKind: AdapterKind) -> TrainingRecipePreset {
         let projectionCoverage = TrainingProjectionCoverage.infer(from: config)
         let alphaScale = TrainingAlphaScale.infer(from: config.alpha, dimension: config.rank)
-        let isWide = projectionCoverage == .fullAttention
-            && alphaScale == .doubleRank
-            && (config.trainingLayerCount ?? 0) >= 32
-
-        guard isWide else { return .balancedLocal }
         switch adapterKind {
         case .lora:
+            let isWide = projectionCoverage == .fullAttention
+                && alphaScale == .doubleRank
+                && (config.trainingLayerCount ?? 0) >= 32
+            guard isWide else { return .balancedLocal }
             if config.rank >= 96 || config.maxEpochs >= 150 || config.dropout <= 0.09 {
                 return .cloudStyleQuality
             }
             return .cloudVoiceBalanced
         case .lokr:
+            let isWide = alphaScale == .doubleRank
+                && config.rank >= 32
+                && (config.trainingLayerCount ?? 0) >= 16
+            guard isWide else { return .balancedLocal }
             return .expandedLoKR
         }
     }
@@ -1188,7 +1222,7 @@ private enum TrainingRecipePreset: String, CaseIterable, Identifiable {
         case .cloudVoiceBalanced:
             return "Matches the imported voice-balanced recipe: rank 64, alpha 128, dropout 0.10, all 32 layers, and q/k/v/o attention."
         case .expandedLoKR:
-            return "Uses a wider local LoKR footprint: double alpha, dropout, all 32 layers, and q/k/v/o attention."
+            return "Uses a wider local LoKR footprint that avoids the local MLX full-attention stall: linear dim 32, double alpha, dropout, last 16 layers, and Q/V attention."
         }
     }
 
@@ -1232,10 +1266,10 @@ private enum TrainingRecipePreset: String, CaseIterable, Identifiable {
             )
         case .expandedLoKR:
             return TrainingRecipeDefaults(
-                rank: 64,
+                rank: 32,
                 epochs: 100,
-                layerCount: 32,
-                projectionCoverage: .fullAttention,
+                layerCount: 16,
+                projectionCoverage: .queryValue,
                 alphaScale: .doubleRank,
                 dropout: .p08,
                 targetLayers: [.selfAttention, .crossAttention],

@@ -123,6 +123,7 @@ public final class LoKRTrainer {
                     "training/trainer/gradClosureReady",
                     "kind=lokr xt=\(xt.shape) encoder=\(encoderStates.shape) context=\(contextLatents.shape) mask=\(encoderMask?.shape ?? [])"
                 )
+                AudioDiagnostics.memory("training/trainer/gradClosureReady")
             }
             return [(diff * diff).mean()]
         }, argumentNumbers: gradientArgumentNumbers)
@@ -156,7 +157,7 @@ public final class LoKRTrainer {
                     hasLoggedFirstProcessedSample = true
                     AudioDiagnostics.note(
                         "training/trainer/firstSample",
-                        "kind=lokr idx=\(idx) latent=\(sample.latent.shape) context=\(sample.contextLatents.shape) encoder=\(sample.encoderStates.shape) mask=\(sample.encoderMask?.shape ?? []) trainableKeys=\(model.trainableParameters().flattened().map(\.0))"
+                        "kind=lokr idx=\(idx) latent=\(sample.latent.shape) context=\(sample.contextLatents.shape) encoder=\(sample.encoderStates.shape) mask=\(sample.encoderMask?.shape ?? []) paramCount=\(trainableParameterKeys.count) paramKeysPreview=\(trainableParameterKeyPreview) omitted=\(omittedTrainableParameterKeyCount)"
                     )
                 }
 

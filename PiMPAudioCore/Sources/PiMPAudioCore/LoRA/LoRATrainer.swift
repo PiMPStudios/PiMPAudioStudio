@@ -191,6 +191,7 @@ public final class LoRATrainer {
                     "training/trainer/gradClosureReady",
                     "kind=lora xt=\(xt.shape) encoder=\(encoderStates.shape) context=\(contextLatents.shape) mask=\(encoderMask?.shape ?? [])"
                 )
+                AudioDiagnostics.memory("training/trainer/gradClosureReady")
             }
             return [loss]
         }, argumentNumbers: gradientArgumentNumbers)
@@ -230,10 +231,9 @@ public final class LoRATrainer {
                 let shouldLogSample = !hasLoggedFirstProcessedSample
                 if shouldLogSample {
                     hasLoggedFirstProcessedSample = true
-                    let trainableKeys = model.trainableParameters().flattened().map(\.0)
                     AudioDiagnostics.note(
                         "training/trainer/firstSample",
-                        "kind=lora idx=\(idx) latent=\(sample.latent.shape) context=\(sample.contextLatents.shape) encoder=\(sample.encoderStates.shape) mask=\(sample.encoderMask?.shape ?? []) trainableKeys=\(trainableKeys)"
+                        "kind=lora idx=\(idx) latent=\(sample.latent.shape) context=\(sample.contextLatents.shape) encoder=\(sample.encoderStates.shape) mask=\(sample.encoderMask?.shape ?? []) paramCount=\(trainableParameterKeys.count) paramKeysPreview=\(trainableParameterKeyPreview) omitted=\(omittedTrainableParameterKeyCount)"
                     )
                 }
 

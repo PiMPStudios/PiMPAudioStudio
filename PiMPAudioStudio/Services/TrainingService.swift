@@ -2,6 +2,7 @@ import Foundation
 import PiMPAudioCore
 import MLX
 import OSLog
+import Darwin
 
 private let trainingLogger = Logger(
     subsystem: "com.pimpstudios.PiMPAudioStudio",
@@ -48,6 +49,12 @@ private struct TrainingPreprocessResult {
     let cacheHit: Bool
 }
 
+private struct TrainingMemoryGuardError: LocalizedError {
+    let message: String
+
+    var errorDescription: String? { message }
+}
+
 /// Orchestrates LoRA training: dataset preparation, training execution, and adapter saving.
 @MainActor
 final class TrainingService: ObservableObject {
@@ -58,6 +65,9 @@ final class TrainingService: ObservableObject {
     /// sample contributes a short random window while preserving the clip's
     /// caption/conditioning signal.
     private static let maxTrainingLatentFrames = 64
+    private static let bytesPerGiB: UInt64 = 1_073_741_824
+    private static let minimumTrainingHeadroomBytes = 6 * bytesPerGiB
+    private static let maximumTrainingHeadroomBytes = 12 * bytesPerGiB
 
     private let pipeline: MusicPipeline
     private let vae: VAEActor
@@ -193,6 +203,7 @@ final class TrainingService: ObservableObject {
             }
 
             do {
+                let totalSamples = entries.count + importedFiles.count
                 self.state = .loadingModels
                 self.logTrainingPhase(
                     "loadingModels/begin",
@@ -212,6 +223,21 @@ final class TrainingService: ObservableObject {
                     self.state = .failed("Could not load the ACE-Step models needed for training.")
                     return
                 }
+                let activeModelID = await self.registry.activeModelID(
+                    for: .aceStepDiT
+                ) ?? "unknown"
+                AudioDiagnostics.note(
+                    "training/baseModel",
+                    "kind=\(kind.rawValue) adapterID=\(adapterID) activeModel=\(activeModelID)"
+                )
+                try self.validateLocalTrainingMemory(
+                    phase: "afterEnsureLoaded",
+                    kind: kind,
+                    activeModelID: activeModelID,
+                    sampleCount: totalSamples,
+                    config: config,
+                    lokrConfig: lokrConfig
+                )
                 self.logTrainingPhase(
                     "loadingModels/end",
                     kind: kind,
@@ -229,13 +255,6 @@ final class TrainingService: ObservableObject {
                     )
                 }
 
-                let activeModelID = await self.registry.activeModelID(
-                    for: .aceStepDiT
-                ) ?? "unknown"
-                AudioDiagnostics.note(
-                    "training/baseModel",
-                    "kind=\(kind.rawValue) adapterID=\(adapterID) activeModel=\(activeModelID)"
-                )
                 let sessionConfig: LoRAConfig
                 let sessionLoKRConfig: LoKRConfig?
                 let resumeCheckpoint: TrainingCheckpoint?
@@ -281,6 +300,14 @@ final class TrainingService: ObservableObject {
                         "training/resume/end",
                         "kind=\(kind.rawValue) adapterID=\(resumeAdapterID) checkpointStep=\(checkpoint.globalStep) checkpointEpoch=\(checkpoint.epoch) initialWeights=\(initialWeights?.count ?? 0) lokrConfig=\(sessionLoKRConfig != nil)"
                     )
+                    try self.validateLocalTrainingMemory(
+                        phase: "afterResumeConfig",
+                        kind: kind,
+                        activeModelID: activeModelID,
+                        sampleCount: totalSamples,
+                        config: sessionConfig,
+                        lokrConfig: sessionLoKRConfig
+                    )
                 } else {
                     resumeCheckpoint = nil
                     sessionConfig = config
@@ -289,7 +316,6 @@ final class TrainingService: ObservableObject {
                 }
 
                 // 1. Prepare dataset
-                let totalSamples = entries.count + importedFiles.count
                 self.state = .preparingDataset(current: 0, total: totalSamples)
                 AudioDiagnostics.note(
                     "training/dataset/begin",
@@ -363,6 +389,14 @@ final class TrainingService: ObservableObject {
                     "kind=\(kind.rawValue) adapterID=\(adapterID) samples=\(samples.count) \(Self.trainingDatasetShapeSummary(samples))"
                 )
                 AudioDiagnostics.memory("training/dataset/end")
+                try self.validateLocalTrainingMemory(
+                    phase: "beforeTraining",
+                    kind: kind,
+                    activeModelID: activeModelID,
+                    sampleCount: samples.count,
+                    config: sessionConfig,
+                    lokrConfig: sessionLoKRConfig
+                )
                 let manifest = TrainingManifest(
                     historyEntryIDs: entries.map(\.id),
                     importedFiles: importedFiles
@@ -882,6 +916,156 @@ final class TrainingService: ObservableObject {
             config: config,
             baseModelID: activeModelID
         )
+    }
+
+    private func validateLocalTrainingMemory(
+        phase: String,
+        kind: AdapterKind,
+        activeModelID: String,
+        sampleCount: Int,
+        config: LoRAConfig,
+        lokrConfig: LoKRConfig?
+    ) throws {
+        let beforeClear = Memory.snapshot()
+        Memory.clearCache()
+        let snapshot = Memory.snapshot()
+        let physicalMemory = ProcessInfo.processInfo.physicalMemory
+        let systemAvailableMemory = Self.availableSystemMemoryBytes()
+        let memoryLimit = UInt64(max(0, Memory.memoryLimit))
+        let activeMemory = UInt64(max(0, snapshot.activeMemory))
+        let cacheMemory = UInt64(max(0, snapshot.cacheMemory))
+        let peakMemory = UInt64(max(0, snapshot.peakMemory))
+        let injectionPatterns = lokrConfig?.injectionPatterns ?? config.injectionPatterns
+        let requiredHeadroom = Self.trainingHeadroomRequirement(
+            kind: kind,
+            sampleCount: sampleCount,
+            config: config,
+            lokrConfig: lokrConfig
+        )
+        let physicalHeadroom = physicalMemory > activeMemory ? physicalMemory - activeMemory : 0
+        let limitHeadroom = memoryLimit > activeMemory ? memoryLimit - activeMemory : 0
+        let processHeadroom = min(physicalHeadroom, limitHeadroom)
+        let effectiveHeadroom = min(processHeadroom, systemAvailableMemory ?? processHeadroom)
+        let layerCount = lokrConfig?.trainingLayerCount ?? config.trainingLayerCount ?? 4
+        let projectionCount = injectionPatterns.count
+        let dimension: Int
+        if kind == .lokr {
+            dimension = lokrConfig?.linearDim ?? config.rank
+        } else {
+            dimension = config.rank
+        }
+
+        AudioDiagnostics.note(
+            "training/memoryGuard",
+            "phase=\(phase) kind=\(kind.rawValue) base=\(activeModelID) samples=\(sampleCount) dimension=\(dimension) layerCoverage=\(layerCount) projections=\(projectionCount) active=\(activeMemory) cacheBefore=\(max(0, beforeClear.cacheMemory)) cacheAfter=\(cacheMemory) peak=\(peakMemory) physical=\(physicalMemory) systemAvailable=\(systemAvailableMemory.map { String($0) } ?? "unknown") memoryLimit=\(memoryLimit) processHeadroom=\(processHeadroom) headroom=\(effectiveHeadroom) requiredHeadroom=\(requiredHeadroom)"
+        )
+        AudioDiagnostics.memory("training/memoryGuard/\(phase)")
+
+        if let unsupportedMessage = Self.unsupportedLocalTrainingConfigurationMessage(
+            kind: kind,
+            layerCount: layerCount,
+            dimension: dimension,
+            injectionPatterns: injectionPatterns
+        ) {
+            AudioDiagnostics.note(
+                "training/configGuard/fail",
+                "phase=\(phase) kind=\(kind.rawValue) layerCoverage=\(layerCount) dimension=\(dimension) projections=\(projectionCount) message=\(unsupportedMessage)"
+            )
+            throw TrainingMemoryGuardError(message: unsupportedMessage)
+        }
+
+        guard effectiveHeadroom < requiredHeadroom else { return }
+
+        let recipeHint = kind == .lokr
+            ? "Try Local LoKR with Q/V and last 4-8 layers, or switch to a smaller ACE-Step DiT model."
+            : "Try Local LoRA with Q/V and last 4-8 layers, or switch to a smaller ACE-Step DiT model."
+        let message = "Local training needs about \(Self.formatGiB(requiredHeadroom)) of unified-memory headroom before the first backward pass, but this run only has about \(Self.formatGiB(effectiveHeadroom)) available after loading ACE-Step (\(Self.formatGiB(activeMemory)) MLX active on a \(Self.formatGiB(physicalMemory)) Mac). \(recipeHint) Use Remote GPU for Cloud Style/Wide XL recipes."
+        AudioDiagnostics.note(
+            "training/memoryGuard/fail",
+            "phase=\(phase) kind=\(kind.rawValue) active=\(activeMemory) headroom=\(effectiveHeadroom) requiredHeadroom=\(requiredHeadroom) message=\(message)"
+        )
+        throw TrainingMemoryGuardError(message: message)
+    }
+
+    private static func trainingHeadroomRequirement(
+        kind: AdapterKind,
+        sampleCount: Int,
+        config: LoRAConfig,
+        lokrConfig: LoKRConfig?
+    ) -> UInt64 {
+        let layerCount = max(1, min(lokrConfig?.trainingLayerCount ?? config.trainingLayerCount ?? 4, 32))
+        let projectionCount = max(1, (lokrConfig?.injectionPatterns ?? config.injectionPatterns).count)
+        let dimension: Int
+        if kind == .lokr {
+            dimension = max(1, lokrConfig?.linearDim ?? config.rank)
+        } else {
+            dimension = max(1, config.rank)
+        }
+
+        var requirement = minimumTrainingHeadroomBytes
+        if layerCount >= 16 {
+            requirement += 2 * bytesPerGiB
+        }
+        if layerCount >= 32 {
+            requirement += 2 * bytesPerGiB
+        }
+        if projectionCount >= 8 {
+            requirement += 2 * bytesPerGiB
+        }
+        if dimension >= 96 {
+            requirement += bytesPerGiB
+        }
+        if sampleCount >= 500 {
+            requirement += bytesPerGiB
+        }
+        return min(requirement, maximumTrainingHeadroomBytes)
+    }
+
+    private static func unsupportedLocalTrainingConfigurationMessage(
+        kind: AdapterKind,
+        layerCount: Int,
+        dimension: Int,
+        injectionPatterns: [String]
+    ) -> String? {
+        let hasFullAttention = injectionPatterns.contains { pattern in
+            pattern.hasSuffix(".kProj") || pattern.hasSuffix(".oProj")
+        }
+
+        if kind == .lokr, hasFullAttention, layerCount >= 16 {
+            return "Full Q/K/V/O LoKR across 16+ layers repeatedly stalls local MLX training before the first loss. Use Q/V projections, reduce Layer Coverage to Last 8, or use Remote GPU for this adapter shape."
+        }
+
+        if kind == .lokr, hasFullAttention, dimension > 32 {
+            return "Full Q/K/V/O LoKR above Linear Dim 32 repeatedly stalls local MLX training before the first loss. Use Linear Dim 32 with Q/V projections, or use Remote GPU."
+        }
+
+        if kind == .lora, hasFullAttention, layerCount >= 32 {
+            return "All-32 Q/K/V/O LoRA is a Remote GPU recipe on this local XL model. Use Q/V projections or fewer layers for on-device training."
+        }
+
+        return nil
+    }
+
+    private static func formatGiB(_ bytes: UInt64) -> String {
+        String(format: "%.1f GiB", Double(bytes) / Double(bytesPerGiB))
+    }
+
+    private static func availableSystemMemoryBytes() -> UInt64? {
+        var stats = vm_statistics64()
+        var count = mach_msg_type_number_t(
+            MemoryLayout<vm_statistics64_data_t>.stride / MemoryLayout<integer_t>.stride
+        )
+        let result = withUnsafeMutablePointer(to: &stats) { pointer in
+            pointer.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { rebound in
+                host_statistics64(mach_host_self(), HOST_VM_INFO64, rebound, &count)
+            }
+        }
+        guard result == KERN_SUCCESS else { return nil }
+
+        let reclaimablePages = UInt64(stats.free_count)
+            + UInt64(stats.inactive_count)
+            + UInt64(stats.speculative_count)
+        return reclaimablePages * UInt64(vm_kernel_page_size)
     }
 
     private func preprocessSample(
