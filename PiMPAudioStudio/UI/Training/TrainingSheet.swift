@@ -113,7 +113,7 @@ struct TrainingSheet: View {
     }
 
     private var rankOptions: [Int] {
-        adapterKind == .lokr ? [16, 32, 64, 128] : [8, 16, 32, 64]
+        adapterKind == .lokr ? [16, 32, 64, 128] : [8, 16, 32, 64, 96]
     }
     private let epochOptions = [5, 10, 20, 50, 75, 100]
     private let layerCountOptions = [4, 8, 12, 16]
