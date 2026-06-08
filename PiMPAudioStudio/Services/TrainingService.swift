@@ -55,6 +55,40 @@ private struct TrainingMemoryGuardError: LocalizedError {
     var errorDescription: String? { message }
 }
 
+struct TrainingLocalPreflightReport {
+    let phase: String
+    let kind: AdapterKind
+    let activeModelID: String
+    let sampleCount: Int
+    let dimension: Int
+    let layerCount: Int
+    let projectionCount: Int
+    let injectionPatterns: [String]
+    let estimatedTrainablePathCount: Int
+    let estimatedTrainableTensorCount: Int
+    let cacheBeforeClearBytes: UInt64
+    let activeMemoryBytes: UInt64
+    let cacheMemoryBytes: UInt64
+    let peakMemoryBytes: UInt64
+    let physicalMemoryBytes: UInt64
+    let systemAvailableMemoryBytes: UInt64?
+    let memoryLimitBytes: UInt64
+    let processHeadroomBytes: UInt64
+    let effectiveHeadroomBytes: UInt64
+    let requiredHeadroomBytes: UInt64
+    let unsupportedConfigurationReason: String?
+    let memoryHeadroomReason: String?
+    let warnings: [String]
+
+    var blockedReason: String? {
+        unsupportedConfigurationReason ?? memoryHeadroomReason
+    }
+
+    var allowed: Bool {
+        blockedReason == nil
+    }
+}
+
 /// Orchestrates LoRA training: dataset preparation, training execution, and adapter saving.
 @MainActor
 final class TrainingService: ObservableObject {
@@ -836,6 +870,25 @@ final class TrainingService: ObservableObject {
         activeRunLog
     }
 
+    func localTrainingPreflight(
+        kind: AdapterKind,
+        sampleCount: Int,
+        config: LoRAConfig,
+        lokrConfig: LoKRConfig?,
+        clearCache: Bool = true
+    ) async -> TrainingLocalPreflightReport {
+        let activeModelID = await registry.activeModelID(for: .aceStepDiT) ?? "unknown"
+        return Self.localTrainingPreflightReport(
+            phase: "mcpPreflight",
+            kind: kind,
+            activeModelID: activeModelID,
+            sampleCount: sampleCount,
+            config: config,
+            lokrConfig: lokrConfig,
+            clearCache: clearCache
+        )
+    }
+
     func activeBaseModelDisplayName() async -> String {
         guard let spec = await registry.activeSpec(for: .aceStepDiT) else {
             return "ACE-Step DiT (not selected)"
@@ -931,17 +984,61 @@ final class TrainingService: ObservableObject {
         config: LoRAConfig,
         lokrConfig: LoKRConfig?
     ) throws {
+        let report = Self.localTrainingPreflightReport(
+            phase: phase,
+            kind: kind,
+            activeModelID: activeModelID,
+            sampleCount: sampleCount,
+            config: config,
+            lokrConfig: lokrConfig,
+            clearCache: true
+        )
+
+        AudioDiagnostics.note(
+            "training/memoryGuard",
+            "phase=\(phase) kind=\(kind.rawValue) base=\(activeModelID) samples=\(sampleCount) dimension=\(report.dimension) layerCoverage=\(report.layerCount) projections=\(report.projectionCount) active=\(report.activeMemoryBytes) cacheBefore=\(report.cacheBeforeClearBytes) cacheAfter=\(report.cacheMemoryBytes) peak=\(report.peakMemoryBytes) physical=\(report.physicalMemoryBytes) systemAvailable=\(report.systemAvailableMemoryBytes.map { String($0) } ?? "unknown") memoryLimit=\(report.memoryLimitBytes) processHeadroom=\(report.processHeadroomBytes) headroom=\(report.effectiveHeadroomBytes) requiredHeadroom=\(report.requiredHeadroomBytes)"
+        )
+        AudioDiagnostics.memory("training/memoryGuard/\(phase)")
+
+        if let unsupportedMessage = report.unsupportedConfigurationReason {
+            AudioDiagnostics.note(
+                "training/configGuard/fail",
+                "phase=\(phase) kind=\(kind.rawValue) layerCoverage=\(report.layerCount) dimension=\(report.dimension) projections=\(report.projectionCount) message=\(unsupportedMessage)"
+            )
+            throw TrainingMemoryGuardError(message: unsupportedMessage)
+        }
+
+        guard let memoryMessage = report.memoryHeadroomReason else { return }
+
+        AudioDiagnostics.note(
+            "training/memoryGuard/fail",
+            "phase=\(phase) kind=\(kind.rawValue) active=\(report.activeMemoryBytes) headroom=\(report.effectiveHeadroomBytes) requiredHeadroom=\(report.requiredHeadroomBytes) message=\(memoryMessage)"
+        )
+        throw TrainingMemoryGuardError(message: memoryMessage)
+    }
+
+    private static func localTrainingPreflightReport(
+        phase: String,
+        kind: AdapterKind,
+        activeModelID: String,
+        sampleCount: Int,
+        config: LoRAConfig,
+        lokrConfig: LoKRConfig?,
+        clearCache: Bool
+    ) -> TrainingLocalPreflightReport {
         let beforeClear = Memory.snapshot()
-        Memory.clearCache()
+        if clearCache {
+            Memory.clearCache()
+        }
         let snapshot = Memory.snapshot()
         let physicalMemory = ProcessInfo.processInfo.physicalMemory
-        let systemAvailableMemory = Self.availableSystemMemoryBytes()
+        let systemAvailableMemory = availableSystemMemoryBytes()
         let memoryLimit = UInt64(max(0, Memory.memoryLimit))
         let activeMemory = UInt64(max(0, snapshot.activeMemory))
         let cacheMemory = UInt64(max(0, snapshot.cacheMemory))
         let peakMemory = UInt64(max(0, snapshot.peakMemory))
         let injectionPatterns = lokrConfig?.injectionPatterns ?? config.injectionPatterns
-        let requiredHeadroom = Self.trainingHeadroomRequirement(
+        let requiredHeadroom = trainingHeadroomRequirement(
             kind: kind,
             sampleCount: sampleCount,
             config: config,
@@ -951,45 +1048,70 @@ final class TrainingService: ObservableObject {
         let limitHeadroom = memoryLimit > activeMemory ? memoryLimit - activeMemory : 0
         let processHeadroom = min(physicalHeadroom, limitHeadroom)
         let effectiveHeadroom = min(processHeadroom, systemAvailableMemory ?? processHeadroom)
-        let layerCount = lokrConfig?.trainingLayerCount ?? config.trainingLayerCount ?? 4
+        let layerCount = max(1, min(lokrConfig?.trainingLayerCount ?? config.trainingLayerCount ?? 4, 32))
         let projectionCount = injectionPatterns.count
         let dimension: Int
         if kind == .lokr {
-            dimension = lokrConfig?.linearDim ?? config.rank
+            dimension = max(1, lokrConfig?.linearDim ?? config.rank)
         } else {
-            dimension = config.rank
+            dimension = max(1, config.rank)
         }
 
-        AudioDiagnostics.note(
-            "training/memoryGuard",
-            "phase=\(phase) kind=\(kind.rawValue) base=\(activeModelID) samples=\(sampleCount) dimension=\(dimension) layerCoverage=\(layerCount) projections=\(projectionCount) active=\(activeMemory) cacheBefore=\(max(0, beforeClear.cacheMemory)) cacheAfter=\(cacheMemory) peak=\(peakMemory) physical=\(physicalMemory) systemAvailable=\(systemAvailableMemory.map { String($0) } ?? "unknown") memoryLimit=\(memoryLimit) processHeadroom=\(processHeadroom) headroom=\(effectiveHeadroom) requiredHeadroom=\(requiredHeadroom)"
-        )
-        AudioDiagnostics.memory("training/memoryGuard/\(phase)")
-
-        if let unsupportedMessage = Self.unsupportedLocalTrainingConfigurationMessage(
+        let unsupportedMessage = unsupportedLocalTrainingConfigurationMessage(
             kind: kind,
             layerCount: layerCount,
             dimension: dimension,
             injectionPatterns: injectionPatterns
-        ) {
-            AudioDiagnostics.note(
-                "training/configGuard/fail",
-                "phase=\(phase) kind=\(kind.rawValue) layerCoverage=\(layerCount) dimension=\(dimension) projections=\(projectionCount) message=\(unsupportedMessage)"
-            )
-            throw TrainingMemoryGuardError(message: unsupportedMessage)
+        )
+        let memoryMessage: String?
+        if effectiveHeadroom < requiredHeadroom {
+            let recipeHint = kind == .lokr
+                ? "Try Local LoKR with Q/V and last 4-8 layers, or switch to a smaller ACE-Step DiT model."
+                : "Try Local LoRA with Q/V and last 4-8 layers, or switch to a smaller ACE-Step DiT model."
+            memoryMessage = "Local training needs about \(formatGiB(requiredHeadroom)) of unified-memory headroom before the first backward pass, but this run only has about \(formatGiB(effectiveHeadroom)) available after loading ACE-Step (\(formatGiB(activeMemory)) MLX active on a \(formatGiB(physicalMemory)) Mac). \(recipeHint) Use Remote GPU for Cloud Style/Wide XL recipes."
+        } else {
+            memoryMessage = nil
         }
 
-        guard effectiveHeadroom < requiredHeadroom else { return }
+        var warnings: [String] = []
+        if clearCache, UInt64(max(0, beforeClear.cacheMemory)) > cacheMemory {
+            warnings.append("MLX cache was cleared before measuring local training headroom.")
+        }
+        if projectionCount >= 8 {
+            warnings.append("Full Q/K/V/O attention has a much larger local memory footprint than Q/V.")
+        }
+        if kind == .lokr, layerCount >= 16 {
+            warnings.append("LoKR across 16+ local layers is sensitive on XL models; Q/V projection coverage is recommended.")
+        }
+        if sampleCount >= 500 {
+            warnings.append("Large datasets raise the preflight reserve because preprocessing and optimizer state stay hot during training.")
+        }
 
-        let recipeHint = kind == .lokr
-            ? "Try Local LoKR with Q/V and last 4-8 layers, or switch to a smaller ACE-Step DiT model."
-            : "Try Local LoRA with Q/V and last 4-8 layers, or switch to a smaller ACE-Step DiT model."
-        let message = "Local training needs about \(Self.formatGiB(requiredHeadroom)) of unified-memory headroom before the first backward pass, but this run only has about \(Self.formatGiB(effectiveHeadroom)) available after loading ACE-Step (\(Self.formatGiB(activeMemory)) MLX active on a \(Self.formatGiB(physicalMemory)) Mac). \(recipeHint) Use Remote GPU for Cloud Style/Wide XL recipes."
-        AudioDiagnostics.note(
-            "training/memoryGuard/fail",
-            "phase=\(phase) kind=\(kind.rawValue) active=\(activeMemory) headroom=\(effectiveHeadroom) requiredHeadroom=\(requiredHeadroom) message=\(message)"
+        return TrainingLocalPreflightReport(
+            phase: phase,
+            kind: kind,
+            activeModelID: activeModelID,
+            sampleCount: sampleCount,
+            dimension: dimension,
+            layerCount: layerCount,
+            projectionCount: projectionCount,
+            injectionPatterns: injectionPatterns,
+            estimatedTrainablePathCount: layerCount * projectionCount,
+            estimatedTrainableTensorCount: layerCount * projectionCount * 2,
+            cacheBeforeClearBytes: UInt64(max(0, beforeClear.cacheMemory)),
+            activeMemoryBytes: activeMemory,
+            cacheMemoryBytes: cacheMemory,
+            peakMemoryBytes: peakMemory,
+            physicalMemoryBytes: physicalMemory,
+            systemAvailableMemoryBytes: systemAvailableMemory,
+            memoryLimitBytes: memoryLimit,
+            processHeadroomBytes: processHeadroom,
+            effectiveHeadroomBytes: effectiveHeadroom,
+            requiredHeadroomBytes: requiredHeadroom,
+            unsupportedConfigurationReason: unsupportedMessage,
+            memoryHeadroomReason: memoryMessage,
+            warnings: warnings
         )
-        throw TrainingMemoryGuardError(message: message)
     }
 
     private static func trainingHeadroomRequirement(

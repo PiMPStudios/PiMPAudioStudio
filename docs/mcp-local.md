@@ -49,7 +49,7 @@ transport:
 
 ## Tools
 
-The local MCP endpoint exposes read/status tools:
+The local MCP endpoint exposes these tools:
 
 - `list_models`
 - `list_adapters`
@@ -60,6 +60,9 @@ The local MCP endpoint exposes read/status tools:
 - `inspect_training_run`
 - `compare_training_runs`
 - `tail_training_log`
+- `training_preflight`
+- `start_training`
+- `stop_training`
 - `list_history`
 - `get_trace`
 - `compare_traces`
@@ -94,8 +97,21 @@ recommendations, `inspect_training_run` returns adapter config, progress/event
 tails, and health metrics, `compare_training_runs` returns a compact comparison
 table for recent or selected adapter runs, and `tail_training_log` returns
 recent lines from the active or latest Diagnostics log filtered to training
-lines by default. These tools are read-only; MCP does not start local training
-yet.
+lines by default.
+
+`training_preflight` resolves a reviewed local dataset and LoRA/LoKR
+configuration without starting training. It accepts the same practical knobs as
+the Training sheet: `kind`, `recipe`, rank/linear dim, alpha/alphaScale,
+dropout, epochs, layer coverage, projection coverage, target layers, LR,
+gradient accumulation, and dataset id/path aliases. It returns the same local
+memory/config guard report used by TrainingService, including known blocked
+shapes such as broad full-attention LoKR on XL models.
+
+`start_training` uses the same resolver but defaults to `dryRun: true`. To
+actually start local training, pass `dryRun: false` and either approve the MCP
+elicitation form or pass `confirm: true` after explicit approval. `stop_training`
+uses the TrainingService stop path and can save a checkpoint when possible via
+`saveCheckpoint: true`; it is also guarded by MCP elicitation or `confirm: true`.
 
 `editor_status` returns editor readiness, loaded audio metadata, supported
 editor action descriptors, and the active editor operation when present.
@@ -154,6 +170,8 @@ It also exposes controlled app actions:
 - `apply_adapter`
 - `generate_song`
 - `generate`
+- `start_training`
+- `stop_training`
 - `load_editor_audio`
 - `submit_editor_inpaint`
 - `apply_editor_effect_chain`

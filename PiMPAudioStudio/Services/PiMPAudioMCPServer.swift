@@ -896,6 +896,12 @@ private final class PiMPAudioMCPSDKBridge {
             return try facade.compareTrainingRuns(arguments: arguments)
         case "tail_training_log":
             return try facade.tailTrainingLog(arguments: arguments)
+        case "training_preflight":
+            return try await facade.trainingPreflight(arguments: arguments)
+        case "start_training":
+            return try await facade.startTraining(arguments: arguments)
+        case "stop_training":
+            return try facade.stopTraining(arguments: arguments)
         case "list_history":
             return facade.listHistory(limit: intValue(arguments["limit"]) ?? 25)
         case "get_trace":
@@ -950,7 +956,7 @@ private final class PiMPAudioMCPSDKBridge {
     ) async -> ConfirmationDecision {
         guard requiresElicitableConfirmation(toolName),
               boolArgument(arguments["confirm"]) != true,
-              !isDryRun(arguments) else {
+              !isDryRun(toolName: toolName, arguments: arguments) else {
             return .proceed(arguments)
         }
 
@@ -995,15 +1001,20 @@ private final class PiMPAudioMCPSDKBridge {
 
     private func requiresElicitableConfirmation(_ toolName: String) -> Bool {
         switch toolName {
-        case "submit_editor_inpaint", "apply_editor_effect_chain", "release_memory":
+        case "submit_editor_inpaint", "apply_editor_effect_chain", "start_training", "stop_training", "release_memory":
             return true
         default:
             return false
         }
     }
 
-    private func isDryRun(_ arguments: [String: Any]) -> Bool {
-        boolArgument(arguments["dryRun"] ?? arguments["validateOnly"]) == true
+    private func isDryRun(toolName: String, arguments: [String: Any]) -> Bool {
+        if toolName == "start_training",
+           arguments["dryRun"] == nil,
+           arguments["validateOnly"] == nil {
+            return true
+        }
+        return boolArgument(arguments["dryRun"] ?? arguments["validateOnly"]) == true
     }
 
     private func boolArgument(_ value: Any?) -> Bool? {
@@ -1048,6 +1059,10 @@ private final class PiMPAudioMCPSDKBridge {
             return "PiMP Audio Studio wants to submit a selected-region editor inpaint/repaint mutation. Approve this action?"
         case "apply_editor_effect_chain":
             return "PiMP Audio Studio wants to apply DSP effects to the loaded editor audio. Approve this mutation?"
+        case "start_training":
+            return "PiMP Audio Studio wants to start a local LoRA/LoKR training run. Approve this action?"
+        case "stop_training":
+            return "PiMP Audio Studio wants to stop the active local training run. Approve this action?"
         case "release_memory":
             return "PiMP Audio Studio wants to cancel active generation if needed, unload model weights, and flush MLX GPU cache. Approve this action?"
         default:
@@ -2175,6 +2190,41 @@ private enum MCPToolCatalog {
             ]
         ),
         tool(
+            name: "training_preflight",
+            title: "Training Preflight",
+            description: "Resolve a local LoRA/LoKR dataset and configuration without starting training, then return the same memory/config guard report used before local training.",
+            properties: trainingControlProperties(includeStartControls: false)
+        ),
+        tool(
+            name: "start_training",
+            title: "Start Training",
+            description: "Preflight or start a local LoRA/LoKR training run from a reviewed dataset package. Defaults to dryRun: true; actual runs require dryRun: false plus confirm: true or MCP form approval.",
+            properties: trainingControlProperties(includeStartControls: true)
+        ),
+        tool(
+            name: "stop_training",
+            title: "Stop Training",
+            description: "Stop the active local LoRA/LoKR training run through the same TrainingService stop path as the UI. Requires confirm: true or MCP form approval.",
+            properties: [
+                "confirm": [
+                    "type": "boolean",
+                    "description": "Required for clients that do not support MCP elicitation."
+                ],
+                "saveCheckpoint": [
+                    "type": "boolean",
+                    "description": "Whether to save a checkpoint when possible. Defaults to the app's canSaveCheckpointOnStop state."
+                ],
+                "checkpoint": [
+                    "type": "boolean",
+                    "description": "Alias for saveCheckpoint."
+                ],
+                "save": [
+                    "type": "boolean",
+                    "description": "Alias for saveCheckpoint."
+                ]
+            ]
+        ),
+        tool(
             name: "list_history",
             title: "List History",
             description: "Return recent generation history rows with model, seed, prompt summary, and trace availability.",
@@ -3156,6 +3206,209 @@ private enum MCPToolCatalog {
             ]
         )
     ]
+
+    private static func trainingControlProperties(includeStartControls: Bool) -> [String: Any] {
+        var properties: [String: Any] = [
+            "path": [
+                "type": "string",
+                "description": "Full path to a dataset package containing captions.json. Defaults to the newest visible dataset."
+            ],
+            "directory": [
+                "type": "string",
+                "description": "Alias for path."
+            ],
+            "datasetPath": [
+                "type": "string",
+                "description": "Alias for path."
+            ],
+            "dataset": [
+                "type": "string",
+                "description": "Dataset id, folder name, or partial dataset name. Defaults to the newest visible dataset."
+            ],
+            "id": [
+                "type": "string",
+                "description": "Alias for dataset when identifying a dataset package."
+            ],
+            "kind": [
+                "type": "string",
+                "enum": ["lora", "lokr"],
+                "description": "Adapter type to train. Defaults to lora."
+            ],
+            "adapterKind": [
+                "type": "string",
+                "enum": ["lora", "lokr"],
+                "description": "Alias for kind."
+            ],
+            "mode": [
+                "type": "string",
+                "enum": ["lora", "lokr"],
+                "description": "Alias for kind."
+            ],
+            "recipe": [
+                "type": "string",
+                "enum": ["local", "cloudStyle", "cloudVoice", "wide"],
+                "description": "Configuration preset. LoRA supports local, cloudStyle, cloudVoice. LoKR supports local and wide."
+            ],
+            "preset": [
+                "type": "string",
+                "description": "Alias for recipe."
+            ],
+            "adapterName": [
+                "type": "string",
+                "description": "Name for the adapter if training is started."
+            ],
+            "name": [
+                "type": "string",
+                "description": "Alias for adapterName when no dataset id/name/path is provided."
+            ],
+            "rank": [
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 256,
+                "description": "LoRA rank, or LoKR linear dimension if linearDim is omitted."
+            ],
+            "linearDim": [
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 256,
+                "description": "LoKR linear dimension."
+            ],
+            "dimension": [
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 256,
+                "description": "Alias for rank/linearDim."
+            ],
+            "alpha": [
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "description": "Adapter alpha. Defaults to alphaScale * rank/linearDim."
+            ],
+            "alphaScale": [
+                "description": "Alpha multiplier. Accepts 1x/rank, 2x/double, or a positive number."
+            ],
+            "scale": [
+                "description": "Alias for alphaScale."
+            ],
+            "dropout": [
+                "type": "number",
+                "minimum": 0,
+                "maximum": 0.95
+            ],
+            "epochs": [
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000
+            ],
+            "maxEpochs": [
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000,
+                "description": "Alias for epochs."
+            ],
+            "layerCoverage": [
+                "description": "Layer count or label: last4, last8, last12, last16, all32."
+            ],
+            "trainingLayerCount": [
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 32,
+                "description": "Alias for layerCoverage."
+            ],
+            "layerCount": [
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 32,
+                "description": "Alias for layerCoverage."
+            ],
+            "projectionCoverage": [
+                "type": "string",
+                "enum": ["qv", "qkvo", "full"],
+                "description": "Projection surface. qv is local-safe; qkvo/full is wider."
+            ],
+            "projections": [
+                "type": "string",
+                "description": "Alias for projectionCoverage."
+            ],
+            "projection": [
+                "type": "string",
+                "description": "Alias for projectionCoverage."
+            ],
+            "targetLayers": [
+                "description": "String or array containing selfAttention, crossAttention, mlp, attention, or all."
+            ],
+            "targets": [
+                "description": "Alias for targetLayers."
+            ],
+            "exactInjectionPatterns": [
+                "type": "array",
+                "items": ["type": "string"],
+                "description": "Exact module patterns to train. Overrides projectionCoverage."
+            ],
+            "injectionPatterns": [
+                "type": "array",
+                "items": ["type": "string"],
+                "description": "Alias for exactInjectionPatterns."
+            ],
+            "learningRate": [
+                "type": "number",
+                "minimum": 0.000001,
+                "maximum": 0.01
+            ],
+            "lr": [
+                "type": "number",
+                "description": "Alias for learningRate."
+            ],
+            "gradientAccumulationSteps": [
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 64
+            ],
+            "gradAccumulation": [
+                "type": "integer",
+                "description": "Alias for gradientAccumulationSteps."
+            ],
+            "gradAccum": [
+                "type": "integer",
+                "description": "Alias for gradientAccumulationSteps."
+            ],
+            "batchSize": [
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 16
+            ],
+            "warmupFraction": [
+                "type": "number",
+                "minimum": 0,
+                "maximum": 0.5
+            ],
+            "warmup": [
+                "type": "number",
+                "description": "Alias for warmupFraction."
+            ],
+            "clearCache": [
+                "type": "boolean",
+                "description": "Whether preflight clears the MLX cache before measuring headroom. Defaults to true."
+            ]
+        ]
+
+        if includeStartControls {
+            properties["dryRun"] = [
+                "type": "boolean",
+                "description": "Defaults to true. Set false, with confirmation, to actually start training."
+            ]
+            properties["validateOnly"] = [
+                "type": "boolean",
+                "description": "Alias for dryRun."
+            ]
+            properties["confirm"] = [
+                "type": "boolean",
+                "description": "Required for actual training when the client does not support MCP elicitation."
+            ]
+        }
+
+        return properties
+    }
 
     private static func tool(
         name: String,

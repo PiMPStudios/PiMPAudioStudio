@@ -312,6 +312,137 @@ final class PiMPAudioCommandFacade {
         ]
     }
 
+    func trainingPreflight(arguments: [String: Any]) async throws -> [String: Any] {
+        guard let trainingService else {
+            throw PiMPAudioCommandFacadeError.trainingServiceUnavailable
+        }
+        let request = try resolveMCPTrainingRequest(arguments: arguments)
+        let clearCache = boolValue(arguments["clearCache"]) ?? true
+        let report = await trainingService.localTrainingPreflight(
+            kind: request.kind,
+            sampleCount: request.importedFiles.count,
+            config: request.config,
+            lokrConfig: request.lokrConfig,
+            clearCache: clearCache
+        )
+        return trainingPreflightResponsePayload(
+            request: request,
+            report: report,
+            submitted: false,
+            dryRun: true,
+            confirmation: NSNull()
+        )
+    }
+
+    func startTraining(arguments: [String: Any]) async throws -> [String: Any] {
+        guard let trainingService else {
+            throw PiMPAudioCommandFacadeError.trainingServiceUnavailable
+        }
+
+        let request = try resolveMCPTrainingRequest(arguments: arguments)
+        let clearCache = boolValue(arguments["clearCache"]) ?? true
+        let report = await trainingService.localTrainingPreflight(
+            kind: request.kind,
+            sampleCount: request.importedFiles.count,
+            config: request.config,
+            lokrConfig: request.lokrConfig,
+            clearCache: clearCache
+        )
+        let wantsActualRun = boolValue(arguments["dryRun"] ?? arguments["validateOnly"]) == false
+        guard wantsActualRun else {
+            return trainingPreflightResponsePayload(
+                request: request,
+                report: report,
+                submitted: false,
+                dryRun: true,
+                confirmation: confirmationRequirementPayload(toolName: "start_training")
+            )
+        }
+        guard boolValue(arguments["confirm"]) == true else {
+            throw PiMPAudioCommandFacadeError.confirmationRequired("start_training")
+        }
+        guard report.allowed else {
+            return trainingPreflightResponsePayload(
+                request: request,
+                report: report,
+                submitted: false,
+                dryRun: false,
+                confirmation: NSNull()
+            )
+        }
+        guard !trainingStateIsActive(trainingService.state) else {
+            throw PiMPAudioCommandFacadeError.trainingAlreadyActive(
+                trainingStatePayload(trainingService.state)["status"].map(String.init(describing:)) ?? "active"
+            )
+        }
+
+        switch request.kind {
+        case .lora:
+            trainingService.startTraining(
+                entries: [],
+                audioURLs: [],
+                importedFiles: request.importedFiles,
+                adapterName: request.adapterName,
+                config: request.config
+            )
+        case .lokr:
+            guard let lokrConfig = request.lokrConfig else {
+                throw PiMPAudioCommandFacadeError.invalidTrainingConfiguration("LoKR training requires a LoKR config.")
+            }
+            trainingService.startLoKRTraining(
+                entries: [],
+                audioURLs: [],
+                importedFiles: request.importedFiles,
+                adapterName: request.adapterName,
+                config: lokrConfig
+            )
+        }
+
+        var payload = trainingPreflightResponsePayload(
+            request: request,
+            report: report,
+            submitted: true,
+            dryRun: false,
+            confirmation: [
+                "required": true,
+                "accepted": true,
+                "confirmArgument": "confirm"
+            ]
+        )
+        payload["status"] = trainingStatus()
+        payload["note"] = "Training was submitted through the native TrainingService. Poll training_status, tail_training_log, or inspect_training_run after the adapter appears."
+        return payload
+    }
+
+    func stopTraining(arguments: [String: Any]) throws -> [String: Any] {
+        guard boolValue(arguments["confirm"]) == true else {
+            throw PiMPAudioCommandFacadeError.confirmationRequired("stop_training")
+        }
+        guard let trainingService else {
+            throw PiMPAudioCommandFacadeError.trainingServiceUnavailable
+        }
+
+        let saveCheckpoint = boolValue(
+            arguments["saveCheckpoint"] ?? arguments["checkpoint"] ?? arguments["save"]
+        ) ?? trainingService.canSaveOnStop
+        guard trainingStateIsActive(trainingService.state) else {
+            return [
+                "submitted": false,
+                "stopped": false,
+                "reason": "trainingNotActive",
+                "status": trainingStatus()
+            ]
+        }
+
+        trainingService.stopTraining(saveCheckpoint: saveCheckpoint)
+        return [
+            "submitted": true,
+            "stopped": true,
+            "saveCheckpoint": saveCheckpoint,
+            "status": trainingStatus()
+        ]
+    }
+
     func listResources() async -> [[String: Any]] {
         var resources: [[String: Any]] = [
             resource(
@@ -1621,6 +1752,550 @@ final class PiMPAudioCommandFacade {
                 .appendingPathComponent(TrainingDatasetPackageWriter.remotePackageFileName)
                 .path(percentEncoded: false)
         ]
+    }
+
+    private func resolveMCPTrainingRequest(arguments: [String: Any]) throws -> MCPTrainingRequest {
+        let kind = try mcpTrainingKind(from: arguments["kind"] ?? arguments["adapterKind"] ?? arguments["mode"])
+        let directory = try resolveTrainingDatasetDirectory(arguments: mcpTrainingDatasetArguments(arguments))
+        let document = try TrainingDatasetPackageEditor.loadPackage(at: directory)
+        let importedFiles = try TrainingDatasetPackageEditor.importedFiles(for: document)
+        let profile = trainingDatasetProfile(for: document)
+        let recommendation = TrainingPlanRecommendation.make(adapterKind: kind, profile: profile)
+        let recipe = try mcpTrainingRecipe(from: arguments["recipe"] ?? arguments["preset"], kind: kind)
+        let defaults = mcpTrainingDefaults(
+            recipe: recipe,
+            kind: kind,
+            recommendation: recommendation
+        )
+
+        let dimension = try boundedTrainingInt(
+            arguments["rank"] ?? arguments["linearDim"] ?? arguments["dimension"],
+            defaultValue: defaults.dimension,
+            name: kind == .lokr ? "linearDim" : "rank",
+            range: 1...256
+        )
+        let epochs = try boundedTrainingInt(
+            arguments["epochs"] ?? arguments["maxEpochs"],
+            defaultValue: defaults.epochs,
+            name: "epochs",
+            range: 1...1_000
+        )
+        let layerCount = try boundedTrainingLayerCount(
+            arguments["layerCoverage"] ?? arguments["trainingLayerCount"] ?? arguments["layerCount"],
+            defaultValue: defaults.layerCount
+        )
+        let gradientAccumulation = try boundedTrainingInt(
+            arguments["gradientAccumulationSteps"] ?? arguments["gradAccumulation"] ?? arguments["gradAccum"],
+            defaultValue: defaults.gradientAccumulationSteps,
+            name: "gradientAccumulationSteps",
+            range: 1...64
+        )
+        let batchSize = try boundedTrainingInt(
+            arguments["batchSize"],
+            defaultValue: 1,
+            name: "batchSize",
+            range: 1...16
+        )
+        let learningRate = try boundedTrainingFloat(
+            arguments["learningRate"] ?? arguments["lr"],
+            defaultValue: defaults.learningRate,
+            name: "learningRate",
+            range: 0.000_001...0.01
+        )
+        let dropout = try boundedTrainingFloat(
+            arguments["dropout"],
+            defaultValue: defaults.dropout,
+            name: "dropout",
+            range: 0...0.95
+        )
+        let warmupFraction = try boundedTrainingFloat(
+            arguments["warmupFraction"] ?? arguments["warmup"],
+            defaultValue: 0.10,
+            name: "warmupFraction",
+            range: 0...0.50
+        )
+        let alpha = try mcpTrainingAlpha(
+            from: arguments["alpha"],
+            alphaScale: arguments["alphaScale"] ?? arguments["scale"],
+            dimension: dimension,
+            defaultScale: defaults.alphaScale
+        )
+        let targetLayers = try mcpTrainingTargetLayers(
+            from: arguments["targetLayers"] ?? arguments["targets"],
+            defaultValue: defaults.targetLayers
+        )
+        let exactInjectionPatterns = try mcpTrainingInjectionPatterns(
+            arguments: arguments,
+            targetLayers: targetLayers,
+            defaultCoverage: defaults.projectionCoverage
+        )
+        let adapterName = mcpTrainingAdapterName(
+            arguments: arguments,
+            document: document,
+            kind: kind
+        )
+
+        let config = LoRAConfig(
+            rank: dimension,
+            alpha: alpha,
+            dropout: dropout,
+            targetLayers: targetLayers,
+            exactInjectionPatterns: exactInjectionPatterns,
+            learningRate: learningRate,
+            maxEpochs: epochs,
+            batchSize: batchSize,
+            warmupFraction: warmupFraction,
+            gradientAccumulationSteps: gradientAccumulation,
+            trainingLayerCount: layerCount
+        )
+        let lokrConfig = kind == .lokr
+            ? LoKRConfig(
+                linearDim: dimension,
+                alpha: alpha,
+                dropout: dropout,
+                targetLayers: targetLayers,
+                exactInjectionPatterns: exactInjectionPatterns,
+                learningRate: learningRate,
+                maxEpochs: epochs,
+                batchSize: batchSize,
+                warmupFraction: warmupFraction,
+                gradientAccumulationSteps: gradientAccumulation,
+                trainingLayerCount: layerCount
+            )
+            : nil
+
+        return MCPTrainingRequest(
+            kind: kind,
+            recipe: recipe,
+            dataset: document,
+            importedFiles: importedFiles,
+            adapterName: adapterName,
+            config: config,
+            lokrConfig: lokrConfig
+        )
+    }
+
+    private func mcpTrainingDatasetArguments(_ arguments: [String: Any]) -> [String: Any] {
+        guard arguments["dataset"] == nil,
+              arguments["id"] == nil,
+              arguments["path"] == nil,
+              arguments["directory"] == nil,
+              arguments["datasetPath"] == nil else {
+            return arguments
+        }
+
+        var datasetArguments = arguments
+        datasetArguments["name"] = nil
+        return datasetArguments
+    }
+
+    private func mcpTrainingKind(from value: Any?) throws -> AdapterKind {
+        guard let raw = stringValue(value)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty else {
+            return .lora
+        }
+        switch compactTrainingToken(raw) {
+        case "lora":
+            return .lora
+        case "lokr":
+            return .lokr
+        default:
+            throw PiMPAudioCommandFacadeError.invalidTrainingKind(raw)
+        }
+    }
+
+    private func mcpTrainingRecipe(from value: Any?, kind: AdapterKind) throws -> MCPTrainingRecipe {
+        guard let raw = stringValue(value)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty else {
+            return .local
+        }
+
+        switch compactTrainingToken(raw) {
+        case "local", "balanced", "balancedlocal":
+            return .local
+        case "cloudstyle", "cloudstylequality", "style", "stylequality":
+            guard kind == .lora else {
+                throw PiMPAudioCommandFacadeError.invalidTrainingRecipe(raw)
+            }
+            return .cloudStyle
+        case "cloudvoice", "cloudvoicebalanced", "voice", "voicebalanced":
+            guard kind == .lora else {
+                throw PiMPAudioCommandFacadeError.invalidTrainingRecipe(raw)
+            }
+            return .cloudVoice
+        case "wide", "expanded", "expandedlokr":
+            guard kind == .lokr else {
+                throw PiMPAudioCommandFacadeError.invalidTrainingRecipe(raw)
+            }
+            return .wide
+        default:
+            throw PiMPAudioCommandFacadeError.invalidTrainingRecipe(raw)
+        }
+    }
+
+    private func mcpTrainingDefaults(
+        recipe: MCPTrainingRecipe,
+        kind: AdapterKind,
+        recommendation: TrainingPlanRecommendation?
+    ) -> MCPTrainingDefaults {
+        switch recipe {
+        case .local:
+            return MCPTrainingDefaults(
+                dimension: recommendation?.rank ?? 16,
+                epochs: recommendation?.epochs ?? 10,
+                layerCount: recommendation?.layerCount ?? 8,
+                projectionCoverage: .queryValue,
+                alphaScale: 1,
+                dropout: 0,
+                targetLayers: [.selfAttention, .crossAttention],
+                gradientAccumulationSteps: recommendation?.gradientAccumulationSteps ?? 1,
+                learningRate: 0.0001
+            )
+        case .cloudStyle:
+            return MCPTrainingDefaults(
+                dimension: 96,
+                epochs: 150,
+                layerCount: 32,
+                projectionCoverage: .fullAttention,
+                alphaScale: 2,
+                dropout: 0.08,
+                targetLayers: [.selfAttention, .crossAttention],
+                gradientAccumulationSteps: 4,
+                learningRate: 0.000075
+            )
+        case .cloudVoice:
+            return MCPTrainingDefaults(
+                dimension: 64,
+                epochs: 100,
+                layerCount: 32,
+                projectionCoverage: .fullAttention,
+                alphaScale: 2,
+                dropout: 0.10,
+                targetLayers: [.selfAttention, .crossAttention],
+                gradientAccumulationSteps: 4,
+                learningRate: 0.0001
+            )
+        case .wide:
+            return MCPTrainingDefaults(
+                dimension: kind == .lokr ? 32 : 64,
+                epochs: 100,
+                layerCount: kind == .lokr ? 16 : 32,
+                projectionCoverage: kind == .lokr ? .queryValue : .fullAttention,
+                alphaScale: 2,
+                dropout: 0.08,
+                targetLayers: [.selfAttention, .crossAttention],
+                gradientAccumulationSteps: 4,
+                learningRate: 0.0001
+            )
+        }
+    }
+
+    private func boundedTrainingInt(
+        _ value: Any?,
+        defaultValue: Int,
+        name: String,
+        range: ClosedRange<Int>
+    ) throws -> Int {
+        let resolved = integerValue(value) ?? defaultValue
+        guard range.contains(resolved) else {
+            throw PiMPAudioCommandFacadeError.invalidTrainingConfiguration(
+                "\(name) must be between \(range.lowerBound) and \(range.upperBound)."
+            )
+        }
+        return resolved
+    }
+
+    private func boundedTrainingLayerCount(_ value: Any?, defaultValue: Int) throws -> Int {
+        if let raw = stringValue(value)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !raw.isEmpty,
+           integerValue(raw) == nil {
+            switch compactTrainingToken(raw) {
+            case "last4":
+                return 4
+            case "last8":
+                return 8
+            case "last12":
+                return 12
+            case "last16":
+                return 16
+            case "all32", "all", "full":
+                return 32
+            default:
+                throw PiMPAudioCommandFacadeError.invalidTrainingConfiguration(
+                    "layerCoverage must be a number from 1 to 32, or one of last4, last8, last12, last16, all32."
+                )
+            }
+        }
+        return try boundedTrainingInt(value, defaultValue: defaultValue, name: "layerCoverage", range: 1...32)
+    }
+
+    private func boundedTrainingFloat(
+        _ value: Any?,
+        defaultValue: Float,
+        name: String,
+        range: ClosedRange<Float>
+    ) throws -> Float {
+        let resolved = doubleValue(value).map(Float.init) ?? defaultValue
+        guard range.contains(resolved) else {
+            throw PiMPAudioCommandFacadeError.invalidTrainingConfiguration(
+                "\(name) must be between \(range.lowerBound) and \(range.upperBound)."
+            )
+        }
+        return resolved
+    }
+
+    private func mcpTrainingAlpha(
+        from value: Any?,
+        alphaScale: Any?,
+        dimension: Int,
+        defaultScale: Float
+    ) throws -> Float {
+        if let explicit = doubleValue(value).map(Float.init) {
+            guard explicit > 0 else {
+                throw PiMPAudioCommandFacadeError.invalidTrainingConfiguration("alpha must be greater than 0.")
+            }
+            return explicit
+        }
+
+        let scale: Float
+        if let raw = stringValue(alphaScale)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !raw.isEmpty {
+            switch compactTrainingToken(raw) {
+            case "rank", "dim", "dimension", "1", "1x":
+                scale = 1
+            case "double", "doublerank", "doubledim", "2", "2x":
+                scale = 2
+            default:
+                guard let numeric = doubleValue(raw), numeric > 0 else {
+                    throw PiMPAudioCommandFacadeError.invalidTrainingConfiguration(
+                        "alphaScale must be a positive number, 1x/rank, or 2x/double."
+                    )
+                }
+                scale = Float(numeric)
+            }
+        } else if let numeric = doubleValue(alphaScale) {
+            guard numeric > 0 else {
+                throw PiMPAudioCommandFacadeError.invalidTrainingConfiguration("alphaScale must be greater than 0.")
+            }
+            scale = Float(numeric)
+        } else {
+            scale = defaultScale
+        }
+        return Float(dimension) * scale
+    }
+
+    private func mcpTrainingTargetLayers(
+        from value: Any?,
+        defaultValue: Set<TargetLayer>
+    ) throws -> Set<TargetLayer> {
+        guard let rawLayers = stringArrayValue(value), !rawLayers.isEmpty else {
+            return defaultValue
+        }
+
+        var layers = Set<TargetLayer>()
+        for raw in rawLayers {
+            switch compactTrainingToken(raw) {
+            case "self", "selfattn", "selfattention":
+                layers.insert(.selfAttention)
+            case "cross", "crossattn", "crossattention":
+                layers.insert(.crossAttention)
+            case "mlp", "feedforward", "ffn":
+                layers.insert(.mlp)
+            case "attention", "attn", "both":
+                layers.formUnion([.selfAttention, .crossAttention])
+            case "all":
+                layers.formUnion(TargetLayer.allCases)
+            default:
+                throw PiMPAudioCommandFacadeError.invalidTrainingConfiguration(
+                    "Unsupported target layer '\(raw)'. Use selfAttention, crossAttention, mlp, attention, or all."
+                )
+            }
+        }
+        guard !layers.isEmpty else {
+            throw PiMPAudioCommandFacadeError.invalidTrainingConfiguration("targetLayers cannot be empty.")
+        }
+        return layers
+    }
+
+    private func mcpTrainingInjectionPatterns(
+        arguments: [String: Any],
+        targetLayers: Set<TargetLayer>,
+        defaultCoverage: MCPTrainingProjectionCoverage
+    ) throws -> [String]? {
+        if let patterns = stringArrayValue(arguments["exactInjectionPatterns"] ?? arguments["injectionPatterns"]),
+           !patterns.isEmpty {
+            return patterns
+        }
+
+        let coverage: MCPTrainingProjectionCoverage
+        if let raw = stringValue(
+            arguments["projectionCoverage"] ?? arguments["projections"] ?? arguments["projection"]
+        )?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !raw.isEmpty {
+            switch compactTrainingToken(raw) {
+            case "qv", "queryvalue", "queryvalueonly":
+                coverage = .queryValue
+            case "qkvo", "full", "fullattention", "all":
+                coverage = .fullAttention
+            default:
+                throw PiMPAudioCommandFacadeError.invalidTrainingConfiguration(
+                    "projectionCoverage must be qv or qkvo."
+                )
+            }
+        } else {
+            coverage = defaultCoverage
+        }
+
+        switch coverage {
+        case .queryValue:
+            return nil
+        case .fullAttention:
+            var patterns: [String] = []
+            if targetLayers.contains(.selfAttention) {
+                patterns.append(contentsOf: [
+                    "selfAttn.qProj",
+                    "selfAttn.kProj",
+                    "selfAttn.vProj",
+                    "selfAttn.oProj",
+                ])
+            }
+            if targetLayers.contains(.crossAttention) {
+                patterns.append(contentsOf: [
+                    "crossAttn.qProj",
+                    "crossAttn.kProj",
+                    "crossAttn.vProj",
+                    "crossAttn.oProj",
+                ])
+            }
+            if targetLayers.contains(.mlp) {
+                patterns.append(contentsOf: TargetLayer.mlp.defaultPatterns)
+            }
+            return patterns.isEmpty ? nil : patterns
+        }
+    }
+
+    private func mcpTrainingAdapterName(
+        arguments: [String: Any],
+        document: DatasetPackageDocument,
+        kind: AdapterKind
+    ) -> String {
+        if let explicit = stringValue(arguments["adapterName"] ?? arguments["name"])?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !explicit.isEmpty {
+            return explicit
+        }
+        let baseName = document.name
+            .replacingOccurrences(of: "_local_", with: " ")
+            .replacingOccurrences(of: "_", with: " ")
+        return "\(baseName) \(mcpTrainingKindTitle(kind))"
+    }
+
+    private func trainingPreflightResponsePayload(
+        request: MCPTrainingRequest,
+        report: TrainingLocalPreflightReport,
+        submitted: Bool,
+        dryRun: Bool,
+        confirmation: Any
+    ) -> [String: Any] {
+        let lokrPayload: Any = request.lokrConfig.map(lokrConfigPayload) ?? NSNull()
+        let effectiveInjectionPatterns = request.lokrConfig?.injectionPatterns ?? request.config.injectionPatterns
+        let blockedReason: Any = report.blockedReason.map { $0 as Any } ?? NSNull()
+        return [
+            "submitted": submitted,
+            "dryRun": dryRun,
+            "allowed": report.allowed,
+            "blockedReason": blockedReason,
+            "adapterName": request.adapterName,
+            "kind": request.kind.rawValue,
+            "recipe": request.recipe.rawValue,
+            "dataset": [
+                "summary": trainingDatasetPayload(TrainingDatasetPackageEditor.packageSummary(at: request.dataset.directory)),
+                "clipCount": request.dataset.clips.count,
+                "importedFileCount": request.importedFiles.count
+            ],
+            "configuration": [
+                "lora": loraConfigPayload(request.config),
+                "lokr": lokrPayload,
+                "effectiveInjectionPatterns": effectiveInjectionPatterns
+            ],
+            "preflight": trainingLocalPreflightPayload(report),
+            "confirmation": confirmation
+        ]
+    }
+
+    private func trainingLocalPreflightPayload(_ report: TrainingLocalPreflightReport) -> [String: Any] {
+        let blockedReason: Any = report.blockedReason.map { $0 as Any } ?? NSNull()
+        let unsupportedConfigurationReason: Any = report.unsupportedConfigurationReason.map { $0 as Any } ?? NSNull()
+        let memoryHeadroomReason: Any = report.memoryHeadroomReason.map { $0 as Any } ?? NSNull()
+        let systemAvailableBytes: Any = report.systemAvailableMemoryBytes ?? NSNull()
+        let systemAvailable: Any = report.systemAvailableMemoryBytes.map { formatGiB($0) } ?? NSNull()
+        return [
+            "phase": report.phase,
+            "allowed": report.allowed,
+            "blockedReason": blockedReason,
+            "unsupportedConfigurationReason": unsupportedConfigurationReason,
+            "memoryHeadroomReason": memoryHeadroomReason,
+            "kind": report.kind.rawValue,
+            "activeModelID": report.activeModelID,
+            "sampleCount": report.sampleCount,
+            "dimension": report.dimension,
+            "layerCount": report.layerCount,
+            "projectionCount": report.projectionCount,
+            "injectionPatterns": report.injectionPatterns,
+            "estimatedTrainablePathCount": report.estimatedTrainablePathCount,
+            "estimatedTrainableTensorCount": report.estimatedTrainableTensorCount,
+            "memory": [
+                "cacheBeforeClearBytes": report.cacheBeforeClearBytes,
+                "cacheBeforeClear": formatGiB(report.cacheBeforeClearBytes),
+                "activeBytes": report.activeMemoryBytes,
+                "active": formatGiB(report.activeMemoryBytes),
+                "cacheBytes": report.cacheMemoryBytes,
+                "cache": formatGiB(report.cacheMemoryBytes),
+                "peakBytes": report.peakMemoryBytes,
+                "peak": formatGiB(report.peakMemoryBytes),
+                "physicalBytes": report.physicalMemoryBytes,
+                "physical": formatGiB(report.physicalMemoryBytes),
+                "systemAvailableBytes": systemAvailableBytes,
+                "systemAvailable": systemAvailable,
+                "memoryLimitBytes": report.memoryLimitBytes,
+                "memoryLimit": formatGiB(report.memoryLimitBytes),
+                "processHeadroomBytes": report.processHeadroomBytes,
+                "processHeadroom": formatGiB(report.processHeadroomBytes),
+                "effectiveHeadroomBytes": report.effectiveHeadroomBytes,
+                "effectiveHeadroom": formatGiB(report.effectiveHeadroomBytes),
+                "requiredHeadroomBytes": report.requiredHeadroomBytes,
+                "requiredHeadroom": formatGiB(report.requiredHeadroomBytes)
+            ],
+            "warnings": report.warnings,
+            "note": "Preflight uses the current MLX memory snapshot. Training rechecks after ACE-Step model load and again before the first trainer pass."
+        ]
+    }
+
+    private func trainingStateIsActive(_ state: TrainingState) -> Bool {
+        switch state {
+        case .loadingModels, .preparingDataset, .training, .saving:
+            return true
+        case .idle, .complete, .failed, .cancelled, .paused:
+            return false
+        }
+    }
+
+    private func mcpTrainingKindTitle(_ kind: AdapterKind) -> String {
+        switch kind {
+        case .lora:
+            return "LoRA"
+        case .lokr:
+            return "LoKR"
+        }
+    }
+
+    private func compactTrainingToken(_ raw: String) -> String {
+        raw
+            .lowercased()
+            .replacingOccurrences(of: " ", with: "")
+            .replacingOccurrences(of: "-", with: "")
+            .replacingOccurrences(of: "_", with: "")
+            .replacingOccurrences(of: "/", with: "")
     }
 
     private func resolveTrainingDatasetDirectory(arguments: [String: Any]) throws -> URL {
@@ -4659,6 +5334,31 @@ final class PiMPAudioCommandFacade {
         }
     }
 
+    private func stringArrayValue(_ value: Any?) -> [String]? {
+        switch value {
+        case is NSNull:
+            return nil
+        case let values as [String]:
+            return values
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+        case let values as [Any]:
+            return values
+                .compactMap(stringValue)
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+        case let raw as String:
+            return raw
+                .split { character in
+                    character == "," || character == "\n" || character == ";"
+                }
+                .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+        default:
+            return nil
+        }
+    }
+
     private func requiredString(_ key: String, in arguments: [String: Any]) throws -> String {
         let value = stringValue(arguments[key])?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !value.isEmpty else {
@@ -4901,6 +5601,10 @@ final class PiMPAudioCommandFacade {
         return String(oneLine.prefix(max(0, limit - 3))) + "..."
     }
 
+    private func formatGiB(_ bytes: UInt64) -> String {
+        String(format: "%.1f GiB", Double(bytes) / 1_073_741_824)
+    }
+
     private func resource(
         uri: String,
         name: String,
@@ -4934,6 +5638,40 @@ final class PiMPAudioCommandFacade {
             "fallback": "Clients without MCP elicitation support must call \(toolName) with confirm: true after explicit user approval."
         ]
     }
+}
+
+private enum MCPTrainingRecipe: String {
+    case local
+    case cloudStyle
+    case cloudVoice
+    case wide
+}
+
+private enum MCPTrainingProjectionCoverage {
+    case queryValue
+    case fullAttention
+}
+
+private struct MCPTrainingDefaults {
+    let dimension: Int
+    let epochs: Int
+    let layerCount: Int
+    let projectionCoverage: MCPTrainingProjectionCoverage
+    let alphaScale: Float
+    let dropout: Float
+    let targetLayers: Set<TargetLayer>
+    let gradientAccumulationSteps: Int
+    let learningRate: Float
+}
+
+private struct MCPTrainingRequest {
+    let kind: AdapterKind
+    let recipe: MCPTrainingRecipe
+    let dataset: DatasetPackageDocument
+    let importedFiles: [TrainingImportedFile]
+    let adapterName: String
+    let config: LoRAConfig
+    let lokrConfig: LoKRConfig?
 }
 
 private enum PiMPAudioCommandFacadeError: LocalizedError {
@@ -4976,6 +5714,11 @@ private enum PiMPAudioCommandFacadeError: LocalizedError {
     case invalidDSPTarget(String)
     case invalidDSPParameters(String)
     case operationNotFound(String)
+    case trainingServiceUnavailable
+    case trainingAlreadyActive(String)
+    case invalidTrainingKind(String)
+    case invalidTrainingRecipe(String)
+    case invalidTrainingConfiguration(String)
     case encodingFailed
 
     var errorDescription: String? {
@@ -5058,6 +5801,16 @@ private enum PiMPAudioCommandFacadeError: LocalizedError {
             return reason
         case .operationNotFound(let id):
             return "No MCP operation matched '\(id)'."
+        case .trainingServiceUnavailable:
+            return "Training service is not ready yet."
+        case .trainingAlreadyActive(let status):
+            return "Training is already active (state: \(status)). Stop it before starting another MCP training run."
+        case .invalidTrainingKind(let value):
+            return "Unsupported training kind '\(value)'. Use 'lora' or 'lokr'."
+        case .invalidTrainingRecipe(let value):
+            return "Unsupported training recipe '\(value)'. Use local, cloudStyle/cloudVoice for LoRA, or wide for LoKR."
+        case .invalidTrainingConfiguration(let reason):
+            return reason
         case .encodingFailed:
             return "Could not encode the trace as JSON."
         }
