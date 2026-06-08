@@ -1057,12 +1057,22 @@ final class TrainingService: ObservableObject {
             dimension = max(1, config.rank)
         }
 
+        let diagnosticsOverrideEnabled = AudioDiagnostics.isEnabled
         let unsupportedMessage = unsupportedLocalTrainingConfigurationMessage(
             kind: kind,
             layerCount: layerCount,
             dimension: dimension,
-            injectionPatterns: injectionPatterns
+            injectionPatterns: injectionPatterns,
+            diagnosticsOverrideEnabled: diagnosticsOverrideEnabled
         )
+        let diagnosticsOverrideMessage = diagnosticsOverrideEnabled
+            ? knownLocalTrainingStallMessage(
+                kind: kind,
+                layerCount: layerCount,
+                dimension: dimension,
+                injectionPatterns: injectionPatterns
+            )
+            : nil
         let memoryMessage: String?
         if effectiveHeadroom < requiredHeadroom {
             let recipeHint = kind == .lokr
@@ -1078,7 +1088,10 @@ final class TrainingService: ObservableObject {
             warnings.append("MLX cache was cleared before measuring local training headroom.")
         }
         if projectionCount >= 8 {
-            warnings.append("Full Q/K/V/O attention has a much larger local memory footprint than Q/V.")
+            warnings.append("Full Q/K/V/O attention has a much larger local memory and first-backward graph footprint than Q/V.")
+        }
+        if let diagnosticsOverrideMessage {
+            warnings.append("Verbose diagnostics override is allowing an experimental local shape that previously stalled: \(diagnosticsOverrideMessage)")
         }
         if kind == .lokr, layerCount >= 16 {
             warnings.append("LoKR across 16+ local layers is sensitive on XL models; Q/V projection coverage is recommended.")
@@ -1152,6 +1165,22 @@ final class TrainingService: ObservableObject {
         kind: AdapterKind,
         layerCount: Int,
         dimension: Int,
+        injectionPatterns: [String],
+        diagnosticsOverrideEnabled: Bool
+    ) -> String? {
+        guard !diagnosticsOverrideEnabled else { return nil }
+        return knownLocalTrainingStallMessage(
+            kind: kind,
+            layerCount: layerCount,
+            dimension: dimension,
+            injectionPatterns: injectionPatterns
+        )
+    }
+
+    private static func knownLocalTrainingStallMessage(
+        kind: AdapterKind,
+        layerCount: Int,
+        dimension: Int,
         injectionPatterns: [String]
     ) -> String? {
         let hasFullAttention = injectionPatterns.contains { pattern in
@@ -1166,8 +1195,8 @@ final class TrainingService: ObservableObject {
             return "Full Q/K/V/O LoKR above Linear Dim 32 repeatedly stalls local MLX training before the first loss. Use Linear Dim 32 with Q/V projections, or use Remote GPU."
         }
 
-        if kind == .lora, hasFullAttention, layerCount >= 32 {
-            return "All-32 Q/K/V/O LoRA is a Remote GPU recipe on this local XL model. Use Q/V projections or fewer layers for on-device training."
+        if kind == .lora, hasFullAttention, layerCount >= 12 {
+            return "Full Q/K/V/O LoRA across 12+ local XL layers repeatedly stalls MLX VJP during the first backward pass. Use Q/V projections, reduce Layer Coverage to Last 8, or use Remote GPU for this adapter shape."
         }
 
         return nil

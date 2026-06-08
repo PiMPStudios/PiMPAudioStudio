@@ -178,7 +178,16 @@ public final class LoKRTrainer {
                         "kind=lokr args=\(args.count) trainableArgumentCount=\(trainableArgumentCount)"
                     )
                 }
+                let firstBackwardWatchdog = shouldLogSample
+                    ? Self.startFirstBackwardWatchdog(
+                        kind: "lokr",
+                        argsCount: args.count,
+                        trainableArgumentCount: trainableArgumentCount,
+                        startedAt: lossGradStart
+                    )
+                    : nil
                 let (lossValues, grads) = lossGrad(model, args)
+                firstBackwardWatchdog?.cancel()
                 let lossGradElapsed = Date().timeIntervalSince(lossGradStart)
                 let flatGrads = grads.flattened().map(\.1)
                 if shouldLogSample {
@@ -300,6 +309,29 @@ public final class LoKRTrainer {
 
     private static func formatSeconds(_ value: TimeInterval) -> String {
         String(format: "%.3fs", value)
+    }
+
+    private static func startFirstBackwardWatchdog(
+        kind: String,
+        argsCount: Int,
+        trainableArgumentCount: Int,
+        startedAt: Date
+    ) -> Task<Void, Never> {
+        Task.detached(priority: .utility) {
+            var previousThreshold = 0
+            for threshold in [30, 60, 120, 300] {
+                let delay = max(0, threshold - previousThreshold)
+                previousThreshold = threshold
+                try? await Task.sleep(for: .seconds(delay))
+                guard !Task.isCancelled else { return }
+                let elapsed = Date().timeIntervalSince(startedAt)
+                AudioDiagnostics.note(
+                    "training/trainer/firstLossGradWatchdog",
+                    "kind=\(kind) elapsed=\(Self.formatSeconds(elapsed)) args=\(argsCount) trainableArgumentCount=\(trainableArgumentCount)"
+                )
+                AudioDiagnostics.memory("training/trainer/firstLossGradWatchdog")
+            }
+        }
     }
 
     private func updateOptimizerForAccumulationWindow(

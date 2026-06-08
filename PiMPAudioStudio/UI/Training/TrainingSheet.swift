@@ -757,14 +757,39 @@ struct TrainingSheet: View {
         !adapterName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !(selectedEntries.isEmpty && importedFiles.isEmpty)
             && !selectedTargetLayers.isEmpty
-            && trainingConfigurationWarning == nil
+            && trainingConfigurationBlocker == nil
     }
 
     private var trainingConfigurationWarning: String? {
+        if let trainingConfigurationBlocker {
+            return trainingConfigurationBlocker
+        }
+
+        guard AudioDiagnostics.isEnabled,
+              knownLocalTrainingStallMessage != nil
+        else {
+            return nil
+        }
+        return "Experimental diagnostics override: this local XL shape previously stalled before first loss. Start it only for a short test and check the AUDIODIAG watchdog lines."
+    }
+
+    private var trainingConfigurationBlocker: String? {
+        if let tensorCapMessage = localLoKRTensorCapMessage {
+            return tensorCapMessage
+        }
+
+        guard !AudioDiagnostics.isEnabled else {
+            return nil
+        }
+
+        return knownLocalTrainingStallMessage
+    }
+
+    private var knownLocalTrainingStallMessage: String? {
         if adapterKind == .lora,
            selectedProjectionCoverage == .fullAttention,
-           selectedLayerCount >= 32 {
-            return "All-32 Q/K/V/O LoRA is a Remote GPU recipe locally. Use less layer coverage or Q/V projections for on-device training."
+           selectedLayerCount >= 12 {
+            return "Full Q/K/V/O LoRA across 12+ local XL layers stalls MLX during the first backward pass. Use Q/V projections, reduce Layer Coverage to Last 8, or use Remote GPU."
         }
 
         if adapterKind == .lokr,
@@ -779,6 +804,10 @@ struct TrainingSheet: View {
             return "Full Q/K/V/O LoKR above Linear Dim 32 stalls local MLX training. Use Linear Dim 32 or switch Projections to Q/V."
         }
 
+        return nil
+    }
+
+    private var localLoKRTensorCapMessage: String? {
         guard let trainableTensorCount = estimatedLoKRTrainableTensorCount,
               trainableTensorCount > maxLocalLoKRTrainableTensorCount
         else {

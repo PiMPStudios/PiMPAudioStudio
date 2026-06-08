@@ -54,7 +54,14 @@ public class LoKRLinear: Linear {
 
     public override func callAsFunction(_ x: MLXArray) -> MLXArray {
         let baseOut: MLXArray
-        if let bias {
+        if isTraining {
+            let frozenWeight = stopGradient(baseWeight)
+            if let baseBias {
+                baseOut = addMM(stopGradient(baseBias), x, frozenWeight.T)
+            } else {
+                baseOut = matmul(x, frozenWeight.T)
+            }
+        } else if let bias {
             baseOut = addMM(bias, x, weight.T)
         } else {
             baseOut = matmul(x, weight.T)
