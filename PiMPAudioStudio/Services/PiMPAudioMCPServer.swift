@@ -3246,8 +3246,8 @@ private enum MCPToolCatalog {
             ],
             "recipe": [
                 "type": "string",
-                "enum": ["local", "cloudStyle", "cloudVoice", "wide"],
-                "description": "Configuration preset. LoRA supports local, cloudStyle, cloudVoice. LoKR supports local and wide."
+                "enum": ["narrow", "wide"],
+                "description": "Configuration preset. LoRA and LoKR support narrow and wide."
             ],
             "preset": [
                 "type": "string",

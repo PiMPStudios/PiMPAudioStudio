@@ -1079,9 +1079,9 @@ final class TrainingService: ObservableObject {
         let memoryMessage: String?
         if effectiveHeadroom < requiredHeadroom {
             let recipeHint = kind == .lokr
-                ? "Try Local LoKR with Q/V and last 4-8 layers, or switch to a smaller ACE-Step DiT model."
-                : "Try Local LoRA with Q/V and last 4-8 layers, or switch to a smaller ACE-Step DiT model."
-            memoryMessage = "Local training needs about \(formatGiB(requiredHeadroom)) of unified-memory headroom before the first backward pass, but this run only has about \(formatGiB(effectiveHeadroom)) available after loading ACE-Step (\(formatGiB(activeMemory)) MLX active on a \(formatGiB(physicalMemory)) Mac). \(recipeHint) Use Remote GPU for Cloud Style/Wide XL recipes."
+                ? "Try Narrow LoKR with Q/V and last 4-8 layers, or switch to a smaller ACE-Step DiT model."
+                : "Try Narrow LoRA with Q/V and last 4-8 layers, or switch to a smaller ACE-Step DiT model."
+            memoryMessage = "Local training needs about \(formatGiB(requiredHeadroom)) of unified-memory headroom before the first backward pass, but this run only has about \(formatGiB(effectiveHeadroom)) available after loading ACE-Step (\(formatGiB(activeMemory)) MLX active on a \(formatGiB(physicalMemory)) Mac). \(recipeHint) Use Remote GPU for wide XL recipes."
         } else {
             memoryMessage = nil
         }

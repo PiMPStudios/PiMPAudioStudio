@@ -1907,26 +1907,13 @@ final class PiMPAudioCommandFacade {
     private func mcpTrainingRecipe(from value: Any?, kind: AdapterKind) throws -> MCPTrainingRecipe {
         guard let raw = stringValue(value)?.trimmingCharacters(in: .whitespacesAndNewlines),
               !raw.isEmpty else {
-            return .local
+            return .narrow
         }
 
         switch compactTrainingToken(raw) {
-        case "local", "balanced", "balancedlocal":
-            return .local
-        case "cloudstyle", "cloudstylequality", "style", "stylequality":
-            guard kind == .lora else {
-                throw PiMPAudioCommandFacadeError.invalidTrainingRecipe(raw)
-            }
-            return .cloudStyle
-        case "cloudvoice", "cloudvoicebalanced", "voice", "voicebalanced":
-            guard kind == .lora else {
-                throw PiMPAudioCommandFacadeError.invalidTrainingRecipe(raw)
-            }
-            return .cloudVoice
+        case "narrow", "local", "balanced", "balancedlocal":
+            return .narrow
         case "wide", "expanded", "expandedlokr":
-            guard kind == .lokr else {
-                throw PiMPAudioCommandFacadeError.invalidTrainingRecipe(raw)
-            }
             return .wide
         default:
             throw PiMPAudioCommandFacadeError.invalidTrainingRecipe(raw)
@@ -1939,7 +1926,7 @@ final class PiMPAudioCommandFacade {
         recommendation: TrainingPlanRecommendation?
     ) -> MCPTrainingDefaults {
         switch recipe {
-        case .local:
+        case .narrow:
             return MCPTrainingDefaults(
                 dimension: recommendation?.rank ?? 16,
                 epochs: recommendation?.epochs ?? 10,
@@ -1951,41 +1938,17 @@ final class PiMPAudioCommandFacade {
                 gradientAccumulationSteps: recommendation?.gradientAccumulationSteps ?? 1,
                 learningRate: 0.0001
             )
-        case .cloudStyle:
-            return MCPTrainingDefaults(
-                dimension: 96,
-                epochs: 150,
-                layerCount: 32,
-                projectionCoverage: .fullAttention,
-                alphaScale: 2,
-                dropout: 0.08,
-                targetLayers: [.selfAttention, .crossAttention],
-                gradientAccumulationSteps: 4,
-                learningRate: 0.000075
-            )
-        case .cloudVoice:
-            return MCPTrainingDefaults(
-                dimension: 64,
-                epochs: 100,
-                layerCount: 32,
-                projectionCoverage: .fullAttention,
-                alphaScale: 2,
-                dropout: 0.10,
-                targetLayers: [.selfAttention, .crossAttention],
-                gradientAccumulationSteps: 4,
-                learningRate: 0.0001
-            )
         case .wide:
             return MCPTrainingDefaults(
-                dimension: kind == .lokr ? 32 : 64,
-                epochs: 100,
+                dimension: kind == .lokr ? 32 : 96,
+                epochs: kind == .lokr ? 100 : 150,
                 layerCount: kind == .lokr ? 16 : 32,
                 projectionCoverage: kind == .lokr ? .queryValue : .fullAttention,
                 alphaScale: 2,
                 dropout: 0.08,
                 targetLayers: [.selfAttention, .crossAttention],
                 gradientAccumulationSteps: 4,
-                learningRate: 0.0001
+                learningRate: kind == .lokr ? 0.0001 : 0.000075
             )
         }
     }
@@ -5641,9 +5604,7 @@ final class PiMPAudioCommandFacade {
 }
 
 private enum MCPTrainingRecipe: String {
-    case local
-    case cloudStyle
-    case cloudVoice
+    case narrow
     case wide
 }
 
@@ -5808,7 +5769,7 @@ private enum PiMPAudioCommandFacadeError: LocalizedError {
         case .invalidTrainingKind(let value):
             return "Unsupported training kind '\(value)'. Use 'lora' or 'lokr'."
         case .invalidTrainingRecipe(let value):
-            return "Unsupported training recipe '\(value)'. Use local, cloudStyle/cloudVoice for LoRA, or wide for LoKR."
+            return "Unsupported training recipe '\(value)'. Use narrow or wide."
         case .invalidTrainingConfiguration(let reason):
             return reason
         case .encodingFailed:

@@ -388,7 +388,7 @@ struct TrainingSheet: View {
                 }
                 .labelsHidden()
                 .pickerStyle(.segmented)
-                .frame(maxWidth: adapterKind == .lora ? 320 : 220)
+                .frame(maxWidth: 220)
                 .disabled(isCheckpointResume)
             }
             if selectedRecipe != .balancedLocal {
@@ -1179,8 +1179,7 @@ struct TrainingSheet: View {
 
 private enum TrainingRecipePreset: String, CaseIterable, Identifiable {
     case balancedLocal
-    case cloudStyleQuality
-    case cloudVoiceBalanced
+    case wideLoRA
     case expandedLoKR
 
     var id: String { rawValue }
@@ -1188,7 +1187,7 @@ private enum TrainingRecipePreset: String, CaseIterable, Identifiable {
     static func options(for adapterKind: AdapterKind) -> [TrainingRecipePreset] {
         switch adapterKind {
         case .lora:
-            return [.balancedLocal, .cloudStyleQuality, .cloudVoiceBalanced]
+            return [.balancedLocal, .wideLoRA]
         case .lokr:
             return [.balancedLocal, .expandedLoKR]
         }
@@ -1203,10 +1202,7 @@ private enum TrainingRecipePreset: String, CaseIterable, Identifiable {
                 && alphaScale == .doubleRank
                 && (config.trainingLayerCount ?? 0) >= 32
             guard isWide else { return .balancedLocal }
-            if config.rank >= 96 || config.maxEpochs >= 150 || config.dropout <= 0.09 {
-                return .cloudStyleQuality
-            }
-            return .cloudVoiceBalanced
+            return .wideLoRA
         case .lokr:
             let isWide = alphaScale == .doubleRank
                 && config.rank >= 32
@@ -1219,11 +1215,9 @@ private enum TrainingRecipePreset: String, CaseIterable, Identifiable {
     func displayName(for adapterKind: AdapterKind) -> String {
         switch self {
         case .balancedLocal:
-            return "Local"
-        case .cloudStyleQuality:
-            return adapterKind == .lora ? "Cloud Style" : "Wide"
-        case .cloudVoiceBalanced:
-            return "Cloud Voice"
+            return "Narrow"
+        case .wideLoRA:
+            return "Wide"
         case .expandedLoKR:
             return "Wide"
         }
@@ -1233,14 +1227,12 @@ private enum TrainingRecipePreset: String, CaseIterable, Identifiable {
         switch self {
         case .balancedLocal:
             return ""
-        case .cloudStyleQuality:
+        case .wideLoRA:
             return adapterKind == .lora
-                ? "Matches the imported style-quality recipe: rank 96, alpha 192, dropout 0.08, all 32 layers, and q/k/v/o attention."
+                ? "Uses a wider LoRA footprint: rank 96, alpha 192, dropout 0.08, all 32 layers, and q/k/v/o attention."
                 : "Uses a wider local footprint: double alpha, dropout, all 32 layers, and q/k/v/o attention."
-        case .cloudVoiceBalanced:
-            return "Matches the imported voice-balanced recipe: rank 64, alpha 128, dropout 0.10, all 32 layers, and q/k/v/o attention."
         case .expandedLoKR:
-            return "Uses a wider local LoKR footprint that avoids the local MLX full-attention stall: linear dim 32, double alpha, dropout, last 16 layers, and Q/V attention."
+            return "Uses a wider local LoKR footprint: linear dim 32, double alpha, dropout, last 16 layers, and Q/V attention."
         }
     }
 
@@ -1260,7 +1252,7 @@ private enum TrainingRecipePreset: String, CaseIterable, Identifiable {
                 targetLayers: nil,
                 gradientAccumulationSteps: recommendation?.gradientAccumulationSteps ?? 1
             )
-        case .cloudStyleQuality:
+        case .wideLoRA:
             return TrainingRecipeDefaults(
                 rank: adapterKind == .lora ? 96 : 64,
                 epochs: adapterKind == .lora ? 150 : 100,
@@ -1268,17 +1260,6 @@ private enum TrainingRecipePreset: String, CaseIterable, Identifiable {
                 projectionCoverage: .fullAttention,
                 alphaScale: .doubleRank,
                 dropout: .p08,
-                targetLayers: [.selfAttention, .crossAttention],
-                gradientAccumulationSteps: 4
-            )
-        case .cloudVoiceBalanced:
-            return TrainingRecipeDefaults(
-                rank: 64,
-                epochs: 100,
-                layerCount: 32,
-                projectionCoverage: .fullAttention,
-                alphaScale: .doubleRank,
-                dropout: .p10,
                 targetLayers: [.selfAttention, .crossAttention],
                 gradientAccumulationSteps: 4
             )
@@ -1298,7 +1279,7 @@ private enum TrainingRecipePreset: String, CaseIterable, Identifiable {
 
     func learningRate(for adapterKind: AdapterKind) -> Float {
         switch self {
-        case .cloudStyleQuality where adapterKind == .lora:
+        case .wideLoRA where adapterKind == .lora:
             return 0.000075
         default:
             return 0.0001
