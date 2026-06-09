@@ -3295,6 +3295,18 @@ private enum MCPToolCatalog {
                 "minimum": 0,
                 "maximum": 0.95
             ],
+            "weightDecompose": [
+                "type": "boolean",
+                "description": "LoKR-only DoRA/weight-decomposition mode. Defaults to true for LoKR."
+            ],
+            "weight_decompose": [
+                "type": "boolean",
+                "description": "Alias for weightDecompose."
+            ],
+            "dora": [
+                "type": "boolean",
+                "description": "Alias for LoKR weightDecompose."
+            ],
             "epochs": [
                 "type": "integer",
                 "minimum": 1,

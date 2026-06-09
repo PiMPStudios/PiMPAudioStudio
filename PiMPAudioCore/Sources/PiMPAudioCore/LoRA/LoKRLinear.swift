@@ -14,9 +14,11 @@ public class LoKRLinear: Linear {
 
     @ParameterInfo var lokrW1: MLXArray
     @ParameterInfo var lokrW2: MLXArray
+    @ParameterInfo var lokrMagnitude: MLXArray
 
     let scaling: Float
     let dropoutRate: Float
+    let weightDecompose: Bool
     let outputFeatures: Int
     let inputFeatures: Int
     let factorRows: Int
@@ -27,7 +29,13 @@ public class LoKRLinear: Linear {
 
     public var contributions: [LoKRContribution] = []
 
-    public init(base: Linear, linearDim: Int, alpha: Float = 64.0, dropout: Float = 0.0) {
+    public init(
+        base: Linear,
+        linearDim: Int,
+        alpha: Float = 64.0,
+        dropout: Float = 0.0,
+        weightDecompose: Bool = false
+    ) {
         let inFeatures = base.weight.shape[1]
         let outFeatures = base.weight.shape[0]
         let safeDim = max(1, linearDim)
@@ -40,6 +48,7 @@ public class LoKRLinear: Linear {
         self.baseBias = base.bias.map { $0 + MLXArray(Float(0)) }
         self.scaling = alpha / Float(safeDim)
         self.dropoutRate = dropout
+        self.weightDecompose = weightDecompose
         self.outputFeatures = outFeatures
         self.inputFeatures = inFeatures
         self.factorRows = rows
@@ -48,6 +57,7 @@ public class LoKRLinear: Linear {
         let bound = Float(1.0 / Float(max(1, outerCols)).squareRoot())
         self._lokrW1.wrappedValue = MLXRandom.uniform(-bound ..< bound, [outerRows, outerCols])
         self._lokrW2.wrappedValue = MLXArray.zeros([rows, cols])
+        self._lokrMagnitude.wrappedValue = Self.rowNorm(base.weight)
 
         super.init(weight: base.weight, bias: base.bias)
     }
@@ -81,6 +91,18 @@ public class LoKRLinear: Linear {
                 outputFeatures: outputFeatures,
                 inputFeatures: inputFeatures
             )
+            if weightDecompose {
+                let doraOut = Self.doraLinearOutput(
+                    x: x,
+                    adapterInput: adapterInput,
+                    baseWeight: baseWeight,
+                    baseBias: baseBias,
+                    delta: delta,
+                    scaling: scaling,
+                    magnitude: lokrMagnitude
+                )
+                return doraOut
+            }
             return baseOut + scaling * matmul(adapterInput, delta.T)
         }
 
@@ -93,7 +115,23 @@ public class LoKRLinear: Linear {
                     outputFeatures: outputFeatures,
                     inputFeatures: inputFeatures
                 )
-                out = out + MLXArray(contribution.strength * scaling) * matmul(x, delta.T)
+                if contribution.weightDecompose {
+                    let magnitude = contribution.lokrMagnitude ?? Self.rowNorm(baseWeight)
+                    let doraWeight = Self.doraWeight(
+                        baseWeight: baseWeight,
+                        scaledDelta: scaling * delta,
+                        magnitude: magnitude
+                    )
+                    let contributionOut: MLXArray
+                    if let baseBias {
+                        contributionOut = addMM(baseBias, x, doraWeight.T)
+                    } else {
+                        contributionOut = matmul(x, doraWeight.T)
+                    }
+                    out = out + MLXArray(contribution.strength) * (contributionOut - baseOut)
+                } else {
+                    out = out + MLXArray(contribution.strength * scaling) * matmul(x, delta.T)
+                }
             }
             return out
         }
@@ -104,18 +142,32 @@ public class LoKRLinear: Linear {
             outputFeatures: outputFeatures,
             inputFeatures: inputFeatures
         )
+        if weightDecompose {
+            let doraWeight = Self.doraWeight(
+                baseWeight: baseWeight,
+                scaledDelta: scaling * delta,
+                magnitude: lokrMagnitude
+            )
+            if let baseBias {
+                return addMM(baseBias, x, doraWeight.T)
+            }
+            return matmul(x, doraWeight.T)
+        }
         return baseOut + scaling * matmul(x, delta.T)
     }
 
     public func merge() {
         guard !isMerged else { return }
-        let delta = scaling * Self.kroneckerWeight(
+        let delta = Self.kroneckerWeight(
             lokrW1,
             lokrW2,
             outputFeatures: outputFeatures,
             inputFeatures: inputFeatures
         )
-        weight._updateInternal(baseWeight + delta)
+        let mergedWeight = weightDecompose
+            ? Self.doraWeight(baseWeight: baseWeight, scaledDelta: scaling * delta, magnitude: lokrMagnitude)
+            : baseWeight + scaling * delta
+        weight._updateInternal(mergedWeight)
         isMerged = true
     }
 
@@ -140,6 +192,42 @@ public class LoKRLinear: Linear {
                 w2.reshaped([1, w2.shape[0], 1, w2.shape[1]])
         ).reshaped([w1.shape[0] * w2.shape[0], w1.shape[1] * w2.shape[1]])
         return expanded[0..<outputFeatures, 0..<inputFeatures]
+    }
+
+    public static func doraWeight(
+        baseWeight: MLXArray,
+        scaledDelta: MLXArray,
+        magnitude: MLXArray
+    ) -> MLXArray {
+        let directionalWeight = baseWeight + scaledDelta
+        let rowScale = magnitude.reshaped([magnitude.shape[0], 1]) /
+            (rowNorm(directionalWeight).reshaped([magnitude.shape[0], 1]) + 1e-6)
+        return directionalWeight * rowScale
+    }
+
+    public static func rowNorm(_ weight: MLXArray) -> MLXArray {
+        sqrt((weight * weight).sum(axis: 1))
+    }
+
+    private static func doraLinearOutput(
+        x: MLXArray,
+        adapterInput: MLXArray,
+        baseWeight: MLXArray,
+        baseBias: MLXArray?,
+        delta: MLXArray,
+        scaling: Float,
+        magnitude: MLXArray
+    ) -> MLXArray {
+        let scaledDelta = scaling * delta
+        let directionalWeight = baseWeight + scaledDelta
+        let outputScale = magnitude / (rowNorm(directionalWeight) + 1e-6)
+        let baseNoBias = matmul(x, baseWeight.T)
+        let adapterOut = scaling * matmul(adapterInput, delta.T)
+        let noBias = (baseNoBias + adapterOut) * outputScale
+        if let baseBias {
+            return noBias + baseBias
+        }
+        return noBias
     }
 
     private static func ceilDiv(_ lhs: Int, _ rhs: Int) -> Int {

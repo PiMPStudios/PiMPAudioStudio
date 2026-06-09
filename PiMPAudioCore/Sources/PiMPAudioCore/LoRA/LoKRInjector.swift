@@ -30,7 +30,8 @@ public enum LoKRInjector {
                         base: linear,
                         linearDim: config.linearDim,
                         alpha: config.alpha,
-                        dropout: config.dropout
+                        dropout: config.dropout,
+                        weightDecompose: config.weightDecompose
                     )
                     lokrLinear.freezeBase()
                     setLinear(on: layer, path: pattern, value: lokrLinear)
@@ -65,6 +66,9 @@ public enum LoKRInjector {
             if let lokrLinear = resolveLinear(in: layer, path: subPath) as? LoKRLinear {
                 weights.append(("\(path).lokrW1", lokrLinear.lokrW1))
                 weights.append(("\(path).lokrW2", lokrLinear.lokrW2))
+                if lokrLinear.weightDecompose {
+                    weights.append(("\(path).lokrMagnitude", lokrLinear.lokrMagnitude))
+                }
             }
         }
         return weights
@@ -79,6 +83,8 @@ public enum LoKRInjector {
         let weightDict = Dictionary(weights, uniquingKeysWith: { _, last in last })
         var loadedW1 = 0
         var loadedW2 = 0
+        var loadedMagnitude = 0
+        var missingMagnitude = 0
         var missingPaths: [String] = []
         var loggedFirstTensors = false
 
@@ -96,6 +102,14 @@ public enum LoKRInjector {
                     lokrLinear.lokrW2._updateInternal(w2)
                     loadedW2 += 1
                 }
+                if lokrLinear.weightDecompose {
+                    if let magnitude = weightDict["\(path).lokrMagnitude"] {
+                        lokrLinear.lokrMagnitude._updateInternal(magnitude)
+                        loadedMagnitude += 1
+                    } else {
+                        missingMagnitude += 1
+                    }
+                }
                 if weightDict["\(path).lokrW1"] == nil || weightDict["\(path).lokrW2"] == nil {
                     missingPaths.append(path)
                 } else if !loggedFirstTensors,
@@ -105,13 +119,16 @@ public enum LoKRInjector {
                     let pathTag = diagnosticTagComponent(path)
                     AudioDiagnostics.tensor("lokr/loadWeights/\(adapterTag)/\(pathTag)/W1", w1)
                     AudioDiagnostics.tensor("lokr/loadWeights/\(adapterTag)/\(pathTag)/W2", w2)
+                    if let magnitude = weightDict["\(path).lokrMagnitude"] {
+                        AudioDiagnostics.tensor("lokr/loadWeights/\(adapterTag)/\(pathTag)/Magnitude", magnitude)
+                    }
                     loggedFirstTensors = true
                 }
             }
         }
         AudioDiagnostics.note(
             "lokr/loadWeights",
-            "adapter=\(adapterID ?? "nil") paths=\(paths.count) tensors=\(weights.count) loadedW1=\(loadedW1) loadedW2=\(loadedW2) missing=\(missingPaths.count) firstMissing=\(Array(missingPaths.prefix(8)))"
+            "adapter=\(adapterID ?? "nil") paths=\(paths.count) tensors=\(weights.count) loadedW1=\(loadedW1) loadedW2=\(loadedW2) loadedMagnitude=\(loadedMagnitude) missingMagnitude=\(missingMagnitude) missing=\(missingPaths.count) firstMissing=\(Array(missingPaths.prefix(8)))"
         )
     }
 
@@ -122,7 +139,11 @@ public enum LoKRInjector {
 
             let layer = model.layers[layerIdx]
             if let lokrLinear = resolveLinear(in: layer, path: subPath) as? LoKRLinear {
-                lokrLinear.unfreeze(recursive: false, keys: ["lokrW1", "lokrW2"])
+                var keys = ["lokrW1", "lokrW2"]
+                if lokrLinear.weightDecompose {
+                    keys.append("lokrMagnitude")
+                }
+                lokrLinear.unfreeze(recursive: false, keys: keys)
             }
         }
     }
@@ -145,6 +166,9 @@ public enum LoKRInjector {
             if key.hasSuffix(".lokrW2") {
                 return String(key.dropLast(".lokrW2".count))
             }
+            if key.hasSuffix(".lokrMagnitude") {
+                return String(key.dropLast(".lokrMagnitude".count))
+            }
             return nil
         })
         let unusedWeightPaths = availableWeightPaths.subtracting(requestedPaths)
@@ -166,6 +190,7 @@ public enum LoKRInjector {
                 missingPaths.append(path)
                 continue
             }
+            let magnitude = weightDict["\(path).lokrMagnitude"]
 
             lokrLinear.contributions.append(LoKRContribution(
                 adapterID: adapterID,
@@ -173,6 +198,8 @@ public enum LoKRInjector {
                 source: source,
                 lokrW1: w1,
                 lokrW2: w2,
+                lokrMagnitude: magnitude,
+                weightDecompose: magnitude != nil,
                 strength: strength
             ))
             matchedPaths += 1
@@ -181,6 +208,9 @@ public enum LoKRInjector {
                 let pathTag = diagnosticTagComponent(path)
                 AudioDiagnostics.tensor("lokr/contribution/\(adapterTag)/\(pathTag)/W1", w1)
                 AudioDiagnostics.tensor("lokr/contribution/\(adapterTag)/\(pathTag)/W2", w2)
+                if let magnitude {
+                    AudioDiagnostics.tensor("lokr/contribution/\(adapterTag)/\(pathTag)/Magnitude", magnitude)
+                }
                 loggedFirstTensors = true
             }
         }

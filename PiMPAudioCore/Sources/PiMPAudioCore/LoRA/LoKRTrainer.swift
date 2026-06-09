@@ -55,7 +55,7 @@ public final class LoKRTrainer {
     ) async throws -> [(String, MLXArray)] {
         AudioDiagnostics.note(
             "training/trainer/begin",
-            "kind=lokr dataset=\(dataset.count) paths=\(injectedPaths.count) maxEpochs=\(config.maxEpochs) gradAccum=\(config.gradientAccumulationSteps)"
+            "kind=lokr dataset=\(dataset.count) paths=\(injectedPaths.count) maxEpochs=\(config.maxEpochs) gradAccum=\(config.gradientAccumulationSteps) weightDecompose=\(config.weightDecompose)"
         )
         AudioDiagnostics.memory("training/trainer/begin")
         guard !dataset.isEmpty else {

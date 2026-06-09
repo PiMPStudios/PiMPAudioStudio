@@ -43,7 +43,7 @@ import MLX
     #expect(explicitAlpha.alpha == 16)
 }
 
-@Test func loraConfigCanRepresentCloudStyleFullAttentionRecipe() {
+@Test func loraConfigCanRepresentWideFullAttentionRecipe() {
     let config = LoRAConfig(
         rank: 96,
         alpha: 192,
@@ -82,6 +82,7 @@ import MLX
         trainingLayerCount: 12
     )
 
+    #expect(config.weightDecompose)
     let compatible = config.loraCompatibleConfig
     #expect(compatible.rank == 128)
     #expect(compatible.alpha == 96)
@@ -91,6 +92,28 @@ import MLX
     #expect(compatible.warmupFraction == 0.2)
     #expect(compatible.gradientAccumulationSteps == 4)
     #expect(compatible.trainingLayerCount == 12)
+}
+
+@Test func oldLoKRConfigJSONDecodesAsPlainLoKR() throws {
+    let json = """
+    {
+      "linearDim": 32,
+      "alpha": 64,
+      "dropout": 0.08,
+      "targetLayers": ["self_attn", "cross_attn"],
+      "learningRate": 0.0001,
+      "maxEpochs": 20,
+      "batchSize": 1,
+      "warmupFraction": 0.1,
+      "gradientAccumulationSteps": 4,
+      "trainingLayerCount": 16
+    }
+    """
+
+    let decoded = try JSONDecoder().decode(LoKRConfig.self, from: Data(json.utf8))
+
+    #expect(decoded.linearDim == 32)
+    #expect(decoded.weightDecompose == false)
 }
 
 @Test func lokrKroneckerWeightCropsToBaseShape() {
@@ -109,6 +132,26 @@ import MLX
     #expect(weight.shape == [3, 3])
     let values = weight.reshaped([-1]).asArray(Float.self)
     #expect(values == [10, 20, 20, 30, 40, 60, 30, 60, 40])
+}
+
+@Test func lokrDoraWeightStartsAsBaseWeightWhenDeltaIsZero() {
+    let baseValues: [Float] = [
+        3, 4, 0,
+        0, 5, 12,
+    ]
+    let base = MLXArray(baseValues).reshaped([2, 3])
+    let magnitude = LoKRLinear.rowNorm(base)
+    let zeroDelta = MLXArray.zeros([2, 3])
+    let dora = LoKRLinear.doraWeight(
+        baseWeight: base,
+        scaledDelta: zeroDelta,
+        magnitude: magnitude
+    )
+
+    let values = dora.reshaped([-1]).asArray(Float.self)
+    zip(values, baseValues).forEach { value, expected in
+        #expect(abs(value - expected) < 0.00001)
+    }
 }
 
 @Test func oldAdapterJSONDecodesAsLoRAKind() throws {

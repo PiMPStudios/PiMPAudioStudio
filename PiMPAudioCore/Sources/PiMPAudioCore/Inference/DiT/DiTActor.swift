@@ -407,7 +407,7 @@ public actor DiTActor {
         let trainableCount = decoder.trainableParameters().flattened().count
         AudioDiagnostics.note(
             "training/dit/inject",
-            "kind=lokr paths=\(paths.count) trainableParams=\(trainableCount) layers=\(trainableLayerIndices.sorted()) samples=\(samples.count) initialWeights=\(initialWeights?.count ?? 0)"
+            "kind=lokr paths=\(paths.count) trainableParams=\(trainableCount) weightDecompose=\(config.weightDecompose) layers=\(trainableLayerIndices.sorted()) samples=\(samples.count) initialWeights=\(initialWeights?.count ?? 0)"
         )
         AudioDiagnostics.memory("training/dit/afterInject")
         if let initialWeights {

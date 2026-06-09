@@ -154,6 +154,7 @@ final class PiMPAudioCommandFacade {
                     "baseModelCategory": adapter.baseModelCategory.rawValue,
                     "rank": adapter.config.rank,
                     "alpha": adapter.config.alpha,
+                    "weightDecompose": adapter.lokrConfig.map { $0.weightDecompose as Any } ?? NSNull(),
                     "injectionPatterns": adapter.config.injectionPatterns,
                     "sampleCount": adapter.sampleCount,
                     "finalLoss": adapter.finalLoss.map { Double($0) } ?? NSNull(),
@@ -1808,6 +1809,11 @@ final class PiMPAudioCommandFacade {
             name: "dropout",
             range: 0...0.95
         )
+        let weightDecompose = try mcpTrainingBool(
+            from: arguments["weightDecompose"] ?? arguments["weight_decompose"] ?? arguments["dora"],
+            defaultValue: kind == .lokr ? defaults.weightDecompose : false,
+            name: "weightDecompose"
+        )
         let warmupFraction = try boundedTrainingFloat(
             arguments["warmupFraction"] ?? arguments["warmup"],
             defaultValue: 0.10,
@@ -1860,7 +1866,8 @@ final class PiMPAudioCommandFacade {
                 batchSize: batchSize,
                 warmupFraction: warmupFraction,
                 gradientAccumulationSteps: gradientAccumulation,
-                trainingLayerCount: layerCount
+                trainingLayerCount: layerCount,
+                weightDecompose: weightDecompose
             )
             : nil
 
@@ -1936,7 +1943,8 @@ final class PiMPAudioCommandFacade {
                 dropout: 0,
                 targetLayers: [.selfAttention, .crossAttention],
                 gradientAccumulationSteps: recommendation?.gradientAccumulationSteps ?? 1,
-                learningRate: 0.0001
+                learningRate: 0.0001,
+                weightDecompose: kind == .lokr
             )
         case .wide:
             return MCPTrainingDefaults(
@@ -1948,9 +1956,22 @@ final class PiMPAudioCommandFacade {
                 dropout: 0.08,
                 targetLayers: [.selfAttention, .crossAttention],
                 gradientAccumulationSteps: 4,
-                learningRate: kind == .lokr ? 0.0001 : 0.000075
+                learningRate: kind == .lokr ? 0.0001 : 0.000075,
+                weightDecompose: kind == .lokr
             )
         }
+    }
+
+    private func mcpTrainingBool(
+        from value: Any?,
+        defaultValue: Bool,
+        name: String
+    ) throws -> Bool {
+        guard value != nil else { return defaultValue }
+        guard let parsed = boolValue(value) else {
+            throw PiMPAudioCommandFacadeError.invalidBoolean(name)
+        }
+        return parsed
     }
 
     private func boundedTrainingInt(
@@ -2605,6 +2626,7 @@ final class PiMPAudioCommandFacade {
             "rank": adapter.config.rank,
             "alpha": Double(adapter.config.alpha),
             "lokrLinearDim": adapter.lokrConfig?.linearDim ?? NSNull(),
+            "lokrWeightDecompose": adapter.lokrConfig.map { $0.weightDecompose as Any } ?? NSNull(),
             "learningRate": Double(adapter.lokrConfig?.learningRate ?? adapter.config.learningRate),
             "epochs": adapter.lokrConfig?.maxEpochs ?? adapter.config.maxEpochs,
             "gradientAccumulationSteps": adapter.lokrConfig?.gradientAccumulationSteps ?? adapter.config.gradientAccumulationSteps,
@@ -2657,6 +2679,7 @@ final class PiMPAudioCommandFacade {
             "alpha": Double(config.alpha),
             "scale": Double(config.alpha) / Double(max(1, config.linearDim)),
             "dropout": Double(config.dropout),
+            "weightDecompose": config.weightDecompose,
             "targetLayers": targetLayerPayload(config.targetLayers),
             "exactInjectionPatterns": config.exactInjectionPatterns ?? NSNull(),
             "injectionPatterns": config.injectionPatterns,
@@ -5623,6 +5646,7 @@ private struct MCPTrainingDefaults {
     let targetLayers: Set<TargetLayer>
     let gradientAccumulationSteps: Int
     let learningRate: Float
+    let weightDecompose: Bool
 }
 
 private struct MCPTrainingRequest {

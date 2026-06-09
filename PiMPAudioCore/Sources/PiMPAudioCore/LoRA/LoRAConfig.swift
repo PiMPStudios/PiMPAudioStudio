@@ -164,6 +164,13 @@ public struct LoKRConfig: Codable, Sendable, Equatable, Hashable {
     /// Number of DiT decoder layers to train from the end of the stack.
     public var trainingLayerCount: Int?
 
+    /// Enable DoRA-style weight decomposition for LoKR.
+    ///
+    /// New local LoKR runs default this on to match the ACE-Step 1.5 LoKR
+    /// training surface. Adapters saved before this field existed decode as
+    /// `false` because their safetensors do not contain magnitude vectors.
+    public var weightDecompose: Bool
+
     public init(
         linearDim: Int = 64,
         alpha: Float = 64.0,
@@ -175,7 +182,8 @@ public struct LoKRConfig: Codable, Sendable, Equatable, Hashable {
         batchSize: Int = 1,
         warmupFraction: Float = 0.10,
         gradientAccumulationSteps: Int = 1,
-        trainingLayerCount: Int? = nil
+        trainingLayerCount: Int? = nil,
+        weightDecompose: Bool = true
     ) {
         self.linearDim = linearDim
         self.alpha = alpha
@@ -188,9 +196,10 @@ public struct LoKRConfig: Codable, Sendable, Equatable, Hashable {
         self.warmupFraction = warmupFraction
         self.gradientAccumulationSteps = gradientAccumulationSteps
         self.trainingLayerCount = trainingLayerCount
+        self.weightDecompose = weightDecompose
     }
 
-    public init(loraCompatibleConfig config: LoRAConfig) {
+    public init(loraCompatibleConfig config: LoRAConfig, weightDecompose: Bool = false) {
         self.init(
             linearDim: config.rank,
             alpha: config.alpha,
@@ -202,8 +211,31 @@ public struct LoKRConfig: Codable, Sendable, Equatable, Hashable {
             batchSize: config.batchSize,
             warmupFraction: config.warmupFraction,
             gradientAccumulationSteps: config.gradientAccumulationSteps,
-            trainingLayerCount: config.trainingLayerCount
+            trainingLayerCount: config.trainingLayerCount,
+            weightDecompose: weightDecompose
         )
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case linearDim, alpha, dropout, targetLayers, exactInjectionPatterns
+        case learningRate, maxEpochs, batchSize, warmupFraction
+        case gradientAccumulationSteps, trainingLayerCount, weightDecompose
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        linearDim = try container.decode(Int.self, forKey: .linearDim)
+        alpha = try container.decode(Float.self, forKey: .alpha)
+        dropout = try container.decode(Float.self, forKey: .dropout)
+        targetLayers = try container.decode(Set<TargetLayer>.self, forKey: .targetLayers)
+        exactInjectionPatterns = try container.decodeIfPresent([String].self, forKey: .exactInjectionPatterns)
+        learningRate = try container.decode(Float.self, forKey: .learningRate)
+        maxEpochs = try container.decode(Int.self, forKey: .maxEpochs)
+        batchSize = try container.decode(Int.self, forKey: .batchSize)
+        warmupFraction = try container.decode(Float.self, forKey: .warmupFraction)
+        gradientAccumulationSteps = try container.decode(Int.self, forKey: .gradientAccumulationSteps)
+        trainingLayerCount = try container.decodeIfPresent(Int.self, forKey: .trainingLayerCount)
+        weightDecompose = try container.decodeIfPresent(Bool.self, forKey: .weightDecompose) ?? false
     }
 
     public var injectionPatterns: [String] {
@@ -372,7 +404,7 @@ public extension LoRAAdapter {
         case .lora:
             suffixes = [".loraA", ".loraB"]
         case .lokr:
-            suffixes = [".lokrW1", ".lokrW2"]
+            suffixes = [".lokrW1", ".lokrW2", ".lokrMagnitude"]
         }
 
         var paths = Set<String>()

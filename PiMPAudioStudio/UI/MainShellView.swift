@@ -250,6 +250,7 @@ private struct BuildDatasetsView: View {
                 initialImportedFiles: presentation.files,
                 initialName: presentation.initialName,
                 initialConfig: presentation.initialConfig,
+                initialLoKRConfig: presentation.initialLoKRConfig,
                 resumeAdapterID: presentation.resumeAdapterID
             )
         }
@@ -523,6 +524,7 @@ private struct BuildTrainingView: View {
                 initialImportedFiles: presentation.files,
                 initialName: presentation.initialName,
                 initialConfig: presentation.initialConfig,
+                initialLoKRConfig: presentation.initialLoKRConfig,
                 adapterKind: presentation.adapterKind,
                 resumeAdapterID: presentation.resumeAdapterID,
                 presentationStyle: .inline
@@ -626,6 +628,7 @@ private struct BuildTrainingView: View {
                 initialImportedFiles: presentation.files,
                 initialName: presentation.initialName,
                 initialConfig: presentation.initialConfig,
+                initialLoKRConfig: presentation.initialLoKRConfig,
                 adapterKind: presentation.adapterKind,
                 resumeAdapterID: presentation.resumeAdapterID,
                 presentationStyle: .inline

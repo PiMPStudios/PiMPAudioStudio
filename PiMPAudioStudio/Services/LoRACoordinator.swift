@@ -360,7 +360,8 @@ final class LoRACoordinator {
     }
 
     private func diagnosticsAdapterDescription(_ adapter: LoRAAdapter, strength: Float) -> String {
-        "id=\(adapter.id):name=\(adapter.name):kind=\(adapter.kind.rawValue):strength=\(String(format: "%.3f", strength)):source=\(adapter.source.rawValue):rank=\(adapter.config.rank):alpha=\(String(format: "%.3f", adapter.config.alpha)):dropout=\(String(format: "%.3f", adapter.config.dropout)):base=\(adapter.baseModelID):patterns=\(adapter.config.injectionPatterns):trainedLayers=\(adapter.effectiveTrainedLayerIndices ?? []):trainedPaths=\(adapter.effectiveTrainedPaths?.count ?? 0)"
+        let weightDecompose = adapter.kind == .lokr ? ":weightDecompose=\(lokrConfig(for: adapter).weightDecompose)" : ""
+        return "id=\(adapter.id):name=\(adapter.name):kind=\(adapter.kind.rawValue):strength=\(String(format: "%.3f", strength)):source=\(adapter.source.rawValue):rank=\(adapter.config.rank):alpha=\(String(format: "%.3f", adapter.config.alpha)):dropout=\(String(format: "%.3f", adapter.config.dropout))\(weightDecompose):base=\(adapter.baseModelID):patterns=\(adapter.config.injectionPatterns):trainedLayers=\(adapter.effectiveTrainedLayerIndices ?? []):trainedPaths=\(adapter.effectiveTrainedPaths?.count ?? 0)"
     }
 
     private func lokrConfig(for adapter: LoRAAdapter) -> LoKRConfig {
@@ -375,7 +376,8 @@ final class LoRACoordinator {
             batchSize: adapter.config.batchSize,
             warmupFraction: adapter.config.warmupFraction,
             gradientAccumulationSteps: adapter.config.gradientAccumulationSteps,
-            trainingLayerCount: adapter.config.trainingLayerCount
+            trainingLayerCount: adapter.config.trainingLayerCount,
+            weightDecompose: false
         )
     }
 

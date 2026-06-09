@@ -17,6 +17,8 @@ struct TrainingPresentation: Identifiable {
     let initialName: String
     /// Pre-fill training config (nil = use defaults for new sessions).
     let initialConfig: LoRAConfig?
+    /// Pre-fill LoKR-only training config (nil = derive from initialConfig/defaults).
+    let initialLoKRConfig: LoKRConfig?
     /// Adapter implementation for this training session.
     let adapterKind: AdapterKind
     /// Adapter ID to resume from a saved checkpoint. Nil means fresh training/retraining.
@@ -28,6 +30,7 @@ struct TrainingPresentation: Identifiable {
         self.files = files
         self.initialName = initialName
         self.initialConfig = nil
+        self.initialLoKRConfig = nil
         self.adapterKind = adapterKind
         self.resumeAdapterID = nil
     }
@@ -38,6 +41,7 @@ struct TrainingPresentation: Identifiable {
         files: [TrainingImportedFile],
         initialName: String,
         initialConfig: LoRAConfig?,
+        initialLoKRConfig: LoKRConfig? = nil,
         adapterKind: AdapterKind = .lora,
         resumeAdapterID: String? = nil
     ) {
@@ -45,6 +49,7 @@ struct TrainingPresentation: Identifiable {
         self.files = files
         self.initialName = initialName
         self.initialConfig = initialConfig
+        self.initialLoKRConfig = initialLoKRConfig
         self.adapterKind = adapterKind
         self.resumeAdapterID = resumeAdapterID
     }
@@ -80,6 +85,7 @@ struct TrainingSheet: View {
     @State private var selectedTargetLayers: Set<TargetLayer> = [.selfAttention, .crossAttention]
     @State private var warmupFraction: Float = 0.10
     @State private var gradientAccumulationSteps: Int = 1
+    @State private var selectedLoKRWeightDecompose: Bool = true
     @State private var importedFiles: [TrainingImportedFile]
     @State private var showingFileImporter: Bool = false
     @State private var showingStopConfirmation: Bool = false
@@ -94,6 +100,7 @@ struct TrainingSheet: View {
         initialImportedFiles: [TrainingImportedFile] = [],
         initialName: String = "",
         initialConfig: LoRAConfig? = nil,
+        initialLoKRConfig: LoKRConfig? = nil,
         adapterKind: AdapterKind = .lora,
         resumeAdapterID: String? = nil,
         presentationStyle: TrainingSurfacePresentationStyle = .sheet,
@@ -106,7 +113,8 @@ struct TrainingSheet: View {
         self.adapterKind = adapterKind
         self._importedFiles = State(initialValue: initialImportedFiles)
         self._adapterName = State(initialValue: initialName)
-        if let config = initialConfig {
+        let effectiveInitialConfig = initialLoKRConfig?.loraCompatibleConfig ?? initialConfig
+        if let config = effectiveInitialConfig {
             self._selectedRecipe = State(initialValue: TrainingRecipePreset.infer(from: config, adapterKind: adapterKind))
             self._selectedRank = State(initialValue: config.rank)
             self._selectedEpochs = State(initialValue: config.maxEpochs)
@@ -117,6 +125,9 @@ struct TrainingSheet: View {
             self._selectedTargetLayers = State(initialValue: config.targetLayers)
             self._warmupFraction = State(initialValue: config.warmupFraction)
             self._gradientAccumulationSteps = State(initialValue: config.gradientAccumulationSteps)
+            self._selectedLoKRWeightDecompose = State(initialValue: initialLoKRConfig?.weightDecompose ?? false)
+        } else if adapterKind == .lokr {
+            self._selectedLoKRWeightDecompose = State(initialValue: true)
         }
     }
 
@@ -519,6 +530,13 @@ struct TrainingSheet: View {
                     .frame(maxWidth: 200)
                     .disabled(isCheckpointResume)
                 }
+                if adapterKind == .lokr {
+                    LabeledContent("DoRA") {
+                        Toggle("Weight Decompose", isOn: $selectedLoKRWeightDecompose)
+                            .toggleStyle(.checkbox)
+                            .disabled(isCheckpointResume)
+                    }
+                }
             }
         }
     }
@@ -809,7 +827,7 @@ struct TrainingSheet: View {
         guard adapterKind == .lokr else { return nil }
         let patterns = selectedInjectionPatternsForEstimate()
         guard !patterns.isEmpty else { return nil }
-        return min(selectedLayerCount, 32) * patterns.count * 2
+        return min(selectedLayerCount, 32) * patterns.count * (selectedLoKRWeightDecompose ? 3 : 2)
     }
 
     private func selectedInjectionPatternsForEstimate() -> [String] {
@@ -877,6 +895,9 @@ struct TrainingSheet: View {
         selectedProjectionCoverage = .queryValue
         selectedAlphaScale = .rank
         selectedDropout = .none
+        if adapterKind == .lokr {
+            selectedLoKRWeightDecompose = true
+        }
         gradientAccumulationSteps = recommendation.gradientAccumulationSteps
     }
 
@@ -894,6 +915,9 @@ struct TrainingSheet: View {
         selectedDropout = defaults.dropout
         if let targetLayers = defaults.targetLayers {
             selectedTargetLayers = targetLayers
+        }
+        if adapterKind == .lokr {
+            selectedLoKRWeightDecompose = true
         }
         gradientAccumulationSteps = defaults.gradientAccumulationSteps
     }
@@ -1089,7 +1113,8 @@ struct TrainingSheet: View {
                     maxEpochs: selectedEpochs,
                     warmupFraction: warmupFraction,
                     gradientAccumulationSteps: gradientAccumulationSteps,
-                    trainingLayerCount: selectedLayerCount
+                    trainingLayerCount: selectedLayerCount,
+                    weightDecompose: selectedLoKRWeightDecompose
                 ),
                 resumeAdapterID: resumeAdapterID
             )
@@ -1232,7 +1257,7 @@ private enum TrainingRecipePreset: String, CaseIterable, Identifiable {
                 ? "Uses a wider LoRA footprint: rank 96, alpha 192, dropout 0.08, all 32 layers, and q/k/v/o attention."
                 : "Uses a wider local footprint: double alpha, dropout, all 32 layers, and q/k/v/o attention."
         case .expandedLoKR:
-            return "Uses a wider local LoKR footprint: linear dim 32, double alpha, dropout, last 16 layers, and Q/V attention."
+            return "Uses a wider local LoKR footprint: linear dim 32, double alpha, DoRA, dropout, last 16 layers, and Q/V attention."
         }
     }
 

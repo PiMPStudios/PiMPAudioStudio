@@ -746,8 +746,11 @@ final class TrainingService: ObservableObject {
         let dropout = lokrConfig?.dropout ?? config.dropout
         let learningRate = lokrConfig?.learningRate ?? config.learningRate
         let gradientAccumulationSteps = lokrConfig?.gradientAccumulationSteps ?? config.gradientAccumulationSteps
+        let weightDecomposeText = kind == .lokr
+            ? " weightDecompose=\(lokrConfig?.weightDecompose ?? false)"
+            : ""
         let targets = config.injectionPatterns.joined(separator: ",")
-        let numericSummary = "alpha=\(String(format: "%.3f", alpha)) dropout=\(String(format: "%.3f", dropout)) lr=\(String(format: "%.2e", learningRate)) gradAccum=\(gradientAccumulationSteps)"
+        let numericSummary = "alpha=\(String(format: "%.3f", alpha)) dropout=\(String(format: "%.3f", dropout)) lr=\(String(format: "%.2e", learningRate)) gradAccum=\(gradientAccumulationSteps)\(weightDecomposeText)"
         trainingLogger.info(
             "Starting \(kind.rawValue.uppercased()) training name='\(adapterName)' base=\(activeModelID) samples=\(sampleCount) \(rankLabel) \(numericSummary) epochs=\(config.maxEpochs) layerCoverage=\(layerCount ?? 0) targets=\(targets)"
         )
@@ -1120,7 +1123,7 @@ final class TrainingService: ObservableObject {
             projectionCount: projectionCount,
             injectionPatterns: injectionPatterns,
             estimatedTrainablePathCount: layerCount * projectionCount,
-            estimatedTrainableTensorCount: layerCount * projectionCount * 2,
+            estimatedTrainableTensorCount: layerCount * projectionCount * (kind == .lokr && lokrConfig?.weightDecompose == true ? 3 : 2),
             cacheBeforeClearBytes: UInt64(max(0, beforeClear.cacheMemory)),
             activeMemoryBytes: activeMemory,
             cacheMemoryBytes: cacheMemory,
@@ -1163,6 +1166,9 @@ final class TrainingService: ObservableObject {
             requirement += 2 * bytesPerGiB
         }
         if dimension >= 96 {
+            requirement += bytesPerGiB
+        }
+        if kind == .lokr && lokrConfig?.weightDecompose == true && layerCount >= 16 {
             requirement += bytesPerGiB
         }
         if sampleCount >= 500 {
