@@ -348,28 +348,11 @@ final class TrainingService: ObservableObject {
                     sessionLoKRConfig = lokrConfig
                     initialWeights = nil
                 }
-                let dropoutAdjustment = Self.localMLXDropoutSafeConfigs(
-                    kind: kind,
-                    config: sessionConfig,
-                    lokrConfig: sessionLoKRConfig,
-                    allowExplicitKeyDropoutExperiment: AudioDiagnostics.isEnabled
-                )
-                sessionConfig = dropoutAdjustment.config
-                sessionLoKRConfig = dropoutAdjustment.lokrConfig
-                if dropoutAdjustment.requestedDropout > dropoutAdjustment.effectiveDropout {
-                    let requestedText = Self.formatFloat(dropoutAdjustment.requestedDropout)
-                    let effectiveText = Self.formatFloat(dropoutAdjustment.effectiveDropout)
-                    trainingLogger.warning(
-                        "Local MLX adapter dropout requested=\(requestedText) is disabled for '\(adapterName)' while first-backward VJP stalls are isolated."
-                    )
+                let requestedDropout = sessionLoKRConfig?.dropout ?? sessionConfig.dropout
+                if requestedDropout > 0 {
                     AudioDiagnostics.note(
-                        "training/config/dropoutGuard",
-                        "kind=\(kind.rawValue) adapterID=\(adapterID) requestedDropout=\(requestedText) effectiveDropout=\(effectiveText) reason=localMLXFirstBackwardVJP"
-                    )
-                } else if dropoutAdjustment.requestedDropout > 0 {
-                    AudioDiagnostics.note(
-                        "training/config/dropoutExperiment",
-                        "kind=\(kind.rawValue) adapterID=\(adapterID) dropout=\(Self.formatFloat(dropoutAdjustment.effectiveDropout)) rng=explicitKey reason=verboseDiagnostics"
+                        "training/config/dropoutRNG",
+                        "kind=\(kind.rawValue) adapterID=\(adapterID) dropout=\(Self.formatFloat(requestedDropout)) rng=explicitKey"
                     )
                 }
 
@@ -655,37 +638,6 @@ final class TrainingService: ObservableObject {
                 self.saveActiveRunLogIfAdapterDirectoryExists(adapterID: adapterID)
                 self.state = .failed(error.localizedDescription)
             }
-        }
-    }
-
-    private static func localMLXDropoutSafeConfigs(
-        kind: AdapterKind,
-        config: LoRAConfig,
-        lokrConfig: LoKRConfig?,
-        allowExplicitKeyDropoutExperiment: Bool
-    ) -> (config: LoRAConfig, lokrConfig: LoKRConfig?, requestedDropout: Float, effectiveDropout: Float) {
-        let requestedDropout = lokrConfig?.dropout ?? config.dropout
-        guard requestedDropout > 0 else {
-            return (config, lokrConfig, requestedDropout, requestedDropout)
-        }
-        if allowExplicitKeyDropoutExperiment {
-            return (config, lokrConfig, requestedDropout, requestedDropout)
-        }
-
-        switch kind {
-        case .lora:
-            var adjustedConfig = config
-            adjustedConfig.dropout = 0
-            return (adjustedConfig, nil, requestedDropout, 0)
-        case .lokr:
-            var adjustedLoKRConfig = lokrConfig ?? LoKRConfig(loraCompatibleConfig: config)
-            adjustedLoKRConfig.dropout = 0
-            return (
-                adjustedLoKRConfig.loraCompatibleConfig,
-                adjustedLoKRConfig,
-                requestedDropout,
-                0
-            )
         }
     }
 
@@ -1120,22 +1072,10 @@ final class TrainingService: ObservableObject {
             dimension = max(1, config.rank)
         }
 
-        let diagnosticsOverrideEnabled = AudioDiagnostics.isEnabled
-        let unsupportedMessage = unsupportedLocalTrainingConfigurationMessage(
-            kind: kind,
-            layerCount: layerCount,
-            dimension: dimension,
-            injectionPatterns: injectionPatterns,
-            diagnosticsOverrideEnabled: diagnosticsOverrideEnabled
-        )
-        let diagnosticsOverrideMessage = diagnosticsOverrideEnabled
-            ? knownLocalTrainingStallMessage(
-                kind: kind,
-                layerCount: layerCount,
-                dimension: dimension,
-                injectionPatterns: injectionPatterns
-            )
-            : nil
+        let unsupportedMessage: String? = nil
+        let hasFullAttention = injectionPatterns.contains { pattern in
+            pattern.hasSuffix(".kProj") || pattern.hasSuffix(".oProj")
+        }
         let memoryMessage: String?
         if effectiveHeadroom < requiredHeadroom {
             let recipeHint = kind == .lokr
@@ -1153,19 +1093,18 @@ final class TrainingService: ObservableObject {
         if projectionCount >= 8 {
             warnings.append("Full Q/K/V/O attention has a much larger local memory and first-backward graph footprint than Q/V.")
         }
-        if let diagnosticsOverrideMessage {
-            warnings.append("Verbose diagnostics override is allowing an experimental local shape that previously stalled: \(diagnosticsOverrideMessage)")
+        if kind == .lora, hasFullAttention, layerCount >= 12 {
+            warnings.append("Full Q/K/V/O LoRA across 12+ local XL layers is a large local shape; Q/V projections or Last 8 remain the safer starting point.")
         }
-        if kind == .lokr, layerCount >= 16 {
+        if kind == .lokr, hasFullAttention, layerCount >= 16 {
             warnings.append("LoKR across 16+ local layers is sensitive on XL models; Q/V projection coverage is recommended.")
+        }
+        if kind == .lokr, hasFullAttention, dimension > 32 {
+            warnings.append("Full Q/K/V/O LoKR above Linear Dim 32 is a large local shape; Linear Dim 32 or Q/V projections are recommended.")
         }
         let requestedDropout = lokrConfig?.dropout ?? config.dropout
         if requestedDropout > 0 {
-            if diagnosticsOverrideEnabled {
-                warnings.append("Verbose diagnostics will keep adapter dropout enabled with explicit per-step MLX keys for dropout VJP testing.")
-            } else {
-                warnings.append("Local Swift/MLX adapter training will run with dropout 0 while a first-backward VJP stall in the dropout path is isolated.")
-            }
+            warnings.append("Local Swift/MLX adapter dropout uses explicit per-step MLX keys to avoid the confirmed implicit-RNG first-backward VJP stall.")
         }
         if sampleCount >= 500 {
             warnings.append("Large datasets raise the preflight reserve because preprocessing and optimizer state stay hot during training.")
@@ -1230,47 +1169,6 @@ final class TrainingService: ObservableObject {
             requirement += bytesPerGiB
         }
         return min(requirement, maximumTrainingHeadroomBytes)
-    }
-
-    private static func unsupportedLocalTrainingConfigurationMessage(
-        kind: AdapterKind,
-        layerCount: Int,
-        dimension: Int,
-        injectionPatterns: [String],
-        diagnosticsOverrideEnabled: Bool
-    ) -> String? {
-        guard !diagnosticsOverrideEnabled else { return nil }
-        return knownLocalTrainingStallMessage(
-            kind: kind,
-            layerCount: layerCount,
-            dimension: dimension,
-            injectionPatterns: injectionPatterns
-        )
-    }
-
-    private static func knownLocalTrainingStallMessage(
-        kind: AdapterKind,
-        layerCount: Int,
-        dimension: Int,
-        injectionPatterns: [String]
-    ) -> String? {
-        let hasFullAttention = injectionPatterns.contains { pattern in
-            pattern.hasSuffix(".kProj") || pattern.hasSuffix(".oProj")
-        }
-
-        if kind == .lokr, hasFullAttention, layerCount >= 16 {
-            return "Full Q/K/V/O LoKR across 16+ layers repeatedly stalls local MLX training before the first loss. Use Q/V projections, reduce Layer Coverage to Last 8, or use Remote GPU for this adapter shape."
-        }
-
-        if kind == .lokr, hasFullAttention, dimension > 32 {
-            return "Full Q/K/V/O LoKR above Linear Dim 32 repeatedly stalls local MLX training before the first loss. Use Linear Dim 32 with Q/V projections, or use Remote GPU."
-        }
-
-        if kind == .lora, hasFullAttention, layerCount >= 12 {
-            return "Full Q/K/V/O LoRA across 12+ local XL layers repeatedly stalls MLX VJP during the first backward pass. Use Q/V projections, reduce Layer Coverage to Last 8, or use Remote GPU for this adapter shape."
-        }
-
-        return nil
     }
 
     private static func formatGiB(_ bytes: UInt64) -> String {

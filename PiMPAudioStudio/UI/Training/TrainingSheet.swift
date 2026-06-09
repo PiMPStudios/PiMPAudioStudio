@@ -764,44 +764,33 @@ struct TrainingSheet: View {
         if let trainingConfigurationBlocker {
             return trainingConfigurationBlocker
         }
-
-        guard AudioDiagnostics.isEnabled,
-              knownLocalTrainingStallMessage != nil
-        else {
-            return nil
-        }
-        return "Experimental diagnostics override: this local XL shape previously stalled before first loss. Start it only for a short test and check the AUDIODIAG watchdog lines."
+        return localTrainingShapeWarning
     }
 
     private var trainingConfigurationBlocker: String? {
         if let tensorCapMessage = localLoKRTensorCapMessage {
             return tensorCapMessage
         }
-
-        guard !AudioDiagnostics.isEnabled else {
-            return nil
-        }
-
-        return knownLocalTrainingStallMessage
+        return nil
     }
 
-    private var knownLocalTrainingStallMessage: String? {
+    private var localTrainingShapeWarning: String? {
         if adapterKind == .lora,
            selectedProjectionCoverage == .fullAttention,
            selectedLayerCount >= 12 {
-            return "Full Q/K/V/O LoRA across 12+ local XL layers stalls MLX during the first backward pass. Use Q/V projections, reduce Layer Coverage to Last 8, or use Remote GPU."
+            return "Full Q/K/V/O LoRA across 12+ local XL layers is a large local shape. Q/V projections or Last 8 remain the safer starting point."
         }
 
         if adapterKind == .lokr,
            selectedProjectionCoverage == .fullAttention,
            selectedLayerCount >= 16 {
-            return "Full Q/K/V/O LoKR across 16+ layers stalls local MLX training. Use Q/V projections or reduce Layer Coverage to Last 8."
+            return "Full Q/K/V/O LoKR across 16+ local XL layers is sensitive and slow. Q/V projections or Last 8 remain the safer starting point."
         }
 
         if adapterKind == .lokr,
            selectedProjectionCoverage == .fullAttention,
            selectedRank > 32 {
-            return "Full Q/K/V/O LoKR above Linear Dim 32 stalls local MLX training. Use Linear Dim 32 or switch Projections to Q/V."
+            return "Full Q/K/V/O LoKR above Linear Dim 32 is a large local shape. Linear Dim 32 or Q/V projections are recommended."
         }
 
         return nil

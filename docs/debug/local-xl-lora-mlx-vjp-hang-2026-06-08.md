@@ -438,20 +438,76 @@ Both runs were intentionally stopped without checkpoints after proving first-bac
 
 This is the strongest signal so far: the hang is not caused by adapter dropout math by itself, rank alone, projection breadth alone, trainable tensor count alone, or wide LoKR shape alone. It is most likely the full XL DiT training graph plus MLX implicit global RNG inside `valueAndGrad`. Precomputing explicit per-step keys outside the closure avoids the first-backward stall in the controlled MCP runs.
 
-## Current Mitigation
+## Explicit-Key Completion Retest Result
 
-The local training preflight/UI guard still warns on full Q/K/V/O XL shapes because they are heavier and were part of the original hang reports. Verbose diagnostics can intentionally downgrade known risky shapes for controlled tests.
+After the app was rebuilt and restarted, MCP ran two one-epoch completion tests on the 200-clip `darkgentlemen_local_2026-05-30-171242` dataset with verbose diagnostics enabled.
 
-Local Swift/MLX execution clamps requested adapter dropout to 0 by default while the dropout-path VJP stall is isolated. The requested value remains visible through the `training/config/dropoutGuard` diagnostic.
-
-For controlled debugging only, verbose audio diagnostics now keeps requested dropout enabled and routes adapter dropout through explicit per-sample MLX keys generated before `valueAndGrad`. Those runs log:
+LoRA completion test:
 
 ```text
-training/config/dropoutExperiment ... rng=explicitKey reason=verboseDiagnostics
+Adapter: mcp-explicitkey-complete-lora-qv64-l16-20260609T020259
+Kind: LoRA
+Projection coverage: Q/V
+Layer coverage: Last 16
+Rank: 64
+Alpha: 128
+Dropout: 0.08
+Trainable tensors: 128
+Trainable paths: 64
+```
+
+Result:
+
+```text
+training/config/dropoutRNG kind=lora ... dropout=0.080 rng=explicitKey
+training/trainer/dropoutRNG kind=lora mode=explicitKey dropout=0.08 keyCount=128
+training/trainer/firstLossGradEnd kind=lora elapsed=0.035s values=1 flatGrads=128
+training/trainer/epochEnd kind=lora epoch=1/1 samples=200 avgLoss=1.1992195 bestLoss=1.1992195 globalStep=50
+training/trainer/end kind=lora cancelled=false globalStep=50 bestLoss=1.1992195
+training/complete kind=lora ... tensors=128 trainedPaths=64 finalLoss=1.19922
+training/save/end kind=lora .../models/adapters/mcp-explicitkey-complete-lora-qv64-l16-20260609t020259
+```
+
+LoKR completion test:
+
+```text
+Adapter: mcp-explicitkey-complete-lokr-qv32-l16-20260609T020527
+Kind: LoKR
+Projection coverage: Q/V
+Layer coverage: Last 16
+Linear dim: 32
+Alpha: 64
+Dropout: 0.08
+Trainable tensors: 128
+Trainable paths: 64
+```
+
+Result:
+
+```text
+training/config/dropoutRNG kind=lokr ... dropout=0.080 rng=explicitKey
+training/trainer/dropoutRNG kind=lokr mode=explicitKey dropout=0.08 keyCount=128
+training/trainer/firstLossGradEnd kind=lokr elapsed=0.038s values=1 flatGrads=128
+training/trainer/epochEnd kind=lokr epoch=1/1 samples=200 avgLoss=1.8549707 bestLoss=1.8549707 globalStep=50
+training/trainer/end kind=lokr cancelled=false globalStep=50 bestLoss=1.8549707
+training/complete kind=lokr ... tensors=128 trainedPaths=64 finalLoss=1.85497
+training/save/end kind=lokr .../models/adapters/mcp-explicitkey-complete-lokr-qv32-l16-20260609t020527
+```
+
+Both completion runs saved adapters cleanly with requested dropout still enabled. Based on this, the local dropout clamp was retired and explicit-key dropout was promoted to the normal local training path.
+
+## Current Mitigation
+
+The local training preflight/UI guard still warns on full Q/K/V/O XL shapes because they are heavier and were part of the original hang reports. The old debug-bypass path has been removed; broad shapes now use ordinary large-shape warnings plus the existing memory and LoKR tensor guards.
+
+Local Swift/MLX execution now keeps requested adapter dropout enabled and routes adapter dropout through explicit per-sample MLX keys generated before `valueAndGrad`. Runs with dropout log:
+
+```text
+training/config/dropoutRNG ... rng=explicitKey
 training/trainer/dropoutRNG ... mode=explicitKey dropout=<requested> keyCount=<count>
 ```
 
-This lets MCP/UI tests exercise the real XL trainer with nonzero dropout without re-enabling the old implicit global-RNG dropout path for normal local training.
+The old dropout-0 guard is no longer used for normal local LoRA/LoKR training.
 
 Recommended local recipe to revalidate after the explicit-gradient fallback:
 
@@ -460,7 +516,7 @@ Projection coverage: Q/V
 Layer coverage: Last 16 or less
 ```
 
-Full Q/K/V/O attention coverage is now viable for bounded local tests with dropout 0. All-32-layer LoKR reached first loss and optimizer progress, but it is slow enough that full completion should be tested intentionally rather than as a default local recipe.
+Full Q/K/V/O attention coverage is viable for bounded local tests with explicit-key dropout. All-32-layer LoKR reached first loss and optimizer progress, but it is slow enough that full completion should be tested intentionally rather than as a default local recipe.
 
 ## Follow-Up Experiment
 
@@ -480,7 +536,7 @@ training/trainer/firstLossGradWatchdog
 
 at 30, 60, 120, and 300 seconds, with memory snapshots at each mark.
 
-When verbose audio diagnostics are enabled, the known wide-shape UI/preflight block is downgraded to an experimental warning so the failing shape can be retested under instrumentation. With diagnostics off, the guard remains a hard block.
+The old known-wide-shape UI/preflight block was removed after explicit-key dropout completion tests passed. Broad Q/K/V/O local shapes now remain selectable when they pass memory and tensor guards, with ordinary caution warnings instead of the old debug-bypass banner.
 
 ## Next Debug Ideas
 
@@ -488,5 +544,5 @@ Potential next probes:
 
 1. Let one all-32-layer LoKR wide run finish with effective dropout 0 if we need a saved adapter artifact and full-run timing.
 2. Let one all-32-layer LoKR wide run finish with explicit-key dropout if we want a saved artifact from the now-unblocked high-coverage path.
-3. Compare alpha 64 vs alpha 128 with dropout 0 to separate training stability/quality from the dropout graph issue.
-4. Consider making explicit-key dropout the default local path after one or two longer completion runs prove it stays stable beyond the first optimizer steps.
+3. Compare alpha 64 vs alpha 128 with explicit-key dropout to separate training stability/quality from the dropout graph issue.
+4. If future MLX releases change RNG/autodiff behavior, rerun the synthetic probe plus the two MCP completion tests before simplifying the explicit-key path.
