@@ -3,17 +3,6 @@ import MLX
 import MLXNN
 
 enum TrainingMetricMath {
-    static func addGradients(_ lhs: ModuleParameters, _ rhs: ModuleParameters) -> ModuleParameters {
-        lhs.mapValues(rhs) { left, right in
-            guard let right else { return left }
-            return left + right
-        }
-    }
-
-    static func scaleGradients(_ gradients: ModuleParameters, by scale: Float) -> ModuleParameters {
-        gradients.mapValues { $0 * scale }
-    }
-
     static func l2Norm(_ arrays: [MLXArray]) -> Float? {
         guard !arrays.isEmpty else { return nil }
         var total = MLXArray(0.0)

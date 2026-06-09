@@ -142,16 +142,17 @@ public final class LoRATrainer {
             AudioDiagnostics.note("training/trainer/trainingMode", "kind=lora enabled=false")
         }
 
-        // Build the valueAndGrad closure using the preferred MLXNN model-based form.
-        // The closure describes the forward; the expensive VJP graph construction + first
-        // backward materialization happens on the first *invocation* of the returned lossGrad
-        // function (MLX is lazy).
+        // Build a valueAndGrad closure over only the adapter arrays. The
+        // model-aware form is cleaner, but repeatedly stalls inside MLX VJP
+        // on local XL adapter training before the first loss materializes.
         var hasLoggedGradientClosure = false
+        let trainingModel = model
         let trainableParameterKeys = model.trainableParameters().flattened().map(\.0)
         let trainableArgumentCount = trainableParameterKeys.count
         let trainableParameterKeyPreview = Array(trainableParameterKeys.prefix(24))
         let omittedTrainableParameterKeyCount = max(0, trainableParameterKeys.count - trainableParameterKeyPreview.count)
-        let lossGrad = valueAndGrad(model: model) { trainingModel, allArgs in
+        let gradientArgumentNumbers = Array(0..<trainableArgumentCount)
+        let lossGrad = valueAndGrad({ (allArgs: [MLXArray]) -> [MLXArray] in
             let shouldLogGradientClosure = !hasLoggedGradientClosure
             if shouldLogGradientClosure {
                 hasLoggedGradientClosure = true
@@ -160,14 +161,18 @@ public final class LoRATrainer {
                     "kind=lora paramCount=\(trainableParameterKeys.count) paramKeysPreview=\(trainableParameterKeyPreview) omitted=\(omittedTrainableParameterKeyCount)"
                 )
             }
+            let parameterValues = Array(allArgs.prefix(trainableArgumentCount))
+            let parameterPairs = zip(trainableParameterKeys, parameterValues).map { ($0.0, $0.1) }
+            trainingModel.update(parameters: ModuleParameters.unflattened(parameterPairs))
 
-            let xt = allArgs[0]
-            let t = allArgs[1]
-            let encoderStates = allArgs[2]
-            let contextLatents = allArgs[3]
-            let vTarget = allArgs[4]
-            let encoderMask: MLXArray? = allArgs.count > 5
-                ? allArgs[5]
+            let argOffset = trainableArgumentCount
+            let xt = allArgs[argOffset]
+            let t = allArgs[argOffset + 1]
+            let encoderStates = allArgs[argOffset + 2]
+            let contextLatents = allArgs[argOffset + 3]
+            let vTarget = allArgs[argOffset + 4]
+            let encoderMask: MLXArray? = allArgs.count > argOffset + 5
+                ? allArgs[argOffset + 5]
                 : nil
 
             let (vPred, _) = trainingModel(
@@ -191,10 +196,10 @@ public final class LoRATrainer {
                 AudioDiagnostics.memory("training/trainer/gradClosureReady")
             }
             return [loss]
-        }
+        }, argumentNumbers: gradientArgumentNumbers)
         AudioDiagnostics.note(
             "training/trainer/valueAndGradReady",
-            "kind=lora trainableArgumentCount=\(trainableArgumentCount)"
+            "kind=lora gradientRoute=flatAdapterParameters trainableArgumentCount=\(trainableArgumentCount)"
         )
 
         let startEpoch = currentEpoch + 1
@@ -219,7 +224,7 @@ public final class LoRATrainer {
             // Per-window tracking for accurate loss reporting
             var windowLoss: Float = 0
             var windowSamples: Int = 0
-            var accumulatedGrads: ModuleParameters?
+            var accumulatedFlatGrads: [MLXArray]?
 
             for idx in shuffledIndices {
                 guard !isCancelled else { break }
@@ -274,10 +279,11 @@ public final class LoRATrainer {
                         startedAt: lossGradStart
                     )
                     : nil
-                let (lossValues, grads) = lossGrad(model, args)
+                let trainableParameters = model.trainableParameters().flattened()
+                let trainableValues = trainableParameters.map(\.1)
+                let (lossValues, flatGrads) = lossGrad(trainableValues + args)
                 firstBackwardWatchdog?.cancel()
                 let lossGradElapsed = Date().timeIntervalSince(lossGradStart)
-                let flatGrads = grads.flattened().map(\.1)
                 if shouldLogSample {
                     AudioDiagnostics.note(
                         "training/trainer/firstLossGradEnd",
@@ -298,10 +304,10 @@ public final class LoRATrainer {
                     )
                 }
 
-                if let current = accumulatedGrads {
-                    accumulatedGrads = TrainingMetricMath.addGradients(current, grads)
+                if let current = accumulatedFlatGrads {
+                    accumulatedFlatGrads = Self.addFlatGradients(current, flatGrads)
                 } else {
-                    accumulatedGrads = grads
+                    accumulatedFlatGrads = flatGrads
                 }
 
                 epochLoss += lossValue
@@ -310,10 +316,11 @@ public final class LoRATrainer {
                 windowSamples += 1
 
                 if windowSamples >= accumSteps,
-                   let windowGrads = accumulatedGrads {
+                   let windowFlatGrads = accumulatedFlatGrads {
                     updateOptimizerForAccumulationWindow(
                         optimizer: optimizer,
-                        accumulatedGrads: windowGrads,
+                        trainableParameterKeys: trainableParameterKeys,
+                        accumulatedFlatGrads: windowFlatGrads,
                         windowLoss: windowLoss,
                         windowSamples: windowSamples,
                         epoch: epoch,
@@ -322,15 +329,16 @@ public final class LoRATrainer {
                     )
                     windowLoss = 0
                     windowSamples = 0
-                    accumulatedGrads = nil
+                    accumulatedFlatGrads = nil
                 }
             }
 
             if windowSamples > 0,
-               let windowGrads = accumulatedGrads {
+               let windowFlatGrads = accumulatedFlatGrads {
                 updateOptimizerForAccumulationWindow(
                     optimizer: optimizer,
-                    accumulatedGrads: windowGrads,
+                    trainableParameterKeys: trainableParameterKeys,
+                    accumulatedFlatGrads: windowFlatGrads,
                     windowLoss: windowLoss,
                     windowSamples: windowSamples,
                     epoch: epoch,
@@ -422,6 +430,13 @@ public final class LoRATrainer {
         return recent.reduce(0, +) / Float(recent.count)
     }
 
+    private static func addFlatGradients(
+        _ lhs: [MLXArray],
+        _ rhs: [MLXArray]
+    ) -> [MLXArray] {
+        zip(lhs, rhs).map { pair in pair.0 + pair.1 }
+    }
+
     private static func formatSeconds(_ value: TimeInterval) -> String {
         String(format: "%.3fs", value)
     }
@@ -451,7 +466,8 @@ public final class LoRATrainer {
 
     private func updateOptimizerForAccumulationWindow(
         optimizer: AdamW,
-        accumulatedGrads: ModuleParameters,
+        trainableParameterKeys: [String],
+        accumulatedFlatGrads: [MLXArray],
         windowLoss: Float,
         windowSamples: Int,
         epoch: Int,
@@ -462,10 +478,10 @@ public final class LoRATrainer {
         optimizer.learningRate = currentLR
 
         let scale = 1.0 / Float(max(1, windowSamples))
-        let averagedGrads = TrainingMetricMath.scaleGradients(accumulatedGrads, by: scale)
-        let averagedFlatGrads = averagedGrads.flattened().map(\.1)
+        let averagedFlatGrads = accumulatedFlatGrads.map { $0 * scale }
         let beforeUpdate = TrainingMetricMath.materializedSnapshot(model.trainableParameters().flattened().map(\.1))
-        optimizer.update(model: model, gradients: averagedGrads)
+        let gradPairs = zip(trainableParameterKeys, averagedFlatGrads).map { ($0.0, $0.1) }
+        optimizer.update(model: model, gradients: ModuleParameters.unflattened(gradPairs))
         eval(model.trainableParameters(), optimizer.innerState())
         let afterUpdate = model.trainableParameters().flattened().map(\.1)
         let gradientNorm = TrainingMetricMath.l2Norm(averagedFlatGrads)

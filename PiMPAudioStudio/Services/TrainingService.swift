@@ -289,8 +289,8 @@ final class TrainingService: ObservableObject {
                     )
                 }
 
-                let sessionConfig: LoRAConfig
-                let sessionLoKRConfig: LoKRConfig?
+                var sessionConfig: LoRAConfig
+                var sessionLoKRConfig: LoKRConfig?
                 let resumeCheckpoint: TrainingCheckpoint?
                 let initialWeights: [(String, MLXArray)]?
 
@@ -347,6 +347,24 @@ final class TrainingService: ObservableObject {
                     sessionConfig = config
                     sessionLoKRConfig = lokrConfig
                     initialWeights = nil
+                }
+                let dropoutAdjustment = Self.localMLXDropoutSafeConfigs(
+                    kind: kind,
+                    config: sessionConfig,
+                    lokrConfig: sessionLoKRConfig
+                )
+                sessionConfig = dropoutAdjustment.config
+                sessionLoKRConfig = dropoutAdjustment.lokrConfig
+                if dropoutAdjustment.requestedDropout > dropoutAdjustment.effectiveDropout {
+                    let requestedText = Self.formatFloat(dropoutAdjustment.requestedDropout)
+                    let effectiveText = Self.formatFloat(dropoutAdjustment.effectiveDropout)
+                    trainingLogger.warning(
+                        "Local MLX adapter dropout requested=\(requestedText) is disabled for '\(adapterName)' while first-backward VJP stalls are isolated."
+                    )
+                    AudioDiagnostics.note(
+                        "training/config/dropoutGuard",
+                        "kind=\(kind.rawValue) adapterID=\(adapterID) requestedDropout=\(requestedText) effectiveDropout=\(effectiveText) reason=localMLXFirstBackwardVJP"
+                    )
                 }
 
                 // 1. Prepare dataset
@@ -635,6 +653,37 @@ final class TrainingService: ObservableObject {
         }
     }
 
+    private static func localMLXDropoutSafeConfigs(
+        kind: AdapterKind,
+        config: LoRAConfig,
+        lokrConfig: LoKRConfig?
+    ) -> (config: LoRAConfig, lokrConfig: LoKRConfig?, requestedDropout: Float, effectiveDropout: Float) {
+        let requestedDropout = lokrConfig?.dropout ?? config.dropout
+        guard requestedDropout > 0 else {
+            return (config, lokrConfig, requestedDropout, requestedDropout)
+        }
+
+        switch kind {
+        case .lora:
+            var adjustedConfig = config
+            adjustedConfig.dropout = 0
+            return (adjustedConfig, nil, requestedDropout, 0)
+        case .lokr:
+            var adjustedLoKRConfig = lokrConfig ?? LoKRConfig(loraCompatibleConfig: config)
+            adjustedLoKRConfig.dropout = 0
+            return (
+                adjustedLoKRConfig.loraCompatibleConfig,
+                adjustedLoKRConfig,
+                requestedDropout,
+                0
+            )
+        }
+    }
+
+    private static func formatFloat(_ value: Float) -> String {
+        String(format: "%.3f", value)
+    }
+
     /// Swap in a fully-loaded ConditioningActor (real tokenizer + model weights).
     /// Called by AppServices when ACEStepGenerationService upgrades from the stub.
     func updateConditioning(_ actor: ConditioningActor) {
@@ -732,13 +781,18 @@ final class TrainingService: ObservableObject {
             ? "linearDim=\(lokrConfig?.linearDim ?? config.rank)"
             : "rank=\(config.rank)"
         let layerCount = lokrConfig?.trainingLayerCount ?? config.trainingLayerCount
+        let alpha = lokrConfig?.alpha ?? config.alpha
+        let dropout = lokrConfig?.dropout ?? config.dropout
+        let learningRate = lokrConfig?.learningRate ?? config.learningRate
+        let gradientAccumulationSteps = lokrConfig?.gradientAccumulationSteps ?? config.gradientAccumulationSteps
         let targets = config.injectionPatterns.joined(separator: ",")
+        let numericSummary = "alpha=\(String(format: "%.3f", alpha)) dropout=\(String(format: "%.3f", dropout)) lr=\(String(format: "%.2e", learningRate)) gradAccum=\(gradientAccumulationSteps)"
         trainingLogger.info(
-            "Starting \(kind.rawValue.uppercased()) training name='\(adapterName)' base=\(activeModelID) samples=\(sampleCount) \(rankLabel) epochs=\(config.maxEpochs) layerCoverage=\(layerCount ?? 0) targets=\(targets)"
+            "Starting \(kind.rawValue.uppercased()) training name='\(adapterName)' base=\(activeModelID) samples=\(sampleCount) \(rankLabel) \(numericSummary) epochs=\(config.maxEpochs) layerCoverage=\(layerCount ?? 0) targets=\(targets)"
         )
         AudioDiagnostics.note(
             "training/start",
-            "kind=\(kind.rawValue) name=\(adapterName) base=\(activeModelID) samples=\(sampleCount) \(rankLabel) epochs=\(config.maxEpochs) layerCoverage=\(layerCount ?? 0) targets=\(config.injectionPatterns)"
+            "kind=\(kind.rawValue) name=\(adapterName) base=\(activeModelID) samples=\(sampleCount) \(rankLabel) \(numericSummary) epochs=\(config.maxEpochs) layerCoverage=\(layerCount ?? 0) targets=\(config.injectionPatterns)"
         )
     }
 
@@ -1095,6 +1149,10 @@ final class TrainingService: ObservableObject {
         }
         if kind == .lokr, layerCount >= 16 {
             warnings.append("LoKR across 16+ local layers is sensitive on XL models; Q/V projection coverage is recommended.")
+        }
+        let requestedDropout = lokrConfig?.dropout ?? config.dropout
+        if requestedDropout > 0 {
+            warnings.append("Local Swift/MLX adapter training will run with dropout 0 while a first-backward VJP stall in the dropout path is isolated.")
         }
         if sampleCount >= 500 {
             warnings.append("Large datasets raise the preflight reserve because preprocessing and optimizer state stay hot during training.")

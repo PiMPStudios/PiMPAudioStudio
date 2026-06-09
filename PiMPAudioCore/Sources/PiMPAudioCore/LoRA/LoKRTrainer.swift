@@ -78,11 +78,13 @@ public final class LoKRTrainer {
         }
 
         var hasLoggedGradientClosure = false
+        let trainingModel = model
         let trainableParameterKeys = model.trainableParameters().flattened().map(\.0)
         let trainableArgumentCount = trainableParameterKeys.count
         let trainableParameterKeyPreview = Array(trainableParameterKeys.prefix(24))
         let omittedTrainableParameterKeyCount = max(0, trainableParameterKeys.count - trainableParameterKeyPreview.count)
-        let lossGrad = valueAndGrad(model: model) { trainingModel, allArgs in
+        let gradientArgumentNumbers = Array(0..<trainableArgumentCount)
+        let lossGrad = valueAndGrad({ (allArgs: [MLXArray]) -> [MLXArray] in
             let shouldLogGradientClosure = !hasLoggedGradientClosure
             if shouldLogGradientClosure {
                 hasLoggedGradientClosure = true
@@ -91,14 +93,18 @@ public final class LoKRTrainer {
                     "kind=lokr paramCount=\(trainableParameterKeys.count) paramKeysPreview=\(trainableParameterKeyPreview) omitted=\(omittedTrainableParameterKeyCount)"
                 )
             }
+            let parameterValues = Array(allArgs.prefix(trainableArgumentCount))
+            let parameterPairs = zip(trainableParameterKeys, parameterValues).map { ($0.0, $0.1) }
+            trainingModel.update(parameters: ModuleParameters.unflattened(parameterPairs))
 
-            let xt = allArgs[0]
-            let t = allArgs[1]
-            let encoderStates = allArgs[2]
-            let contextLatents = allArgs[3]
-            let vTarget = allArgs[4]
-            let encoderMask: MLXArray? = allArgs.count > 5
-                ? allArgs[5]
+            let argOffset = trainableArgumentCount
+            let xt = allArgs[argOffset]
+            let t = allArgs[argOffset + 1]
+            let encoderStates = allArgs[argOffset + 2]
+            let contextLatents = allArgs[argOffset + 3]
+            let vTarget = allArgs[argOffset + 4]
+            let encoderMask: MLXArray? = allArgs.count > argOffset + 5
+                ? allArgs[argOffset + 5]
                 : nil
 
             let (vPred, _) = trainingModel(
@@ -120,10 +126,10 @@ public final class LoKRTrainer {
                 AudioDiagnostics.memory("training/trainer/gradClosureReady")
             }
             return [(diff * diff).mean()]
-        }
+        }, argumentNumbers: gradientArgumentNumbers)
         AudioDiagnostics.note(
             "training/trainer/valueAndGradReady",
-            "kind=lokr trainableArgumentCount=\(trainableArgumentCount)"
+            "kind=lokr gradientRoute=flatAdapterParameters trainableArgumentCount=\(trainableArgumentCount)"
         )
 
         var hasLoggedFirstProcessedSample = false
@@ -135,7 +141,7 @@ public final class LoKRTrainer {
             var epochSamples = 0
             var windowLoss: Float = 0
             var windowSamples = 0
-            var accumulatedGrads: ModuleParameters?
+            var accumulatedFlatGrads: [MLXArray]?
             let shuffledIndices = Array(0..<dataset.count).shuffled()
             AudioDiagnostics.note(
                 "training/trainer/epochBegin",
@@ -186,10 +192,10 @@ public final class LoKRTrainer {
                         startedAt: lossGradStart
                     )
                     : nil
-                let (lossValues, grads) = lossGrad(model, args)
+                let trainableValues = model.trainableParameters().flattened().map(\.1)
+                let (lossValues, flatGrads) = lossGrad(trainableValues + args)
                 firstBackwardWatchdog?.cancel()
                 let lossGradElapsed = Date().timeIntervalSince(lossGradStart)
-                let flatGrads = grads.flattened().map(\.1)
                 if shouldLogSample {
                     AudioDiagnostics.note(
                         "training/trainer/firstLossGradEnd",
@@ -209,10 +215,10 @@ public final class LoKRTrainer {
                     )
                 }
 
-                if let current = accumulatedGrads {
-                    accumulatedGrads = TrainingMetricMath.addGradients(current, grads)
+                if let current = accumulatedFlatGrads {
+                    accumulatedFlatGrads = Self.addFlatGradients(current, flatGrads)
                 } else {
-                    accumulatedGrads = grads
+                    accumulatedFlatGrads = flatGrads
                 }
 
                 epochLoss += lossValue
@@ -221,10 +227,11 @@ public final class LoKRTrainer {
                 windowSamples += 1
 
                 if windowSamples >= accumSteps,
-                   let windowGrads = accumulatedGrads {
+                   let windowFlatGrads = accumulatedFlatGrads {
                     updateOptimizerForAccumulationWindow(
                         optimizer: optimizer,
-                        accumulatedGrads: windowGrads,
+                        trainableParameterKeys: trainableParameterKeys,
+                        accumulatedFlatGrads: windowFlatGrads,
                         windowLoss: windowLoss,
                         windowSamples: windowSamples,
                         epoch: epoch,
@@ -233,15 +240,16 @@ public final class LoKRTrainer {
                     )
                     windowLoss = 0
                     windowSamples = 0
-                    accumulatedGrads = nil
+                    accumulatedFlatGrads = nil
                 }
             }
 
             if windowSamples > 0,
-               let windowGrads = accumulatedGrads {
+               let windowFlatGrads = accumulatedFlatGrads {
                 updateOptimizerForAccumulationWindow(
                     optimizer: optimizer,
-                    accumulatedGrads: windowGrads,
+                    trainableParameterKeys: trainableParameterKeys,
+                    accumulatedFlatGrads: windowFlatGrads,
                     windowLoss: windowLoss,
                     windowSamples: windowSamples,
                     epoch: epoch,
@@ -307,6 +315,10 @@ public final class LoKRTrainer {
         return recent.reduce(0, +) / Float(recent.count)
     }
 
+    private static func addFlatGradients(_ lhs: [MLXArray], _ rhs: [MLXArray]) -> [MLXArray] {
+        zip(lhs, rhs).map { pair in pair.0 + pair.1 }
+    }
+
     private static func formatSeconds(_ value: TimeInterval) -> String {
         String(format: "%.3fs", value)
     }
@@ -336,7 +348,8 @@ public final class LoKRTrainer {
 
     private func updateOptimizerForAccumulationWindow(
         optimizer: AdamW,
-        accumulatedGrads: ModuleParameters,
+        trainableParameterKeys: [String],
+        accumulatedFlatGrads: [MLXArray],
         windowLoss: Float,
         windowSamples: Int,
         epoch: Int,
@@ -347,10 +360,10 @@ public final class LoKRTrainer {
         optimizer.learningRate = currentLR
 
         let scale = 1.0 / Float(max(1, windowSamples))
-        let averagedGrads = TrainingMetricMath.scaleGradients(accumulatedGrads, by: scale)
-        let averagedFlatGrads = averagedGrads.flattened().map(\.1)
+        let averagedFlatGrads = accumulatedFlatGrads.map { $0 * scale }
         let beforeUpdate = TrainingMetricMath.materializedSnapshot(model.trainableParameters().flattened().map(\.1))
-        optimizer.update(model: model, gradients: averagedGrads)
+        let gradPairs = zip(trainableParameterKeys, averagedFlatGrads).map { ($0.0, $0.1) }
+        optimizer.update(model: model, gradients: ModuleParameters.unflattened(gradPairs))
         eval(model.trainableParameters(), optimizer.innerState())
         let afterUpdate = model.trainableParameters().flattened().map(\.1)
         let gradientNorm = TrainingMetricMath.l2Norm(averagedFlatGrads)
