@@ -81,7 +81,8 @@ public final class LoRATrainer {
         config: LoRAConfig,
         injectedPaths: [String],
         datasetSize: Int,
-        resumeFrom checkpoint: TrainingCheckpoint? = nil
+        resumeFrom checkpoint: TrainingCheckpoint? = nil,
+        initialBestWeights: [(String, MLXArray)]? = nil
     ) {
         self.model = model
         self.config = config
@@ -107,6 +108,10 @@ public final class LoRATrainer {
             self.currentEpoch = checkpoint.epoch
             self.lossHistory = checkpoint.lossHistory
             self.bestLoss = checkpoint.bestLoss ?? .infinity
+            if checkpoint.bestLoss != nil {
+                self.bestWeights = initialBestWeights
+                    ?? LoRAInjector.extractWeights(model: model, paths: injectedPaths)
+            }
         }
     }
 

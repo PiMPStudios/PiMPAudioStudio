@@ -6,6 +6,7 @@ import SwiftUI
 final class LyricWriterManager: ObservableObject {
     @Published var isWriting: Bool = false
     @Published var activeBackend: String = "local"
+    @Published var lastError: String?
 
     static let remoteBackendProviders = APIKeyStore.providers
         .filter { $0.id != APIKeyStore.huggingFaceProviderID }
@@ -150,28 +151,38 @@ final class LyricWriterManager: ObservableObject {
         duration: TimeInterval,
         into binding: Binding<String>
     ) {
-        guard let backend = backends[activeBackend] ?? backends["local"] else { return }
+        guard let backend = backends[activeBackend] ?? backends["local"] else {
+            lastError = LyricWriterManagerError.noAvailableBackend.localizedDescription
+            return
+        }
         writeTask?.cancel()
         isWriting = true
+        lastError = nil
         binding.wrappedValue = ""
 
         writeTask = Task { [weak self] in
             let stream = backend.write(prompt: prompt, style: style, duration: duration)
             var rawLyrics = ""
-            for await token in stream {
-                if Task.isCancelled { break }
-                rawLyrics += token
-                binding.wrappedValue = rawLyrics
-            }
-            if !Task.isCancelled {
-                let sanitized = LyricOutputSanitizer.sanitize(
-                    rawLyrics,
-                    targetDuration: duration
-                )
-                let finalLyrics = sanitized.isEmpty
-                    ? rawLyrics.trimmingCharacters(in: .whitespacesAndNewlines)
-                    : sanitized
-                binding.wrappedValue = finalLyrics
+            do {
+                for try await token in stream {
+                    if Task.isCancelled { break }
+                    rawLyrics += token
+                    binding.wrappedValue = rawLyrics
+                }
+                if !Task.isCancelled {
+                    let sanitized = LyricOutputSanitizer.sanitize(
+                        rawLyrics,
+                        targetDuration: duration
+                    )
+                    let finalLyrics = sanitized.isEmpty
+                        ? rawLyrics.trimmingCharacters(in: .whitespacesAndNewlines)
+                        : sanitized
+                    binding.wrappedValue = finalLyrics
+                }
+            } catch is CancellationError {
+                // User cancellation leaves whatever partial text was already streamed.
+            } catch {
+                self?.lastError = error.localizedDescription
             }
             guard let self else { return }
             self.isWriting = false
@@ -189,11 +200,12 @@ final class LyricWriterManager: ObservableObject {
 
         writeTask?.cancel()
         isWriting = true
+        lastError = nil
         defer { isWriting = false }
 
         let stream = backend.write(prompt: prompt, style: style, duration: duration)
         var rawLyrics = ""
-        for await token in stream {
+        for try await token in stream {
             if Task.isCancelled {
                 throw CancellationError()
             }

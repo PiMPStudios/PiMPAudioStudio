@@ -41,6 +41,8 @@ final class CommunityService: ObservableObject {
     // MARK: - Private State
 
     private var activeTasks: [String: Task<Void, Never>] = [:]
+    private var pendingDownloads: [String: CommunityAdapter] = [:]
+    private var pendingDownloadOrder: [String] = []
     private var cachedManifest: AdapterManifest?
     private var cacheTimestamp: Date?
 
@@ -102,42 +104,73 @@ final class CommunityService: ObservableObject {
 
     /// Download a community adapter (safetensors + metadata) and save locally.
     func download(adapter: CommunityAdapter) {
-        guard activeTasks.count < Self.maxConcurrentDownloads else {
-            // Queue: just mark as downloading at 0
-            downloads[adapter.id] = .downloading(progress: 0)
-            // Retry after a delay when a slot opens
-            let task = Task { [weak self] in
-                try? await Task.sleep(for: .seconds(2))
-                await self?.download(adapter: adapter)
-            }
-            activeTasks[adapter.id] = task
+        guard activeTasks[adapter.id] == nil else { return }
+
+        if pendingDownloads[adapter.id] != nil {
+            downloads[adapter.id] = downloads[adapter.id] ?? .downloading(progress: 0)
             return
         }
 
+        guard activeTasks.count < Self.maxConcurrentDownloads else {
+            enqueueDownload(adapter)
+            return
+        }
+
+        startDownload(adapter)
+    }
+
+    private func enqueueDownload(_ adapter: CommunityAdapter) {
+        pendingDownloads[adapter.id] = adapter
+        pendingDownloadOrder.append(adapter.id)
+        downloads[adapter.id] = downloads[adapter.id] ?? .downloading(progress: 0)
+    }
+
+    private func startDownload(_ adapter: CommunityAdapter) {
         downloads[adapter.id] = .downloading(progress: 0)
 
         let task = Task { [weak self] in
             guard let self else { return }
             do {
                 try await self.performDownload(adapter: adapter, retryCount: 1)
-                self.downloads[adapter.id] = .completed
+                if !Task.isCancelled {
+                    self.downloads[adapter.id] = .completed
+                }
+            } catch is CancellationError {
+                // Cancellation is user-initiated; cancelDownload already clears UI state.
             } catch {
-                self.downloads[adapter.id] = .failed(error.localizedDescription)
+                if !Task.isCancelled {
+                    self.downloads[adapter.id] = .failed(error.localizedDescription)
+                }
             }
             self.activeTasks.removeValue(forKey: adapter.id)
+            self.startNextDownloadIfPossible()
         }
         activeTasks[adapter.id] = task
+    }
+
+    private func startNextDownloadIfPossible() {
+        while activeTasks.count < Self.maxConcurrentDownloads,
+              let adapterID = pendingDownloadOrder.first {
+            pendingDownloadOrder.removeFirst()
+            guard let adapter = pendingDownloads.removeValue(forKey: adapterID) else {
+                continue
+            }
+            startDownload(adapter)
+        }
     }
 
     /// Cancel an in-progress download and clean up partial files.
     func cancelDownload(adapterID: String) {
         activeTasks[adapterID]?.cancel()
         activeTasks.removeValue(forKey: adapterID)
+        pendingDownloads.removeValue(forKey: adapterID)
+        pendingDownloadOrder.removeAll { $0 == adapterID }
         downloads.removeValue(forKey: adapterID)
 
         // Clean up any partial files
         let dir = AdapterRegistry.adapterDirectory(id: adapterID)
         try? FileManager.default.removeItem(at: dir)
+        startNextDownloadIfPossible()
     }
 
     /// Retry a failed download.
@@ -443,10 +476,12 @@ final class CommunityService: ObservableObject {
         do {
             // Download metadata
             let (metaData, _) = try await URLSession.shared.data(from: adapter.metadataURL)
+            try Task.checkCancellation()
             downloads[adapter.id] = .downloading(progress: 0.1)
 
             // Download weights with progress
             let (weightsData, _) = try await URLSession.shared.data(from: adapter.adapterURL)
+            try Task.checkCancellation()
             downloads[adapter.id] = .downloading(progress: 0.9)
 
             // Parse metadata to get a LoRAAdapter, update source
@@ -469,7 +504,16 @@ final class CommunityService: ObservableObject {
             try weightsData.write(to: dir.appending(path: "adapter.safetensors"))
 
             downloads[adapter.id] = .downloading(progress: 1.0)
+        } catch is CancellationError {
+            let dir = AdapterRegistry.adapterDirectory(id: adapter.id)
+            try? FileManager.default.removeItem(at: dir)
+            throw CancellationError()
         } catch {
+            if Task.isCancelled {
+                let dir = AdapterRegistry.adapterDirectory(id: adapter.id)
+                try? FileManager.default.removeItem(at: dir)
+                throw CancellationError()
+            }
             if retryCount > 0 {
                 // Auto-retry once
                 try await Task.sleep(for: .seconds(1))

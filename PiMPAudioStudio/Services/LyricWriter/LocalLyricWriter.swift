@@ -12,12 +12,12 @@ struct LocalLyricWriter: LyricWriter {
         self.llm = llm
     }
 
-    func write(prompt: String, style: String, duration: TimeInterval) -> AsyncStream<String> {
+    func write(prompt: String, style: String, duration: TimeInterval) -> AsyncThrowingStream<String, Error> {
         let plan = LyricWritingPlan.make(duration: duration)
         let userPrompt = plan.userPrompt(prompt: prompt, style: style)
 
         let actor = llm
-        return AsyncStream { continuation in
+        return AsyncThrowingStream { continuation in
             let task = Task {
                 let stream = await actor.generate(
                     systemPrompt: plan.systemPrompt,

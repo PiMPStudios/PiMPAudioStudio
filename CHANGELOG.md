@@ -145,6 +145,7 @@ All notable changes to PiMP Audio Studio are documented here.
 
 ### Changed
 
+- **MCP server internals are split into focused files** — the raw localhost HTTP listener now lives in `PiMPAudioMCPHTTPServer.swift` and the static tool schema catalog lives in `PiMPAudioMCPToolCatalog.swift`, leaving `PiMPAudioMCPServer.swift` focused on lifecycle, SDK bridge wiring, session handling, and dispatch.
 - **MCP docs now treat PiMP Audio Studio names as primary** — `docs/mcp-local.md`, the MCP spec/plan, and the smoke test now document `pimpaudio://` resources, `PIMP_AUDIO_MCP_*` environment variables, and snake_case tool names as the public catalog.
 - **MCP progress/cancellation design is staged** — the standards roadmap now
   separates today's pollable operation records and request-scoped progress
@@ -174,6 +175,9 @@ All notable changes to PiMP Audio Studio are documented here.
 
 ### Fixed
 
+- **Community downloads now use a real queue** — queued adapter downloads no longer occupy the active-download concurrency slots or reset progress every retry tick; only running downloads live in the active task set, and queued work starts as slots open.
+- **Lyric writer failures are surfaced** — API and CLI lyric writers now use throwing streams, report request encoding, HTTP, network, and provider-exit failures, and show the error beside the lyrics box instead of silently finishing with no text.
+- **LoRA/LoKR resume preserves best-checkpoint state** — resumed trainers hydrate their saved best weights when a checkpoint already has a best loss, so pause/resume metadata continues reporting usable checkpoints and lowest loss before another epoch completes.
 - **New local LoRA trainings now scale alpha with rank** — LoRA configs created with a larger selected rank now default alpha to that same rank instead of keeping the old fixed `16`, so rank 64 adapters are no longer trained with a conservative `0.25` internal scale unless alpha is explicitly overridden.
 - **Training layer coverage controls no longer wrap awkwardly** — the LoRA/LoKR training sheet now hides duplicate segmented-picker labels and gives Layer Coverage a stable width, so the control stays as a single clean row in the inline Training workspace.
 - **Local dataset enrichment uses less peak memory** — Enrich Dataset now invokes the existing GPU-memory release path before loading Demucs/Qwen, compacts the MLX allocator between separation/transcription phases, and reuses one decoded stem sample buffer for BPM/key analysis instead of reading instrumental stems twice.

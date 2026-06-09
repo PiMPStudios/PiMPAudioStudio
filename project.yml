@@ -67,6 +67,12 @@ targets:
     dependencies:
       - target: PiMPAudioStudio
       - package: PiMPAudioCore
+      - package: mlx-swift
+        product: MLX
+      - package: mlx-swift
+        product: MLXNN
+      - package: mlx-swift
+        product: MLXOptimizers
     settings:
       base:
         SWIFT_VERSION: "5.10"

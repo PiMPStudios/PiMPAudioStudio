@@ -4,7 +4,41 @@ protocol LyricWriter: Sendable {
     var id: String { get }
     var displayName: String { get }
     var requiresAPIKey: Bool { get }
-    func write(prompt: String, style: String, duration: TimeInterval) -> AsyncStream<String>
+    func write(prompt: String, style: String, duration: TimeInterval) -> AsyncThrowingStream<String, Error>
+}
+
+enum LyricWriterError: LocalizedError {
+    case requestEncodingFailed(String)
+    case requestFailed(String, String)
+    case providerExited(String, Int32)
+
+    var errorDescription: String? {
+        switch self {
+        case .requestEncodingFailed(let provider):
+            return "\(provider) lyric request could not be encoded."
+        case .requestFailed(let provider, let detail):
+            return "\(provider) lyric request failed: \(detail)"
+        case .providerExited(let provider, let status):
+            return "\(provider) lyric writer exited with status \(status)."
+        }
+    }
+}
+
+enum LyricWriterRequest {
+    static func jsonBody(_ body: [String: Any], provider: String) throws -> Data {
+        do {
+            return try JSONSerialization.data(withJSONObject: body)
+        } catch {
+            throw LyricWriterError.requestEncodingFailed(provider)
+        }
+    }
+
+    static func validate(response: URLResponse, provider: String) throws {
+        guard let http = response as? HTTPURLResponse else { return }
+        guard (200..<300).contains(http.statusCode) else {
+            throw LyricWriterError.requestFailed(provider, "HTTP \(http.statusCode)")
+        }
+    }
 }
 
 struct ProviderCLILyricWriter: LyricWriter {
@@ -33,8 +67,8 @@ struct ProviderCLILyricWriter: LyricWriter {
         self.homeDirectoryMode = homeDirectoryMode
     }
 
-    func write(prompt: String, style: String, duration: TimeInterval) -> AsyncStream<String> {
-        AsyncStream { continuation in
+    func write(prompt: String, style: String, duration: TimeInterval) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
             let task = Task {
                 let plan = LyricWritingPlan.make(duration: duration)
                 let userPrompt = plan.userPrompt(prompt: prompt, style: style)
@@ -57,8 +91,7 @@ struct ProviderCLILyricWriter: LyricWriter {
                     )
 
                     guard result.exitStatus == 0 else {
-                        continuation.finish()
-                        return
+                        throw LyricWriterError.providerExited(displayName, result.exitStatus)
                     }
 
                     let text = LyricCLIResponseParser.responseText(
@@ -69,8 +102,8 @@ struct ProviderCLILyricWriter: LyricWriter {
                         continuation.yield(text)
                     }
                 } catch {
-                    // Network/auth/provider failures should not crash generation.
-                    // The settings panel already surfaces CLI readiness.
+                    continuation.finish(throwing: error)
+                    return
                 }
 
                 continuation.finish()

@@ -208,6 +208,11 @@ struct GenerateView: View {
                 .frame(minHeight: 80, maxHeight: 120)
                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(.quaternary))
                 .disabled(lyricWriterManager.isWriting)
+            if let message = lyricWriterManager.lastError {
+                Label(message, systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
         }
     }
 

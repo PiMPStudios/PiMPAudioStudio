@@ -354,7 +354,8 @@ public actor DiTActor {
             config: config,
             injectedPaths: paths,
             datasetSize: samples.count,
-            resumeFrom: checkpoint
+            resumeFrom: checkpoint,
+            initialBestWeights: checkpoint?.bestLoss == nil ? nil : initialWeights
         )
         activeLoRATrainer = trainer
         AudioDiagnostics.note(
@@ -426,7 +427,8 @@ public actor DiTActor {
             config: config,
             injectedPaths: paths,
             datasetSize: samples.count,
-            resumeFrom: checkpoint
+            resumeFrom: checkpoint,
+            initialBestWeights: checkpoint?.bestLoss == nil ? nil : initialWeights
         )
         activeLoKRTrainer = trainer
         AudioDiagnostics.note(

@@ -24,7 +24,8 @@ public final class LoKRTrainer {
         config: LoKRConfig,
         injectedPaths: [String],
         datasetSize: Int,
-        resumeFrom checkpoint: TrainingCheckpoint? = nil
+        resumeFrom checkpoint: TrainingCheckpoint? = nil,
+        initialBestWeights: [(String, MLXArray)]? = nil
     ) {
         self.model = model
         self.config = config
@@ -46,6 +47,10 @@ public final class LoKRTrainer {
             self.currentEpoch = checkpoint.epoch
             self.lossHistory = checkpoint.lossHistory
             self.bestLoss = checkpoint.bestLoss ?? .infinity
+            if checkpoint.bestLoss != nil {
+                self.bestWeights = initialBestWeights
+                    ?? LoKRInjector.extractWeights(model: model, paths: injectedPaths)
+            }
         }
     }
 

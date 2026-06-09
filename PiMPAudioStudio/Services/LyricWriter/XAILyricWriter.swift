@@ -17,7 +17,7 @@ struct XAILyricWriter: LyricWriter {
         )
     }
 
-    func write(prompt: String, style: String, duration: TimeInterval) -> AsyncStream<String> {
+    func write(prompt: String, style: String, duration: TimeInterval) -> AsyncThrowingStream<String, Error> {
         writer.write(prompt: prompt, style: style, duration: duration)
     }
 }
