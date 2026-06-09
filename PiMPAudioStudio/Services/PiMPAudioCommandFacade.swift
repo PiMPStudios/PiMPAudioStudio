@@ -906,12 +906,31 @@ final class PiMPAudioCommandFacade {
             ]
         }
 
+        let adapterPlan = orchestrationAdapterPlan(from: arguments)
         let adapterPayload: [String: Any]?
-        if let adapterArguments = orchestrationAdapterArguments(from: arguments) {
+        if adapterPlan.hasAction {
             if dryRun {
-                adapterPayload = ["skipped": true, "reason": "dryRun"]
+                adapterPayload = [
+                    "skipped": true,
+                    "reason": "dryRun",
+                    "wouldClear": adapterPlan.shouldClear,
+                    "wouldApply": adapterPlan.applyArguments != nil
+                ]
             } else {
-                adapterPayload = try await applyAdapter(arguments: adapterArguments)
+                var clearPayload: [String: Any]?
+                if adapterPlan.shouldClear {
+                    clearPayload = try await applyAdapter(arguments: ["clear": true])
+                }
+
+                if let applyArguments = adapterPlan.applyArguments {
+                    var appliedPayload = try await applyAdapter(arguments: applyArguments)
+                    if adapterPlan.shouldClear {
+                        appliedPayload["clearedBeforeApply"] = true
+                    }
+                    adapterPayload = appliedPayload
+                } else {
+                    adapterPayload = clearPayload
+                }
             }
         } else {
             adapterPayload = nil
@@ -1381,11 +1400,14 @@ final class PiMPAudioCommandFacade {
         generationService.adapterStack = [(id: adapterID, weight: strength)]
     }
 
-    private func orchestrationAdapterArguments(from arguments: [String: Any]) -> [String: Any]? {
-        if boolValue(arguments["clearAdapter"] ?? arguments["clearAdapters"]) == true {
-            return ["clear": true]
-        }
+    private func orchestrationAdapterPlan(from arguments: [String: Any]) -> OrchestrationAdapterPlan {
+        OrchestrationAdapterPlan(
+            shouldClear: boolValue(arguments["clearAdapter"] ?? arguments["clearAdapters"]) == true,
+            applyArguments: orchestrationAdapterArguments(from: arguments)
+        )
+    }
 
+    private func orchestrationAdapterArguments(from arguments: [String: Any]) -> [String: Any]? {
         if let adapters = arguments["adapters"] ?? arguments["adapterStack"] ?? arguments["stack"] {
             return ["adapters": adapters]
         }
@@ -5805,6 +5827,15 @@ private enum PiMPAudioCommandFacadeError: LocalizedError {
 private struct AdapterSelection {
     let adapter: LoRAAdapter
     let strength: Float
+}
+
+private struct OrchestrationAdapterPlan {
+    let shouldClear: Bool
+    let applyArguments: [String: Any]?
+
+    var hasAction: Bool {
+        shouldClear || applyArguments != nil
+    }
 }
 
 private struct EditorAudioLoadSource {

@@ -82,6 +82,10 @@ All notable changes to PiMP Audio Studio are documented here.
   generation through the same cancellation path as the app UI, giving richer
   editor workflows a standards-shaped operation contract before protocol-level
   progress streams are enabled.
+- **MCP song orchestration now clears then applies adapters** — `generate_song`
+  now treats `clearAdapter: true` plus `adapter` / `adapters` as a stale-selection
+  reset before applying the requested adapter stack, so one-call A/B generation
+  requests no longer accidentally submit base-model renders.
 - **MCP editor operation bridge** — `editor_status` now exposes editor
   readiness, loaded audio metadata, supported editor actions, and the active
   editor operation. `load_editor_audio` registers a background

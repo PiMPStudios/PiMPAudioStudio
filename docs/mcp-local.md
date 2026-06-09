@@ -190,7 +190,9 @@ the primary adapter, and notifies the Generate view when it is open.
 
 `generate_song` can optionally enhance the prompt, write lyrics, apply
 adapters, then submit generation through the same service path as the Generate
-button.
+button. When `clearAdapter: true` is combined with `adapter` or `adapters`, the
+orchestrator clears stale selection first and then applies the requested adapter
+selection before submission.
 
 `generate` submits a generation request directly. It returns immediately; use
 `generation_status`, `list_history`, or trace resources to observe completion. Pass

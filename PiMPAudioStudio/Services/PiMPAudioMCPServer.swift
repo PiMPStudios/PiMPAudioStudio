@@ -2465,7 +2465,7 @@ private enum MCPToolCatalog {
                 ],
                 "clearAdapter": [
                     "type": "boolean",
-                    "description": "Clear selected adapters before generation."
+                    "description": "Clear selected adapters before generation. When adapter/adapters are also supplied, the clear happens first and the requested adapter selection is then applied."
                 ],
                 "duration": [
                     "type": "number",

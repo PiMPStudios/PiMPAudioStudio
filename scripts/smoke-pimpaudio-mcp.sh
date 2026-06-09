@@ -165,6 +165,19 @@ for row in history:
         break
 '
 
+python_get_adapter_id='
+import json
+import sys
+
+data = json.load(sys.stdin)
+adapters = data.get("result", {}).get("structuredContent", {}).get("adapters", [])
+for adapter in adapters:
+    identifier = adapter.get("id") or adapter.get("name")
+    if identifier:
+        print(identifier)
+        break
+'
+
 python_check_generate_dry_run='
 import json
 import sys
@@ -182,6 +195,23 @@ if generation.get("submitted") is not False:
     sys.exit("generate_song dry-run generation unexpectedly submitted")
 if generation.get("operationID") is not None:
     sys.exit("generate_song dry-run generation unexpectedly returned operationID")
+'
+
+python_check_generate_dry_run_adapter_plan='
+import json
+import sys
+
+data = json.load(sys.stdin)
+structured = data.get("result", {}).get("structuredContent", {})
+adapter_selection = structured.get("adapterSelection", {})
+if structured.get("dryRun") is not True:
+    sys.exit("generate_song adapter-plan dry-run did not set dryRun")
+if adapter_selection.get("reason") != "dryRun":
+    sys.exit("generate_song adapter-plan dry-run did not report dryRun adapter selection")
+if adapter_selection.get("wouldClear") is not True:
+    sys.exit("generate_song adapter-plan dry-run did not preserve clearAdapter")
+if adapter_selection.get("wouldApply") is not True:
+    sys.exit("generate_song adapter-plan dry-run did not preserve adapter application")
 '
 
 python_check_editor_inpaint_dry_run='
@@ -376,6 +406,48 @@ rpc '{
   }
 }' 3 > "$TMP_DIR/generate-song-dry-run.json"
 /usr/bin/python3 -c "$python_check_generate_dry_run" < "$TMP_DIR/generate-song-dry-run.json"
+
+echo "4a. generate_song clear-then-apply adapter dry-run"
+rpc '{
+  "jsonrpc": "2.0",
+  "id": 31,
+  "method": "tools/call",
+  "params": {
+    "name": "list_adapters",
+    "arguments": {}
+  }
+}' 31 > "$TMP_DIR/adapters.json"
+SMOKE_ADAPTER_ID="$(/usr/bin/python3 -c "$python_get_adapter_id" < "$TMP_DIR/adapters.json")"
+if [[ -n "$SMOKE_ADAPTER_ID" ]]; then
+  ADAPTER_PLAN_REQUEST="$(/usr/bin/python3 - "$SMOKE_ADAPTER_ID" <<'PY'
+import json
+import sys
+
+adapter_id = sys.argv[1]
+print(json.dumps({
+    "jsonrpc": "2.0",
+    "id": 32,
+    "method": "tools/call",
+    "params": {
+        "name": "generate_song",
+        "arguments": {
+            "prompt": "mcp smoke adapter dry run",
+            "duration": 5,
+            "seed": 42,
+            "pipeline": "aceStep",
+            "clearAdapter": True,
+            "adapter": adapter_id,
+            "dryRun": True
+        }
+    }
+}))
+PY
+)"
+  rpc "$ADAPTER_PLAN_REQUEST" 32 > "$TMP_DIR/generate-song-adapter-plan-dry-run.json"
+  /usr/bin/python3 -c "$python_check_generate_dry_run_adapter_plan" < "$TMP_DIR/generate-song-adapter-plan-dry-run.json"
+else
+  echo "No adapters installed; skipping generate_song clear-then-apply adapter dry-run"
+fi
 
 echo "5. editor_status"
 rpc '{
