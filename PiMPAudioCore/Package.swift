@@ -8,6 +8,7 @@ let package = Package(
         .library(name: "PiMPAudioCore", targets: ["PiMPAudioCore"]),
         .executable(name: "QualityEval", targets: ["QualityEval"]),
         .executable(name: "DiTProbeEval", targets: ["DiTProbeEval"]),
+        .executable(name: "MLXDropoutVJPProbe", targets: ["MLXDropoutVJPProbe"]),
     ],
     dependencies: [
         .package(url: "https://github.com/ml-explore/mlx-swift", from: "0.21.0"),
@@ -43,6 +44,13 @@ let package = Package(
             dependencies: [
                 "PiMPAudioCore",
                 .product(name: "MLX", package: "mlx-swift"),
+            ]
+        ),
+        .executableTarget(
+            name: "MLXDropoutVJPProbe",
+            dependencies: [
+                .product(name: "MLX", package: "mlx-swift"),
+                .product(name: "MLXRandom", package: "mlx-swift"),
             ]
         ),
         .testTarget(name: "PiMPAudioCoreTests", dependencies: ["PiMPAudioCore"]),

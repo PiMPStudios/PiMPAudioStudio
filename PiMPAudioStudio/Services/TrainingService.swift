@@ -351,7 +351,8 @@ final class TrainingService: ObservableObject {
                 let dropoutAdjustment = Self.localMLXDropoutSafeConfigs(
                     kind: kind,
                     config: sessionConfig,
-                    lokrConfig: sessionLoKRConfig
+                    lokrConfig: sessionLoKRConfig,
+                    allowExplicitKeyDropoutExperiment: AudioDiagnostics.isEnabled
                 )
                 sessionConfig = dropoutAdjustment.config
                 sessionLoKRConfig = dropoutAdjustment.lokrConfig
@@ -364,6 +365,11 @@ final class TrainingService: ObservableObject {
                     AudioDiagnostics.note(
                         "training/config/dropoutGuard",
                         "kind=\(kind.rawValue) adapterID=\(adapterID) requestedDropout=\(requestedText) effectiveDropout=\(effectiveText) reason=localMLXFirstBackwardVJP"
+                    )
+                } else if dropoutAdjustment.requestedDropout > 0 {
+                    AudioDiagnostics.note(
+                        "training/config/dropoutExperiment",
+                        "kind=\(kind.rawValue) adapterID=\(adapterID) dropout=\(Self.formatFloat(dropoutAdjustment.effectiveDropout)) rng=explicitKey reason=verboseDiagnostics"
                     )
                 }
 
@@ -531,12 +537,6 @@ final class TrainingService: ObservableObject {
                     adapterID: adapterID,
                     adapterName: adapterName
                 )
-                self.logTrainingComplete(
-                    kind: kind,
-                    adapterName: adapterName,
-                    result: result
-                )
-
                 try Task.checkCancellation()
 
                 let adapter = LoRAAdapter(
@@ -613,6 +613,11 @@ final class TrainingService: ObservableObject {
                 // later for retraining with the same (or expanded) dataset.
                 AdapterRegistry.saveManifest(manifest, adapterID: adapterID)
                 AdapterRegistry.deleteCheckpoint(adapterID: adapterID)
+                self.logTrainingComplete(
+                    kind: kind,
+                    adapterName: adapterName,
+                    result: result
+                )
                 self.finishActiveRunLog(
                     status: .completed,
                     result: result,
@@ -656,10 +661,14 @@ final class TrainingService: ObservableObject {
     private static func localMLXDropoutSafeConfigs(
         kind: AdapterKind,
         config: LoRAConfig,
-        lokrConfig: LoKRConfig?
+        lokrConfig: LoKRConfig?,
+        allowExplicitKeyDropoutExperiment: Bool
     ) -> (config: LoRAConfig, lokrConfig: LoKRConfig?, requestedDropout: Float, effectiveDropout: Float) {
         let requestedDropout = lokrConfig?.dropout ?? config.dropout
         guard requestedDropout > 0 else {
+            return (config, lokrConfig, requestedDropout, requestedDropout)
+        }
+        if allowExplicitKeyDropoutExperiment {
             return (config, lokrConfig, requestedDropout, requestedDropout)
         }
 
@@ -1152,7 +1161,11 @@ final class TrainingService: ObservableObject {
         }
         let requestedDropout = lokrConfig?.dropout ?? config.dropout
         if requestedDropout > 0 {
-            warnings.append("Local Swift/MLX adapter training will run with dropout 0 while a first-backward VJP stall in the dropout path is isolated.")
+            if diagnosticsOverrideEnabled {
+                warnings.append("Verbose diagnostics will keep adapter dropout enabled with explicit per-step MLX keys for dropout VJP testing.")
+            } else {
+                warnings.append("Local Swift/MLX adapter training will run with dropout 0 while a first-backward VJP stall in the dropout path is isolated.")
+            }
         }
         if sampleCount >= 500 {
             warnings.append("Large datasets raise the preflight reserve because preprocessing and optimizer state stay hot during training.")

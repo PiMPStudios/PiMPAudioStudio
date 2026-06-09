@@ -67,7 +67,12 @@ public class LoKRLinear: Linear {
         if isTraining {
             var adapterInput = x
             if dropoutRate > 0 {
-                let mask = MLXRandom.uniform(0 ..< 1, adapterInput.shape) .> dropoutRate
+                let mask: MLXArray
+                if let dropoutKey = AdapterDropoutKeyContext.nextKey() {
+                    mask = MLXRandom.uniform(0 ..< 1, adapterInput.shape, key: dropoutKey) .> dropoutRate
+                } else {
+                    mask = MLXRandom.uniform(0 ..< 1, adapterInput.shape) .> dropoutRate
+                }
                 adapterInput = adapterInput * mask / (1.0 - dropoutRate)
             }
             let delta = Self.kroneckerWeight(

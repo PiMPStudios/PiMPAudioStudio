@@ -131,6 +131,12 @@ public final class LoKRTrainer {
             "training/trainer/valueAndGradReady",
             "kind=lokr gradientRoute=flatAdapterParameters trainableArgumentCount=\(trainableArgumentCount)"
         )
+        let usesExplicitDropoutKeys = config.dropout > 0
+        let adapterDropoutKeyCount = max(1, injectedPaths.count * 2)
+        AudioDiagnostics.note(
+            "training/trainer/dropoutRNG",
+            "kind=lokr mode=\(usesExplicitDropoutKeys ? "explicitKey" : "disabled") dropout=\(config.dropout) keyCount=\(usesExplicitDropoutKeys ? adapterDropoutKeyCount : 0)"
+        )
 
         var hasLoggedFirstProcessedSample = false
         for epoch in (currentEpoch + 1)...config.maxEpochs {
@@ -193,7 +199,20 @@ public final class LoKRTrainer {
                     )
                     : nil
                 let trainableValues = model.trainableParameters().flattened().map(\.1)
-                let (lossValues, flatGrads) = lossGrad(trainableValues + args)
+                let dropoutKeyStream = usesExplicitDropoutKeys
+                    ? AdapterDropoutKeyContext.makeKeyStream(
+                        seed: AdapterDropoutKeyContext.seed(
+                            epoch: epoch,
+                            globalStep: globalStep,
+                            sampleIndex: idx,
+                            pathCount: injectedPaths.count
+                        ),
+                        count: adapterDropoutKeyCount
+                    )
+                    : nil
+                let (lossValues, flatGrads) = AdapterDropoutKeyContext.withKeyStream(dropoutKeyStream) {
+                    lossGrad(trainableValues + args)
+                }
                 firstBackwardWatchdog?.cancel()
                 let lossGradElapsed = Date().timeIntervalSince(lossGradStart)
                 if shouldLogSample {

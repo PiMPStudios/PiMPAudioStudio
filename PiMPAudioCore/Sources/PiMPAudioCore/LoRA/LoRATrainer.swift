@@ -201,6 +201,12 @@ public final class LoRATrainer {
             "training/trainer/valueAndGradReady",
             "kind=lora gradientRoute=flatAdapterParameters trainableArgumentCount=\(trainableArgumentCount)"
         )
+        let usesExplicitDropoutKeys = config.dropout > 0
+        let adapterDropoutKeyCount = max(1, injectedPaths.count * 2)
+        AudioDiagnostics.note(
+            "training/trainer/dropoutRNG",
+            "kind=lora mode=\(usesExplicitDropoutKeys ? "explicitKey" : "disabled") dropout=\(config.dropout) keyCount=\(usesExplicitDropoutKeys ? adapterDropoutKeyCount : 0)"
+        )
 
         let startEpoch = currentEpoch + 1
         AudioDiagnostics.note(
@@ -281,7 +287,20 @@ public final class LoRATrainer {
                     : nil
                 let trainableParameters = model.trainableParameters().flattened()
                 let trainableValues = trainableParameters.map(\.1)
-                let (lossValues, flatGrads) = lossGrad(trainableValues + args)
+                let dropoutKeyStream = usesExplicitDropoutKeys
+                    ? AdapterDropoutKeyContext.makeKeyStream(
+                        seed: AdapterDropoutKeyContext.seed(
+                            epoch: epoch,
+                            globalStep: globalStep,
+                            sampleIndex: idx,
+                            pathCount: injectedPaths.count
+                        ),
+                        count: adapterDropoutKeyCount
+                    )
+                    : nil
+                let (lossValues, flatGrads) = AdapterDropoutKeyContext.withKeyStream(dropoutKeyStream) {
+                    lossGrad(trainableValues + args)
+                }
                 firstBackwardWatchdog?.cancel()
                 let lossGradElapsed = Date().timeIntervalSince(lossGradStart)
                 if shouldLogSample {

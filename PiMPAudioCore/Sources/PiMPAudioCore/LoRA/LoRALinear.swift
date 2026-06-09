@@ -84,7 +84,12 @@ public class LoRALinear: Linear {
         if isTraining {
             var loraInput = x
             if dropoutRate > 0 {
-                let mask = MLXRandom.uniform(0 ..< 1, loraInput.shape) .> dropoutRate
+                let mask: MLXArray
+                if let dropoutKey = AdapterDropoutKeyContext.nextKey() {
+                    mask = MLXRandom.uniform(0 ..< 1, loraInput.shape, key: dropoutKey) .> dropoutRate
+                } else {
+                    mask = MLXRandom.uniform(0 ..< 1, loraInput.shape) .> dropoutRate
+                }
                 loraInput = loraInput * mask / (1.0 - dropoutRate)
             }
             let loraOut = scaling * matmul(matmul(loraInput, loraA.T), loraB.T)

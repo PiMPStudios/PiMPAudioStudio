@@ -116,6 +116,12 @@ fix.
 
 ## Follow-Up (Opus 4.8): Fused SDPA Reframes the Lead Hypothesis
 
+> **Superseded 2026-06-08.** MCP bisection later falsified this section: Q/V *with
+> dropout* hangs, and Q/K/V/O *with dropout 0* (up to all-32 layers) completes. The
+> confirmed trigger is nonzero adapter dropout, not projection coverage and not the fused
+> SDPA. See "Confirmed Root Cause: Adapter Dropout / Global RNG Key" below. This section
+> is kept for the record.
+
 After reading the attention forward (`DiTAttention.callAsFunction`), which the analysis
 above did not examine, the lead hypothesis shifts. The "graph got too big" framing
 treated all four projections as interchangeable branch-count. They are not: K and O sit
@@ -181,3 +187,96 @@ Temporarily swap the fused `MLXFast.scaledDotProductAttention` call for a manual
 softmax attention during training only. If the manual path does not hang, the bug is
 localized to MLX's fused vjp. That allows filing it upstream while keeping the manual
 path as the local-training workaround, instead of banning Q/K/V/O entirely.
+
+## Confirmed Root Cause: Adapter Dropout / Global RNG Key
+
+MCP bisection (recorded in `local-xl-lora-mlx-vjp-hang-2026-06-08.md`) isolated the
+trigger to **nonzero adapter dropout**. The two earlier theories in this document
+(projection-count / graph size, and the fused-SDPA K-side gradient) are both falsified by
+the data:
+
+```text
+dropout 0,    Q/K/V/O, all 32 layers, 512 trainable tensors  -> reaches firstLoss + optimizer progress
+dropout 0.08, Q/V,     last 16,         128 trainable tensors -> hangs in vjp
+```
+
+512 trainable tensors with no dropout works; 128 tensors with dropout hangs. Scale,
+coverage, K-vs-O, and the model-aware-vs-flat gradient route are all ruled out.
+
+### This is a deadlock, not slowness
+
+The decisive clue is timing on the *same* Q/V rank-64 shape:
+
+```text
+dropout 0    -> firstLossGradEnd at 0.027s
+dropout 0.08 -> never returns (past the 300s watchdog)
+```
+
+The only graph difference is a handful of extra ops per adapter (`MLXRandom.uniform`, a
+`.>` compare, a multiply). Tracing or differentiating a few dozen extra ops cannot cost
+*infinite* time by volume. Combined with the sampled state — **0% CPU, MLX worker threads
+parked on condition variables, a recursive `vjp` stack that never returns** — this is the
+signature of a **deadlock / lock-inversion**, not a large-but-finite traversal (which
+would be CPU-bound and would finish). The dropout ops are not expensive; they are
+structurally breaking the `vjp` transform.
+
+### Mechanism: implicit global RNG key inside the traced closure
+
+Both adapter wrappers build the dropout mask with no explicit `key:` argument:
+
+```swift
+// LoRALinear.callAsFunction (training branch); LoKRLinear is identical
+let mask = MLXRandom.uniform(0 ..< 1, loraInput.shape) .> dropoutRate
+loraInput = loraInput * mask / (1.0 - dropoutRate)
+```
+
+With no `key:`, `MLXRandom.uniform` reads and advances MLX's **global RNG state**. This is
+a known MLX gotcha: the implicit global key does not compose with function transforms
+(`vjp` / `grad` / `compile`). Running the random op *inside* the `valueAndGrad`-traced
+closure weaves the global-key dependency into the graph as a captured-yet-mutating node.
+The most consistent explanation for the observed deadlock is a **re-entrant eval of the
+lazily-evaluated RNG key during vjp graph construction**: the traversal triggers an `eval`
+of the key sub-array while holding a graph lock, that eval waits on a worker, and the
+worker cannot proceed because the traversal holds the lock. The idle workers waiting on
+condition variables in the samples are exactly that stall.
+
+This also explains why the earlier `stopGradient(baseWeight)` experiment did nothing: the
+frozen base path was never the problem. The poison is on the adapter input side, in the
+RNG op.
+
+### Recommended fixes (in priority order)
+
+1. **Hoist mask generation out of the traced closure (most robust).** Generate the
+   dropout masks *before* calling `lossGrad`, pass them in as ordinary
+   non-differentiated array args, and only apply them inside the closure. With zero RNG
+   inside the `vjp` trace, there is nothing for the transform to interact with.
+2. **Pass an explicit per-step key to the random op.** Thread an `MLXRandom`-split key
+   through the trainer and use it at the call site:
+
+   ```swift
+   let mask = MLXRandom.uniform(0 ..< 1, loraInput.shape, key: stepKey) .> dropoutRate
+   ```
+
+   This is the MLX-sanctioned way to use randomness inside a transformed function. Verify
+   it composes cleanly under `vjp` before relying on it; option 1 is safer.
+3. **Keep the dropout-0 clamp as the default** until option 1 or 2 is validated under the
+   same MCP harness. The existing `training/config/dropoutGuard` diagnostic is the right
+   instrumentation to confirm the fix restores nonzero dropout without the stall.
+
+Apply the chosen fix to **both** `LoRALinear` and `LoKRLinear` — they share the exact
+dropout pattern, which is consistent with both kinds having hung.
+
+### Minimal repro (decoupled from DiT)
+
+Next Debug Idea #4 proposes a smaller synthetic DiT. It can be much smaller — this is
+unrelated to DiT, attention, or scale. A few lines of MLX Swift should reproduce it:
+
+```text
+f(w) = ((x * (uniform(x.shape) .> 0.08)) @ w).sum()   // implicit global key, inside closure
+valueAndGrad(f)(w)                                     // expect: hang
+
+// same with an explicit key: passed in                // expect: pass
+```
+
+If that reproduces outside the app, it is a clean upstream bug report against mlx-swift
+and fully isolates the issue from this codebase.

@@ -120,7 +120,82 @@ If the synthetic repro hangs, the `stopGradient(baseOut)` experiment can be vali
 - Does the hang occur even if we never call `.item()` on the loss (i.e., is it purely during gradient materialization)?
 - Are there any MLX Swift / MLXNN debug facilities (graph dumping, tape inspection, max recursion limits, etc.) that could be enabled during the first backward?
 
-This analysis is based solely on the primary debug document plus read-only inspection of the current source. No code was modified during this review.
+## Updated Ideas / Things Worth Checking Next (After Latest Dropout Bisection)
+
+The bisection via MCP (after the model-aware `valueAndGrad` change at `0cadf12`, flat-gradient retest, and especially the `dropoutGuard` that forces effective dropout to 0) has isolated **nonzero adapter dropout** as the leading confirmed trigger.
+
+Key evidence from the primary debug doc:
+- Narrow Q/V rank-64 (previously working) hung with dropout 0.08 but completed in 0.027s first backward when clamped to 0.
+- With effective dropout=0, even Q/K/V/O Last 12 (LoRA + LoKR) and an all-32-layer full Q/K/V/O LoKR (512 tensors) reached first loss and made real optimizer progress.
+- The stopGradient-on-base-weights experiment did not help (as expected once we knew the random mask was the culprit).
+- The flat vs model-aware route was also not the root cause.
+- The random mask is generated inside the traced closure via `MLXRandom.uniform(0 ..< 1, shape) .> dropoutRate` in the `isTraining` branch of both `LoRALinear` and `LoKRLinear`.
+
+This strongly implicates the stochastic nodes (per-adapter random masks) causing pathological recursive VJP traversal + visited-set behavior in MLX when there are 128–512 such sites.
+
+### Refined Ideas to Check
+
+1. **Make the Dropout Mask VJP-Safe (Highest Priority Fix)**
+   - Generate the mask *outside* the `valueAndGrad` closure (in the training loop) and pass it in as a constant argument to the traced function. This removes the `MLXRandom.uniform` from the tape entirely for the backward.
+   - For the very first backward only, use a deterministic mask (e.g. fixed seed, pre-generated array, or a simple threshold pattern) so no stochastic node is created during graph construction.
+   - Investigate whether MLX provides a higher-level dropout that is known to be safe with `valueAndGrad` / VJP (some frameworks special-case the mask gradient).
+   - In the closure, still apply the mask numerically, but the VJP should see far fewer (or no) random branches.
+
+2. **Enhance the New First-Backward Watchdog**
+   - The watchdog added in the trainers (logging `training/trainer/firstLossGradWatchdog` at 30/60/120/300s with memory) is a great addition.
+   - Extend it to also report: `gradientRoute` (flat vs model-aware), `effectiveDropout`, `trainableArgumentCount`, and whether any `MLXRandom` calls were observed during the traced forward on that sample.
+   - When the watchdog fires on a hang, consider also emitting the shapes of the current `args` and a quick count of active MLX memory vs resident.
+
+3. **Re-validate Wide Shapes Systematically with Dropout Guard**
+   - Now that dropout=0 unlocks wide coverage, run a clean matrix:
+     - Q/K/V/O vs Q/V on Last 8 / 12 / 16 (and all 32 where feasible)
+     - Rank 16/64/96 + alpha variants
+     - LoRA vs LoKR at identical surfaces
+     - Self-attention-only vs cross-attention-only full coverage
+   - Always log the `gradientRoute` and `effectiveDropout` values at `valueAndGradReady`.
+   - Goal: establish the new safe boundary for local training.
+
+4. **Update Synthetic Repro to Target the Dropout Path**
+   - The minimal DiT/LoRA repro should now explicitly include the exact dropout mask generation (`MLXRandom.uniform(...).>rate` + scaling) inside multiple parallel adapter forwards.
+   - Reproduce the recursion with masks present vs. absent. This will be the fastest environment to iterate on mask-generation fixes without the full app or 640-sample dataset.
+
+5. **Re-evaluate Graph Pruning in Light of the Real Culprit**
+   - The earlier `stopGradient(baseWeight/baseBias)` experiment was reasonable but didn't address the random mask.
+   - New experiments worth trying:
+     - `stopGradient` on the generated mask itself (or on the `loraInput` right after the mask is applied).
+     - Compute the entire adapter contribution (lora path + dropout) and add it under a stop for the base contribution in a way that still gives correct numerics for the loss.
+   - Measure impact on first-backward time and sample depth when dropout is *requested but forced to 0*.
+
+6. **Alpha / Quality Comparisons with Dropout=0**
+   - As noted in the primary doc: run the same narrow Q/V shape with alpha 64 vs 128 (and vs the original successful May runs) while effective dropout is clamped to 0.
+   - This separates training dynamics / final adapter quality from the VJP graph-construction problem.
+
+7. **Longer All-32 Validation Runs**
+   - Let at least one full all-32 LoKR (and ideally one LoRA) wide run with effective dropout=0 complete, if time permits.
+   - Capture: total wall time, peak memory, final loss, and a saved adapter artifact.
+   - This would give strong evidence that "very wide is now practical locally" once the dropout issue is mitigated.
+
+8. **Dropout Policy and Diagnostics**
+   - Decide on the permanent local policy: always force effective dropout=0 (with clear user-visible logging via the existing `training/config/dropoutGuard`), or allow nonzero but mark those recipes as "remote GPU recommended"?
+   - Clean up the diagnostic noise: user-cancelled runs should not emit an ambiguous `training/complete` line immediately before `training/cancelled`.
+   - Make the requested vs effective dropout values prominent in the training UI / logs when a recipe asks for >0 dropout.
+
+9. **Check for Other Stochastic Leaks**
+   - The timestep sampling (`MLXRandom.uniform(0..<1, [1])`) and noise generation happen *outside* the traced loss closure. Confirm they cannot accidentally become part of the first `valueAndGrad` tape in some code paths.
+   - The encoder mask (when present) is passed in — ensure it is also protected with `stopGradient` like the other inputs.
+
+10. **MLX-Level Visibility (If Available)**
+    - When the watchdog fires or on a controlled hang, look for any MLX Swift / C++ hooks that can report tape size, number of random/stochastic nodes, or VJP recursion depth.
+    - This would turn "it's hanging in vjp" into "it's hanging because of N random nodes across M adapters".
+
+### Prioritization Recommendation for Codex
+1. Implement and test a proper dropout-mask fix (idea 1) — this is the root cause.
+2. Expand the matrix and alpha comparisons under the current guard (ideas 3 + 6).
+3. Flesh out the synthetic repro with the mask (idea 4) so future experiments are fast.
+4. Polish the watchdog and diagnostics (ideas 2 + 8).
+5. Only after the above, decide on long-term policy and whether additional graph pruning is still needed.
+
+This analysis and these ideas are based on read-only review of the updated primary debug document and relevant source. No production code was modified.
 
 ---
 

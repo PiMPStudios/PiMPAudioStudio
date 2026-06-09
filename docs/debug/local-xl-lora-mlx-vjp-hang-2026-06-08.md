@@ -309,7 +309,7 @@ training/stopRequested saveCheckpoint=false activeKind=lokr
 training/cancelled kind=lokr adapterID=mcp-wide-qkvo-all32-dropoutguard-lokr saveCheckpoint=false
 ```
 
-The all-32 stopped run still emitted `training/complete ... finalLoss=2.01800` immediately before `training/cancelled`; the app state correctly reported `cancelled` and no adapter save was requested. That diagnostic wording may be worth cleaning up separately.
+The all-32 stopped run originally emitted `training/complete ... finalLoss=2.01800` immediately before `training/cancelled`; the app state correctly reported `cancelled` and no adapter save was requested. That diagnostic wording was cleaned up by moving the `training/complete` note onto the successful adapter-save path only.
 
 These results make nonzero adapter dropout the leading confirmed trigger, not memory pressure, rank alone, Q/K/V/O coverage alone, or the explicit flat-gradient route.
 
@@ -357,11 +357,101 @@ Possible causes worth investigating:
 3. Current `ace-step-dit-xl-sft` model identity/config may still matter for full-duration all-32-layer or higher-rank shapes, but it is not enough by itself to hang the dropout-zero retests.
 4. Full Q/K/V/O projection coverage increases runtime and memory pressure, but bounded Last 12 Q/K/V/O completed for both LoRA and LoKR, and all-32 LoKR reached sustained optimizer progress, once effective dropout was 0.
 
+## Synthetic Dropout VJP Probe
+
+Added a small SwiftPM executable probe:
+
+```text
+swift run --package-path PiMPAudioCore MLXDropoutVJPProbe --mode implicit|explicit-key|precomputed-mask|none
+```
+
+The probe builds a repeated adapter-like graph with dropout on the adapter input, then computes gradients only for the adapter weights. It can compare:
+
+```text
+none             no dropout
+precomputed-mask masks generated before valueAndGrad and passed as constants
+explicit-key     MLXRandom.uniform(..., key:) inside valueAndGrad
+implicit         current risky style, MLXRandom.uniform(...) inside valueAndGrad
+```
+
+The simple graph did not reproduce the hang:
+
+```text
+sites=128 implicit dropout=0.08 -> first valueAndGrad returned in 0.013s
+sites=512 implicit dropout=0.08 -> first valueAndGrad returned in 0.053s
+sites=512 explicit-key dropout=0.08 -> first valueAndGrad returned in 0.048s
+```
+
+This means the failure likely needs more of the real XL DiT graph than "many dropout masks plus matmul plus adapter-weight VJP." The synthetic result does not falsify the RNG hypothesis for the full model, but it does show that a tiny standalone repro is not enough to trigger the MLX recursion.
+
+## Explicit-Key Dropout Retest Result
+
+After rebuilding with explicit adapter-dropout key streams, MCP reran the old failing LoRA control with verbose diagnostics enabled:
+
+```text
+Adapter: mcp-explicitkey-dropout-qv64-lora
+Kind: LoRA
+Projection coverage: Q/V
+Layer coverage: Last 16
+Rank: 64
+Alpha: 128
+Dropout: 0.08
+Trainable tensors: 128
+Trainable paths: 64
+```
+
+The run kept dropout enabled, logged explicit-key RNG, reached the first backward pass, and made progress:
+
+```text
+training/config/dropoutExperiment ... dropout=0.080 rng=explicitKey reason=verboseDiagnostics
+training/trainer/dropoutRNG kind=lora mode=explicitKey dropout=0.08 keyCount=128
+training/trainer/firstLossGradEnd kind=lora elapsed=0.040s values=1 flatGrads=128
+training/trainer/firstLoss kind=lora loss=1.4045014 flatGrads=128 lossGradElapsed=0.040s itemElapsed=0.266s
+training/progress kind=lora ... step=1
+```
+
+MCP then reran the spicy LoKR shape with all 32 layers, full Q/K/V/O coverage, linear dim 64, and dropout 0.08:
+
+```text
+Adapter: mcp-explicitkey-dropout-qkvo-all32-lokr
+Kind: LoKR
+Projection coverage: Q/K/V/O
+Layer coverage: All 32
+Linear dim: 64
+Alpha: 128
+Dropout: 0.08
+Trainable tensors: 512
+Trainable paths: 256
+```
+
+That run also reached the first backward pass and optimizer progress:
+
+```text
+training/trainer/dropoutRNG kind=lokr mode=explicitKey dropout=0.08 keyCount=512
+training/trainer/firstLossGradEnd kind=lokr elapsed=0.113s values=1 flatGrads=512
+training/trainer/firstLoss kind=lokr loss=1.7788941 flatGrads=512 lossGradElapsed=0.113s itemElapsed=0.293s
+training/progress kind=lokr ... step=1
+training/progress kind=lokr ... step=2 ... updateNorm=5.277e-02
+```
+
+Both runs were intentionally stopped without checkpoints after proving first-backward/progress behavior.
+
+This is the strongest signal so far: the hang is not caused by adapter dropout math by itself, rank alone, projection breadth alone, trainable tensor count alone, or wide LoKR shape alone. It is most likely the full XL DiT training graph plus MLX implicit global RNG inside `valueAndGrad`. Precomputing explicit per-step keys outside the closure avoids the first-backward stall in the controlled MCP runs.
+
 ## Current Mitigation
 
 The local training preflight/UI guard still warns on full Q/K/V/O XL shapes because they are heavier and were part of the original hang reports. Verbose diagnostics can intentionally downgrade known risky shapes for controlled tests.
 
-Local Swift/MLX execution also clamps requested adapter dropout to 0 while the dropout-path VJP stall is isolated. The requested value remains visible through the `training/config/dropoutGuard` diagnostic.
+Local Swift/MLX execution clamps requested adapter dropout to 0 by default while the dropout-path VJP stall is isolated. The requested value remains visible through the `training/config/dropoutGuard` diagnostic.
+
+For controlled debugging only, verbose audio diagnostics now keeps requested dropout enabled and routes adapter dropout through explicit per-sample MLX keys generated before `valueAndGrad`. Those runs log:
+
+```text
+training/config/dropoutExperiment ... rng=explicitKey reason=verboseDiagnostics
+training/trainer/dropoutRNG ... mode=explicitKey dropout=<requested> keyCount=<count>
+```
+
+This lets MCP/UI tests exercise the real XL trainer with nonzero dropout without re-enabling the old implicit global-RNG dropout path for normal local training.
 
 Recommended local recipe to revalidate after the explicit-gradient fallback:
 
@@ -397,6 +487,6 @@ When verbose audio diagnostics are enabled, the known wide-shape UI/preflight bl
 Potential next probes:
 
 1. Let one all-32-layer LoKR wide run finish with effective dropout 0 if we need a saved adapter artifact and full-run timing.
-2. Clean up diagnostics so a user-stopped run does not emit an ambiguous `training/complete` line before `training/cancelled`.
+2. Let one all-32-layer LoKR wide run finish with explicit-key dropout if we want a saved artifact from the now-unblocked high-coverage path.
 3. Compare alpha 64 vs alpha 128 with dropout 0 to separate training stability/quality from the dropout graph issue.
-4. Build a smaller synthetic DiT/LoRA repro using MLX Swift to see if MLX VJP recursion reproduces with random dropout masks outside the app.
+4. Consider making explicit-key dropout the default local path after one or two longer completion runs prove it stays stable beyond the first optimizer steps.
