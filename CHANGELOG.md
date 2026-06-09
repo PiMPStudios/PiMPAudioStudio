@@ -175,6 +175,7 @@ All notable changes to PiMP Audio Studio are documented here.
 
 ### Fixed
 
+- **Community adapter downloads can verify SHA-256 checksums** — community manifest entries now support an optional `sha256` for `adapter.safetensors`, and community plus metadata-backed HuggingFace adapter installs verify downloaded weights when a checksum is supplied before keeping them on disk.
 - **Community downloads now use a real queue** — queued adapter downloads no longer occupy the active-download concurrency slots or reset progress every retry tick; only running downloads live in the active task set, and queued work starts as slots open.
 - **Lyric writer failures are surfaced** — API and CLI lyric writers now use throwing streams, report request encoding, HTTP, network, and provider-exit failures, and show the error beside the lyrics box instead of silently finishing with no text.
 - **LoRA/LoKR resume preserves best-checkpoint state** — resumed trainers hydrate their saved best weights when a checkpoint already has a best loss, so pause/resume metadata continues reporting usable checkpoints and lowest loss before another epoch completes.

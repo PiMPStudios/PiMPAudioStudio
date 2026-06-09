@@ -23,6 +23,9 @@ public struct CommunityAdapter: Codable, Sendable, Identifiable, Hashable {
     /// URL to download the adapter.safetensors file.
     public let adapterURL: URL
 
+    /// Optional SHA-256 checksum for the adapter.safetensors file.
+    public let sha256: String?
+
     /// URL to download the adapter.json metadata file.
     public let metadataURL: URL
 
@@ -49,6 +52,7 @@ public struct CommunityAdapter: Codable, Sendable, Identifiable, Hashable {
         baseModelCategory: ModelCategory,
         rank: Int,
         adapterURL: URL,
+        sha256: String? = nil,
         metadataURL: URL,
         tags: [String],
         featured: Bool,
@@ -63,6 +67,7 @@ public struct CommunityAdapter: Codable, Sendable, Identifiable, Hashable {
         self.baseModelCategory = baseModelCategory
         self.rank = rank
         self.adapterURL = adapterURL
+        self.sha256 = sha256
         self.metadataURL = metadataURL
         self.tags = tags
         self.featured = featured

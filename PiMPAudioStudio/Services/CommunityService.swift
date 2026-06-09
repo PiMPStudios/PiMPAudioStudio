@@ -45,6 +45,7 @@ final class CommunityService: ObservableObject {
     private var pendingDownloadOrder: [String] = []
     private var cachedManifest: AdapterManifest?
     private var cacheTimestamp: Date?
+    private let downloadClient = DownloadClient()
 
     // MARK: - Manifest
 
@@ -229,11 +230,23 @@ final class CommunityService: ObservableObject {
             guard let httpW = weightsResponse as? HTTPURLResponse, httpW.statusCode == 200 else {
                 throw CommunityError.missingFile("adapter.safetensors", repoURL)
             }
+            let expectedSHA256 = adapterSHA256(from: metaData)
 
             let dir = AdapterRegistry.adapterDirectory(id: adapter.id)
-            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            try metaData.write(to: dir.appending(path: "adapter.json"))
-            try weightsData.write(to: dir.appending(path: "adapter.safetensors"))
+            let weightsDestination = dir.appending(path: "adapter.safetensors")
+            do {
+                try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                try metaData.write(to: dir.appending(path: "adapter.json"))
+                try weightsData.write(to: weightsDestination)
+                try await verifyAdapterWeights(
+                    at: weightsDestination,
+                    expectedSHA256: expectedSHA256,
+                    fileName: "adapter.safetensors"
+                )
+            } catch {
+                try? FileManager.default.removeItem(at: dir)
+                throw error
+            }
             return adapter
         }
 
@@ -286,6 +299,11 @@ final class CommunityService: ObservableObject {
             .appendingPathExtension("safetensors")
         defer { try? FileManager.default.removeItem(at: tmp) }
         try weightsData.write(to: tmp)
+        try await verifyAdapterWeights(
+            at: tmp,
+            expectedSHA256: adapterSHA256(from: configData),
+            fileName: "adapter_model.safetensors"
+        )
 
         let rawArrays = try MLX.loadArrays(url: tmp)
         return try savePEFTAdapter(
@@ -470,6 +488,19 @@ final class CommunityService: ObservableObject {
         return directoryURL.lastPathComponent
     }
 
+    private func adapterSHA256(from metadata: Data) -> String? {
+        guard let object = try? JSONSerialization.jsonObject(with: metadata) as? [String: Any] else {
+            return nil
+        }
+        for key in ["sha256", "adapterSHA256", "weightsSHA256"] {
+            if let value = object[key] as? String,
+               !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return value
+            }
+        }
+        return nil
+    }
+
     // MARK: - Private
 
     private func performDownload(adapter: CommunityAdapter, retryCount: Int) async throws {
@@ -494,6 +525,7 @@ final class CommunityService: ObservableObject {
             // Save to disk
             let dir = AdapterRegistry.adapterDirectory(id: adapter.id)
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let weightsDestination = dir.appending(path: "adapter.safetensors")
 
             // Write updated metadata with source field
             let encoder = JSONEncoder()
@@ -501,7 +533,13 @@ final class CommunityService: ObservableObject {
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             let updatedMeta = try encoder.encode(localAdapter)
             try updatedMeta.write(to: dir.appending(path: "adapter.json"))
-            try weightsData.write(to: dir.appending(path: "adapter.safetensors"))
+            try weightsData.write(to: weightsDestination)
+            downloads[adapter.id] = .downloading(progress: 0.95)
+            try await verifyAdapterWeights(
+                at: weightsDestination,
+                expectedSHA256: adapter.sha256,
+                fileName: adapter.adapterURL.lastPathComponent
+            )
 
             downloads[adapter.id] = .downloading(progress: 1.0)
         } catch is CancellationError {
@@ -524,6 +562,23 @@ final class CommunityService: ObservableObject {
                 try? FileManager.default.removeItem(at: dir)
                 throw error
             }
+        }
+    }
+
+    private func verifyAdapterWeights(
+        at url: URL,
+        expectedSHA256: String?,
+        fileName: String
+    ) async throws {
+        guard let expectedSHA256 = expectedSHA256?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !expectedSHA256.isEmpty else {
+            return
+        }
+
+        let verified = await downloadClient.verifySHA256(file: url, expected: expectedSHA256)
+        guard verified else {
+            try? FileManager.default.removeItem(at: url)
+            throw DownloadError.checksumMismatch(file: fileName)
         }
     }
 }
