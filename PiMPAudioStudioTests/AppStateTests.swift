@@ -846,7 +846,8 @@ private extension JSONDecoder {
     #expect(job.package.entryBundle == "training_bundle_full_mix.json")
     #expect(job.package.selectedBundle.name == "full_mix")
     #expect(job.training?.adapterMode == .lora)
-    #expect(job.training?.baseModelID == "ace-step-xl-sft")
+    #expect(job.training?.baseModelID == "ace-step-dit-xl-sft")
+    #expect(job.training?.workerModelVariant == "ace-step-xl-sft")
     #expect(job.runtime.gpuClass == "h100_or_h200")
     #expect(job.runtime.maxRuntimeSeconds == 7_200)
     #expect(job.runtime.maxCostUSD == 12.50)
@@ -896,10 +897,48 @@ private extension JSONDecoder {
         task: .trainLoKR,
         selectedBundleName: "instrumental",
         jobID: "job-test-2",
-        createdAt: Date(timeIntervalSince1970: 0)
+        createdAt: Date(timeIntervalSince1970: 0),
+        adapterName: "Cloud LoKR Test",
+        recipe: "wide",
+        epochs: 150,
+        saveEvery: 10,
+        batchSize: 1,
+        gradientAccumulationSteps: 2,
+        learningRate: 0.000065,
+        dropout: 0,
+        targetModules: ["q_proj", "k_proj", "v_proj", "o_proj"],
+        attentionType: "both",
+        cfgRatio: 0.15,
+        seed: 42,
+        maxDurationSeconds: 60,
+        lokrLinearDim: 128,
+        lokrLinearAlpha: 256,
+        lokrWeightDecompose: true
     )
     #expect(lokrJob.training?.adapterMode == .lokr)
+    #expect(lokrJob.training?.adapterName == "Cloud LoKR Test")
+    #expect(lokrJob.training?.recipe == "wide")
+    #expect(lokrJob.training?.lokrLinearDim == 128)
+    #expect(lokrJob.training?.lokrLinearAlpha == 256)
+    #expect(lokrJob.training?.lokrWeightDecompose == true)
+    #expect(lokrJob.training?.targetModules == ["q_proj", "k_proj", "v_proj", "o_proj"])
+    #expect(lokrJob.training?.attentionType == "both")
+    #expect(lokrJob.training?.cfgRatio == 0.15)
     #expect(lokrJob.package.selectedBundle.name == "instrumental")
+
+    let jobArchiveURL = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString)
+        .appendingPathExtension("zip")
+    defer { try? FileManager.default.removeItem(at: jobArchiveURL) }
+    try TrainingDatasetPackageWriter.exportPackageArchive(
+        outputDirectory: datasetDir,
+        to: jobArchiveURL,
+        extraFiles: try RemoteTrainingJobCodec.archiveExtraFiles(for: lokrJob)
+    )
+    let jobArchiveEntries = try zipEntries(in: jobArchiveURL)
+    #expect(jobArchiveEntries.contains("\(archiveRoot)remote_job.json"))
+    #expect(jobArchiveEntries.contains("\(archiveRoot)README_REMOTE_GPU.md"))
+    #expect(jobArchiveEntries.contains("\(archiveRoot)run_remote_training.sh"))
 
     let manifestData = try Data(contentsOf: datasetDir.appendingPathComponent("dataset_manifest.json"))
     let manifestJSON = try JSONSerialization.jsonObject(with: manifestData) as? [String: Any]

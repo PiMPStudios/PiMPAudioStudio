@@ -238,12 +238,25 @@ struct RemoteTrainingJobTraining: Codable, Hashable, Sendable {
     var adapterName: String
     var baseModelID: String
     var baseModelLabel: String
+    var workerModelVariant: String?
+    var recipe: String?
     var rank: Int?
+    var alpha: Double?
     var epochs: Int?
+    var saveEvery: Int?
     var batchSize: Int?
     var gradientAccumulationSteps: Int?
     var learningRate: Double?
+    var dropout: Double?
+    var targetModules: [String]?
     var targetLayers: [String]
+    var attentionType: String?
+    var cfgRatio: Double?
+    var seed: Int?
+    var maxDurationSeconds: Int?
+    var lokrLinearDim: Int?
+    var lokrLinearAlpha: Double?
+    var lokrWeightDecompose: Bool?
     var trainingMode: String
 
     enum CodingKeys: String, CodingKey {
@@ -251,12 +264,25 @@ struct RemoteTrainingJobTraining: Codable, Hashable, Sendable {
         case adapterName = "adapter_name"
         case baseModelID = "base_model_id"
         case baseModelLabel = "base_model_label"
+        case workerModelVariant = "worker_model_variant"
+        case recipe
         case rank
+        case alpha
         case epochs
+        case saveEvery = "save_every"
         case batchSize = "batch_size"
         case gradientAccumulationSteps = "gradient_accumulation_steps"
         case learningRate = "learning_rate"
+        case dropout
+        case targetModules = "target_modules"
         case targetLayers = "target_layers"
+        case attentionType = "attention_type"
+        case cfgRatio = "cfg_ratio"
+        case seed
+        case maxDurationSeconds = "max_duration_seconds"
+        case lokrLinearDim = "lokr_linear_dim"
+        case lokrLinearAlpha = "lokr_linear_alpha"
+        case lokrWeightDecompose = "lokr_weight_decompose"
         case trainingMode = "training_mode"
     }
 }
@@ -409,6 +435,8 @@ enum RemoteTrainingJobCodec {
     static let resultFileName = "remote_artifacts/result.json"
     static let logsFileName = "remote_artifacts/logs.jsonl"
     static let metricsFileName = "remote_artifacts/metrics.jsonl"
+    static let readmeFileName = "README_REMOTE_GPU.md"
+    static let runScriptFileName = "run_remote_training.sh"
 
     static var encoder: JSONEncoder {
         let encoder = JSONEncoder()
@@ -418,6 +446,123 @@ enum RemoteTrainingJobCodec {
 
     static var decoder: JSONDecoder {
         JSONDecoder()
+    }
+
+    static func archiveExtraFiles(for job: RemoteTrainingJobRequest) throws -> [String: Data] {
+        [
+            jobFileName: try encoder.encode(job),
+            readmeFileName: Data(remoteReadme(for: job).utf8),
+            runScriptFileName: Data(remoteRunScript(for: job).utf8),
+        ]
+    }
+
+    private static func remoteReadme(for job: RemoteTrainingJobRequest) -> String {
+        let training = job.training
+        let adapterMode = training?.adapterMode.rawValue ?? job.task.rawValue
+        let recipe = training?.recipe ?? "custom"
+        let bundle = job.package.selectedBundle.name
+        let adapterName = training?.adapterName ?? job.package.packageName
+        let workerVariant = training?.workerModelVariant ?? training?.baseModelID ?? "ace-step-xl-sft"
+        let epochs = training?.epochs.map(String.init) ?? "worker default"
+        let saveEvery = training?.saveEvery.map(String.init) ?? "worker default"
+        let targetModules = training?.targetModules?.joined(separator: ", ") ?? "worker default"
+
+        return """
+        # PiMP Audio Studio Remote GPU Job
+
+        This archive contains a reviewed dataset package plus `remote_job.json`.
+        It is intended for a PiMP Audio Studio remote worker or a compatible RunPod/DigitalOcean template.
+
+        ## Job Summary
+
+        - Adapter: \(adapterName)
+        - Mode: \(adapterMode)
+        - Recipe: \(recipe)
+        - Bundle: \(bundle)
+        - Base model: \(training?.baseModelLabel ?? "ACE-Step XL SFT") (\(workerVariant))
+        - Epochs: \(epochs)
+        - Save every: \(saveEvery) epoch(s)
+        - Target modules: \(targetModules)
+
+        ## Expected Remote Flow
+
+        1. Upload this zip to a GPU worker.
+        2. Unzip it or pass the zip path to `run_remote_training.sh`.
+        3. The worker reads `remote_job.json`.
+        4. The worker writes logs, metrics, checkpoints, and final adapters under `remote_artifacts/`.
+        5. Download the folder named `pimp_native_adapter` from the checkpoint or final artifact you want to test.
+
+        ## One Command
+
+        From the unzipped package root:
+
+        ```bash
+        bash run_remote_training.sh .
+        ```
+
+        Or pass the zip directly:
+
+        ```bash
+        bash run_remote_training.sh /workspace/jobs/\(job.package.packageName).zip
+        ```
+
+        The script expects an installed `pimp-remote-worker` command or an official PiMP Audio Studio worker template.
+        Provider API keys, SSH keys, and account IDs are intentionally not stored in this archive.
+        """
+    }
+
+    private static func remoteRunScript(for job: RemoteTrainingJobRequest) -> String {
+        """
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        INPUT="${1:-.}"
+        WORKDIR=""
+
+        if [ -f "$INPUT" ]; then
+          WORKDIR="/workspace/pimp-remote-jobs/\(job.jobID)"
+          mkdir -p "$WORKDIR"
+          unzip -oq "$INPUT" -d "$WORKDIR"
+          JOB_FILE="$(find "$WORKDIR" -maxdepth 3 -name remote_job.json -print -quit)"
+          if [ -n "$JOB_FILE" ]; then
+            PACKAGE_ROOT="$(dirname "$JOB_FILE")"
+          fi
+        else
+          PACKAGE_ROOT="$INPUT"
+        fi
+
+        if [ -z "${PACKAGE_ROOT:-}" ] || [ ! -f "$PACKAGE_ROOT/remote_job.json" ]; then
+          echo "Could not find remote_job.json. Run this from the package root or pass the exported zip path."
+          exit 2
+        fi
+
+        cd "$PACKAGE_ROOT"
+        echo "[PiMP] package_root=$PWD"
+        echo "[PiMP] job=$(grep -m1 '"job_id"' remote_job.json | sed 's/[",]//g' | xargs || true)"
+        echo "[PiMP] task=$(grep -m1 '"task"' remote_job.json | sed 's/[",]//g' | xargs || true)"
+
+        if command -v pimp-remote-worker >/dev/null 2>&1; then
+          exec pimp-remote-worker train remote_job.json
+        fi
+
+        cat <<'MSG'
+        No `pimp-remote-worker` command was found.
+
+        This bundle is ready for a PiMP Audio Studio remote worker/template, but this server image does not have the worker installed yet.
+
+        Use an official PiMP Audio Studio RunPod/DigitalOcean template, or install the worker, then run:
+
+            pimp-remote-worker train remote_job.json
+
+        The worker should write:
+          - remote_artifacts/logs.jsonl
+          - remote_artifacts/metrics.jsonl
+          - remote_artifacts/checkpoints/
+          - remote_artifacts/final_adapter/
+          - remote_artifacts/result.json
+        MSG
+        exit 127
+        """
     }
 }
 
@@ -429,8 +574,26 @@ extension RemoteTrainingJobRequest {
         jobID: String = UUID().uuidString,
         createdAt: Date = Date(),
         adapterName: String? = nil,
-        baseModelID: String = "ace-step-xl-sft",
+        baseModelID: String = "ace-step-dit-xl-sft",
         baseModelLabel: String = "ACE-Step XL SFT",
+        workerModelVariant: String? = "ace-step-xl-sft",
+        recipe: String? = nil,
+        rank: Int? = nil,
+        alpha: Double? = nil,
+        epochs: Int? = nil,
+        saveEvery: Int? = nil,
+        batchSize: Int? = nil,
+        gradientAccumulationSteps: Int? = nil,
+        learningRate: Double? = nil,
+        dropout: Double? = nil,
+        targetModules: [String]? = nil,
+        attentionType: String? = nil,
+        cfgRatio: Double? = nil,
+        seed: Int? = nil,
+        maxDurationSeconds: Int? = nil,
+        lokrLinearDim: Int? = nil,
+        lokrLinearAlpha: Double? = nil,
+        lokrWeightDecompose: Bool? = nil,
         maxRuntimeSeconds: Int? = nil,
         maxCostUSD: Double? = nil
     ) -> RemoteTrainingJobRequest {
@@ -440,7 +603,25 @@ extension RemoteTrainingJobRequest {
             packageName: descriptor.packageName,
             adapterName: adapterName,
             baseModelID: baseModelID,
-            baseModelLabel: baseModelLabel
+            baseModelLabel: baseModelLabel,
+            workerModelVariant: workerModelVariant,
+            recipe: recipe,
+            rank: rank,
+            alpha: alpha,
+            epochs: epochs,
+            saveEvery: saveEvery,
+            batchSize: batchSize,
+            gradientAccumulationSteps: gradientAccumulationSteps,
+            learningRate: learningRate,
+            dropout: dropout,
+            targetModules: targetModules,
+            attentionType: attentionType,
+            cfgRatio: cfgRatio,
+            seed: seed,
+            maxDurationSeconds: maxDurationSeconds,
+            lokrLinearDim: lokrLinearDim,
+            lokrLinearAlpha: lokrLinearAlpha,
+            lokrWeightDecompose: lokrWeightDecompose
         )
         let outputs = RemoteTrainingJobOutputs(
             logsFile: descriptor.workerContract?.logsFile ?? RemoteTrainingJobCodec.logsFileName,
@@ -489,7 +670,25 @@ extension RemoteTrainingJobRequest {
         packageName: String,
         adapterName: String?,
         baseModelID: String,
-        baseModelLabel: String
+        baseModelLabel: String,
+        workerModelVariant: String?,
+        recipe: String?,
+        rank: Int?,
+        alpha: Double?,
+        epochs: Int?,
+        saveEvery: Int?,
+        batchSize: Int?,
+        gradientAccumulationSteps: Int?,
+        learningRate: Double?,
+        dropout: Double?,
+        targetModules: [String]?,
+        attentionType: String?,
+        cfgRatio: Double?,
+        seed: Int?,
+        maxDurationSeconds: Int?,
+        lokrLinearDim: Int?,
+        lokrLinearAlpha: Double?,
+        lokrWeightDecompose: Bool?
     ) -> RemoteTrainingJobTraining? {
         let adapterMode: RemoteTrainingAdapterMode
         switch task {
@@ -506,12 +705,25 @@ extension RemoteTrainingJobRequest {
             adapterName: adapterName ?? "\(packageName)-\(adapterMode.rawValue)",
             baseModelID: baseModelID,
             baseModelLabel: baseModelLabel,
-            rank: nil,
-            epochs: nil,
-            batchSize: nil,
-            gradientAccumulationSteps: nil,
-            learningRate: nil,
+            workerModelVariant: workerModelVariant,
+            recipe: recipe,
+            rank: rank,
+            alpha: alpha,
+            epochs: epochs,
+            saveEvery: saveEvery,
+            batchSize: batchSize,
+            gradientAccumulationSteps: gradientAccumulationSteps,
+            learningRate: learningRate,
+            dropout: dropout,
+            targetModules: targetModules,
             targetLayers: ["self_attn", "cross_attn"],
+            attentionType: attentionType,
+            cfgRatio: cfgRatio,
+            seed: seed,
+            maxDurationSeconds: maxDurationSeconds,
+            lokrLinearDim: lokrLinearDim,
+            lokrLinearAlpha: lokrLinearAlpha,
+            lokrWeightDecompose: lokrWeightDecompose,
             trainingMode: "corrected"
         )
     }

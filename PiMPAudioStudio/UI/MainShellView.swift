@@ -434,6 +434,16 @@ private struct BuildTrainingView: View {
     @State private var selectedRemotePackageID: String?
     @State private var remoteNotice: String?
     @State private var isExportingRemotePackage = false
+    @State private var remoteAdapterKind: AdapterKind = .lokr
+    @State private var remoteRecipe: RemoteJobRecipe = .wide
+    @State private var remoteBundle: RemoteJobBundle = .fullMix
+    @State private var remoteBaseModel: RemoteJobBaseModel = .xlSFT
+    @State private var remoteAdapterName = ""
+    @State private var remoteEpochs = RemoteJobRecipe.wide.settings(for: .lokr).epochs
+    @State private var remoteSaveEvery = RemoteJobRecipe.wide.settings(for: .lokr).saveEvery
+    @State private var remoteSeed = 42
+    @State private var remoteMaxRuntimeHours = 18
+    @State private var remoteMaxCostText = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -468,6 +478,18 @@ private struct BuildTrainingView: View {
             if mode == .remote || mode == .lora || mode == .lokr {
                 refreshRemotePackages()
             }
+        }
+        .onChange(of: selectedRemotePackageID) { _, _ in
+            if !isRemoteBundleAvailable(remoteBundle) {
+                remoteBundle = .fullMix
+            }
+            remoteAdapterName = defaultRemoteAdapterName()
+        }
+        .onChange(of: remoteAdapterKind) { _, _ in
+            applyRemoteRecipeDefaults()
+        }
+        .onChange(of: remoteRecipe) { _, _ in
+            applyRemoteRecipeDefaults()
         }
     }
 
@@ -747,11 +769,11 @@ private struct BuildTrainingView: View {
                 Button {
                     exportRemotePackage()
                 } label: {
-                    Label("Export Zip", systemImage: "square.and.arrow.up")
+                    Label("Create Remote Job\u{2026}", systemImage: "shippingbox")
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
-                .disabled(selectedRemotePackage == nil || isExportingRemotePackage)
+                .disabled(selectedRemotePackage == nil || selectedRemotePackage?.isValid == false || isExportingRemotePackage)
             }
             .padding()
 
@@ -760,19 +782,25 @@ private struct BuildTrainingView: View {
             if remotePackages.isEmpty {
                 statusMessage(
                     "No Dataset Packages",
-                    message: "Build or open a dataset package before exporting a remote GPU training archive.",
+                    message: "Build or open a reviewed dataset package before creating a remote GPU job.",
                     systemImage: "tray",
                     color: .secondary
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                List(selection: $selectedRemotePackageID) {
-                    ForEach(remotePackages) { package in
-                        remotePackageRow(package)
-                            .tag(package.id)
+                HSplitView {
+                    List(selection: $selectedRemotePackageID) {
+                        ForEach(remotePackages) { package in
+                            remotePackageRow(package)
+                                .tag(package.id)
+                        }
                     }
+                    .listStyle(.inset)
+                    .frame(minWidth: 360)
+
+                    remoteJobOptionsPanel
+                        .frame(minWidth: 360, idealWidth: 430)
                 }
-                .listStyle(.inset)
             }
 
             if let remoteNotice {
@@ -785,6 +813,81 @@ private struct BuildTrainingView: View {
             }
         }
         .onAppear(perform: refreshRemotePackages)
+    }
+
+    private var remoteJobOptionsPanel: some View {
+        Form {
+            Section("Job") {
+                Picker("Adapter", selection: $remoteAdapterKind) {
+                    Text("LoKR").tag(AdapterKind.lokr)
+                    Text("LoRA").tag(AdapterKind.lora)
+                }
+                .pickerStyle(.segmented)
+
+                Picker("Recipe", selection: $remoteRecipe) {
+                    ForEach(RemoteJobRecipe.allCases) { recipe in
+                        Text(recipe.title).tag(recipe)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                Picker("Bundle", selection: $remoteBundle) {
+                    ForEach(RemoteJobBundle.allCases) { bundle in
+                        Text(bundle.title)
+                            .tag(bundle)
+                            .disabled(!isRemoteBundleAvailable(bundle))
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                TextField("Adapter Name", text: $remoteAdapterName)
+
+                Picker("Base Model", selection: $remoteBaseModel) {
+                    ForEach(RemoteJobBaseModel.allCases) { model in
+                        Text(model.title).tag(model)
+                    }
+                }
+            }
+
+            Section("Run") {
+                Stepper(value: $remoteEpochs, in: 1...300, step: 10) {
+                    LabeledContent("Epochs", value: "\(remoteEpochs)")
+                }
+                Stepper(value: $remoteSaveEvery, in: 1...50, step: 1) {
+                    LabeledContent("Save Every", value: "\(remoteSaveEvery)")
+                }
+                Stepper(value: $remoteSeed, in: 0...999_999, step: 1) {
+                    LabeledContent("Seed", value: "\(remoteSeed)")
+                }
+                Stepper(value: $remoteMaxRuntimeHours, in: 1...72, step: 1) {
+                    LabeledContent("Max Runtime", value: "\(remoteMaxRuntimeHours) h")
+                }
+                TextField("Max Cost USD", text: $remoteMaxCostText)
+            }
+
+            Section("Recipe Details") {
+                let settings = remoteRecipe.settings(for: remoteAdapterKind)
+                LabeledContent("Learning Rate", value: String(format: "%.2g", settings.learningRate))
+                LabeledContent("Targets", value: settings.targetModules.joined(separator: ", "))
+                LabeledContent("Attention", value: settings.attentionType)
+                if remoteAdapterKind == .lokr {
+                    LabeledContent("Linear Dim", value: "\(settings.lokrLinearDim ?? settings.rank)")
+                    LabeledContent("LoKR Alpha", value: "\(Int(settings.lokrLinearAlpha ?? settings.alpha))")
+                    LabeledContent("DoRA", value: settings.lokrWeightDecompose ? "On" : "Off")
+                } else {
+                    LabeledContent("Rank", value: "\(settings.rank)")
+                    LabeledContent("Alpha", value: "\(Int(settings.alpha))")
+                }
+            }
+
+            Section {
+                Text("The zip includes the reviewed package, remote_job.json, README_REMOTE_GPU.md, and run_remote_training.sh. Provider secrets are not included.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+        .padding(.vertical, 6)
     }
 
     private func remotePackageRow(_ package: DatasetPackageSummary) -> some View {
@@ -874,6 +977,9 @@ private struct BuildTrainingView: View {
             return
         }
         selectedRemotePackageID = remotePackages.first?.id
+        if remoteAdapterName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            remoteAdapterName = defaultRemoteAdapterName()
+        }
     }
 
     private func openRemotePackageFolder() {
@@ -915,11 +1021,51 @@ private struct BuildTrainingView: View {
                 remoteNotice = "Package needs dataset review before export: \(document.blockerCount) blocker\(document.blockerCount == 1 ? "" : "s")."
                 return
             }
+            guard isRemoteBundleAvailable(remoteBundle) else {
+                remoteNotice = "\(remoteBundle.title) is not available for this package. Run stem enrichment first or choose Full Mix."
+                return
+            }
+
+            let descriptor = try remotePackageDescriptor(for: package)
+            let settings = remoteRecipe.settings(for: remoteAdapterKind)
+            let adapterName = normalizedRemoteAdapterName()
+            let maxCost = Double(
+                remoteMaxCostText.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+            let job = RemoteTrainingJobRequest.makeTemplate(
+                from: descriptor,
+                task: remoteAdapterKind == .lokr ? .trainLoKR : .trainLoRA,
+                selectedBundleName: remoteBundle.rawValue,
+                adapterName: adapterName,
+                baseModelID: remoteBaseModel.appModelID,
+                baseModelLabel: remoteBaseModel.title,
+                workerModelVariant: remoteBaseModel.workerVariant,
+                recipe: remoteRecipe.rawValue,
+                rank: remoteAdapterKind == .lora ? settings.rank : nil,
+                alpha: remoteAdapterKind == .lora ? settings.alpha : nil,
+                epochs: remoteEpochs,
+                saveEvery: remoteSaveEvery,
+                batchSize: settings.batchSize,
+                gradientAccumulationSteps: settings.gradientAccumulationSteps,
+                learningRate: settings.learningRate,
+                dropout: settings.dropout,
+                targetModules: settings.targetModules,
+                attentionType: settings.attentionType,
+                cfgRatio: settings.cfgRatio,
+                seed: remoteSeed,
+                maxDurationSeconds: settings.maxDurationSeconds,
+                lokrLinearDim: remoteAdapterKind == .lokr ? settings.lokrLinearDim : nil,
+                lokrLinearAlpha: remoteAdapterKind == .lokr ? settings.lokrLinearAlpha : nil,
+                lokrWeightDecompose: remoteAdapterKind == .lokr ? settings.lokrWeightDecompose : nil,
+                maxRuntimeSeconds: remoteMaxRuntimeHours * 3_600,
+                maxCostUSD: maxCost
+            )
+            let extraFiles = try RemoteTrainingJobCodec.archiveExtraFiles(for: job)
 
             let panel = NSSavePanel()
             panel.allowedContentTypes = [.zip]
             panel.canCreateDirectories = true
-            panel.nameFieldStringValue = "\(package.directory.lastPathComponent).zip"
+            panel.nameFieldStringValue = "\(package.directory.lastPathComponent)_remote_\(remoteAdapterKind.rawValue)_\(remoteRecipe.rawValue).zip"
             guard panel.runModal() == .OK, let destination = panel.url else { return }
 
             isExportingRemotePackage = true
@@ -927,13 +1073,48 @@ private struct BuildTrainingView: View {
 
             let archiveURL = try TrainingDatasetPackageWriter.exportPackageArchive(
                 outputDirectory: package.directory,
-                to: destination
+                to: destination,
+                extraFiles: extraFiles
             )
-            remoteNotice = "Package exported to \(archiveURL.path(percentEncoded: false))."
+            remoteNotice = "Remote job exported to \(archiveURL.path(percentEncoded: false))."
             refreshRemotePackages()
         } catch {
             remoteNotice = error.localizedDescription
         }
+    }
+
+    private func remotePackageDescriptor(for package: DatasetPackageSummary) throws -> RemoteTrainingPackageDescriptor {
+        let descriptorURL = package.directory.appendingPathComponent(TrainingDatasetPackageWriter.remotePackageFileName)
+        let data = try Data(contentsOf: descriptorURL)
+        return try RemoteTrainingJobCodec.decoder.decode(RemoteTrainingPackageDescriptor.self, from: data)
+    }
+
+    private func isRemoteBundleAvailable(_ bundle: RemoteJobBundle) -> Bool {
+        guard let package = selectedRemotePackage else { return bundle == .fullMix }
+        return FileManager.default.fileExists(
+            atPath: package.directory.appendingPathComponent(bundle.fileName).path(percentEncoded: false)
+        )
+    }
+
+    private func applyRemoteRecipeDefaults() {
+        let settings = remoteRecipe.settings(for: remoteAdapterKind)
+        remoteEpochs = settings.epochs
+        remoteSaveEvery = settings.saveEvery
+        if remoteAdapterName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+            remoteAdapterName.contains(" LoRA ") ||
+            remoteAdapterName.contains(" LoKR ") {
+            remoteAdapterName = defaultRemoteAdapterName()
+        }
+    }
+
+    private func normalizedRemoteAdapterName() -> String {
+        let trimmed = remoteAdapterName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? defaultRemoteAdapterName() : trimmed
+    }
+
+    private func defaultRemoteAdapterName() -> String {
+        let packageName = selectedRemotePackage?.name.replacingOccurrences(of: "_local_", with: " ") ?? "Remote Adapter"
+        return "\(packageName) \(adapterTitle(for: remoteAdapterKind)) \(remoteRecipe.title)"
     }
 
     private func progressStatus(title: String, detail: String) -> some View {
@@ -1012,6 +1193,174 @@ private enum BuildTrainingMode: String, CaseIterable, Identifiable {
         case .lora: return "LoRA"
         case .lokr: return "LoKR"
         case .remote: return "Remote GPU"
+        }
+    }
+}
+
+private enum RemoteJobRecipe: String, CaseIterable, Identifiable {
+    case narrow
+    case wide
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .narrow: return "Narrow"
+        case .wide: return "Wide"
+        }
+    }
+
+    func settings(for adapterKind: AdapterKind) -> RemoteJobRecipeSettings {
+        switch (adapterKind, self) {
+        case (.lora, .narrow):
+            return RemoteJobRecipeSettings(
+                rank: 64,
+                alpha: 64,
+                lokrLinearDim: nil,
+                lokrLinearAlpha: nil,
+                lokrWeightDecompose: false,
+                epochs: 100,
+                saveEvery: 10,
+                batchSize: 1,
+                gradientAccumulationSteps: 2,
+                learningRate: 0.00008,
+                dropout: 0,
+                targetModules: ["q_proj", "v_proj"],
+                attentionType: "both",
+                cfgRatio: 0.15,
+                maxDurationSeconds: 60
+            )
+        case (.lora, .wide):
+            return RemoteJobRecipeSettings(
+                rank: 96,
+                alpha: 192,
+                lokrLinearDim: nil,
+                lokrLinearAlpha: nil,
+                lokrWeightDecompose: false,
+                epochs: 150,
+                saveEvery: 10,
+                batchSize: 1,
+                gradientAccumulationSteps: 2,
+                learningRate: 0.000065,
+                dropout: 0,
+                targetModules: ["q_proj", "k_proj", "v_proj", "o_proj"],
+                attentionType: "both",
+                cfgRatio: 0.15,
+                maxDurationSeconds: 60
+            )
+        case (.lokr, .narrow):
+            return RemoteJobRecipeSettings(
+                rank: 32,
+                alpha: 64,
+                lokrLinearDim: 32,
+                lokrLinearAlpha: 64,
+                lokrWeightDecompose: true,
+                epochs: 80,
+                saveEvery: 10,
+                batchSize: 1,
+                gradientAccumulationSteps: 2,
+                learningRate: 0.00008,
+                dropout: 0,
+                targetModules: ["q_proj", "v_proj"],
+                attentionType: "both",
+                cfgRatio: 0.15,
+                maxDurationSeconds: 60
+            )
+        case (.lokr, .wide):
+            return RemoteJobRecipeSettings(
+                rank: 128,
+                alpha: 256,
+                lokrLinearDim: 128,
+                lokrLinearAlpha: 256,
+                lokrWeightDecompose: true,
+                epochs: 150,
+                saveEvery: 10,
+                batchSize: 1,
+                gradientAccumulationSteps: 2,
+                learningRate: 0.000065,
+                dropout: 0,
+                targetModules: ["q_proj", "k_proj", "v_proj", "o_proj"],
+                attentionType: "both",
+                cfgRatio: 0.15,
+                maxDurationSeconds: 60
+            )
+        }
+    }
+}
+
+private struct RemoteJobRecipeSettings {
+    let rank: Int
+    let alpha: Double
+    let lokrLinearDim: Int?
+    let lokrLinearAlpha: Double?
+    let lokrWeightDecompose: Bool
+    let epochs: Int
+    let saveEvery: Int
+    let batchSize: Int
+    let gradientAccumulationSteps: Int
+    let learningRate: Double
+    let dropout: Double
+    let targetModules: [String]
+    let attentionType: String
+    let cfgRatio: Double
+    let maxDurationSeconds: Int
+}
+
+private enum RemoteJobBundle: String, CaseIterable, Identifiable {
+    case fullMix = "full_mix"
+    case instrumental
+    case vocals
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .fullMix: return "Full Mix"
+        case .instrumental: return "Instrumental"
+        case .vocals: return "Vocals"
+        }
+    }
+
+    var fileName: String {
+        switch self {
+        case .fullMix:
+            return TrainingDatasetPackageWriter.fullMixBundleFileName
+        case .instrumental:
+            return TrainingDatasetPackageWriter.instrumentalBundleFileName
+        case .vocals:
+            return TrainingDatasetPackageWriter.vocalBundleFileName
+        }
+    }
+}
+
+private enum RemoteJobBaseModel: String, CaseIterable, Identifiable {
+    case xlSFT
+    case xlBase
+    case xlTurbo
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .xlSFT: return "ACE-Step XL SFT"
+        case .xlBase: return "ACE-Step XL Base"
+        case .xlTurbo: return "ACE-Step XL Turbo"
+        }
+    }
+
+    var appModelID: String {
+        switch self {
+        case .xlSFT: return "ace-step-dit-xl-sft"
+        case .xlBase: return "ace-step-dit-xl-base"
+        case .xlTurbo: return "ace-step-dit-xl-turbo"
+        }
+    }
+
+    var workerVariant: String {
+        switch self {
+        case .xlSFT: return "ace-step-xl-sft"
+        case .xlBase: return "ace-step-xl-base"
+        case .xlTurbo: return "ace-step-xl-turbo"
         }
     }
 }

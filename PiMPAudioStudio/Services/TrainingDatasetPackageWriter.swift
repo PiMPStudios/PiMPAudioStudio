@@ -435,7 +435,11 @@ enum TrainingDatasetPackageWriter {
     }
 
     @discardableResult
-    static func exportPackageArchive(outputDirectory: URL, to destinationURL: URL) throws -> URL {
+    static func exportPackageArchive(
+        outputDirectory: URL,
+        to destinationURL: URL,
+        extraFiles: [String: Data] = [:]
+    ) throws -> URL {
         let validation = validatePackage(at: outputDirectory)
         guard validation.isValid else {
             throw TrainingDatasetPackageError.invalidPackage(validation.summary)
@@ -459,6 +463,7 @@ enum TrainingDatasetPackageWriter {
             let destination = stagedPackageDirectory.appendingPathComponent(relativePath)
             try copyArchiveItem(from: sourceURL, to: destination)
         }
+        try writeExtraArchiveFiles(extraFiles, to: stagedPackageDirectory)
 
         let process = Process()
         let stderr = Pipe()
@@ -486,6 +491,36 @@ enum TrainingDatasetPackageWriter {
         }
 
         return destinationURL
+    }
+
+    private static func writeExtraArchiveFiles(_ files: [String: Data], to stagedPackageDirectory: URL) throws {
+        for (relativePath, data) in files {
+            guard let cleanPath = cleanArchiveRelativePath(relativePath) else {
+                continue
+            }
+            let destination = stagedPackageDirectory.appendingPathComponent(cleanPath)
+            try FileManager.default.createDirectory(
+                at: destination.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try data.write(to: destination, options: .atomic)
+            if destination.lastPathComponent.hasSuffix(".sh") {
+                try FileManager.default.setAttributes(
+                    [.posixPermissions: 0o755],
+                    ofItemAtPath: destination.path(percentEncoded: false)
+                )
+            }
+        }
+    }
+
+    private static func cleanArchiveRelativePath(_ path: String) -> String? {
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              !trimmed.hasPrefix("/"),
+              !trimmed.contains("..") else {
+            return nil
+        }
+        return trimmed
     }
 
     private static func exportPackageRelativePaths(outputDirectory: URL) -> [String] {

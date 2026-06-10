@@ -44,6 +44,8 @@ Stem bundles are optional until local enrichment has run. `preprocessed/**` can 
 
 Before launch, PiMP Audio Studio creates a provider-neutral `remote_job.json`. The provider adapter sends that file with the package zip or writes it into the unzipped package before the worker starts.
 
+The Training workspace's **Remote GPU -> Create Remote Job** export writes `remote_job.json`, `README_REMOTE_GPU.md`, and `run_remote_training.sh` into the package root. The shell script is a thin handoff for an installed `pimp-remote-worker` command or official provider template; provider credentials still stay outside the archive.
+
 Minimal shape:
 
 ```json
