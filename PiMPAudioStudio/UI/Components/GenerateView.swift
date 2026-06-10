@@ -462,8 +462,7 @@ struct GenerateView: View {
                     pipelineOverride: generationParameters.pipelineOverride,
                     coverStrength: Float(coverStrength)
                 )
-                // Resolve the full adapter stack (primary at strength 1.0 + any
-                // additional stacked adapters) and hand it to the service so
+                // Resolve the full adapter stack and hand it to the service so
                 // LoRACoordinator.ensureStack() can apply per-adapter strengths.
                 generationService.adapterStack = stackManager.allStackedAdapters
                     .map { (id: $0.adapter.id, weight: $0.strength) }
@@ -540,7 +539,7 @@ struct GenerateView: View {
 
     private var primaryAdapterStrengthRow: some View {
         HStack(spacing: 8) {
-            Text("LoRA Strength")
+            Text("Adapter Gain")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .frame(width: 96, alignment: .leading)
@@ -554,14 +553,15 @@ struct GenerateView: View {
                         persistedAdapterStrength = Double(stackManager.primaryStrength)
                     }
                 ),
-                in: 0.0...1.0,
-                step: 0.05
+                in: Double(AdapterStrengthLimits.minimum)...Double(AdapterStrengthLimits.maximum),
+                step: 0.10
             )
             .frame(maxWidth: 240)
+            .help("1.0x is normal strength. Higher values boost weak adapters at generation time.")
 
-            Text(String(format: "%.2f", stackManager.primaryStrength))
+            Text(String(format: "%.2fx", stackManager.primaryStrength))
                 .font(.caption.monospacedDigit())
-                .frame(width: 36, alignment: .trailing)
+                .frame(width: 48, alignment: .trailing)
 
             Text("Use Constant guidance for closest XL PEFT parity")
                 .font(.caption2)

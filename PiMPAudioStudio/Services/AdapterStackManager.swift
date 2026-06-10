@@ -2,6 +2,16 @@ import Foundation
 import PiMPAudioCore
 import MLX
 
+enum AdapterStrengthLimits {
+    static let minimum: Float = 0.0
+    static let normal: Float = 1.0
+    static let maximum: Float = 6.0
+
+    static func clamped(_ strength: Float) -> Float {
+        min(max(strength, minimum), maximum)
+    }
+}
+
 /// Manages the runtime state of multiple stacked LoRA adapters.
 ///
 /// Owns which adapters are active, at what strength, and coordinates
@@ -56,7 +66,7 @@ final class AdapterStackManager: ObservableObject {
 
     /// Update the primary adapter strength.
     func setPrimaryStrength(_ strength: Float) {
-        primaryStrength = min(max(strength, 0.0), 1.0)
+        primaryStrength = AdapterStrengthLimits.clamped(strength)
     }
 
     /// Add an adapter to the additional stack.
@@ -70,7 +80,7 @@ final class AdapterStackManager: ObservableObject {
         if let primaryAdapter {
             guard adapter.kind == primaryAdapter.kind else { return }
         }
-        additionalAdapters.append((adapter: adapter, strength: strength))
+        additionalAdapters.append((adapter: adapter, strength: AdapterStrengthLimits.clamped(strength)))
     }
 
     /// Remove an adapter from the additional stack by ID.
@@ -83,7 +93,7 @@ final class AdapterStackManager: ObservableObject {
         guard let idx = additionalAdapters.firstIndex(where: { $0.adapter.id == adapterID }) else {
             return
         }
-        additionalAdapters[idx].strength = strength
+        additionalAdapters[idx].strength = AdapterStrengthLimits.clamped(strength)
     }
 
     /// Clear all additional adapters (keep primary).

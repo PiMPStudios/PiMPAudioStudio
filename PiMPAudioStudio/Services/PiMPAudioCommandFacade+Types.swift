@@ -103,7 +103,7 @@ enum PiMPAudioCommandFacadeError: LocalizedError {
         case .invalidBoolean(let key):
             return "'\(key)' must be true or false."
         case .invalidStrength:
-            return "Adapter strength must be a number from 0.0 to 1.0."
+            return "Adapter strength must be a number from 0.0 to 6.0."
         case .invalidSeed:
             return "Seed must be an integer or 'random'."
         case .invalidSteps:

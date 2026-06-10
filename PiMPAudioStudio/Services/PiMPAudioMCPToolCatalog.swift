@@ -346,8 +346,8 @@ enum MCPToolCatalog {
                 "strength": [
                     "type": "number",
                     "minimum": 0,
-                    "maximum": 1,
-                    "description": "Primary adapter strength. Defaults to 1.0."
+                    "maximum": Double(AdapterStrengthLimits.maximum),
+                    "description": "Primary adapter gain. 1.0 is normal strength; values above 1.0 boost weak adapters."
                 ],
                 "adapters": [
                     "type": "array",
@@ -358,9 +358,9 @@ enum MCPToolCatalog {
                             "id": ["type": "string"],
                             "adapterID": ["type": "string"],
                             "name": ["type": "string"],
-                            "strength": ["type": "number", "minimum": 0, "maximum": 1],
-                            "weight": ["type": "number", "minimum": 0, "maximum": 1],
-                            "scale": ["type": "number", "minimum": 0, "maximum": 1]
+                            "strength": ["type": "number", "minimum": 0, "maximum": Double(AdapterStrengthLimits.maximum)],
+                            "weight": ["type": "number", "minimum": 0, "maximum": Double(AdapterStrengthLimits.maximum)],
+                            "scale": ["type": "number", "minimum": 0, "maximum": Double(AdapterStrengthLimits.maximum)]
                         ]
                     ]
                 ],
@@ -427,8 +427,8 @@ enum MCPToolCatalog {
                 "strength": [
                     "type": "number",
                     "minimum": 0,
-                    "maximum": 1,
-                    "description": "Adapter strength when adapter/lora is supplied."
+                    "maximum": Double(AdapterStrengthLimits.maximum),
+                    "description": "Adapter gain when adapter/lora is supplied. 1.0 is normal strength; values above 1.0 boost weak adapters."
                 ],
                 "adapters": [
                     "type": "array",
@@ -439,9 +439,9 @@ enum MCPToolCatalog {
                             "id": ["type": "string"],
                             "adapterID": ["type": "string"],
                             "name": ["type": "string"],
-                            "strength": ["type": "number", "minimum": 0, "maximum": 1],
-                            "weight": ["type": "number", "minimum": 0, "maximum": 1],
-                            "scale": ["type": "number", "minimum": 0, "maximum": 1]
+                            "strength": ["type": "number", "minimum": 0, "maximum": Double(AdapterStrengthLimits.maximum)],
+                            "weight": ["type": "number", "minimum": 0, "maximum": Double(AdapterStrengthLimits.maximum)],
+                            "scale": ["type": "number", "minimum": 0, "maximum": Double(AdapterStrengthLimits.maximum)]
                         ]
                     ]
                 ],

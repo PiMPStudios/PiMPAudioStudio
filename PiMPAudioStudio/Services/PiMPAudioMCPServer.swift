@@ -123,7 +123,7 @@ final class PiMPAudioMCPServer: ObservableObject {
 
             let bridge = PiMPAudioMCPSDKBridge(
                 facade: self.facade,
-                version: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1.0"
+                version: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.8.0"
             )
             var startedServer: MCPHTTPServer?
 

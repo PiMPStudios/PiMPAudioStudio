@@ -4,7 +4,15 @@ All notable changes to PiMP Audio Studio are documented here.
 
 ---
 
-## [Unreleased] — Generation Analyzer + Trace Compare Workflow
+## [Unreleased]
+
+### Added
+
+- Nothing yet.
+
+---
+
+## [0.8.0] — 2026-06-10 — Generation, Training, MCP, and Remote Workflows
 
 ### Added
 
@@ -24,6 +32,7 @@ All notable changes to PiMP Audio Studio are documented here.
 - **Verbose audio diagnostics now mirror to timestamped working-folder logs** — enabling the Advanced diagnostics checkbox still writes `[AUDIODIAG]` lines to Xcode, and now also creates `PiMPAudioStudio-AUDIODIAG-*.log` files under the app's `Diagnostics` working folder so multiple runs can be compared after generation.
 - **Training diagnostics now capture high-value LoRA/LoKR breadcrumbs** — verbose diagnostics now log training model-load phases, dataset/preprocess cache hits and sample shapes, DiT injection/trainable path coverage, trainer first-sample/epoch health, save/checkpoint paths, cancellation, cleanup, and memory snapshots so major training bugs show up in the same working-folder logs as generation.
 - **Adapter effect diagnostics now report audible scale** — verbose diagnostics now emit one `adapter/effect` line per active LoRA/LoKR adapter per generation, comparing the adapter delta against the base layer output so A/B tests can confirm whether an adapter is active, subtle, audible, or too tiny to matter.
+- **Adapter generation gain can now boost weak adapters** — Generate and MCP adapter selection now allow runtime adapter gain up to `6.0x` while keeping `1.0x` as the normal default, making under-scaled LoRA/LoKR adapters testable without editing their files.
 - **Training gradient diagnostics now isolate first-step stalls** — LoRA/LoKR training logs first `valueAndGrad` plus loss-materialization timings around the explicit adapter-parameter gradient path, so XL adapter stalls can be separated from memory or dataset issues without routing gradients through the full model parameter tree.
 - **MCP can now inspect training state and logs** — the local MCP endpoint now exposes read-only `training_status`, `list_training_datasets`, `list_training_runs`, and `tail_training_log` tools plus `pimpaudio://training*` resources so agents can inspect LoRA/LoKR progress, dataset packages, adapter run logs, and recent AUDIODIAG training lines without starting or mutating training.
 - **MCP training inspection now has detail views** — local agents can call read-only `inspect_training_dataset`, `inspect_training_run`, and `compare_training_runs` for dataset annotation coverage, package validation, size-aware recommendations, adapter config, run health metrics, and compact recent-run comparisons.
@@ -148,6 +157,7 @@ All notable changes to PiMP Audio Studio are documented here.
 
 ### Changed
 
+- **App versioning now reflects the current product maturity** — the macOS app, checked-in Xcode project, project generator config, PiMPAudioCore info constant, and MCP fallback version now report `0.8.0` / build `8` instead of the original foundation-era `0.1.0`.
 - **MCP command facade is split by domain** — `PiMPAudioCommandFacade.swift` now holds construction and service wiring only, while resources, training, generation, editor actions, operation tracking, shared parsing, and local MCP payload types live in focused extension files.
 - **MCP server internals are split into focused files** — the raw localhost HTTP listener now lives in `PiMPAudioMCPHTTPServer.swift` and the static tool schema catalog lives in `PiMPAudioMCPToolCatalog.swift`, leaving `PiMPAudioMCPServer.swift` focused on lifecycle, SDK bridge wiring, session handling, and dispatch.
 - **MCP docs now treat PiMP Audio Studio names as primary** — `docs/mcp-local.md`, the MCP spec/plan, and the smoke test now document `pimpaudio://` resources, `PIMP_AUDIO_MCP_*` environment variables, and snake_case tool names as the public catalog.

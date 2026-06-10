@@ -2,5 +2,5 @@
 // This file exists only as the module entry point.
 
 public enum PiMPAudioCoreInfo {
-    public static let version = "0.1.0"
+    public static let version = "0.8.0"
 }

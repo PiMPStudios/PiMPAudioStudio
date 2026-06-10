@@ -22,7 +22,7 @@ struct AdapterStackView: View {
                     .foregroundStyle(.secondary)
                 Spacer()
                 if !stackManager.additionalAdapters.isEmpty {
-                    Text("Total: \(String(format: "%.2f", stackManager.totalStrength))")
+                    Text("Total: \(String(format: "%.2fx", stackManager.totalStrength))")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }
@@ -74,21 +74,20 @@ struct AdapterStackView: View {
                 }
                 .frame(width: 100, alignment: .leading)
 
-                // Strength slider
                 Slider(
                     value: Binding(
                         get: { strength },
                         set: { stackManager.setStrength(adapterID: adapter.id, strength: $0) }
                     ),
-                    in: 0.0...1.0,
-                    step: 0.05
+                    in: AdapterStrengthLimits.minimum...AdapterStrengthLimits.maximum,
+                    step: 0.10
                 )
+                .help("1.0x is normal strength. Higher values boost weak adapters at generation time.")
 
-                // Strength label
-                Text(String(format: "%.2f", strength))
+                Text(String(format: "%.2fx", strength))
                     .font(.caption)
                     .monospacedDigit()
-                    .frame(width: 32)
+                    .frame(width: 48)
 
                 // Remove button
                 Button {

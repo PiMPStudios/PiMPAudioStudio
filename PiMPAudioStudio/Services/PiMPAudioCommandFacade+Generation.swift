@@ -283,7 +283,9 @@ extension PiMPAudioCommandFacade {
 
     func adapterStrength(_ value: Any?) throws -> Float {
         guard let value else { return 1.0 }
-        guard let parsed = doubleValue(value), parsed >= 0.0, parsed <= 1.0 else {
+        guard let parsed = doubleValue(value),
+              parsed >= Double(AdapterStrengthLimits.minimum),
+              parsed <= Double(AdapterStrengthLimits.maximum) else {
             throw PiMPAudioCommandFacadeError.invalidStrength
         }
         return Float(parsed)
@@ -309,7 +311,7 @@ extension PiMPAudioCommandFacade {
         }
 
         let rawStrength = doubleValue(defaults.object(forKey: AppUserDefaultsKeys.selectedAdapterStrength)) ?? 1.0
-        let strength = Float(min(max(rawStrength, 0.0), 1.0))
+        let strength = AdapterStrengthLimits.clamped(Float(rawStrength))
         generationService.selectedAdapterID = adapterID
         generationService.adapterStack = [(id: adapterID, weight: strength)]
     }
