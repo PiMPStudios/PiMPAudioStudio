@@ -89,7 +89,7 @@ struct HuggingFaceImportSheet: View {
 
     private var localSection: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Local PEFT Folder")
+            Text("Local Adapter Folder")
                 .font(.subheadline)
                 .fontWeight(.medium)
             HStack(spacing: 8) {
@@ -101,7 +101,7 @@ struct HuggingFaceImportSheet: View {
                 .buttonStyle(.bordered)
                 .disabled(isFetching)
 
-                Text("Select a folder containing adapter_config.json and adapter_model.safetensors.")
+                Text("Select a native folder with adapter.json + adapter.safetensors, or a PEFT folder with adapter_config.json + adapter_model.safetensors.")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
@@ -226,7 +226,7 @@ struct HuggingFaceImportSheet: View {
 
     private func importLocalFolder() {
         let panel = NSOpenPanel()
-        panel.title = "Import PEFT LoRA Folder"
+        panel.title = "Import Adapter Folder"
         panel.prompt = "Import"
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
@@ -241,7 +241,7 @@ struct HuggingFaceImportSheet: View {
 
         Task {
             do {
-                let adapter = try await service.importLocalPEFTAdapter(directoryURL: url)
+                let adapter = try await service.importLocalAdapter(directoryURL: url)
                 fetchedAdapter = adapter
                 downloadComplete = true
             } catch {

@@ -384,7 +384,7 @@ struct AdapterRegistry {
         return mergedAdapter
     }
 
-    private static func notifyRegistryChanged() {
+    static func notifyRegistryChanged() {
         if Thread.isMainThread {
             NotificationCenter.default.post(name: .adapterRegistryDidChange, object: nil)
         } else {

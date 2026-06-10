@@ -1298,6 +1298,70 @@ private extension JSONDecoder {
     )
 }
 
+@Test @MainActor func localNativeAdapterFolderImportCopiesPiMPAdapter() async throws {
+    let sourceDir = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(at: sourceDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: sourceDir) }
+
+    let adapterID = "native-import-\(UUID().uuidString.lowercased())"
+    let adapter = LoRAAdapter(
+        id: adapterID,
+        name: "Native Import",
+        config: LoRAConfig(
+            rank: 128,
+            alpha: 128,
+            exactInjectionPatterns: ["selfAttn.qProj"]
+        ),
+        kind: .lokr,
+        lokrConfig: LoKRConfig(
+            linearDim: 128,
+            alpha: 128,
+            exactInjectionPatterns: ["selfAttn.qProj"],
+            weightDecompose: true
+        ),
+        baseModelID: "ace-step-dit-xl-sft",
+        baseModelCategory: .aceStepDiT,
+        createdAt: Date(timeIntervalSince1970: 1_786_000_000),
+        sampleCount: 618,
+        finalLoss: 0.6594,
+        source: .local,
+        trainedPaths: ["layers.0.selfAttn.qProj"],
+        trainedLayerIndices: [0]
+    )
+
+    let encoder = JSONEncoder()
+    encoder.dateEncodingStrategy = .iso8601
+    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+    try encoder.encode(adapter).write(to: sourceDir.appendingPathComponent("adapter.json"))
+    try Data("fake-safetensors-payload".utf8)
+        .write(to: sourceDir.appendingPathComponent("adapter.safetensors"))
+
+    let service = CommunityService()
+    let imported = try await service.importLocalAdapter(directoryURL: sourceDir)
+    defer { try? FileManager.default.removeItem(at: AdapterRegistry.adapterDirectory(id: imported.id)) }
+
+    #expect(imported.id == adapterID)
+    #expect(imported.kind == .lokr)
+    #expect(imported.source == .imported)
+
+    let installedDir = AdapterRegistry.adapterDirectory(id: imported.id)
+    #expect(FileManager.default.fileExists(
+        atPath: installedDir.appendingPathComponent("adapter.json").path
+    ))
+    #expect(FileManager.default.fileExists(
+        atPath: installedDir.appendingPathComponent("adapter.safetensors").path
+    ))
+
+    let installedData = try Data(contentsOf: installedDir.appendingPathComponent("adapter.json"))
+    let decoder = JSONDecoder()
+    decoder.dateDecodingStrategy = .iso8601
+    let installed = try decoder.decode(LoRAAdapter.self, from: installedData)
+    #expect(installed.source == .imported)
+    #expect(installed.remoteRepoURL == nil)
+    #expect(installed.lokrConfig?.weightDecompose == true)
+}
+
 @Test func localDatasetEnrichmentTranscribesCachedVocalStems() async throws {
     let datasetDir = FileManager.default.temporaryDirectory
         .appendingPathComponent(UUID().uuidString, isDirectory: true)

@@ -358,6 +358,41 @@ final class CommunityService: ObservableObject {
         )
     }
 
+    /// Import a local adapter directory, accepting either native PiMP Audio Studio
+    /// folders (`adapter.json` + `adapter.safetensors`) or PEFT LoRA folders
+    /// (`adapter_config.json` + `adapter_model.safetensors`).
+    func importLocalAdapter(directoryURL: URL) async throws -> LoRAAdapter {
+        let didAccess = directoryURL.startAccessingSecurityScopedResource()
+        defer {
+            if didAccess {
+                directoryURL.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        let peftConfigURL = directoryURL.appending(path: "adapter_config.json")
+        let peftWeightsURL = directoryURL.appending(path: "adapter_model.safetensors")
+        if FileManager.default.fileExists(atPath: peftConfigURL.path(percentEncoded: false)),
+           FileManager.default.fileExists(atPath: peftWeightsURL.path(percentEncoded: false)) {
+            return try importLocalPEFTAdapterUnlocked(directoryURL: directoryURL)
+        }
+
+        let nativeMetadataURL = directoryURL.appending(path: "adapter.json")
+        let nativeWeightsURL = directoryURL.appending(path: "adapter.safetensors")
+        if FileManager.default.fileExists(atPath: nativeMetadataURL.path(percentEncoded: false)),
+           FileManager.default.fileExists(atPath: nativeWeightsURL.path(percentEncoded: false)) {
+            return try await importLocalNativeAdapterUnlocked(
+                directoryURL: directoryURL,
+                metadataURL: nativeMetadataURL,
+                weightsURL: nativeWeightsURL
+            )
+        }
+
+        throw CommunityError.missingFile(
+            "adapter_config.json + adapter_model.safetensors, or adapter.json + adapter.safetensors",
+            directoryURL
+        )
+    }
+
     /// Import a local PEFT LoRA directory (`adapter_config.json` +
     /// `adapter_model.safetensors`) and save it in PiMPAudioStudio's native adapter
     /// registry format.
@@ -368,6 +403,11 @@ final class CommunityService: ObservableObject {
                 directoryURL.stopAccessingSecurityScopedResource()
             }
         }
+
+        return try importLocalPEFTAdapterUnlocked(directoryURL: directoryURL)
+    }
+
+    private func importLocalPEFTAdapterUnlocked(directoryURL: URL) throws -> LoRAAdapter {
 
         let configURL = directoryURL.appending(path: "adapter_config.json")
         let weightsURL = directoryURL.appending(path: "adapter_model.safetensors")
@@ -395,6 +435,51 @@ final class CommunityService: ObservableObject {
             remoteRepoURL: nil,
             errorURL: directoryURL
         )
+    }
+
+    private func importLocalNativeAdapterUnlocked(
+        directoryURL: URL,
+        metadataURL: URL,
+        weightsURL: URL
+    ) async throws -> LoRAAdapter {
+        let metadataData = try Data(contentsOf: metadataURL)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        var adapter = try decoder.decode(LoRAAdapter.self, from: metadataData)
+
+        adapter.source = .imported
+        adapter.remoteRepoURL = nil
+
+        let existingIDs = Set(AdapterRegistry.listAdapters().map(\.id))
+        if existingIDs.contains(adapter.id) {
+            adapter.id = uniqueAdapterID(from: adapter.id)
+        }
+
+        let destination = AdapterRegistry.adapterDirectory(id: adapter.id)
+        let weightsDestination = destination.appending(path: "adapter.safetensors")
+        let metadataDestination = destination.appending(path: "adapter.json")
+
+        do {
+            try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+            try FileManager.default.copyItem(at: weightsURL, to: weightsDestination)
+
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            try encoder.encode(adapter).write(to: metadataDestination)
+
+            try await verifyAdapterWeights(
+                at: weightsDestination,
+                expectedSHA256: adapterSHA256(from: metadataData),
+                fileName: "adapter.safetensors"
+            )
+        } catch {
+            try? FileManager.default.removeItem(at: destination)
+            throw error
+        }
+
+        AdapterRegistry.notifyRegistryChanged()
+        return adapter
     }
 
     private func savePEFTAdapter(
