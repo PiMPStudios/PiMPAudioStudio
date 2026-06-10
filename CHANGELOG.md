@@ -145,6 +145,7 @@ All notable changes to PiMP Audio Studio are documented here.
 
 ### Changed
 
+- **MCP command facade is split by domain** — `PiMPAudioCommandFacade.swift` now holds construction and service wiring only, while resources, training, generation, editor actions, operation tracking, shared parsing, and local MCP payload types live in focused extension files.
 - **MCP server internals are split into focused files** — the raw localhost HTTP listener now lives in `PiMPAudioMCPHTTPServer.swift` and the static tool schema catalog lives in `PiMPAudioMCPToolCatalog.swift`, leaving `PiMPAudioMCPServer.swift` focused on lifecycle, SDK bridge wiring, session handling, and dispatch.
 - **MCP docs now treat PiMP Audio Studio names as primary** — `docs/mcp-local.md`, the MCP spec/plan, and the smoke test now document `pimpaudio://` resources, `PIMP_AUDIO_MCP_*` environment variables, and snake_case tool names as the public catalog.
 - **MCP progress/cancellation design is staged** — the standards roadmap now
