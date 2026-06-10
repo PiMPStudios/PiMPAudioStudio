@@ -290,6 +290,7 @@ extension LoRAInjector {
         source: AdapterSource,
         weights: [(String, MLXArray)],
         strength: Float,
+        scaling: Float,
         paths: [String]
     ) {
         let weightDict = Dictionary(weights, uniquingKeysWith: { _, last in last })
@@ -330,6 +331,7 @@ extension LoRAInjector {
                 loraA: loraA,
                 loraB: loraB,
                 strength: strength,
+                scaling: scaling,
                 path: path
             )
             loraLinear.contributions.append(contribution)

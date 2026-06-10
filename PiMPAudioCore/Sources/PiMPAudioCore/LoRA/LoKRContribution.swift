@@ -11,6 +11,7 @@ public struct LoKRContribution: @unchecked Sendable {
     public let lokrMagnitude: MLXArray?
     public let weightDecompose: Bool
     public var strength: Float
+    public let scaling: Float
     public let path: String?
 
     public init(
@@ -22,6 +23,7 @@ public struct LoKRContribution: @unchecked Sendable {
         lokrMagnitude: MLXArray? = nil,
         weightDecompose: Bool = false,
         strength: Float = 1.0,
+        scaling: Float = 1.0,
         path: String? = nil
     ) {
         self.adapterID = adapterID
@@ -32,6 +34,7 @@ public struct LoKRContribution: @unchecked Sendable {
         self.lokrMagnitude = lokrMagnitude
         self.weightDecompose = weightDecompose
         self.strength = strength
+        self.scaling = scaling
         self.path = path
     }
 }

@@ -119,7 +119,7 @@ public class LoKRLinear: Linear {
                     let magnitude = contribution.lokrMagnitude ?? Self.rowNorm(baseWeight)
                     let doraWeight = Self.doraWeight(
                         baseWeight: baseWeight,
-                        scaledDelta: scaling * delta,
+                        scaledDelta: contribution.scaling * delta,
                         magnitude: magnitude
                     )
                     let contributionOut: MLXArray
@@ -134,19 +134,19 @@ public class LoKRLinear: Linear {
                         adapterID: contribution.adapterID,
                         path: contribution.path,
                         strength: contribution.strength,
-                        scale: scaling,
+                        scale: contribution.scaling,
                         baseOut: baseOut,
                         deltaOut: deltaOut
                     )
                     out = out + deltaOut
                 } else {
-                    let deltaOut = MLXArray(contribution.strength * scaling) * matmul(x, delta.T)
+                    let deltaOut = MLXArray(contribution.strength * contribution.scaling) * matmul(x, delta.T)
                     AdapterEffectDiagnostics.contribution(
                         kind: .lokr,
                         adapterID: contribution.adapterID,
                         path: contribution.path,
                         strength: contribution.strength,
-                        scale: scaling,
+                        scale: contribution.scaling,
                         baseOut: baseOut,
                         deltaOut: deltaOut
                     )
@@ -221,7 +221,7 @@ public class LoKRLinear: Linear {
     ) -> MLXArray {
         let directionalWeight = baseWeight + scaledDelta
         let rowScale = magnitude.reshaped([magnitude.shape[0], 1]) /
-            (rowNorm(directionalWeight).reshaped([magnitude.shape[0], 1]) + 1e-6)
+            (stopGradient(rowNorm(directionalWeight)).reshaped([magnitude.shape[0], 1]) + 1e-6)
         return directionalWeight * rowScale
     }
 
@@ -240,7 +240,7 @@ public class LoKRLinear: Linear {
     ) -> MLXArray {
         let scaledDelta = scaling * delta
         let directionalWeight = baseWeight + scaledDelta
-        let outputScale = magnitude / (rowNorm(directionalWeight) + 1e-6)
+        let outputScale = magnitude / (stopGradient(rowNorm(directionalWeight)) + 1e-6)
         let baseNoBias = matmul(x, baseWeight.T)
         let adapterOut = scaling * matmul(adapterInput, delta.T)
         let noBias = (baseNoBias + adapterOut) * outputScale

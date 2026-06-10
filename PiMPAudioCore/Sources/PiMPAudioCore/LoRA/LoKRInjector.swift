@@ -155,6 +155,7 @@ public enum LoKRInjector {
         source: AdapterSource,
         weights: [(String, MLXArray)],
         strength: Float,
+        scaling: Float,
         paths: [String]
     ) {
         let weightDict = Dictionary(weights, uniquingKeysWith: { _, last in last })
@@ -201,6 +202,7 @@ public enum LoKRInjector {
                 lokrMagnitude: magnitude,
                 weightDecompose: magnitude != nil,
                 strength: strength,
+                scaling: scaling,
                 path: path
             ))
             matchedPaths += 1

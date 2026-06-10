@@ -9,7 +9,7 @@ import MLXRandom
 ///   Output = base(x) + scaling * dropout(x @ A^T @ B^T)
 ///
 /// Multi-adapter stacking (Phase 10c):
-///   Output = base(x) + sum_i(strength_i * x @ A_i^T @ B_i^T)
+///   Output = base(x) + sum_i(strength_i * scaling_i * x @ A_i^T @ B_i^T)
 ///
 /// A is initialized with Kaiming uniform, B is initialized to zero,
 /// so a fresh adapter starts as identity (no effect on output).
@@ -101,13 +101,13 @@ public class LoRALinear: Linear {
             var out = baseOut
             for contribution in contributions where contribution.strength != 0.0 {
                 let loraOut = matmul(matmul(x, contribution.loraA.T), contribution.loraB.T)
-                let deltaOut = MLXArray(contribution.strength * scaling) * loraOut
+                let deltaOut = MLXArray(contribution.strength * contribution.scaling) * loraOut
                 AdapterEffectDiagnostics.contribution(
                     kind: .lora,
                     adapterID: contribution.adapterID,
                     path: contribution.path,
                     strength: contribution.strength,
-                    scale: scaling,
+                    scale: contribution.scaling,
                     baseOut: baseOut,
                     deltaOut: deltaOut
                 )

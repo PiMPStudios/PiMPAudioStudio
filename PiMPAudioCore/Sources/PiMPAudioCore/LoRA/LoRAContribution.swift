@@ -24,6 +24,9 @@ public struct LoRAContribution: @unchecked Sendable {
     /// Strength multiplier (0.0 = no effect, 1.0 = full effect).
     public var strength: Float
 
+    /// Adapter-specific scaling factor, normally alpha/rank.
+    public let scaling: Float
+
     /// Native module path that this contribution was loaded onto.
     public let path: String?
 
@@ -34,6 +37,7 @@ public struct LoRAContribution: @unchecked Sendable {
         loraA: MLXArray,
         loraB: MLXArray,
         strength: Float = 1.0,
+        scaling: Float = 1.0,
         path: String? = nil
     ) {
         self.adapterID = adapterID
@@ -42,6 +46,7 @@ public struct LoRAContribution: @unchecked Sendable {
         self.loraA = loraA
         self.loraB = loraB
         self.strength = strength
+        self.scaling = scaling
         self.path = path
     }
 }

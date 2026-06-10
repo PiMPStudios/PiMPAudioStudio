@@ -222,6 +222,7 @@ public actor DiTActor {
         source: AdapterSource,
         weights: [(String, MLXArray)],
         strength: Float,
+        scaling: Float,
         paths: [String]? = nil
     ) {
         guard let decoder else { return }
@@ -232,6 +233,7 @@ public actor DiTActor {
             source: source,
             weights: weights,
             strength: strength,
+            scaling: scaling,
             paths: paths ?? injectedPaths
         )
         eval(decoder.parameters())
@@ -284,6 +286,7 @@ public actor DiTActor {
         source: AdapterSource,
         weights: [(String, MLXArray)],
         strength: Float,
+        scaling: Float,
         paths: [String]? = nil
     ) {
         guard let decoder else { return }
@@ -294,6 +297,7 @@ public actor DiTActor {
             source: source,
             weights: weights,
             strength: strength,
+            scaling: scaling,
             paths: paths ?? injectedPaths
         )
         eval(decoder.parameters())

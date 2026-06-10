@@ -6,8 +6,14 @@ All notable changes to PiMP Audio Studio are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- **Local LoRA/LoKR training now uses no hidden AdamW decay and clips gradients** — adapter trainers explicitly set optimizer weight decay to zero and apply conservative global norm clipping before each optimizer step.
+
 ### Fixed
 
+- **Stacked adapters now keep their own alpha scaling** — LoRA/LoKR stacks now apply each adapter's saved alpha/rank or alpha/linear-dim scale instead of reusing the primary adapter's scale for every contribution.
+- **LoKR DoRA training now matches PEFT norm handling more closely** — DoRA magnitude scaling now stops gradients through the directional norm denominator while leaving inference output unchanged.
 - **LoKR Train from Files is available again** — the Training toolbar button now opens a LoKR training session when LoKR mode is selected instead of only enabling for LoRA.
 
 ---

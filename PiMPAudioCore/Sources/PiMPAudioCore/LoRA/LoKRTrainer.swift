@@ -6,6 +6,8 @@ import MLXRandom
 
 /// Flow-matching training loop for experimental LoKR adapters.
 public final class LoKRTrainer {
+    private static let gradientClipNorm: Float = 1.0
+
     private let model: DiTDecoder
     private let config: LoKRConfig
     private let injectedPaths: [String]
@@ -60,7 +62,7 @@ public final class LoKRTrainer {
     ) async throws -> [(String, MLXArray)] {
         AudioDiagnostics.note(
             "training/trainer/begin",
-            "kind=lokr dataset=\(dataset.count) paths=\(injectedPaths.count) maxEpochs=\(config.maxEpochs) gradAccum=\(config.gradientAccumulationSteps) weightDecompose=\(config.weightDecompose)"
+            "kind=lokr dataset=\(dataset.count) paths=\(injectedPaths.count) maxEpochs=\(config.maxEpochs) gradAccum=\(config.gradientAccumulationSteps) weightDecompose=\(config.weightDecompose) weightDecay=0 gradClipNorm=\(Self.gradientClipNorm)"
         )
         AudioDiagnostics.memory("training/trainer/begin")
         guard !dataset.isEmpty else {
@@ -69,7 +71,7 @@ public final class LoKRTrainer {
         }
 
         let accumSteps = max(1, min(config.gradientAccumulationSteps, dataset.count))
-        let optimizer = AdamW(learningRate: scheduler.learningRate(atStep: globalStep))
+        let optimizer = AdamW(learningRate: scheduler.learningRate(atStep: globalStep), weightDecay: 0)
         let startTime = Date()
 
         setTrainingMode(true)
@@ -385,12 +387,17 @@ public final class LoKRTrainer {
 
         let scale = 1.0 / Float(max(1, windowSamples))
         let averagedFlatGrads = accumulatedFlatGrads.map { $0 * scale }
+        let gradientNorm = TrainingMetricMath.l2Norm(averagedFlatGrads)
+        let optimizerFlatGrads = TrainingMetricMath.clipByGlobalNorm(
+            averagedFlatGrads,
+            globalNorm: gradientNorm,
+            maxNorm: Self.gradientClipNorm
+        )
         let beforeUpdate = TrainingMetricMath.materializedSnapshot(model.trainableParameters().flattened().map(\.1))
-        let gradPairs = zip(trainableParameterKeys, averagedFlatGrads).map { ($0.0, $0.1) }
+        let gradPairs = zip(trainableParameterKeys, optimizerFlatGrads).map { ($0.0, $0.1) }
         optimizer.update(model: model, gradients: ModuleParameters.unflattened(gradPairs))
         eval(model.trainableParameters(), optimizer.innerState())
         let afterUpdate = model.trainableParameters().flattened().map(\.1)
-        let gradientNorm = TrainingMetricMath.l2Norm(averagedFlatGrads)
         let parameterNorm = TrainingMetricMath.l2Norm(afterUpdate)
         let updateNorm = TrainingMetricMath.l2NormOfDeltas(before: beforeUpdate, after: afterUpdate)
 

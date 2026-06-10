@@ -149,7 +149,7 @@ final class LoRACoordinator {
     ///   contribution API (strength 1.0 for the primary adapter).
     /// - Multiple entries → multi-adapter stacking: each adapter's weights are
     ///   loaded as a `LoRAContribution` on every LoRALinear layer; the forward
-    ///   pass sums `strength_i * loraA_i^T @ loraB_i^T` for every entry.
+    ///   pass sums each adapter's own alpha-scaled contribution.
     ///
     /// Non-throwing — LoRA failures are logged and generation proceeds without adapter.
     func ensureStack(stack: [(id: String, weight: Float)]) async {
@@ -325,15 +325,18 @@ final class LoRACoordinator {
                     source: entry.adapter.source,
                     weights: entry.weights,
                     strength: entry.strength,
+                    scaling: entry.adapter.config.scaling,
                     paths: entry.trainedPaths
                 )
             case .lokr:
+                let config = lokrConfig(for: entry.adapter)
                 await pipeline.addLoKRContribution(
                     adapterID: entry.adapter.id,
                     displayName: entry.adapter.name,
                     source: entry.adapter.source,
                     weights: entry.weights,
                     strength: entry.strength,
+                    scaling: config.scaling,
                     paths: entry.trainedPaths
                 )
             }

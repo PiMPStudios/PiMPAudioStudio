@@ -21,6 +21,22 @@ enum TrainingMetricMath {
         return l2Norm(deltas)
     }
 
+    static func clipByGlobalNorm(
+        _ arrays: [MLXArray],
+        globalNorm: Float?,
+        maxNorm: Float
+    ) -> [MLXArray] {
+        guard let globalNorm,
+              globalNorm.isFinite,
+              maxNorm > 0,
+              globalNorm > maxNorm
+        else {
+            return arrays
+        }
+        let scale = maxNorm / (globalNorm + 1e-6)
+        return arrays.map { $0 * scale }
+    }
+
     static func materializedSnapshot(_ arrays: [MLXArray]) -> [MLXArray] {
         let snapshot = arrays.map { array in
             // `asType(.float32)` can return the same MLXArray for float32 inputs,

@@ -84,6 +84,7 @@ public actor MusicPipeline {
         source: AdapterSource,
         weights: [(String, MLXArray)],
         strength: Float,
+        scaling: Float,
         paths: [String]? = nil
     ) async {
         await diffusion.addLoRAContribution(
@@ -92,6 +93,7 @@ public actor MusicPipeline {
             source: source,
             weights: weights,
             strength: strength,
+            scaling: scaling,
             paths: paths
         )
     }
@@ -122,6 +124,7 @@ public actor MusicPipeline {
         source: AdapterSource,
         weights: [(String, MLXArray)],
         strength: Float,
+        scaling: Float,
         paths: [String]? = nil
     ) async {
         await diffusion.addLoKRContribution(
@@ -130,6 +133,7 @@ public actor MusicPipeline {
             source: source,
             weights: weights,
             strength: strength,
+            scaling: scaling,
             paths: paths
         )
     }

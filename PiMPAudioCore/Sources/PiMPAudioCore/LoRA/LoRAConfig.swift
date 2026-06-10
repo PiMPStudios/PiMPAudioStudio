@@ -121,6 +121,11 @@ public struct LoRAConfig: Codable, Sendable, Equatable, Hashable {
         return targetLayers.sorted(by: { $0.rawValue < $1.rawValue })
             .flatMap(\.defaultPatterns)
     }
+
+    /// Runtime contribution scale applied to this adapter's learned delta.
+    public var scaling: Float {
+        alpha / Float(max(1, rank))
+    }
 }
 
 /// Adapter implementation stored in the registry.
@@ -244,6 +249,11 @@ public struct LoKRConfig: Codable, Sendable, Equatable, Hashable {
         }
         return targetLayers.sorted(by: { $0.rawValue < $1.rawValue })
             .flatMap(\.defaultPatterns)
+    }
+
+    /// Runtime contribution scale applied to this adapter's learned delta.
+    public var scaling: Float {
+        alpha / Float(max(1, linearDim))
     }
 
     public var loraCompatibleConfig: LoRAConfig {
