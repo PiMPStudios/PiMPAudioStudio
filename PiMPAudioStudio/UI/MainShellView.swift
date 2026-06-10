@@ -499,12 +499,13 @@ private struct BuildTrainingView: View {
                 .font(.headline)
             Spacer()
             Button {
-                trainingPresentation = TrainingPresentation()
+                guard let adapterKind = selectedTrainingMode.localAdapterKind else { return }
+                trainingPresentation = TrainingPresentation(adapterKind: adapterKind)
             } label: {
                 Label("Train from Files\u{2026}", systemImage: "graduationcap")
             }
             .buttonStyle(.borderedProminent)
-            .disabled(selectedTrainingMode != .lora || !canStartNewTraining || trainingPresentation != nil)
+            .disabled(selectedTrainingMode.localAdapterKind == nil || !canStartNewTraining || trainingPresentation != nil)
         }
         .padding()
     }
@@ -1193,6 +1194,17 @@ private enum BuildTrainingMode: String, CaseIterable, Identifiable {
         case .lora: return "LoRA"
         case .lokr: return "LoKR"
         case .remote: return "Remote GPU"
+        }
+    }
+
+    var localAdapterKind: AdapterKind? {
+        switch self {
+        case .lora:
+            return .lora
+        case .lokr:
+            return .lokr
+        case .remote:
+            return nil
         }
     }
 }

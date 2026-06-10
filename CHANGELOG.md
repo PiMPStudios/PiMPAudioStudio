@@ -6,9 +6,9 @@ All notable changes to PiMP Audio Studio are documented here.
 
 ## [Unreleased]
 
-### Added
+### Fixed
 
-- Nothing yet.
+- **LoKR Train from Files is available again** — the Training toolbar button now opens a LoKR training session when LoKR mode is selected instead of only enabling for LoRA.
 
 ---
 
