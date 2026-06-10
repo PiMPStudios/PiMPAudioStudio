@@ -128,9 +128,29 @@ public class LoKRLinear: Linear {
                     } else {
                         contributionOut = matmul(x, doraWeight.T)
                     }
-                    out = out + MLXArray(contribution.strength) * (contributionOut - baseOut)
+                    let deltaOut = MLXArray(contribution.strength) * (contributionOut - baseOut)
+                    AdapterEffectDiagnostics.contribution(
+                        kind: .lokr,
+                        adapterID: contribution.adapterID,
+                        path: contribution.path,
+                        strength: contribution.strength,
+                        scale: scaling,
+                        baseOut: baseOut,
+                        deltaOut: deltaOut
+                    )
+                    out = out + deltaOut
                 } else {
-                    out = out + MLXArray(contribution.strength * scaling) * matmul(x, delta.T)
+                    let deltaOut = MLXArray(contribution.strength * scaling) * matmul(x, delta.T)
+                    AdapterEffectDiagnostics.contribution(
+                        kind: .lokr,
+                        adapterID: contribution.adapterID,
+                        path: contribution.path,
+                        strength: contribution.strength,
+                        scale: scaling,
+                        baseOut: baseOut,
+                        deltaOut: deltaOut
+                    )
+                    out = out + deltaOut
                 }
             }
             return out

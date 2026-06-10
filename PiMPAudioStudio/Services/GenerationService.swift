@@ -179,6 +179,7 @@ final class GenerationService: ObservableObject {
                     AudioDiagnostics.memory("generation/cover/afterEnsureLoaded")
 
                     AudioDiagnostics.memory("generation/cover/beforeLoRA")
+                    AdapterEffectDiagnostics.beginGeneration()
                     await self.loraCoordinator.clearAll()
                     if !self.adapterStack.isEmpty {
                         self.traceMonitor.recordStage("Adapters", message: "Applying adapter stack to cover diffusion")
@@ -207,6 +208,7 @@ final class GenerationService: ObservableObject {
                     // the freshly active architecture (XL = 32 layers, SFT =
                     // 24 layers) instead of stale wrappers from a previous run.
                     AudioDiagnostics.memory("generation/aceStep/beforeLoRA")
+                    AdapterEffectDiagnostics.beginGeneration()
                     await self.loraCoordinator.clearAll()
 
                     if !self.adapterStack.isEmpty {

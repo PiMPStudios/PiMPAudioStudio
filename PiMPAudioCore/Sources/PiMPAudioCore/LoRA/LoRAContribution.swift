@@ -24,13 +24,17 @@ public struct LoRAContribution: @unchecked Sendable {
     /// Strength multiplier (0.0 = no effect, 1.0 = full effect).
     public var strength: Float
 
+    /// Native module path that this contribution was loaded onto.
+    public let path: String?
+
     public init(
         adapterID: String,
         displayName: String? = nil,
         source: AdapterSource = .local,
         loraA: MLXArray,
         loraB: MLXArray,
-        strength: Float = 1.0
+        strength: Float = 1.0,
+        path: String? = nil
     ) {
         self.adapterID = adapterID
         self.displayName = displayName
@@ -38,5 +42,6 @@ public struct LoRAContribution: @unchecked Sendable {
         self.loraA = loraA
         self.loraB = loraB
         self.strength = strength
+        self.path = path
     }
 }

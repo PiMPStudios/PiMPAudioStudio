@@ -329,7 +329,8 @@ extension LoRAInjector {
                 source: source,
                 loraA: loraA,
                 loraB: loraB,
-                strength: strength
+                strength: strength,
+                path: path
             )
             loraLinear.contributions.append(contribution)
             matchedPaths += 1

@@ -200,7 +200,8 @@ public enum LoKRInjector {
                 lokrW2: w2,
                 lokrMagnitude: magnitude,
                 weightDecompose: magnitude != nil,
-                strength: strength
+                strength: strength,
+                path: path
             ))
             matchedPaths += 1
             if !loggedFirstTensors {
