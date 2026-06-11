@@ -165,6 +165,8 @@ struct PiMPAudioStudioApp: App {
 
                 AdaptersSettingsView()
                     .tabItem { Label("Adapters", systemImage: "puzzlepiece.extension") }
+                    .environmentObject(services.generationService)
+                    .environmentObject(services.traceMonitor)
                     .environmentObject(services.trainingService)
                     .environmentObject(services.historyStore)
                     .environmentObject(presetStore)

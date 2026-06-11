@@ -6,6 +6,10 @@ All notable changes to PiMP Audio Studio are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **Training completion can render adapter audition snapshots** — completed LoRA/LoKR adapters now offer a fixed-seed snapshot run that renders Base plus selected adapter gains, saves each take to History with listening-note tags, and opens Trace Compare for quick A/B listening.
+
 ### Changed
 
 - **Dataset annotation roadmap was refreshed** — the roadmap now reflects shipped dataset review, sidecar import/export, LoRA/LoKR training, remote job export, trace compare, and the PiMP Audio Studio rebrand.

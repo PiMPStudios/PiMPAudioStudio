@@ -23,7 +23,7 @@ Still future or partial:
 - Official ACE-Step captioner/transcriber integration remains reference-only until there is a native Swift/MLX/Core ML path or an approved remote worker.
 - Remote GPU provider automation is not yet a full in-app launch/monitor/collect flow; package export is shipped, provider orchestration is future.
 - Gradient sensitivity estimation, named dataset/training snapshots, style-tag search, DAW/VST investigation, GGUF/C++ runtime evaluation, and DEMON-style live automation remain future work.
-- Live adapter auditioning exists only as deterministic generation/trace compare and adapter gain/stacking today; hot switching, prompt A/B blends, and timeline automation curves are still future.
+- Live adapter auditioning exists as deterministic generation/trace compare, adapter gain/stacking, and training-completion snapshot runs today; hot switching, prompt A/B blends, checkpoint variant browsing, and timeline automation curves are still future.
 
 ## Sources Reviewed
 
@@ -272,7 +272,7 @@ Suggested shape:
 - Add named snapshots for dataset state and preprocessed tensors.
 - Show loss charts and training snapshots in the Training workspace. Status: shipped for loss/LR/validation history and training logs; named snapshots remain future.
 - Support both LoRA and LoKR as first-class training modes. Status: shipped.
-- Add adapter comparison/A-B generation using a fixed seed. Status: shipped through "Test in Generate," adapter gain/stacking, history traces, and trace compare; a dedicated training audition workspace remains future.
+- Add adapter comparison/A-B generation using a fixed seed. Status: shipped through "Test in Generate," training-completion audition snapshots, adapter gain/stacking, history traces, and trace compare; a dedicated checkpoint browser remains future.
 - Add pipeline state recovery after app relaunch.
 - Consider a future "Mix/Export" style output review area for stems, MIDI, generated takes, and training candidates.
 
@@ -302,7 +302,7 @@ DEMON is not primarily a dataset-builder reference. Now that PiMP Audio Studio h
   - source/reference clips
   - automation curves
   - render settings
-- Add deterministic "adapter audition snapshots" to the Training workspace so users can compare checkpoints with the same prompt, seed, duration, BPM, key, lyrics, and references.
+- Add deterministic "adapter audition snapshots" to the Training workspace so users can compare checkpoints with the same prompt, seed, duration, BPM, key, lyrics, and references. Status: shipped for final installed adapters and gain sweeps; checkpoint variant picking remains future.
 - Consider hot adapter switching as a runtime goal. Even if native ACE-Step cannot refit weights instantly yet, the UI contract can support enable/disable/strength changes without rebuilding the whole session.
 - Add prompt A/B blending as a creative editor feature. This is different from comma-vs-pipe prompt formatting; it is an actual two-conditioning blend.
 - Add source/reference role separation:
@@ -381,10 +381,10 @@ DEMON is not primarily a dataset-builder reference. Now that PiMP Audio Studio h
 
 ### Partial: Creative Runtime And Adapter Auditioning
 
-- Shipped: generation trace sidecars, saved trace viewer, trace compare, A/B playback, listening notes, preferred takes, waveform strips, adapter stacks, adapter gain, and adapter effect diagnostics.
+- Shipped: generation trace sidecars, saved trace viewer, trace compare, A/B playback, listening notes, preferred takes, waveform strips, adapter stacks, adapter gain, training-completion audition snapshots, and adapter effect diagnostics.
 - Shipped: MCP coverage for generation, lyrics, adapters, history, traces, editor operations, and training inspection/control.
 - Shipped: model manager distinguishes ACE-Step DiT variants, shared components, and LM sizes well enough for current Generate/Training workflows.
-- Future: dedicated adapter audition workspace across checkpoints/strengths, style-tag search, prompt A/B blending, source/reference role slots, timeline automation curves, full creative session snapshot import/export, and MIDI learn.
+- Future: dedicated adapter audition workspace across checkpoint variants, style-tag search, prompt A/B blending, source/reference role slots, timeline automation curves, full creative session snapshot import/export, and MIDI learn.
 
 ### Future: Ecosystem And Runtime Investigations
 
@@ -470,7 +470,7 @@ The low-risk PiMP Audio Studio-native foundation is mostly in place. The next us
 1. Polish Remote GPU into an integrated provider flow: RunPod/DigitalOcean credentials, cost/time guardrails, launch/monitor/stop, artifact pullback, and adapter import.
 2. Keep ACE official captioner/transcriber as optional backend targets, but do not start until the worker contract and privacy/cost UX are solid.
 3. Add user-saved training presets and named dataset/training snapshots so good local and cloud recipes can be reused without reconstructing settings by hand.
-4. Add a dedicated adapter audition workspace that builds on existing trace compare, fixed-seed generation, adapter gain, and adapter stacks.
+4. Expand adapter audition snapshots into a dedicated workspace with checkpoint variant browsing, strength sweeps, fixed-seed prompts, and richer take grouping.
 5. Revisit gradient sensitivity estimation only after more local/cloud training logs exist; it should recommend target modules from evidence, not guesswork.
 6. Treat DEMON as a Generate/Edit/Training audition reference for automation curves, live adapter controls, session snapshots, and MCP command coverage.
 7. Keep Awesome ACE-Step as the ongoing radar for zero-Python runtimes, style-tag UX, DAW/export ideas, workflow graphs, and remote worker references.

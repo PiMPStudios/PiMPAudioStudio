@@ -2406,6 +2406,38 @@ private func traceForComparison(
     #expect(recommendation?.estimatedOptimizerUpdates == 600)
 }
 
+@Test func adapterAuditionStrengthParserNormalizesInput() {
+    let strengths = AdapterAuditionVariant.parseStrengths("1.0, 1.60; 1.6 2.0 8.0 0")
+
+    #expect(strengths == [1.0, 1.6, 2.0, AdapterStrengthLimits.maximum])
+}
+
+@Test func adapterAuditionVariantsPutBaseBeforeAdapterGains() {
+    let adapter = LoRAAdapter(
+        id: "dark-test",
+        name: "Dark Test",
+        config: LoRAConfig(rank: 64, alpha: 64),
+        baseModelID: "ace-step-dit-xl-sft",
+        baseModelCategory: .aceStepDiT,
+        createdAt: Date(timeIntervalSince1970: 0),
+        sampleCount: 12,
+        finalLoss: 0.75
+    )
+
+    let variants = AdapterAuditionVariant.variants(
+        for: adapter,
+        strengths: [1.0, 1.6],
+        includeBase: true
+    )
+
+    #expect(variants.map(\.label) == ["Base", "1.00x", "1.60x"])
+    #expect(variants[0].adapterStack.isEmpty)
+    #expect(variants[1].adapterStack.first?.id == "dark-test")
+    #expect(variants[1].adapterStack.first?.weight == 1.0)
+    #expect(variants[2].listeningNote(index: 3, total: 3, seed: 42, duration: 30)
+        .contains("Dark Test 1.60x"))
+}
+
 @Test @MainActor func mcpTrainingResourcesAreAdvertisedAndReadable() async throws {
     let tempRoot = FileManager.default.temporaryDirectory
         .appendingPathComponent(UUID().uuidString, isDirectory: true)

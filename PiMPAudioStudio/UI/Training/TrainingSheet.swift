@@ -62,12 +62,15 @@ enum TrainingSurfacePresentationStyle {
 
 struct TrainingSheet: View {
     @EnvironmentObject private var trainingService: TrainingService
+    @EnvironmentObject private var generationService: GenerationService
+    @EnvironmentObject private var traceMonitor: GenerationTraceMonitor
     @EnvironmentObject private var historyStore: HistoryStore
     @EnvironmentObject private var presetStore: PresetStore
 
     let selectedEntries: [HistoryEntry]
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openWindow) private var openWindow
 
     private let presentationStyle: TrainingSurfacePresentationStyle
     private let onClose: (() -> Void)?
@@ -95,6 +98,14 @@ struct TrainingSheet: View {
     @State private var importStatusMessage: String?
     @State private var completionStatusMessage: String?
     @State private var importedFileDurations: [String: TimeInterval] = [:]
+    @State private var auditionIncludeBase: Bool = true
+    @State private var auditionSeedText: String = "42"
+    @State private var auditionDurationText: String = "30"
+    @State private var auditionStrengthsText: String = "1.0, 1.6, 2.0"
+    @State private var auditionTask: Task<Void, Never>?
+    @State private var auditionProgressMessage: String?
+    @State private var auditionProgressFraction: Double?
+    @State private var isAuditioning: Bool = false
 
     init(
         selectedEntries: [HistoryEntry],
@@ -745,6 +756,8 @@ struct TrainingSheet: View {
             Spacer()
 
             VStack(spacing: 8) {
+                adapterAuditionPanel(adapter)
+
                 Button {
                     testAdapterInGenerate(adapter)
                 } label: {
@@ -791,6 +804,87 @@ struct TrainingSheet: View {
         .padding()
     }
 
+    private func adapterAuditionPanel(_ adapter: LoRAAdapter) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Label("Audition Snapshots", systemImage: "square.grid.2x2")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                Spacer()
+                if isAuditioning {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+            }
+
+            HStack(spacing: 10) {
+                Toggle("Base", isOn: $auditionIncludeBase)
+                    .toggleStyle(.checkbox)
+                    .controlSize(.small)
+                    .disabled(isAuditioning)
+                    .help("Include one no-adapter baseline take.")
+
+                Text("Seed")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                TextField("42", text: $auditionSeedText)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.caption.monospacedDigit())
+                    .frame(width: 72)
+                    .disabled(isAuditioning)
+
+                Text("Seconds")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                TextField("30", text: $auditionDurationText)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.caption.monospacedDigit())
+                    .frame(width: 60)
+                    .disabled(isAuditioning)
+
+                Text("Gain")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                TextField("1.0, 1.6, 2.0", text: $auditionStrengthsText)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.caption.monospacedDigit())
+                    .frame(minWidth: 130)
+                    .disabled(isAuditioning)
+                    .help("Comma-separated adapter gains to render with the same seed and prompt.")
+
+                Button {
+                    startAdapterAudition(adapter)
+                } label: {
+                    Label("Render", systemImage: "play.fill")
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .disabled(!canStartAdapterAudition)
+
+                if isAuditioning {
+                    Button("Cancel", role: .destructive) {
+                        cancelAdapterAudition()
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+            }
+
+            if let auditionProgressFraction {
+                ProgressView(value: auditionProgressFraction)
+            }
+
+            if let auditionProgressMessage {
+                Text(auditionProgressMessage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(10)
+        .background(.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+    }
+
     // MARK: - Helpers
 
     private var canStartTraining: Bool {
@@ -799,6 +893,32 @@ struct TrainingSheet: View {
             && !selectedTargetLayers.isEmpty
             && trainingSeedValue != nil
             && trainingConfigurationBlocker == nil
+    }
+
+    private var auditionSeedValue: Int? {
+        Int(auditionSeedText.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    private var auditionDurationValue: TimeInterval? {
+        guard let value = Double(auditionDurationText.trimmingCharacters(in: .whitespacesAndNewlines)),
+              value > 0 else {
+            return nil
+        }
+        return value
+    }
+
+    private var auditionStrengths: [Float] {
+        AdapterAuditionVariant.parseStrengths(auditionStrengthsText)
+    }
+
+    private var canStartAdapterAudition: Bool {
+        guard !isAuditioning,
+              generationService.canSubmitGeneration,
+              auditionSeedValue != nil,
+              auditionDurationValue != nil else {
+            return false
+        }
+        return !auditionStrengths.isEmpty || auditionIncludeBase
     }
 
     private var trainingSeedValue: UInt64? {
@@ -1053,6 +1173,147 @@ struct TrainingSheet: View {
             coverStrength: 0.7
         )
         close()
+    }
+
+    private func startAdapterAudition(_ adapter: LoRAAdapter) {
+        guard let seed = auditionSeedValue else {
+            auditionProgressMessage = "Enter a numeric seed."
+            return
+        }
+        guard let duration = auditionDurationValue else {
+            auditionProgressMessage = "Enter a duration greater than zero."
+            return
+        }
+
+        let variants = AdapterAuditionVariant.variants(
+            for: adapter,
+            strengths: auditionStrengths,
+            includeBase: auditionIncludeBase
+        )
+        guard !variants.isEmpty else {
+            auditionProgressMessage = "Add at least one adapter gain or include Base."
+            return
+        }
+
+        let prompt = auditionPrompt(for: adapter)
+        let lyrics = auditionLyrics
+        isAuditioning = true
+        auditionProgressFraction = 0
+        auditionProgressMessage = "Starting audition snapshots..."
+        completionStatusMessage = nil
+
+        auditionTask = Task { @MainActor in
+            var completedTraces: [GenerationTrace] = []
+            for (offset, variant) in variants.enumerated() {
+                if Task.isCancelled {
+                    break
+                }
+
+                let index = offset + 1
+                auditionProgressFraction = Double(offset) / Double(max(variants.count, 1))
+                auditionProgressMessage = "Rendering \(variant.label) snapshot \(index) of \(variants.count)..."
+
+                let request = GenerationRequest(
+                    text: prompt,
+                    lyrics: lyrics,
+                    duration: duration,
+                    seed: seed,
+                    method: .ode,
+                    guidanceScale: 7.5,
+                    guidancePreset: .constant,
+                    precision: .float32,
+                    stepsOverride: nil,
+                    shiftOverride: 3.0,
+                    resolvedMode: .music,
+                    pipelineOverride: .aceStep,
+                    coverStrength: 0.7
+                )
+
+                do {
+                    let result = try await generationService.generateAndWait(
+                        request: request,
+                        adapterStack: variant.adapterStack,
+                        selectedAdapterID: variant.adapterID
+                    )
+                    let trace = try saveAuditionNote(
+                        for: result,
+                        variant: variant,
+                        index: index,
+                        total: variants.count,
+                        seed: seed,
+                        duration: duration
+                    )
+                    completedTraces.append(trace)
+                    auditionProgressFraction = Double(index) / Double(max(variants.count, 1))
+                } catch is CancellationError {
+                    auditionProgressMessage = "Audition cancelled."
+                    generationService.cancel()
+                    finishAdapterAudition()
+                    return
+                } catch {
+                    auditionProgressMessage = "Audition stopped: \(error.localizedDescription)"
+                    finishAdapterAudition()
+                    return
+                }
+            }
+
+            finishAdapterAudition()
+            guard !Task.isCancelled else {
+                auditionProgressMessage = "Audition cancelled."
+                return
+            }
+
+            if completedTraces.count >= 2 {
+                traceMonitor.compare(left: completedTraces[0], right: completedTraces[1])
+                openWindow(id: "generationAnalyzer")
+                auditionProgressMessage = "Rendered \(completedTraces.count) snapshots. Compare opened for \(variants[0].label) vs \(variants[1].label)."
+            } else if completedTraces.count == 1 {
+                traceMonitor.inspect(trace: completedTraces[0])
+                openWindow(id: "generationAnalyzer")
+                auditionProgressMessage = "Rendered 1 snapshot."
+            } else {
+                auditionProgressMessage = "No audition snapshots were rendered."
+            }
+        }
+    }
+
+    private func saveAuditionNote(
+        for result: GenerationResult,
+        variant: AdapterAuditionVariant,
+        index: Int,
+        total: Int,
+        seed: Int,
+        duration: TimeInterval
+    ) throws -> GenerationTrace {
+        let note = variant.listeningNote(
+            index: index,
+            total: total,
+            seed: seed,
+            duration: duration
+        )
+
+        if let traceFileName = result.entry.traceFileName {
+            return try historyStore.saveTraceReview(
+                traceFileName: traceFileName,
+                listeningNote: note,
+                isPreferred: nil
+            )
+        }
+
+        return try historyStore.loadTrace(for: result.entry)
+    }
+
+    private func cancelAdapterAudition() {
+        auditionTask?.cancel()
+        generationService.cancel()
+        finishAdapterAudition()
+        auditionProgressMessage = "Audition cancelled."
+    }
+
+    private func finishAdapterAudition() {
+        isAuditioning = false
+        auditionProgressFraction = nil
+        auditionTask = nil
     }
 
     private func auditionPrompt(for adapter: LoRAAdapter) -> String {

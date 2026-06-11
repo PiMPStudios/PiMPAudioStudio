@@ -32,6 +32,92 @@ struct MemoryReleaseSummary: Sendable {
     }
 }
 
+struct AdapterAuditionVariant: Identifiable, Sendable, Equatable {
+    let id: String
+    let label: String
+    let adapterID: String?
+    let adapterName: String?
+    let strength: Float?
+
+    var adapterStack: [(id: String, weight: Float)] {
+        guard let adapterID, let strength else { return [] }
+        return [(id: adapterID, weight: strength)]
+    }
+
+    var isBase: Bool {
+        adapterID == nil
+    }
+
+    static func variants(
+        for adapter: LoRAAdapter,
+        strengths: [Float],
+        includeBase: Bool
+    ) -> [AdapterAuditionVariant] {
+        var variants: [AdapterAuditionVariant] = []
+        if includeBase {
+            variants.append(AdapterAuditionVariant(
+                id: "base",
+                label: "Base",
+                adapterID: nil,
+                adapterName: nil,
+                strength: nil
+            ))
+        }
+
+        variants.append(contentsOf: normalizedStrengths(strengths).map { strength in
+            AdapterAuditionVariant(
+                id: "\(adapter.id)-\(String(format: "%.2f", strength))",
+                label: "\(String(format: "%.2fx", strength))",
+                adapterID: adapter.id,
+                adapterName: adapter.name,
+                strength: strength
+            )
+        })
+        return variants
+    }
+
+    static func normalizedStrengths(_ strengths: [Float]) -> [Float] {
+        var seen = Set<Int>()
+        return strengths.compactMap { raw in
+            guard raw > 0 else { return nil }
+            let clamped = AdapterStrengthLimits.clamped(raw)
+            let key = Int((clamped * 100).rounded())
+            guard seen.insert(key).inserted else { return nil }
+            return Float(key) / 100.0
+        }
+    }
+
+    static func parseStrengths(_ text: String) -> [Float] {
+        let separators = CharacterSet(charactersIn: ",; \n\t")
+        return normalizedStrengths(
+            text.components(separatedBy: separators)
+                .compactMap { Float($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+        )
+    }
+
+    func listeningNote(index: Int, total: Int, seed: Int, duration: TimeInterval) -> String {
+        let target = adapterName.map { "\($0) \(label)" } ?? "Base"
+        return "Adapter audition \(index)/\(total): \(target), seed \(seed), \(Int(duration.rounded()))s fixed-seed snapshot."
+    }
+}
+
+enum GenerationBatchError: LocalizedError {
+    case failed(String)
+    case cancelled
+    case noResult
+
+    var errorDescription: String? {
+        switch self {
+        case .failed(let message):
+            return message
+        case .cancelled:
+            return "Generation was cancelled."
+        case .noResult:
+            return "Generation finished without producing a history result."
+        }
+    }
+}
+
 @MainActor
 final class GenerationService: ObservableObject {
     @Published var state: GenerationState = .idle
@@ -340,6 +426,46 @@ final class GenerationService: ObservableObject {
             // Recreate the LLMActor (lazy — no weights loaded yet) so prompt
             // enhancement is available again after generation finishes.
             self.finishGenerationTask(generationID, reloadLLM: true)
+        }
+    }
+
+    func generateAndWait(
+        request: GenerationRequest,
+        adapterStack requestedAdapterStack: [(id: String, weight: Float)],
+        selectedAdapterID requestedSelectedAdapterID: String?
+    ) async throws -> GenerationResult {
+        let previousSelectedAdapterID = selectedAdapterID
+        let previousAdapterStack = adapterStack
+        let previousResultID = currentResult?.entry.id
+
+        selectedAdapterID = requestedSelectedAdapterID
+        adapterStack = requestedAdapterStack
+        defer {
+            selectedAdapterID = previousSelectedAdapterID
+            adapterStack = previousAdapterStack
+        }
+
+        generate(request: request)
+        guard let task = generationTask else {
+            throw GenerationBatchError.noResult
+        }
+
+        await task.value
+        try Task.checkCancellation()
+
+        switch state {
+        case .complete:
+            guard let result = currentResult,
+                  result.entry.id != previousResultID else {
+                throw GenerationBatchError.noResult
+            }
+            return result
+        case .error(let message):
+            throw GenerationBatchError.failed(message)
+        case .cancelled:
+            throw GenerationBatchError.cancelled
+        default:
+            throw GenerationBatchError.noResult
         }
     }
 
