@@ -59,7 +59,7 @@ public struct WAVWriter {
             interleaved = scaled.reshaped([-1])
         case 2:
             // [channels, frames] -> transpose to [frames, channels] -> flatten LRLR…
-            interleaved = scaled.transposed(0, 1).reshaped([-1])
+            interleaved = scaled.transposed(1, 0).reshaped([-1])
         default:
             // [length, channels] (after the [0] indexing above) -> row-major flatten
             // already produces LRLR… interleaving.

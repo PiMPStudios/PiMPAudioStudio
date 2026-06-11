@@ -31,6 +31,7 @@
 		247E8913C3C2CC1E309EA7A2 /* AppStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41A93059238ED07185F25CF5 /* AppStateTests.swift */; };
 		268C9C568C839392FB08C1D7 /* TrainingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDAC58AA87C490C06725C8E0 /* TrainingService.swift */; };
 		2A32415EAAA5EC43FAC0FAAA /* TrainingDatasetPackageEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 801F725A93F45D28B64D2BC5 /* TrainingDatasetPackageEditor.swift */; };
+		2D8016252183EB12AD027E62 /* HistoryStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC09327803C8A79922A3B4F2 /* HistoryStoreTests.swift */; };
 		2F1C42C138556EABC9B8738D /* ModelsSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0ECE7DFBAAFB9CB5FB304F7E /* ModelsSettingsView.swift */; };
 		3050218A23B1C42D2673D2CF /* AVAudioEngineDSP.swift in Sources */ = {isa = PBXBuildFile; fileRef = 237C151BAB3460455E69B2E2 /* AVAudioEngineDSP.swift */; };
 		35A8431CF3F97F38D8D57008 /* LocalFilesDatasetBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02E0B44958599CDF0454AA68 /* LocalFilesDatasetBuilder.swift */; };
@@ -243,6 +244,7 @@
 		ED4AC7C94D81749A9705316C /* ProviderAccessStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderAccessStoreTests.swift; sourceTree = "<group>"; };
 		ED69726963E9E51F4E929435 /* LocalFilesImportSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalFilesImportSheet.swift; sourceTree = "<group>"; };
 		F3FDF1309A57FC7B5D92D13A /* PresetStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetStore.swift; sourceTree = "<group>"; };
+		FC09327803C8A79922A3B4F2 /* HistoryStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryStoreTests.swift; sourceTree = "<group>"; };
 		FDAD1DFCE24C8AC8940CB518 /* AudioPlayerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayerService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -503,6 +505,7 @@
 			isa = PBXGroup;
 			children = (
 				41A93059238ED07185F25CF5 /* AppStateTests.swift */,
+				FC09327803C8A79922A3B4F2 /* HistoryStoreTests.swift */,
 				ED4AC7C94D81749A9705316C /* ProviderAccessStoreTests.swift */,
 			);
 			path = PiMPAudioStudioTests;
@@ -598,6 +601,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				247E8913C3C2CC1E309EA7A2 /* AppStateTests.swift in Sources */,
+				2D8016252183EB12AD027E62 /* HistoryStoreTests.swift in Sources */,
 				7A7B53861467729A61453BBC /* ProviderAccessStoreTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

@@ -16,6 +16,9 @@ All notable changes to PiMP Audio Studio are documented here.
 
 ### Fixed
 
+- **Generation restart now waits for the previous run to unwind** — starting a new generation cancels the old task, waits for it to finish, and ignores stale cleanup from superseded runs so cancelled diffusion cannot clobber the new trace state, reload the LLM mid-run, or clear adapters under an active generation.
+- **WAV export now correctly interleaves planar stereo buffers** — `[channels, frames]` audio is transposed to `[frames, channels]` before writing PCM, with a regression test using distinct left/right samples.
+- **Corrupt history indexes are preserved before reset** — if `history.json` cannot be decoded, the unreadable file is moved to `history.json.corrupt` before the in-memory history falls back to an empty list.
 - **Cover generation is now seed-reproducible** — the cover timbre path's VAE posterior draw now derives an explicit key from the generation seed (offset to stay decorrelated from the diffusion noise stream), so identical cover requests with the same seed produce identical audio for trace compare and A/B auditioning.
 - **Cover sources are now trimmed before encoding** — cover source audio is sliced to the requested duration before the VAE encode and tokenize/detokenize chain, and the timbre reference is sliced to its 750-frame window before its posterior encode, removing a second full-length VAE pass and the memory spike on long source files.
 - **Short cover sources now pad with the learned silence latent** — cover context and timbre latents use `silence_latent.pt` for missing source tails instead of raw zero latents, with tokenizer alignment padding repeating the last source frame so short covers stay in-distribution.

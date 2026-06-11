@@ -33,6 +33,22 @@ struct WAVWriterTests {
         #expect(channels == 2)
     }
 
+    @Test("Interleaves channel-frame stereo samples")
+    func interleavesChannelFrameStereoSamples() throws {
+        let samples = MLXArray(converting: [0.5, 0.25, -0.5, -0.25], [2, 2])
+        let url = FileManager.default.temporaryDirectory
+            .appending(path: "test_interleaved-\(UUID().uuidString).wav")
+
+        try WAVWriter.write(samples: samples, sampleRate: 44100, to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let data = try Data(contentsOf: url)
+        #expect(pcmSample(in: data, at: 0) == Int16(0.5 * Float(Int16.max)))
+        #expect(pcmSample(in: data, at: 1) == Int16(-0.5 * Float(Int16.max)))
+        #expect(pcmSample(in: data, at: 2) == Int16(0.25 * Float(Int16.max)))
+        #expect(pcmSample(in: data, at: 3) == Int16(-0.25 * Float(Int16.max)))
+    }
+
     @Test("Produces a WAV file AVFoundation can open")
     func producesAVFoundationReadableWAV() throws {
         let sampleRate = 44100
@@ -67,5 +83,12 @@ struct WAVWriterTests {
         let secondSample = data[46...47].withUnsafeBytes { $0.load(as: Int16.self) }
         #expect(firstSample == 32767)
         #expect(secondSample == -32767)
+    }
+
+    private func pcmSample(in data: Data, at sampleIndex: Int) -> Int16 {
+        let offset = 44 + sampleIndex * 2
+        let lo = UInt16(data[offset])
+        let hi = UInt16(data[offset + 1]) << 8
+        return Int16(bitPattern: hi | lo)
     }
 }

@@ -153,7 +153,24 @@ final class HistoryStore: ObservableObject {
             decoder.dateDecodingStrategy = .iso8601
             entries = try decoder.decode([HistoryEntry].self, from: data)
         } catch {
+            preserveCorruptHistoryFile(cause: error)
             entries = []
+        }
+    }
+
+    private func preserveCorruptHistoryFile(cause: Error) {
+        let fm = FileManager.default
+        var destination = directory.appending(path: "history.json.corrupt")
+        if fm.fileExists(atPath: destination.path(percentEncoded: false)) {
+            let suffix = Int(Date().timeIntervalSince1970)
+            destination = directory.appending(path: "history.json.corrupt-\(suffix)")
+        }
+
+        do {
+            try fm.moveItem(at: historyFileURL, to: destination)
+            logger.error("History index was unreadable and has been preserved at \(destination.lastPathComponent, privacy: .public): \(cause.localizedDescription, privacy: .public)")
+        } catch {
+            logger.error("Failed to preserve unreadable history index: \(error.localizedDescription, privacy: .public); original load error: \(cause.localizedDescription, privacy: .public)")
         }
     }
 

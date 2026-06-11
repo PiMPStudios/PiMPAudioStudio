@@ -43,6 +43,7 @@ final class GenerationService: ObservableObject {
     var adapterStack: [(id: String, weight: Float)] = []
 
     private var generationTask: Task<Void, Never>?
+    private var activeGenerationID: UUID?
     private let aceStepService: ACEStepGenerationService
     private let sfxService: SFXGenerationService
     private let sfxModelManager: SFXModelManager
@@ -92,22 +93,35 @@ final class GenerationService: ObservableObject {
     }
 
     func generate(request: GenerationRequest) {
-        generationTask?.cancel()
+        let previousTask = generationTask
+        previousTask?.cancel()
+        let generationID = UUID()
+        activeGenerationID = generationID
         state = .conditioning
 
         // [weak self] breaks the retain cycle where generationTask retains self, which retains generationTask.
         // SwiftUI holds GenerationService strongly for the view's lifetime, so self being nil is rare
         // (view dismissed mid-generation), and returning silently is correct — no observer remains.
         generationTask = Task { [weak self] in
+            await previousTask?.value
             guard let self else { return }
+            guard self.isCurrentGeneration(generationID) else { return }
+            if Task.isCancelled {
+                self.state = .cancelled
+                self.traceMonitor.cancel()
+                self.finishGenerationTask(generationID, reloadLLM: true)
+                return
+            }
 
             guard !request.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 self.state = .error("Prompt cannot be empty")
+                self.finishGenerationTask(generationID, reloadLLM: true)
                 return
             }
 
             guard let outputDir = self.outputDirectoryManager.directory else {
                 self.state = .error("No output directory selected")
+                self.finishGenerationTask(generationID, reloadLLM: true)
                 return
             }
 
@@ -305,24 +319,27 @@ final class GenerationService: ObservableObject {
             } catch is CancellationError {
                 AudioDiagnostics.note("generation/cancelled", Self.diagnosticsRequestSummary(resolvedRequest))
                 AudioDiagnostics.memory("generation/cancelled")
-                self.state = .cancelled
-                self.traceMonitor.cancel()
+                if self.isCurrentGeneration(generationID) {
+                    self.state = .cancelled
+                    self.traceMonitor.cancel()
+                }
             } catch {
                 AudioDiagnostics.note("generation/error", "\(error.localizedDescription) request=\(Self.diagnosticsRequestSummary(resolvedRequest))")
                 AudioDiagnostics.memory("generation/error")
-                self.state = .error(error.localizedDescription)
-                self.traceMonitor.fail(error.localizedDescription)
-                self.writeFailureTraceIfPossible(
-                    request: resolvedRequest,
-                    outputDir: outputDir,
-                    errorMessage: error.localizedDescription
-                )
+                if self.isCurrentGeneration(generationID) {
+                    self.state = .error(error.localizedDescription)
+                    self.traceMonitor.fail(error.localizedDescription)
+                    self.writeFailureTraceIfPossible(
+                        request: resolvedRequest,
+                        outputDir: outputDir,
+                        errorMessage: error.localizedDescription
+                    )
+                }
             }
 
             // Recreate the LLMActor (lazy — no weights loaded yet) so prompt
             // enhancement is available again after generation finishes.
-            self.llmManager.reload()
-            AudioDiagnostics.memory("generation/end")
+            self.finishGenerationTask(generationID, reloadLLM: true)
         }
     }
 
@@ -330,6 +347,19 @@ final class GenerationService: ObservableObject {
         generationTask?.cancel()
         state = .cancelled
         traceMonitor.cancel()
+    }
+
+    private func isCurrentGeneration(_ generationID: UUID) -> Bool {
+        activeGenerationID == generationID
+    }
+
+    private func finishGenerationTask(_ generationID: UUID, reloadLLM: Bool) {
+        guard isCurrentGeneration(generationID) else { return }
+        if reloadLLM {
+            llmManager.reload()
+            AudioDiagnostics.memory("generation/end")
+        }
+        activeGenerationID = nil
     }
 
     private func resolveSeedIfNeeded(for request: GenerationRequest) -> GenerationRequest {
