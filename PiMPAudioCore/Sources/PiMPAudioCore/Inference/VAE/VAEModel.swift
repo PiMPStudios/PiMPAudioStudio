@@ -130,13 +130,20 @@ public class AutoEncoderOobleck: Module {
         )
     }
 
-    public func encodeSample(_ audioNLC: MLXArray) -> MLXArray {
+    /// Sample from the encoder posterior. Pass a `key` to make the draw
+    /// deterministic — required for seed-reproducible cover generation.
+    public func encodeSample(_ audioNLC: MLXArray, key: MLXArray? = nil) -> MLXArray {
         let h = encoder(audioNLC)
         let splits = MLX.split(h, parts: 2, axis: -1)
         let mean = splits[0]
         let scale = splits[1]
         let std = log(1.0 + exp(scale)) + 1e-4
-        let noise = MLXRandom.normal(mean.shape)
+        let noise: MLXArray
+        if let key {
+            noise = MLXRandom.normal(mean.shape, key: key)
+        } else {
+            noise = MLXRandom.normal(mean.shape)
+        }
         return mean + std * noise
     }
 

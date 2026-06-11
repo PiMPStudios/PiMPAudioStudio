@@ -678,7 +678,7 @@ struct GenerationAnalyzerView: View {
     }
 
     private func coverStrengthSummary(_ value: Float) -> String {
-        "\(Int((value * 100).rounded()))%"
+        "\(Int((value * 100).rounded()))% rework"
     }
 
     private func isTraceLoaded(_ trace: GenerationTrace) -> Bool {

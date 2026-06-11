@@ -41,10 +41,10 @@ public actor VAEActor {
         return resolved
     }
 
-    public func encodeSample(audio: MLXArray, precision: Precision) throws -> MLXArray {
+    public func encodeSample(audio: MLXArray, precision: Precision, key: MLXArray? = nil) throws -> MLXArray {
         guard let vae else { throw VAEActorError.weightsNotLoaded }
         let input = precision == .float16 ? audio.asType(.float16) : audio
-        let latents = vae.encodeSample(input)
+        let latents = vae.encodeSample(input, key: key)
         return precision == .float16 ? latents.asType(.float32) : latents
     }
 

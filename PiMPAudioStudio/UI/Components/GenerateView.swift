@@ -263,12 +263,13 @@ struct GenerateView: View {
 
                 // Cover strength slider (only shown when audio is set)
                 HStack(spacing: 8) {
-                    Text("Strength")
+                    Text("Rework")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .frame(width: 56, alignment: .leading)
                     Slider(value: $coverStrength, in: 0.0...1.0, step: 0.05)
                         .frame(maxWidth: 200)
+                        .help("Lower stays closer to the source recording; higher gives the model more freedom to reinterpret it.")
                     Text(String(format: "%.0f%%", coverStrength * 100))
                         .font(.caption.monospacedDigit())
                         .frame(width: 36, alignment: .trailing)
@@ -435,10 +436,10 @@ struct GenerateView: View {
 
     private var coverStrengthHint: String {
         switch coverStrength {
-        case ..<0.25: return "(preserve original)"
-        case ..<0.5:  return "(subtle revoice)"
-        case ..<0.75: return "(balanced blend)"
-        default:      return "(acoustic hints lead)"
+        case ..<0.25: return "(closest to source)"
+        case ..<0.5:  return "(light reinterpret)"
+        case ..<0.75: return "(balanced)"
+        default:      return "(most creative)"
         }
     }
 

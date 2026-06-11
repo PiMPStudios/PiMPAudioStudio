@@ -1,6 +1,7 @@
 import Testing
 import MLX
 import MLXNN
+import MLXRandom
 @testable import PiMPAudioCore
 
 @Suite("VAE Model")
@@ -47,6 +48,22 @@ struct VAEModelTests {
         #expect(z.shape[0] == 1)
         #expect(z.shape[2] == 64)
         #expect(z.shape[1] == 2)
+    }
+
+    @Test("AutoEncoderOobleck encode_and_sample is deterministic with a key")
+    func vaeEncodeSampleKeyed() {
+        let vae = AutoEncoderOobleck()
+        let audio = MLXRandom.uniform(-1.0 ..< 1.0, [1, 4096, 2], key: MLXRandom.key(7))
+
+        let a = vae.encodeSample(audio, key: MLXRandom.key(42))
+        let b = vae.encodeSample(audio, key: MLXRandom.key(42))
+        let c = vae.encodeSample(audio, key: MLXRandom.key(43))
+        eval(a, b, c)
+
+        let sameKeyDelta = abs(a - b).max().item(Float.self)
+        let differentKeyDelta = abs(a - c).max().item(Float.self)
+        #expect(sameKeyDelta == 0)
+        #expect(differentKeyDelta > 0)
     }
 
     @Test("AutoEncoderOobleck decode shape")

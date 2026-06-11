@@ -569,7 +569,7 @@ enum MCPToolCatalog {
                     "type": "number",
                     "minimum": 0,
                     "maximum": 1,
-                    "description": "Cover-song blend strength. Defaults to 0.7."
+                    "description": "Cover-song rework amount. 0 stays closest to the source recording; 1 follows coarse acoustic hints with the most creative freedom. Defaults to 0.7."
                 ],
                 "dryRun": [
                     "type": "boolean",

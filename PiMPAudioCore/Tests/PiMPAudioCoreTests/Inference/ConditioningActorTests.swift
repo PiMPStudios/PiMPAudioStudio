@@ -58,4 +58,35 @@ struct ConditioningActorTests {
         #expect(maskMin.item(Float.self) == ConditioningActor.fullGenerationChunkMaskValue)
         #expect(maskMax.item(Float.self) == ConditioningActor.fullGenerationChunkMaskValue)
     }
+
+    @Test("ConditioningActor cover override pads short source with silence latent")
+    func contextLatentsCoverOverridePadsShortSourceWithSilenceLatent() async throws {
+        let actor = try ConditioningActor.stub()
+        await actor.setSilenceLatent(MLXArray.ones([1, 15000, 64]) * 0.25)
+
+        let sourceFrames = 5
+        let targetFrames = 10
+        let duration = Double(targetFrames * ConditioningActor.vaeHopLength)
+            / Double(ConditioningActor.audioSampleRate)
+        let result = try await actor.encode(
+            text: "Test",
+            lyrics: "",
+            referenceAudio: nil,
+            duration: duration,
+            precision: .float32,
+            srcLatentsOverride: MLXArray.zeros([1, sourceFrames, 64])
+        )
+
+        let sourceLatents = result.contextLatents[0..., 0..., 0..<64]
+        let sourceHead = sourceLatents[0..., 0..<sourceFrames, 0...]
+        let sourceTail = sourceLatents[0..., sourceFrames..<targetFrames, 0...]
+        let headMax = MLX.abs(sourceHead).max()
+        let tailMin = sourceTail.min()
+        let tailMax = sourceTail.max()
+        eval(headMax, tailMin, tailMax)
+
+        #expect(headMax.item(Float.self) == 0)
+        #expect(tailMin.item(Float.self) == 0.25)
+        #expect(tailMax.item(Float.self) == 0.25)
+    }
 }

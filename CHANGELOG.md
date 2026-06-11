@@ -16,6 +16,10 @@ All notable changes to PiMP Audio Studio are documented here.
 
 ### Fixed
 
+- **Cover generation is now seed-reproducible** — the cover timbre path's VAE posterior draw now derives an explicit key from the generation seed (offset to stay decorrelated from the diffusion noise stream), so identical cover requests with the same seed produce identical audio for trace compare and A/B auditioning.
+- **Cover sources are now trimmed before encoding** — cover source audio is sliced to the requested duration before the VAE encode and tokenize/detokenize chain, and the timbre reference is sliced to its 750-frame window before its posterior encode, removing a second full-length VAE pass and the memory spike on long source files.
+- **Short cover sources now pad with the learned silence latent** — cover context and timbre latents use `silence_latent.pt` for missing source tails instead of raw zero latents, with tokenizer alignment padding repeating the last source frame so short covers stay in-distribution.
+- **Cover strength wording is clearer** — the Generate UI, analyzer, and MCP schema now describe cover strength as a rework amount: lower stays closer to the source recording, higher gives the model more creative freedom.
 - **Stacked adapters now keep their own alpha scaling** — LoRA/LoKR stacks now apply each adapter's saved alpha/rank or alpha/linear-dim scale instead of reusing the primary adapter's scale for every contribution.
 - **LoKR DoRA training now matches PEFT norm handling more closely** — DoRA magnitude scaling now stops gradients through the directional norm denominator while leaving inference output unchanged.
 - **LoKR Train from Files is available again** — the Training toolbar button now opens a LoKR training session when LoKR mode is selected instead of only enabling for LoRA.

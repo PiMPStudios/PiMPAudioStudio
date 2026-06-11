@@ -1,6 +1,7 @@
 import Foundation
 import MLX
 import MLXNN
+import MLXRandom
 import OSLog
 
 private let condLogger = Logger(subsystem: "com.pimpstudios.PiMPAudioStudio", category: "ConditioningActor")
@@ -226,7 +227,8 @@ public actor ConditioningActor {
         referenceAudio: MLXArray?,
         duration: TimeInterval,
         precision: Precision,
-        srcLatentsOverride: MLXArray? = nil
+        srcLatentsOverride: MLXArray? = nil,
+        timbreSeed: Int? = nil
     ) async throws -> ConditioningResult {
         guard
             let qwen3,
@@ -258,7 +260,11 @@ public actor ConditioningActor {
 
         // referenceLatents is [B, 750, 64] — raw VAE latent space fed to timbreEncoder
         // contextLatents is [B, T, 128] = cat([src_latents, chunk_mask], axis:-1)
-        let referenceLatents = try await prepareReferenceLatents(referenceAudio, precision: precision)
+        let referenceLatents = try await prepareReferenceLatents(
+            referenceAudio,
+            precision: precision,
+            timbreSeed: timbreSeed
+        )
 
         // Upstream text2music still runs timbre conditioning: when there is
         // no reference audio, infer_refer_latent() feeds the first 750 frames
@@ -299,7 +305,12 @@ public actor ConditioningActor {
             } else if overrideFrames > tFrames {
                 src = srcOverride[0..., 0..<tFrames, 0...]
             } else {
-                let padding = MLXArray.zeros([1, tFrames - overrideFrames, 64])
+                let padding = silenceLatentPadding(
+                    batchSize: srcOverride.shape[0],
+                    length: tFrames - overrideFrames,
+                    precision: precision
+                )
+                .asType(srcOverride.dtype)
                 src = concatenated([srcOverride, padding], axis: 1)
             }
             let autoMask = MLXArray.full([1, tFrames, 64], values: MLXArray(Self.fullGenerationChunkMaskValue))
@@ -366,21 +377,52 @@ public actor ConditioningActor {
         return result
     }
 
-    private func prepareReferenceLatents(_ referenceAudio: MLXArray?, precision: Precision) async throws -> MLXArray {
-        guard let ref = referenceAudio else {
+    /// Offset decorrelates the timbre posterior draw from the diffusion noise
+    /// stream, which derives its key from the same seed via `MLXRandom.key(seed)`.
+    private static let timbreKeyOffset: UInt64 = 0x7469_6D62  // "timb"
+
+    private func prepareReferenceLatents(
+        _ referenceAudio: MLXArray?,
+        precision: Precision,
+        timbreSeed: Int? = nil
+    ) async throws -> MLXArray {
+        guard var ref = referenceAudio else {
             return MLXArray.zeros([1, Self.timbreFixFrame, 64])
         }
 
-        let latents = try await vae.encodeSample(audio: ref, precision: precision)
+        // The timbre encoder only consumes the first `timbreFixFrame` latent
+        // frames; slice the waveform before encoding so we never VAE-encode
+        // audio that would be truncated anyway.
+        let maxSamples = Self.timbreFixFrame * Self.vaeHopLength
+        if ref.shape[1] > maxSamples {
+            ref = ref[0..., 0..<maxSamples, 0...]
+        }
+
+        let key = timbreSeed.map {
+            MLXRandom.key(UInt64(bitPattern: Int64($0)) &+ Self.timbreKeyOffset)
+        }
+        let latents = try await vae.encodeSample(audio: ref, precision: precision, key: key)
         let currentFrames = latents.shape[1]
         if currentFrames == Self.timbreFixFrame {
             return latents
         } else if currentFrames > Self.timbreFixFrame {
             return latents[0..<latents.shape[0], 0..<Self.timbreFixFrame]
         } else {
-            let padding = MLXArray.zeros([latents.shape[0], Self.timbreFixFrame - currentFrames, 64])
+            let padding = silenceLatentPadding(
+                batchSize: latents.shape[0],
+                length: Self.timbreFixFrame - currentFrames,
+                precision: precision
+            )
+            .asType(latents.dtype)
             return concatenated([latents, padding], axis: 1)
         }
+    }
+
+    private func silenceLatentPadding(batchSize: Int, length: Int, precision: Precision) -> MLXArray {
+        let batch = max(1, batchSize)
+        let base = silenceLatentSlice(length: length, precision: precision)
+        guard batch > 1 else { return base }
+        return MLX.broadcast(base, to: [batch, length, 64])
     }
 
     private func silenceLatentSlice(length: Int, precision: Precision) -> MLXArray {

@@ -100,8 +100,22 @@ actor CoverSongCoordinator {
                     continuation.yield(.conditioning)
 
                     // Load source audio from disk → 48 kHz stereo MLXArray [1, frames, 2]
-                    let audioNLC = try AudioFileLoader.load(from: referenceAudioURL)
+                    var audioNLC = try AudioFileLoader.load(from: referenceAudioURL)
                     logger.info("[CoverSongCoordinator] source audio loaded shape=\(audioNLC.shape)")
+
+                    // Everything past the requested duration is truncated by
+                    // ConditioningActor anyway — trim the waveform up front so the
+                    // VAE encode and tokenize/detokenize chain never process it.
+                    let maxSourceSamples = MusicPipeline.latentFrames(forDuration: request.duration)
+                        * MusicPipeline.hopLength
+                    if audioNLC.shape[1] > maxSourceSamples {
+                        let originalFrames = audioNLC.shape[1]
+                        audioNLC = audioNLC[0..., 0..<maxSourceSamples, 0...]
+                        AudioDiagnostics.note(
+                            "cover/sourceTrim",
+                            "sourceSamples=\(originalFrames) trimmedTo=\(maxSourceSamples) requestDuration=\(request.duration)"
+                        )
+                    }
                     AudioDiagnostics.tensor("cover/sourceAudio", audioNLC)
                     AudioDiagnostics.memory("cover/afterSourceLoad")
 
@@ -178,7 +192,8 @@ actor CoverSongCoordinator {
                         referenceAudio: audioNLC,
                         duration: request.duration,
                         precision: request.precision,
-                        srcLatentsOverride: blendedLatents
+                        srcLatentsOverride: blendedLatents,
+                        timbreSeed: request.seed
                     )
                     AudioDiagnostics.tensor("cover/conditioning/encoderStates", cond.encoderStates)
                     AudioDiagnostics.tensor("cover/conditioning/encoderMask", cond.encoderMask)
@@ -226,20 +241,29 @@ actor CoverSongCoordinator {
             throw CoverSongError.coverPreprocessorNotReady
         }
         let T = srcLatents.shape[1]
+        guard T > 0 else {
+            throw CoverSongError.audioLoadFailed("Source audio produced no VAE latent frames.")
+        }
         let pool = tokenizer.poolWindowSize
         AudioDiagnostics.note(
             "cover/tokenize/config",
             "sourceShape=\(srcLatents.shape) pool=\(pool)"
         )
 
-        // AudioTokenizer requires T divisible by poolWindowSize (5).
-        // Pad the tail with zeros (silence in latent space).
+        // AudioTokenizer requires T divisible by poolWindowSize (5). Repeat
+        // the final source frame for alignment; this tail is trimmed after
+        // detokenization, but keeping it in-distribution avoids a zero-latent
+        // edge case in the final pool window.
         let paddedT = ((T + pool - 1) / pool) * pool
         let padded: MLXArray
         if paddedT == T {
             padded = srcLatents
         } else {
-            let padding = MLXArray.zeros([1, paddedT - T, 64])
+            let lastFrame = srcLatents[0..., (T - 1)..<T, 0...]
+            let padding = MLX.broadcast(
+                lastFrame,
+                to: [srcLatents.shape[0], paddedT - T, srcLatents.shape[2]]
+            )
             padded = MLX.concatenated([srcLatents, padding], axis: 1)
         }
 
