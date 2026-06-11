@@ -1,8 +1,29 @@
 # Dataset Annotation Roadmap
 
+Last refreshed: 2026-06-11.
+
 This document captures external references that may shape PiMP Audio Studio's local dataset builder, annotation pass, and future remote training workflow.
 
 The working principle stays the same: PiMP Audio Studio should keep a native, App Store-friendly path end to end. External training projects are reference material for behavior, formats, and UX only; do not copy code unless its license explicitly allows commercial reuse, and do not add Python, `uv`, CUDA, TensorRT, or browser-server runtime dependencies to the app.
+
+## Status Snapshot
+
+Shipped in PiMP Audio Studio:
+
+- Local dataset building from full-length files, including custom names, larger clip caps, package validation, and reviewed training bundles for full mix, vocals, and instrumental stems.
+- Native enrichment with Swift/MLX Demucs, vocal-stem transcription through the native Qwen3-ASR path, BPM/key analysis, raw lyric artifact paths, and annotation provenance fields.
+- ACE-compatible sidecar import/export for `.lyrics.txt`, `.lyrics.lrc`, `.caption.txt`, per-track `.json`, and BPM/key/language/time-signature `.csv`, including LRC timestamp cleanup.
+- Dataset review workspace with clip audio preview, caption/lyrics/metadata editing, approval gating, readiness warnings, sidecar import/export, and review backups.
+- Local LoRA and LoKR training from reviewed packages, including native Swift/MLX preprocessing, LoKR DoRA, corrected timestep/CFG recipe, seeded training, validation loss, optimizer-state checkpoint/resume, metrics/log sidecars, memory guards, and "Test in Generate."
+- Generation history and trace sidecars, Generation Analyzer, trace compare, adapter stacks/gain, adapter effect diagnostics, and MCP coverage for generation, editor, trace, and training inspection/control.
+- Provider-neutral remote GPU job export: `remote_job.json`, `README_REMOTE_GPU.md`, `run_remote_training.sh`, and the remote worker contract document.
+
+Still future or partial:
+
+- Official ACE-Step captioner/transcriber integration remains reference-only until there is a native Swift/MLX/Core ML path or an approved remote worker.
+- Remote GPU provider automation is not yet a full in-app launch/monitor/collect flow; package export is shipped, provider orchestration is future.
+- Gradient sensitivity estimation, named dataset/training snapshots, style-tag search, DAW/VST investigation, GGUF/C++ runtime evaluation, and DEMON-style live automation remain future work.
+- Live adapter auditioning exists only as deterministic generation/trace compare and adapter gain/stacking today; hot switching, prompt A/B blends, and timeline automation curves are still future.
 
 ## Sources Reviewed
 
@@ -87,12 +108,12 @@ Suggested shape:
 
 | Option | User Experience | Quality Potential | Local/App Store Fit | Engineering Cost | Notes |
 | --- | --- | --- | --- | --- | --- |
-| Current native enrichment | Best default. No external setup. | Good enough for initial datasets. | Strong. | Already mostly built. | Keep improving this first. |
+| Current native enrichment | Best default. No external setup. | Good enough for initial datasets. | Strong. | Shipped and still improving. | Native Demucs, Qwen3-ASR, BPM/key analysis, provenance fields, and raw lyric sidecars are in place. |
 | ACE-Step captioner/transcriber local | Advanced opt-in model download. | Likely high, because models match ACE-Step annotation style. | Only acceptable after a native Swift/MLX or Core ML path is proven. | High. | 11B models and Transformers-first packaging make this heavy; do not ship Python/Transformers in the app. |
-| ACE-Step captioner/transcriber remote | Potential path for large annotation jobs. | High. | Strong only if optional, privacy-explicit, and not a Python dependency for the app. | Medium/high. | Needs a provider-neutral job package, credentials, and a separately approved worker implementation. |
-| ACE-compatible sidecar import/export | Familiar to ACE users and easy to inspect. | High if users review data. | Strong. | Low/medium. | Support `.lyrics.txt`, `.caption.txt`, per-track `.json`, and BPM/key CSV as first-class package inputs. |
-| Dataset Manager-style editor | Great review UX. | Improves human quality. | Strong. | Medium. | Pure Anvil UI work; no model risk. |
-| Side-Step-style LoKR training | Advanced option for smaller/different adapter behavior. | Unknown until tested in PiMP Audio Studio's pipeline. | Strong if implemented in native Swift/MLX or another compiled Apple-friendly path. | Medium/high. | Keep LoRA as the stable default and label LoKR experimental. |
+| ACE-Step captioner/transcriber remote | Potential path for large annotation jobs. | High. | Strong only if optional, privacy-explicit, and not a Python dependency for the app. | Medium/high. | Remote worker contract exists; actual ACE annotation worker/provider adapter remains future work. |
+| ACE-compatible sidecar import/export | Familiar to ACE users and easy to inspect. | High if users review data. | Strong. | Shipped. | `.lyrics.txt`, `.lyrics.lrc`, `.caption.txt`, per-track `.json`, and BPM/key/language CSV import/export are first-class package inputs. |
+| Dataset Manager-style editor | Great review UX. | Improves human quality. | Strong. | Mostly shipped. | Dataset Review now has audio preview, editable metadata, approval gating, warnings, sidecar import/export, and backups. |
+| Side-Step-style LoKR training | Advanced option for smaller/different adapter behavior. | Proven enough for local and cloud experiments, with shape guards still needed. | Strong in native Swift/MLX. | Shipped, with future tuning. | LoKR and DoRA are first-class local training modes; keep LoRA as the safer default and keep broad XL shapes guarded. |
 | StemForge-style workstation | Powerful creative workflow. | High for broader audio work. | Mixed. | Large. | Borrow workflow ideas, not the Python app architecture or source code. |
 | DEMON-style live runtime | Excellent for interactive cover/remix exploration. | High for auditioning trained adapters and creative edits. | Mixed locally; better as long-term native target. | Very high. | Borrow control concepts: automation curves, hot adapter strength, prompt blending, state snapshots, MCP tools. |
 | GGUF/C++ ACE runtime path | Potential App Store-friendly companion runtime if quality and feature support are good enough. | Unknown until tested against MLX path. | Potentially strong. | High. | Track `acestep.cpp`, `acestep.vst3`, and GGUF model coverage as possible future native/compiled runtime options. |
@@ -115,7 +136,7 @@ Suggested shape:
   - "Follow lyrics" for lyric adherence
   - "Preserve source" for repaint/cover strength
   - "Adapter strength" for LoRA/LoKR weight
-- Add song parameter history. Users should be able to reopen a generated item and see the exact prompt, lyrics, model variant, seed, duration, guidance, adapter list, and source files.
+- Add song parameter history. Status: shipped through history entries, trace sidecars, Generation Analyzer, and trace compare; continue expanding source/reference metadata as cover/edit workflows grow.
 - Add a future node/pipeline view for advanced workflows:
   - import
   - stem separation
@@ -136,11 +157,11 @@ Suggested shape:
   - export stems and full mixes cleanly
   - preserve BPM/key/time signature
   - export session metadata
-  - eventually expose Anvil output to a DAW workflow
+  - eventually expose PiMP Audio Studio output to a DAW workflow
 
 ### From ACE-Step Captioner
 
-- Add a caption enrichment action for full mix and instrumental stems.
+- Add a caption enrichment action for full mix and instrumental stems. Status: partial through native metadata captions and manual/sidecar review; official ACE captioner integration remains future.
 - Store a detailed training caption separate from short UI labels.
 - Capture structured musical metadata:
   - genre and subgenre
@@ -152,22 +173,22 @@ Suggested shape:
 
 ### From ACE-Step Transcriber
 
-- Prefer vocal stems as input, not full mixes.
+- Prefer vocal stems as input, not full mixes. Status: shipped for native enrichment/transcription.
 - Keep section tags when they are useful: `[Intro]`, `[Verse 1]`, `[Chorus]`, `[Bridge]`, `[Instrumental]`.
-- Store language metadata per track.
+- Store language metadata per track. Status: shipped in package metadata and review UI.
 - Split full-song transcription into clip-level lyrics only after a full-song pass.
-- Mark instrumental clips explicitly instead of fabricating lyrics.
+- Mark instrumental clips explicitly instead of fabricating lyrics. Status: shipped in stem bundle handling and training bundle import.
 
 ### From ACE-Step LoRA Training Tutorial
 
-- Make ACE-compatible local file conventions first-class:
+- Make ACE-compatible local file conventions first-class. Status: shipped for local package review/import/export:
   - audio files: `.mp3`, `.wav`, `.flac`, `.ogg`, `.opus`
   - lyrics sidecar: `{filename}.lyrics.txt`
   - legacy lyrics sidecar: `{filename}.txt`
   - caption sidecar: `{filename}.caption.txt`
   - metadata sidecar: `{filename}.json`
   - batch BPM/key metadata: `.csv`
-- Keep the package scanner transparent. Each track should show:
+- Keep the package scanner transparent. Status: shipped through Dataset Review readiness, validation, and MCP dataset inspection. Each track should show:
   - duration
   - lyrics present/missing
   - caption present/missing
@@ -175,14 +196,14 @@ Suggested shape:
   - language present/missing
   - instrumental/vocal role
   - validation warnings
-- Add import/export for ACE-style per-track JSON fields:
+- Add import/export for ACE-style per-track JSON fields. Status: shipped:
   - `caption`
   - `bpm`
   - `keyscale`
   - `timesignature`
   - `language`
 - Treat transcript cleanup as a required review gate, not a nice-to-have.
-- Add an LRC cleanup utility that can remove timestamps while preserving lyric lines.
+- Add an LRC cleanup utility that can remove timestamps while preserving lyric lines. Status: shipped for sidecar import.
 - Preserve and edit structural tags in lyrics.
 - Do not ask an LM to guess BPM/key. Use DSP or explicit CSV/imported metadata.
 - Avoid a "genre ratio" style control until it proves useful. Training captions should be more descriptive than generic genre labels.
@@ -195,34 +216,34 @@ Suggested shape:
   - load/test adapter
 - Evict annotation models before preprocessing/training when they are no longer needed.
 - Show VRAM/memory guidance beside training controls, especially batch size and duration.
-- Use dataset-size-aware defaults for epochs and checkpoint intervals.
-- Add a post-training "Load and Test Adapter" action so users can immediately generate a fixed-seed sample.
+- Use dataset-size-aware defaults for epochs and checkpoint intervals. Status: shipped for local training recommendations; save interval tuning can keep improving.
+- Add a post-training "Load and Test Adapter" action so users can immediately generate a fixed-seed sample. Status: shipped as "Test in Generate."
 
 ### From ACE-Step Side-Step Training Guide
 
-- Treat preprocessing as adapter-agnostic. One preprocessed tensor cache should be reusable for both LoRA and LoKR training.
-- Default future ACE-compatible training to Corrected mode:
+- Treat preprocessing as adapter-agnostic. Status: shipped for local LoRA/LoKR package training.
+- Default ACE-compatible training to Corrected mode. Status: shipped in the native schedule:
   - continuous logit-normal timestep sampling
   - CFG dropout
   - no requirement for a sibling base ACE-Step checkout
-- Keep Vanilla mode as an advanced compatibility/debug option only.
-- Keep LoRA as the stable default and present LoKR as experimental until it proves reliable in Anvil.
-- Expose a model variant selector that clearly distinguishes base, SFT, and fine-tuned checkpoints.
-- Add training presets so users can save/load known-good LoRA and LoKR configurations.
-- Add checkpoint resume and visible checkpoint paths.
-- Track training metrics in the UI:
+- Keep Vanilla mode as an advanced compatibility/debug option only. Status: future; the shipped local path uses the corrected schedule.
+- Keep LoRA as the stable default and present LoKR as experimental until it proves reliable in PiMP Audio Studio. Status: partially superseded; LoKR/DoRA are first-class but still guarded for broad XL shapes.
+- Expose a model variant selector that clearly distinguishes base, SFT, and fine-tuned checkpoints. Status: shipped for ACE-Step XL variants and LM sizes.
+- Add training presets so users can save/load known-good LoRA and LoKR configurations. Status: partial through Narrow/Wide recipes and dataset-size recommendations; user-saved training presets remain future.
+- Add checkpoint resume and visible checkpoint paths. Status: shipped for LoRA and LoKR, including optimizer state.
+- Track training metrics in the UI. Status: shipped and still expanding:
   - loss
   - learning rate
   - gradient norm
   - epoch/step progress
   - checkpoint saves
-- Preserve full training logs as sidecars for debugging.
+- Preserve full training logs as sidecars for debugging. Status: shipped with `training_log.json` and AUDIODIAG training logs.
 - Add a later "estimate target modules" action inspired by gradient sensitivity estimation, so PiMP Audio Studio can recommend attention/MLP target layers instead of making users guess.
-- Consider rank/linear-dim ranges beyond the current UI:
+- Consider rank/linear-dim ranges beyond the original UI. Status: updated; current UI exposes LoRA rank up to 96 and LoKR linear dim up to 128 with local guards:
   - 16 for quick tests and small datasets
   - 64 as a practical default
   - 128 as an advanced high-capacity option when memory allows
-- Consider dataset-size-aware epoch presets:
+- Consider dataset-size-aware epoch presets. Status: shipped as recommendations:
   - small datasets need much higher epoch counts
   - medium datasets usually need moderate epoch counts
   - larger datasets need fewer epochs
@@ -235,7 +256,7 @@ Suggested shape:
 
 ### From ACE-Step Dataset Manager
 
-- Add a proper dataset review/editor view:
+- Add a proper dataset review/editor view. Status: mostly shipped:
   - track rows or cards with waveform/audio preview
   - caption and lyrics editors
   - metadata fields for genre, BPM, key, time signature, duration, language
@@ -243,21 +264,21 @@ Suggested shape:
   - save, save as, backup, reload
   - expand/collapse long lyrics
   - caption/lyrics-only focus mode
-- Make ACE-compatible JSON import/export a visible validation target.
+- Make ACE-compatible JSON import/export a visible validation target. Status: shipped through sidecar import/export and tests.
 
 ### From StemForge
 
 - Treat dataset building as a pipeline with resumable stages, not a one-shot command.
 - Add named snapshots for dataset state and preprocessed tensors.
-- Show loss charts and training snapshots in the Training workspace.
-- Support both LoRA and LoKR as first-class training modes.
-- Add adapter comparison/A-B generation using a fixed seed.
+- Show loss charts and training snapshots in the Training workspace. Status: shipped for loss/LR/validation history and training logs; named snapshots remain future.
+- Support both LoRA and LoKR as first-class training modes. Status: shipped.
+- Add adapter comparison/A-B generation using a fixed seed. Status: shipped through "Test in Generate," adapter gain/stacking, history traces, and trace compare; a dedicated training audition workspace remains future.
 - Add pipeline state recovery after app relaunch.
 - Consider a future "Mix/Export" style output review area for stems, MIDI, generated takes, and training candidates.
 
 ### From DEMON
 
-DEMON is not primarily a dataset-builder reference. It is more useful as a future model-runtime and editor reference after Anvil has dataset review, LoRA/LoKR training, and adapter testing in place.
+DEMON is not primarily a dataset-builder reference. Now that PiMP Audio Studio has dataset review, LoRA/LoKR training, and adapter testing in place, DEMON is more useful as a future model-runtime and editor reference.
 
 - Add a future live audition mode for trained adapters:
   - fixed seed
@@ -302,93 +323,70 @@ DEMON is not primarily a dataset-builder reference. It is more useful as a futur
 - Do not make official ACE annotation models mandatory. They are too large for the baseline path.
 - Do not couple PiMP Audio Studio to sibling apps or external repositories. Use them as references only.
 - Do not silently upload audio to remote GPUs. Remote annotation/training must be explicit and reviewable.
-- Do not make LoKR the default training path until it has the same reliability as LoRA in PiMP Audio Studio's own tests.
+- Do not make LoKR the safest/default recommendation just because it exists. Keep LoRA as the conservative default and keep broad local LoKR XL shapes guarded until repeated local runs prove them boring.
 - Do not expose every upstream CLI flag directly. Convert the important behavior into native training presets and advanced controls.
 - Do not make live streaming generation part of the dataset-builder MVP. It belongs in the Generate/Edit/Training audition surface later.
 - Do not assume NVIDIA/TensorRT performance claims transfer to Apple Silicon MLX without separate profiling.
 - Do not build a ComfyUI clone. A small native pipeline/status graph is enough unless users prove they need arbitrary node authoring.
 - Do not let a style-tag picker replace real prompts and lyrics. It should speed users up, not hide the conditioning text.
-- Do not assume GGUF quantization is automatically better than MLX for Anvil. Compare quality, feature coverage, memory, and distribution complexity first.
+- Do not assume GGUF quantization is automatically better than MLX for PiMP Audio Studio. Compare quality, feature coverage, memory, and distribution complexity first.
 
-## Implementation Backlog
+## Implementation Status
 
-### Phase 1: Metadata Contract
+### Shipped: Metadata Contract
 
-- Add an annotation result schema to `dataset_manifest.json` and clip entries.
-- Add raw-output sidecar paths for captions and lyrics.
-- Add `caption_source`, `lyrics_source`, `annotation_backend`, `model_id`, and `model_revision`.
-- Add ACE-compatible sidecar mappings for `.lyrics.txt`, `.caption.txt`, per-track `.json`, and BPM/key `.csv`.
-- Normalize `key` and ACE-style `keyscale` without losing the original imported value.
-- Keep current native enrichment behavior as the first backend implementation.
+- Annotation metadata now lands in `dataset_manifest.json`, `captions.json`, clip entries, and validation summaries.
+- Raw lyric output sidecars are stored and referenced from annotation metadata.
+- `caption_source`, `lyrics_source`, `annotation_backend`, model/source fields, language, role, BPM, key, time signature, notes, and review status are preserved.
+- ACE-compatible sidecars are imported/exported: `.lyrics.txt`, `.lyrics.lrc`, `.caption.txt`, per-track `.json`, and BPM/key/language/time-signature `.csv`.
+- `key` and ACE-style `keyscale` are normalized without losing compatibility exports.
+- Native enrichment remains the default backend.
 
-### Phase 2: Dataset Review UI
+### Shipped: Dataset Review UI
 
-- Add a Datasets detail/editor view for package clips.
-- Add audio preview per clip.
-- Add caption, lyrics, BPM, key, language, role, and notes fields.
-- Add scanner status columns for missing lyrics, captions, BPM/key, language, duration, and validation warnings.
-- Add LRC timestamp cleanup for imported lyric files.
-- Add a manual review/approved flag before a package is marked training-ready.
-- Add changed-field highlighting and package backup before save.
-- Add focus modes for captions-only and lyrics-only review.
+- Dataset Review opens reviewed local packages and shows clip rows, readiness warnings, package metrics, and clip-level audio preview.
+- Caption, lyrics, BPM, key, language, time signature, role, notes, sources, and annotation backend fields are editable.
+- LRC timestamps are stripped from imported lyric sidecars while preserving lyric lines.
+- Manual approval gates training readiness.
+- Save writes package backups under `review_backups`.
+- Sidecar import/export is exposed in the review workflow.
+- Still future: dedicated caption-only and lyrics-only focus modes, if the current editor becomes too dense.
 
-### Phase 3: ACE Annotation Backend
+### Partial: ACE Annotation Backend
 
-- Add backend enum entries for:
-  - `native`
-  - `ace-step-captioner`
-  - `ace-step-transcriber`
-  - `remote-gpu`
-  - `manual`
-- Build request/response structs independent of any one model.
-- Add an "Annotate with ACE-Step models" action that is disabled until a backend exists.
-- Prefer native MLX/Core ML conversion first. Use remote execution only after the worker contract and implementation are approved under the zero-Python dependency rule.
+- Shipped: provider-neutral annotation metadata and source names (`manual`, `sidecar`, `native-qwen3-asr`, `ace-step-captioner`, `ace-step-transcriber`, `remote`) are represented in package data.
+- Shipped: native enrichment/transcription can populate lyrics, raw lyric outputs, BPM/key, and package status.
+- Future: official ACE-Step captioner/transcriber execution, whether local native conversion or remote worker.
+- Future: an "Annotate with ACE-Step models" action should stay disabled until a backend exists and privacy/cost UX is ready.
 
-### Phase 4: Remote GPU Annotation/Training
+### Partial: Remote GPU Annotation/Training
 
-- Define a provider-neutral remote worker contract before provider API integration.
-- Extend `remote_training_package.json` to advertise annotation jobs as well as training jobs.
-- Add provider settings for RunPod/DigitalOcean:
-  - API token storage in Keychain
-  - target GPU class
-  - model cache volume
-  - max job cost/timeout
-- Package audio with a manifest that can run caption/transcription/stem/train stages.
-- Pull back artifacts into the same local package layout.
+- Shipped: provider-neutral `remote_job.json` schema and `docs/remote-worker-contract.md`.
+- Shipped: Remote GPU export creates a package zip with `remote_job.json`, `README_REMOTE_GPU.md`, and `run_remote_training.sh`.
+- Shipped: packages include training bundle descriptors for full mix, vocals, and instrumental roles.
+- Future: in-app RunPod/DigitalOcean provider setup, API-token Keychain storage, GPU class/cost controls, launch/monitor/stop, artifact collection, and import.
+- Future: remote annotation jobs using the same package/result shape.
 
-### Phase 5: Training Workspace Expansion
+### Mostly Shipped: Training Workspace Expansion
 
-- Fill the current Training tabs:
-  - LoRA: current local flow
-  - LoKR: experimental compact adapter training
-  - Remote GPU: package, launch, monitor, collect checkpoint
-- Reuse one preprocessed dataset cache for LoRA and LoKR.
-- Add a Corrected/Vanilla mode selector, with Corrected as the default.
-- Add optimizer choices and VRAM controls to Advanced.
-- Add training presets for common dataset sizes and adapter goals.
-- Add epoch and save-interval recommendations based on track count and total duration.
-- Add checkpoint resume.
-- Add training charts for loss, LR, and gradient norms.
-- Add a gradient sensitivity estimator for target-layer recommendations.
-- Add named snapshots.
-- Add deterministic A/B test generation after training.
-- Add adapter comparison view with fixed seed, prompt, lyrics, and trace sidecars.
-- Add a "Load and Test Adapter" flow after training completes.
+- Shipped: LoRA and LoKR tabs train reviewed packages locally through native Swift/MLX.
+- Shipped: LoKR supports DoRA-style weight decomposition.
+- Shipped: LoRA/LoKR share package/preprocess cache inputs and training bundle descriptors.
+- Shipped: corrected ACE-Step-style timestep sampling and CFG dropout are the local default.
+- Shipped: Narrow/Wide recipes, dataset-size-aware recommendations, rank/linear-dim controls, layer/projection controls, gradient accumulation, dropout, alpha scaling, and local memory/preflight guards.
+- Shipped: checkpoint/pause/resume for LoRA and LoKR, including optimizer state persistence and visible adapter/checkpoint actions.
+- Shipped: loss, LR, validation loss, gradient norm, parameter norm, update norm, progress, ETA, checkpoints, and `training_log.json` sidecars.
+- Shipped: deterministic "Test in Generate" handoff after training completes.
+- Future: user-saved training presets, gradient sensitivity estimation for target module recommendations, named dataset/training snapshots, and an advanced Vanilla compatibility mode if needed.
 
-### Phase 6: Creative Runtime And Adapter Auditioning
+### Partial: Creative Runtime And Adapter Auditioning
 
-- Add model capability metadata for DiT variant, LM size, supported modes, training support, and runtime backend.
-- Add an adapter audition workspace that can render fixed-seed comparisons across checkpoints and strengths.
-- Add song parameter history and exact-generation trace restore.
-- Add style-tag search/select, while keeping full prompt editing visible.
-- Add prompt A/B blending and source/reference role slots.
-- Add timeline automation curves for denoise, guidance, source preservation, prompt blend, and adapter strength.
-- Add full session snapshot import/export.
-- Add MCP commands for generation, editing, adapter selection, automation changes, and snapshot restore.
-- Add optional MIDI learn only after the core automation model is stable.
-- Keep this phase independent from the dataset-builder MVP.
+- Shipped: generation trace sidecars, saved trace viewer, trace compare, A/B playback, listening notes, preferred takes, waveform strips, adapter stacks, adapter gain, and adapter effect diagnostics.
+- Shipped: MCP coverage for generation, lyrics, adapters, history, traces, editor operations, and training inspection/control.
+- Shipped: model manager distinguishes ACE-Step DiT variants, shared components, and LM sizes well enough for current Generate/Training workflows.
+- Future: dedicated adapter audition workspace across checkpoints/strengths, style-tag search, prompt A/B blending, source/reference role slots, timeline automation curves, full creative session snapshot import/export, and MIDI learn.
 
-### Phase 7: Ecosystem And Runtime Investigations
+### Future: Ecosystem And Runtime Investigations
 
 - Evaluate `acestep.cpp` and GGUF quantized models against PiMP Audio Studio's MLX path:
   - output quality
@@ -404,17 +402,17 @@ DEMON is not primarily a dataset-builder reference. It is more useful as a futur
   - live training charts
   - auto-labeling
   - inpainting masks
-- Evaluate hosted/remote runners and Docker templates for a standard Anvil remote-worker contract.
-- Keep a curated "worth revisiting" list rather than copying the entire awesome list into Anvil docs.
+- Evaluate hosted/remote runners and Docker templates for a standard PiMP Audio Studio remote-worker contract.
+- Keep a curated "worth revisiting" list rather than copying the entire awesome list into PiMP Audio Studio docs.
 
 ## Hard-To-Reverse Decisions
 
 - Annotation schema names: once packages are created, `caption_source`, `lyrics_source`, `annotation_backend`, and raw sidecar conventions should remain backward-compatible.
-- Sidecar compatibility: if Anvil exports ACE-style `.lyrics.txt`, `.caption.txt`, `.json`, and `.csv`, those filename conventions should remain stable.
+- Sidecar compatibility: if PiMP Audio Studio exports ACE-style `.lyrics.txt`, `.caption.txt`, `.json`, and `.csv`, those filename conventions should remain stable.
 - Preprocessed tensor cache layout: if LoRA and LoKR share it, version the cache metadata before users build many datasets.
 - Training mode names: `corrected` and `vanilla` should be stable once exposed in package manifests and remote job descriptors.
-- Model capability schema: if Anvil supports multiple runtime backends, store model identity and capability flags in a stable, versioned shape.
-- Automation curve schema: if Anvil stores per-time controls for generation/editing, the curve format should be versioned before users start saving sessions.
+- Model capability schema: if PiMP Audio Studio supports multiple runtime backends, store model identity and capability flags in a stable, versioned shape.
+- Automation curve schema: if PiMP Audio Studio stores per-time controls for generation/editing, the curve format should be versioned before users start saving sessions.
 - Session snapshot schema: model, adapter, source, reference, seed, and curve fields should be stable enough to reload old creative sessions.
 - Remote package layout: RunPod/DigitalOcean workers should consume the same package shape we can re-import locally.
 - Privacy boundary: remote upload must be explicit and auditable from day one.
@@ -439,7 +437,7 @@ Approximate direction:
 - Remote annotation on rented GPU: likely cents to a few dollars per batch depending on audio length, model load time, provider, and whether a warm cache is available.
 - Remote LoRA/LoKR training: potentially several dollars to tens of dollars for longer runs on H100/H200-class machines.
 - DEMON-style real-time remote generation: potentially higher steady-state cost than batch jobs because the GPU must stay warm while the user is manipulating controls.
-- GGUF/C++ runtime investigation: no cloud cost, but significant engineering and QA cost if Anvil supports two inference runtimes.
+- GGUF/C++ runtime investigation: no cloud cost, but significant engineering and QA cost if PiMP Audio Studio supports two inference runtimes.
 
 The important product move is to estimate job size before upload and show a "maximum spend" or "maximum runtime" control.
 
@@ -447,14 +445,14 @@ The important product move is to estimate job size before upload and show a "max
 
 - Can the ACE-Step captioner/transcriber be converted to MLX cleanly, or do they depend on Qwen2.5-Omni pieces that are not yet practical in Swift?
 - What exact JSON fields does ACE-Step 1.5 training prefer for caption, lyrics, tags, and prompt override?
-- Should Anvil store both `key` and `keyscale`, or use one canonical field plus compatibility export?
+- Should PiMP Audio Studio store both `key` and `keyscale`, or use one canonical field plus compatibility export?
 - What scanner warnings should block training versus merely warn?
-- How should Anvil choose save/checkpoint intervals for small, medium, and large datasets?
-- Should Anvil expose LoKR rank/linear-dim up to 128 immediately, or keep 128 behind an advanced warning until local memory behavior is known?
+- How should PiMP Audio Studio tune save/checkpoint interval recommendations for small, medium, and large datasets now that resume works?
+- How aggressively should local memory/preflight guards warn or block LoKR linear dim 128 and full-projection XL shapes?
 - Which Corrected-mode settings need to be encoded in PiMP Audio Studio's manifests so local and remote training produce comparable results?
 - Should gradient sensitivity estimation be local-only, remote-only, or both?
 - Can Apple Silicon MLX support enough of DEMON's live-control idea to make local adapter auditioning feel responsive, even without TensorRT?
-- Does `acestep.cpp`/GGUF cover enough ACE-Step 1.5 modes to be useful for Anvil, or is it generation-only for now?
+- Does `acestep.cpp`/GGUF cover enough ACE-Step 1.5 modes to be useful for PiMP Audio Studio, or is it generation-only for now?
 - Should PiMP Audio Studio's model manager support multiple runtime backends per model, or should the app pick exactly one local runtime?
 - Which style-tag taxonomy is actually useful for users: ACE ecosystem tags, Suno-style tags, or PiMP Audio Studio's own curated set?
 - What should the first DAW interoperability milestone be: export-only, VST/AU plugin, local server bridge, or drag-and-drop stems with metadata?
@@ -463,18 +461,16 @@ The important product move is to estimate job size before upload and show a "max
 - Should full-mix captions be generated before or after stem separation?
 - Should instrumental stems get separate captions from full mixes?
 - Do we want key detection from DSP first, or from captioner output plus DSP verification?
-- What should be the minimum viable RunPod/DigitalOcean worker contract?
+- What should the first integrated RunPod/DigitalOcean provider flow be now that local package export and `run_remote_training.sh` exist?
 
-## Near-Term Recommendation
+## Current Recommendation
 
-Do the low-risk Anvil-native work first:
+The low-risk PiMP Audio Studio-native foundation is mostly in place. The next useful work should focus on the gaps that make the shipped pieces more repeatable:
 
-1. Add the annotation metadata fields and raw-output sidecar conventions. Status: package schema, clip provenance, manifest summaries, and raw lyric artifact paths are now in place.
-2. Build the dataset review/editor UI. Status: the current review workspace edits metadata, imports sidecars, gates training on approval, and writes review backups before save.
-3. Add ACE-compatible sidecar import/export for `.lyrics.txt`, `.caption.txt`, per-track `.json`, and BPM/key `.csv`. Status: import and export are wired; Enrich Dataset now fills missing BPM/key fields from native stem analysis while preserving imported or manually reviewed metadata.
-4. Keep current native Demucs plus Qwen3-ASR as default. Status: default local enrichment remains native Swift/MLX and tags Qwen lyric output as `native-qwen3-asr`.
-5. Add ACE official captioner/transcriber as a remote backend target. Status: provider-neutral `remote_job.json` / `result.json` schema is now defined; actual ACE annotation worker and provider adapters remain future work.
-6. Add LoKR as an experimental Training tab that reuses the same preprocessed tensors as LoRA. Status: the LoKR tab now opens reviewed packages in a native Swift/MLX LoKR trainer, and bundle-based preprocessing writes sample-level safetensors plus `index.json`; LoKR checkpoint/resume and merge semantics remain future work.
-7. Use StemForge as a workflow/UX reference for LoKR, snapshots, A/B adapter comparison, and remote training monitoring.
-8. Treat DEMON as a later Generate/Edit/Training audition reference for automation curves, live adapter controls, session snapshots, and MCP command coverage.
-9. Use Awesome ACE-Step as the ongoing radar for zero-Python runtimes, style-tag UX, DAW/export ideas, workflow graphs, and remote worker references.
+1. Polish Remote GPU into an integrated provider flow: RunPod/DigitalOcean credentials, cost/time guardrails, launch/monitor/stop, artifact pullback, and adapter import.
+2. Keep ACE official captioner/transcriber as optional backend targets, but do not start until the worker contract and privacy/cost UX are solid.
+3. Add user-saved training presets and named dataset/training snapshots so good local and cloud recipes can be reused without reconstructing settings by hand.
+4. Add a dedicated adapter audition workspace that builds on existing trace compare, fixed-seed generation, adapter gain, and adapter stacks.
+5. Revisit gradient sensitivity estimation only after more local/cloud training logs exist; it should recommend target modules from evidence, not guesswork.
+6. Treat DEMON as a Generate/Edit/Training audition reference for automation curves, live adapter controls, session snapshots, and MCP command coverage.
+7. Keep Awesome ACE-Step as the ongoing radar for zero-Python runtimes, style-tag UX, DAW/export ideas, workflow graphs, and remote worker references.
