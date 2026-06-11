@@ -10,6 +10,9 @@ All notable changes to PiMP Audio Studio are documented here.
 
 - **Local LoRA/LoKR training now uses no hidden AdamW decay and clips gradients** — adapter trainers explicitly set optimizer weight decay to zero and apply conservative global norm clipping before each optimizer step.
 - **Local LoRA/LoKR training now follows the corrected ACE-Step timestep/CFG recipe** — native Swift trainers sample the same logit-normal max timestep schedule used by fixed ACE-Step training and apply 15% CFG dropout with the learned null condition embedding while keeping random draws outside the MLX gradient closure.
+- **Local LoRA/LoKR training is now seeded and validation-aware** — training setup exposes a deterministic seed, trainers use seeded shuffling/noise/timestep/CFG/dropout streams, and epoch-end validation loss uses a fixed held-out split with dropout disabled for best-checkpoint selection.
+- **Training pause/resume now saves real optimizer state** — paused LoRA/LoKR runs write Adam optimizer tensors to `optimizer_state.safetensors`, save the current in-progress adapter weights, and restore optimizer moments on resume instead of writing a placeholder state file.
+- **Training diagnostics and MCP payloads now include validation loss** — local training progress, run logs, loss charts, checkpoints, and MCP training inspection surfaces include validation history so epoch comparisons have a steadier signal than noisy train loss alone.
 
 ### Fixed
 

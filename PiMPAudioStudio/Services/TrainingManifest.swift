@@ -141,6 +141,7 @@ struct TrainingRunProgressEntry: Codable, Equatable {
     var gradientNorm: Float?
     var parameterNorm: Float?
     var updateNorm: Float?
+    var validationLoss: Float? = nil
     var elapsed: TimeInterval
     var estimatedRemaining: TimeInterval?
 }
@@ -154,7 +155,7 @@ struct TrainingRunEvent: Codable, Equatable {
 /// Durable sidecar written beside each trained adapter for debugging,
 /// support, and reproducible local training history.
 struct TrainingRunLog: Codable, Equatable {
-    static let currentSchemaVersion = "1.0"
+    static let currentSchemaVersion = "1.1"
 
     var schemaVersion: String
     var adapterID: String
@@ -171,6 +172,7 @@ struct TrainingRunLog: Codable, Equatable {
     var finishedAt: Date?
     var progress: [TrainingRunProgressEntry]
     var lossHistory: [Float]
+    var validationHistory: [TrainingValidationPoint]?
     var events: [TrainingRunEvent]
     var finalLoss: Float?
     var trainedPaths: [String]
@@ -204,6 +206,7 @@ struct TrainingRunLog: Codable, Equatable {
         self.finishedAt = nil
         self.progress = []
         self.lossHistory = []
+        self.validationHistory = []
         self.events = [
             TrainingRunEvent(
                 timestamp: startedAt,
@@ -218,9 +221,14 @@ struct TrainingRunLog: Codable, Equatable {
         self.errorMessage = nil
     }
 
-    mutating func recordProgress(_ entry: TrainingRunProgressEntry, lossHistory: [Float]) {
+    mutating func recordProgress(
+        _ entry: TrainingRunProgressEntry,
+        lossHistory: [Float],
+        validationHistory: [TrainingValidationPoint]
+    ) {
         progress.append(entry)
         self.lossHistory = lossHistory
+        self.validationHistory = validationHistory
         updatedAt = entry.timestamp
     }
 

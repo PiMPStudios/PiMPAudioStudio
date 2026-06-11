@@ -85,6 +85,7 @@ struct TrainingSheet: View {
     @State private var selectedTargetLayers: Set<TargetLayer> = [.selfAttention, .crossAttention]
     @State private var warmupFraction: Float = 0.10
     @State private var gradientAccumulationSteps: Int = 1
+    @State private var trainingSeedText: String = "\(LoRAConfig.defaultTrainingSeed)"
     @State private var selectedLoKRWeightDecompose: Bool = true
     @State private var importedFiles: [TrainingImportedFile]
     @State private var showingFileImporter: Bool = false
@@ -125,6 +126,7 @@ struct TrainingSheet: View {
             self._selectedTargetLayers = State(initialValue: config.targetLayers)
             self._warmupFraction = State(initialValue: config.warmupFraction)
             self._gradientAccumulationSteps = State(initialValue: config.gradientAccumulationSteps)
+            self._trainingSeedText = State(initialValue: "\(config.effectiveTrainingSeed)")
             self._selectedLoKRWeightDecompose = State(initialValue: initialLoKRConfig?.weightDecompose ?? false)
         } else if adapterKind == .lokr {
             self._selectedLoKRWeightDecompose = State(initialValue: true)
@@ -530,6 +532,20 @@ struct TrainingSheet: View {
                     .frame(maxWidth: 200)
                     .disabled(isCheckpointResume)
                 }
+                LabeledContent("Seed") {
+                    VStack(alignment: .leading, spacing: 4) {
+                        TextField("Seed", text: $trainingSeedText)
+                            .textFieldStyle(.roundedBorder)
+                            .monospacedDigit()
+                            .frame(width: 120)
+                            .disabled(isCheckpointResume)
+                        if trainingSeedValue == nil {
+                            Text("Invalid seed")
+                                .font(.caption2)
+                                .foregroundStyle(.red)
+                        }
+                    }
+                }
                 if adapterKind == .lokr {
                     LabeledContent("DoRA") {
                         Toggle("Weight Decompose", isOn: $selectedLoKRWeightDecompose)
@@ -634,7 +650,10 @@ struct TrainingSheet: View {
                         .frame(maxWidth: 300)
 
                     // Loss curve
-                    LossCurveView(lossHistory: uiState.lossHistory)
+                    LossCurveView(
+                        lossHistory: uiState.lossHistory,
+                        validationHistory: uiState.validationHistory
+                    )
                         .padding(.horizontal)
 
                     // Stats row
@@ -642,6 +661,9 @@ struct TrainingSheet: View {
                         statView(value: String(format: "%.4f", uiState.loss), label: "Loss")
                         if let average = uiState.lossMovingAverage {
                             statView(value: String(format: "%.4f", average), label: "Avg")
+                        }
+                        if let validationLoss = uiState.validationLoss {
+                            statView(value: String(format: "%.4f", validationLoss), label: "Val")
                         }
                         statView(
                             value: String(format: "%.1e", uiState.learningRate),
@@ -775,7 +797,14 @@ struct TrainingSheet: View {
         !adapterName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !(selectedEntries.isEmpty && importedFiles.isEmpty)
             && !selectedTargetLayers.isEmpty
+            && trainingSeedValue != nil
             && trainingConfigurationBlocker == nil
+    }
+
+    private var trainingSeedValue: UInt64? {
+        let trimmed = trainingSeedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return UInt64(trimmed)
     }
 
     private var trainingConfigurationWarning: String? {
@@ -1075,6 +1104,7 @@ struct TrainingSheet: View {
         let audioURLs = selectedEntries.map { historyStore.fileURL(for: $0) }
         let exactInjectionPatterns = selectedProjectionCoverage.exactInjectionPatterns(for: selectedTargetLayers)
         let alpha = selectedAlphaScale.alpha(for: selectedRank)
+        let trainingSeed = trainingSeedValue ?? LoRAConfig.defaultTrainingSeed
         let config = LoRAConfig(
             rank: selectedRank,
             alpha: alpha,
@@ -1085,7 +1115,8 @@ struct TrainingSheet: View {
             maxEpochs: selectedEpochs,
             warmupFraction: warmupFraction,
             gradientAccumulationSteps: gradientAccumulationSteps,
-            trainingLayerCount: selectedLayerCount
+            trainingLayerCount: selectedLayerCount,
+            trainingSeed: trainingSeed
         )
         switch adapterKind {
         case .lora:
@@ -1114,6 +1145,7 @@ struct TrainingSheet: View {
                     warmupFraction: warmupFraction,
                     gradientAccumulationSteps: gradientAccumulationSteps,
                     trainingLayerCount: selectedLayerCount,
+                    trainingSeed: trainingSeed,
                     weightDecompose: selectedLoKRWeightDecompose
                 ),
                 resumeAdapterID: resumeAdapterID

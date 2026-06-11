@@ -21,6 +21,9 @@ public struct TrainingCheckpoint: Codable, Sendable, Equatable {
     /// Full loss history (one entry per step) for loss curve reconstruction.
     public let lossHistory: [Float]
 
+    /// Validation loss points recorded at epoch boundaries.
+    public let validationHistory: [TrainingValidationPoint]
+
     /// URL to the saved weights snapshot (.safetensors).
     public let weightsURL: URL
 
@@ -39,6 +42,7 @@ public struct TrainingCheckpoint: Codable, Sendable, Equatable {
         totalSteps: Int,
         bestLoss: Float?,
         lossHistory: [Float],
+        validationHistory: [TrainingValidationPoint] = [],
         weightsURL: URL,
         optimizerStateURL: URL,
         config: LoRAConfig,
@@ -49,10 +53,33 @@ public struct TrainingCheckpoint: Codable, Sendable, Equatable {
         self.totalSteps = totalSteps
         self.bestLoss = bestLoss
         self.lossHistory = lossHistory
+        self.validationHistory = validationHistory
         self.weightsURL = weightsURL
         self.optimizerStateURL = optimizerStateURL
         self.config = config
         self.baseModelID = baseModelID
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case epoch, globalStep, totalSteps, bestLoss, lossHistory, validationHistory
+        case weightsURL, optimizerStateURL, config, baseModelID
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        epoch = try container.decode(Int.self, forKey: .epoch)
+        globalStep = try container.decode(Int.self, forKey: .globalStep)
+        totalSteps = try container.decode(Int.self, forKey: .totalSteps)
+        bestLoss = try container.decodeIfPresent(Float.self, forKey: .bestLoss)
+        lossHistory = try container.decode([Float].self, forKey: .lossHistory)
+        validationHistory = try container.decodeIfPresent(
+            [TrainingValidationPoint].self,
+            forKey: .validationHistory
+        ) ?? []
+        weightsURL = try container.decode(URL.self, forKey: .weightsURL)
+        optimizerStateURL = try container.decode(URL.self, forKey: .optimizerStateURL)
+        config = try container.decode(LoRAConfig.self, forKey: .config)
+        baseModelID = try container.decode(String.self, forKey: .baseModelID)
     }
 }
 

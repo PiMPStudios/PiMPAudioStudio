@@ -19,17 +19,18 @@ enum AdapterTrainingSchedule {
         "timestep=logitNormalMax(mu=\(timestepLogitMean) sigma=\(timestepLogitStd) meanFlow=false) cfgDropout=\(cfgDropoutRatio)"
     }
 
-    static func sampleTimestep() -> MLXArray {
-        let first = sampleLogitNormal()
-        let second = sampleLogitNormal()
+    static func sampleTimestep(firstKey: MLXArray? = nil, secondKey: MLXArray? = nil) -> MLXArray {
+        let first = sampleLogitNormal(key: firstKey)
+        let second = sampleLogitNormal(key: secondKey)
         return MLX.where(first .> second, first, second)
     }
 
     static func conditionedSample(
         _ sample: TrainingSample,
-        model: DiTDecoder
+        model: DiTDecoder,
+        dropoutKey: MLXArray? = nil
     ) -> AdapterTrainingConditioning {
-        guard shouldDropConditioning() else {
+        guard shouldDropConditioning(key: dropoutKey) else {
             return AdapterTrainingConditioning(
                 encoderStates: sample.encoderStates,
                 contextLatents: sample.contextLatents,
@@ -52,12 +53,12 @@ enum AdapterTrainingSchedule {
         )
     }
 
-    private static func sampleLogitNormal() -> MLXArray {
-        sigmoid(MLXRandom.normal([1]) * timestepLogitStd + timestepLogitMean)
+    private static func sampleLogitNormal(key: MLXArray?) -> MLXArray {
+        sigmoid(MLXRandom.normal([1], key: key) * timestepLogitStd + timestepLogitMean)
     }
 
-    private static func shouldDropConditioning() -> Bool {
+    private static func shouldDropConditioning(key: MLXArray?) -> Bool {
         guard cfgDropoutRatio > 0 else { return false }
-        return MLXRandom.uniform(0..<1, [1]).item(Float.self) < cfgDropoutRatio
+        return MLXRandom.uniform(0..<1, [1], key: key).item(Float.self) < cfgDropoutRatio
     }
 }

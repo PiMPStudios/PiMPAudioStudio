@@ -319,7 +319,7 @@ public actor DiTActor {
         resumeFrom checkpoint: TrainingCheckpoint? = nil,
         initialWeights: [(String, MLXArray)]? = nil,
         onProgress: @escaping @Sendable (TrainingProgress) -> Void
-    ) async throws -> (weights: [(String, MLXArray)], finalLoss: Float?, trainedPaths: [String]) {
+    ) async throws -> AdapterTrainingResult {
         guard let decoder else {
             throw DiTActorError.weightsNotLoaded
         }
@@ -379,13 +379,13 @@ public actor DiTActor {
             AudioDiagnostics.memory("training/dit/cleanup/end")
         }
 
-        let weights = try await trainer.train(dataset: samples, onProgress: onProgress)
+        let result = try await trainer.train(dataset: samples, onProgress: onProgress)
         AudioDiagnostics.note(
             "training/dit/trainResult",
-            "kind=lora weights=\(weights.count) paths=\(paths.count) finalLoss=\(trainer.lowestLoss.map { String($0) } ?? "nil")"
+            "kind=lora weights=\(result.weights.count) paths=\(paths.count) finalLoss=\(result.finalLoss.map { String($0) } ?? "nil") optimizerTensors=\(result.optimizerState.count) cancelled=\(result.wasCancelled)"
         )
         AudioDiagnostics.memory("training/dit/afterTrain")
-        return (weights, trainer.lowestLoss, paths)
+        return result
     }
 
     public func trainLoKR(
@@ -394,7 +394,7 @@ public actor DiTActor {
         resumeFrom checkpoint: TrainingCheckpoint? = nil,
         initialWeights: [(String, MLXArray)]? = nil,
         onProgress: @escaping @Sendable (TrainingProgress) -> Void
-    ) async throws -> (weights: [(String, MLXArray)], finalLoss: Float?, trainedPaths: [String]) {
+    ) async throws -> AdapterTrainingResult {
         guard let decoder else {
             throw DiTActorError.weightsNotLoaded
         }
@@ -452,13 +452,13 @@ public actor DiTActor {
             AudioDiagnostics.memory("training/dit/cleanup/end")
         }
 
-        let weights = try await trainer.train(dataset: samples, onProgress: onProgress)
+        let result = try await trainer.train(dataset: samples, onProgress: onProgress)
         AudioDiagnostics.note(
             "training/dit/trainResult",
-            "kind=lokr weights=\(weights.count) paths=\(paths.count) finalLoss=\(trainer.lowestLoss.map { String($0) } ?? "nil")"
+            "kind=lokr weights=\(result.weights.count) paths=\(paths.count) finalLoss=\(result.finalLoss.map { String($0) } ?? "nil") optimizerTensors=\(result.optimizerState.count) cancelled=\(result.wasCancelled)"
         )
         AudioDiagnostics.memory("training/dit/afterTrain")
-        return (weights, trainer.lowestLoss, paths)
+        return result
     }
 
     private static func trainingLayerIndices(

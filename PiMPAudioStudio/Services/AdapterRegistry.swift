@@ -256,11 +256,23 @@ struct AdapterRegistry {
     }
 
     static func optimizerStateURL(adapterID: String) -> URL {
+        adapterDirectory(id: adapterID).appending(path: "optimizer_state.safetensors")
+    }
+
+    private static func legacyOptimizerStateURL(adapterID: String) -> URL {
         adapterDirectory(id: adapterID).appending(path: "optimizer_state.json")
     }
 
     static func weightsURL(adapterID: String) -> URL {
         adapterDirectory(id: adapterID).appending(path: "adapter.safetensors")
+    }
+
+    static func saveOptimizerState(_ state: [(String, MLXArray)], adapterID: String) throws {
+        guard !state.isEmpty else { return }
+        let dir = adapterDirectory(id: adapterID)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let dict = Dictionary(state, uniquingKeysWith: { _, last in last })
+        try MLX.save(arrays: dict, url: optimizerStateURL(adapterID: adapterID))
     }
 
     /// Saves the metadata needed to resume an interrupted training session.
@@ -273,10 +285,6 @@ struct AdapterRegistry {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data = try encoder.encode(checkpoint)
         try data.write(to: checkpointURL(adapterID: adapterID))
-
-        if !FileManager.default.fileExists(atPath: checkpoint.optimizerStateURL.path(percentEncoded: false)) {
-            try Data("{}".utf8).write(to: checkpoint.optimizerStateURL)
-        }
     }
 
     /// Returns the saved training checkpoint for a paused adapter, or nil.
@@ -296,6 +304,7 @@ struct AdapterRegistry {
         let fm = FileManager.default
         try? fm.removeItem(at: checkpointURL(adapterID: adapterID))
         try? fm.removeItem(at: optimizerStateURL(adapterID: adapterID))
+        try? fm.removeItem(at: legacyOptimizerStateURL(adapterID: adapterID))
     }
 
     /// Merge two adapters with weighted interpolation: alpha * A + (1-alpha) * B.

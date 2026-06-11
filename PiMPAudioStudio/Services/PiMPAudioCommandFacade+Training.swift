@@ -330,10 +330,13 @@ extension PiMPAudioCommandFacade {
             "gradientNorm": uiState.gradientNorm.map { Double($0) } ?? NSNull(),
             "parameterNorm": uiState.parameterNorm.map { Double($0) } ?? NSNull(),
             "updateNorm": uiState.updateNorm.map { Double($0) } ?? NSNull(),
+            "validationLoss": uiState.validationLoss.map { Double($0) } ?? NSNull(),
             "elapsedSeconds": uiState.elapsed,
             "remainingSeconds": uiState.remaining.map { $0 as Any } ?? NSNull(),
             "lossHistoryCount": uiState.lossHistory.count,
-            "latestLossHistory": Array(uiState.lossHistory.suffix(25)).map(Double.init)
+            "latestLossHistory": Array(uiState.lossHistory.suffix(25)).map(Double.init),
+            "validationHistoryCount": uiState.validationHistory.count,
+            "latestValidationHistory": uiState.validationHistory.suffix(25).map(trainingValidationPointPayload)
         ]
     }
 
@@ -344,6 +347,7 @@ extension PiMPAudioCommandFacade {
             "totalSteps": checkpoint.totalSteps,
             "bestLoss": checkpoint.bestLoss.map { Double($0) } ?? NSNull(),
             "lossHistoryCount": checkpoint.lossHistory.count,
+            "validationHistoryCount": checkpoint.validationHistory.count,
             "weightsPath": checkpoint.weightsURL.path(percentEncoded: false),
             "optimizerStatePath": checkpoint.optimizerStateURL.path(percentEncoded: false),
             "baseModelID": checkpoint.baseModelID
@@ -1284,9 +1288,12 @@ extension PiMPAudioCommandFacade {
             "finalLoss": log?.finalLoss.map { Double($0) } ?? adapter.finalLoss.map { Double($0) } ?? NSNull(),
             "latestLoss": health["latestLoss"] ?? NSNull(),
             "bestLoss": health["bestLoss"] ?? NSNull(),
+            "latestValidationLoss": health["latestValidationLoss"] ?? NSNull(),
+            "bestValidationLoss": health["bestValidationLoss"] ?? NSNull(),
             "latestUpdateNorm": health["latestUpdateNorm"] ?? NSNull(),
             "zeroUpdateNormCount": health["zeroUpdateNormCount"] ?? NSNull(),
             "progressCount": log?.progress.count ?? 0,
+            "validationCount": health["validationCount"] ?? NSNull(),
             "hasCheckpoint": AdapterRegistry.hasCheckpoint(adapterID: adapter.id)
         ]
     }
@@ -1316,7 +1323,8 @@ extension PiMPAudioCommandFacade {
             "batchSize": config.batchSize,
             "warmupFraction": Double(config.warmupFraction),
             "gradientAccumulationSteps": config.gradientAccumulationSteps,
-            "trainingLayerCount": config.trainingLayerCount ?? NSNull()
+            "trainingLayerCount": config.trainingLayerCount ?? NSNull(),
+            "trainingSeed": config.trainingSeed.map { NSNumber(value: $0) } ?? NSNull()
         ]
     }
 
@@ -1335,7 +1343,8 @@ extension PiMPAudioCommandFacade {
             "batchSize": config.batchSize,
             "warmupFraction": Double(config.warmupFraction),
             "gradientAccumulationSteps": config.gradientAccumulationSteps,
-            "trainingLayerCount": config.trainingLayerCount ?? NSNull()
+            "trainingLayerCount": config.trainingLayerCount ?? NSNull(),
+            "trainingSeed": config.trainingSeed.map { NSNumber(value: $0) } ?? NSNull()
         ]
     }
 
@@ -1375,11 +1384,13 @@ extension PiMPAudioCommandFacade {
             return [
                 "hasRunLog": false,
                 "finalLoss": adapter.finalLoss.map { Double($0) } ?? NSNull(),
-                "progressCount": 0
+                "progressCount": 0,
+                "validationCount": 0
             ]
         }
 
         let losses = log.progress.map { Double($0.loss) }
+        let validationLosses = (log.validationHistory ?? []).map { Double($0.loss) }
         let updateNorms = log.progress.compactMap(\.updateNorm).map(Double.init)
         let recentLosses = losses.suffix(10)
         let firstLoss = losses.first
@@ -1394,10 +1405,13 @@ extension PiMPAudioCommandFacade {
             "hasRunLog": true,
             "status": log.status.rawValue,
             "progressCount": log.progress.count,
+            "validationCount": log.validationHistory?.count ?? 0,
             "eventCount": log.events.count,
             "firstLoss": firstLoss ?? NSNull(),
             "latestLoss": latestLoss ?? NSNull(),
             "bestLoss": bestLoss ?? NSNull(),
+            "latestValidationLoss": validationLosses.last ?? NSNull(),
+            "bestValidationLoss": validationLosses.min() ?? NSNull(),
             "finalLoss": log.finalLoss.map { Double($0) } ?? NSNull(),
             "lossDelta": (firstLoss != nil && latestLoss != nil) ? latestLoss! - firstLoss! : NSNull(),
             "recentAverageLoss": recentAverage ?? NSNull(),
@@ -1431,6 +1445,10 @@ extension PiMPAudioCommandFacade {
             "latestProgress": log.progress.last.map { trainingRunProgressPayload($0) as Any } ?? NSNull(),
             "lossHistoryCount": log.lossHistory.count,
             "latestLossHistory": Array(log.lossHistory.suffix(25)).map(Double.init),
+            "validationHistoryCount": log.validationHistory?.count ?? 0,
+            "latestValidationHistory": (log.validationHistory ?? [])
+                .suffix(25)
+                .map(trainingValidationPointPayload),
             "events": log.events.suffix(10).map(trainingRunEventPayload),
             "finalLoss": log.finalLoss.map { Double($0) } ?? NSNull(),
             "trainedPaths": log.trainedPaths,
@@ -1452,8 +1470,17 @@ extension PiMPAudioCommandFacade {
             "gradientNorm": progress.gradientNorm.map { Double($0) } ?? NSNull(),
             "parameterNorm": progress.parameterNorm.map { Double($0) } ?? NSNull(),
             "updateNorm": progress.updateNorm.map { Double($0) } ?? NSNull(),
+            "validationLoss": progress.validationLoss.map { Double($0) } ?? NSNull(),
             "elapsedSeconds": progress.elapsed,
             "estimatedRemainingSeconds": progress.estimatedRemaining.map { $0 as Any } ?? NSNull()
+        ]
+    }
+
+    func trainingValidationPointPayload(_ point: TrainingValidationPoint) -> [String: Any] {
+        [
+            "epoch": point.epoch,
+            "step": point.step,
+            "loss": Double(point.loss)
         ]
     }
 

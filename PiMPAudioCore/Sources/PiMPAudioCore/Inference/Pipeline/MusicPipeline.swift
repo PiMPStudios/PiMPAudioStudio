@@ -158,7 +158,7 @@ public actor MusicPipeline {
         resumeFrom checkpoint: TrainingCheckpoint? = nil,
         initialWeights: [(String, MLXArray)]? = nil,
         onProgress: @escaping @Sendable (TrainingProgress) -> Void
-    ) async throws -> (weights: [(String, MLXArray)], finalLoss: Float?, trainedPaths: [String]) {
+    ) async throws -> AdapterTrainingResult {
         try await diffusion.trainLoRA(
             samples: samples,
             config: config,
@@ -174,7 +174,7 @@ public actor MusicPipeline {
         resumeFrom checkpoint: TrainingCheckpoint? = nil,
         initialWeights: [(String, MLXArray)]? = nil,
         onProgress: @escaping @Sendable (TrainingProgress) -> Void
-    ) async throws -> (weights: [(String, MLXArray)], finalLoss: Float?, trainedPaths: [String]) {
+    ) async throws -> AdapterTrainingResult {
         try await diffusion.trainLoKR(
             samples: samples,
             config: config,

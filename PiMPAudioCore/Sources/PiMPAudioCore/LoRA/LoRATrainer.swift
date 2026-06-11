@@ -42,8 +42,10 @@ public struct TrainingProgress: Sendable {
     public let gradientNorm: Float?
     public let parameterNorm: Float?
     public let updateNorm: Float?
+    public let validationLoss: Float?
     public let estimatedTimeRemaining: TimeInterval?
     public let lossHistory: [Float]
+    public let validationHistory: [TrainingValidationPoint]
     public let elapsedTime: TimeInterval
 
     /// Legacy accessor for backward compatibility with TrainingService.
@@ -68,8 +70,10 @@ public final class LoRATrainer {
     private var globalStep: Int = 0
     private var currentEpoch: Int = 0
     private var lossHistory: [Float] = []
+    private var validationHistory: [TrainingValidationPoint] = []
     private let scheduler: CosineScheduler
     private let totalSteps: Int
+    private let resumeCheckpoint: TrainingCheckpoint?
 
     /// Designated initializer.
     /// - Parameters:
@@ -89,11 +93,12 @@ public final class LoRATrainer {
         self.model = model
         self.config = config
         self.injectedPaths = injectedPaths
+        self.resumeCheckpoint = checkpoint
 
         // Each epoch processes all samples; optimizer steps once per
         // accumulation window, including a final partial window.
         let updatesPerEpoch = Self.optimizerStepsPerEpoch(
-            datasetSize: datasetSize,
+            datasetSize: AdapterTrainingSplit.trainingSampleCount(total: datasetSize),
             gradientAccumulationSteps: config.gradientAccumulationSteps
         )
         self.totalSteps = updatesPerEpoch * config.maxEpochs
@@ -109,6 +114,7 @@ public final class LoRATrainer {
             self.globalStep = checkpoint.globalStep
             self.currentEpoch = checkpoint.epoch
             self.lossHistory = checkpoint.lossHistory
+            self.validationHistory = checkpoint.validationHistory
             self.bestLoss = checkpoint.bestLoss ?? .infinity
             if checkpoint.bestLoss != nil {
                 self.bestWeights = initialBestWeights
@@ -124,18 +130,31 @@ public final class LoRATrainer {
     public func train(
         dataset: [TrainingSample],
         onProgress: @escaping @Sendable (TrainingProgress) -> Void
-    ) async throws -> [(String, MLXArray)] {
+    ) async throws -> AdapterTrainingResult {
+        let runSeed = config.effectiveTrainingSeed
         AudioDiagnostics.note(
             "training/trainer/begin",
-            "kind=lora dataset=\(dataset.count) paths=\(injectedPaths.count) maxEpochs=\(config.maxEpochs) gradAccum=\(config.gradientAccumulationSteps) weightDecay=0 gradClipNorm=\(Self.gradientClipNorm) \(AdapterTrainingSchedule.diagnosticsSummary)"
+            "kind=lora dataset=\(dataset.count) paths=\(injectedPaths.count) maxEpochs=\(config.maxEpochs) gradAccum=\(config.gradientAccumulationSteps) seed=\(runSeed) weightDecay=0 gradClipNorm=\(Self.gradientClipNorm) \(AdapterTrainingSchedule.diagnosticsSummary)"
         )
         AudioDiagnostics.memory("training/trainer/begin")
         guard !dataset.isEmpty else {
             AudioDiagnostics.note("training/trainer/emptyDataset", "kind=lora")
-            return []
+            return AdapterTrainingResult(
+                weights: [],
+                finalLoss: nil,
+                trainedPaths: injectedPaths,
+                optimizerState: [],
+                wasCancelled: isCancelled
+            )
         }
 
-        let accumSteps = max(1, min(config.gradientAccumulationSteps, dataset.count))
+        let split = AdapterTrainingSplit.make(sampleCount: dataset.count, seed: runSeed)
+        AudioDiagnostics.note(
+            "training/trainer/split",
+            "kind=lora train=\(split.trainingIndices.count) validation=\(split.validationIndices.count) seed=\(runSeed)"
+        )
+
+        let accumSteps = max(1, min(config.gradientAccumulationSteps, split.trainingIndices.count))
         let optimizer = AdamW(learningRate: scheduler.learningRate(atStep: globalStep), weightDecay: 0)
         let startTime = Date()
 
@@ -208,6 +227,17 @@ public final class LoRATrainer {
             "training/trainer/valueAndGradReady",
             "kind=lora gradientRoute=flatAdapterParameters trainableArgumentCount=\(trainableArgumentCount)"
         )
+        AdapterOptimizerState.initializeAdamState(
+            optimizer: optimizer,
+            model: model,
+            trainableParameterKeys: trainableParameterKeys
+        )
+        AdapterOptimizerState.restoreAdamStateIfPresent(
+            optimizer: optimizer,
+            trainableParameterKeys: trainableParameterKeys,
+            checkpoint: resumeCheckpoint,
+            kind: "lora"
+        )
         let usesExplicitDropoutKeys = config.dropout > 0
         let adapterDropoutKeyCount = max(1, injectedPaths.count * 2)
         AudioDiagnostics.note(
@@ -221,6 +251,19 @@ public final class LoRATrainer {
             "kind=lora startEpoch=\(startEpoch) maxEpochs=\(config.maxEpochs) globalStep=\(globalStep) lossHistory=\(lossHistory.count)"
         )
         var hasLoggedFirstProcessedSample = false
+        guard startEpoch <= config.maxEpochs else {
+            let currentWeights = LoRAInjector.extractWeights(model: model, paths: injectedPaths)
+            return AdapterTrainingResult(
+                weights: currentWeights,
+                finalLoss: bestWeights != nil ? bestLoss : nil,
+                trainedPaths: injectedPaths,
+                optimizerState: AdapterOptimizerState.namedState(
+                    optimizer: optimizer,
+                    trainableParameterKeys: trainableParameterKeys
+                ),
+                wasCancelled: isCancelled
+            )
+        }
 
         for epoch in startEpoch...config.maxEpochs {
             guard !isCancelled else { break }
@@ -229,10 +272,13 @@ public final class LoRATrainer {
             var epochLoss: Float = 0
             var epochSamples: Int = 0
             var epochCFGDropouts = 0
-            let shuffledIndices = Array(0..<dataset.count).shuffled()
+            var epochRNG = SeededRandomNumberGenerator(
+                seed: AdapterTrainingRandom.mix(runSeed, UInt64(truncatingIfNeeded: epoch))
+            )
+            let shuffledIndices = split.trainingIndices.shuffled(using: &epochRNG)
             AudioDiagnostics.note(
                 "training/trainer/epochBegin",
-                "kind=lora epoch=\(epoch)/\(config.maxEpochs) shuffled=\(shuffledIndices.count)"
+                "kind=lora epoch=\(epoch)/\(config.maxEpochs) shuffled=\(shuffledIndices.count) validation=\(split.validationIndices.count)"
             )
 
             // Per-window tracking for accurate loss reporting
@@ -253,16 +299,29 @@ public final class LoRATrainer {
                     )
                 }
 
-                let t = AdapterTrainingSchedule.sampleTimestep()
+                let sampleKeys = AdapterTrainingRandom.sampleKeys(
+                    seed: runSeed,
+                    epoch: epoch,
+                    sampleIndex: idx,
+                    globalStep: globalStep
+                )
+                let t = AdapterTrainingSchedule.sampleTimestep(
+                    firstKey: sampleKeys[0],
+                    secondKey: sampleKeys[1]
+                )
 
                 // Interpolate: x_t = (1 - t) * x_0 + t * noise
-                let noise = MLXRandom.normal(sample.latent.shape)
+                let noise = MLXRandom.normal(sample.latent.shape, key: sampleKeys[2])
                 let xt = (1.0 - t) * sample.latent + t * noise
 
                 // Target velocity: v_target = noise - x_0
                 let vTarget = noise - sample.latent
 
-                let conditioning = AdapterTrainingSchedule.conditionedSample(sample, model: model)
+                let conditioning = AdapterTrainingSchedule.conditionedSample(
+                    sample,
+                    model: model,
+                    dropoutKey: sampleKeys[3]
+                )
                 if conditioning.didDropConditioning {
                     epochCFGDropouts += 1
                 }
@@ -301,7 +360,8 @@ public final class LoRATrainer {
                 let trainableValues = trainableParameters.map(\.1)
                 let dropoutKeyStream = usesExplicitDropoutKeys
                     ? AdapterDropoutKeyContext.makeKeyStream(
-                        seed: AdapterDropoutKeyContext.seed(
+                        seed: AdapterTrainingRandom.dropoutSeed(
+                            baseSeed: runSeed,
                             epoch: epoch,
                             globalStep: globalStep,
                             sampleIndex: idx,
@@ -380,15 +440,38 @@ public final class LoRATrainer {
 
             // Track best weights (per epoch)
             let avgLoss = epochSamples > 0 ? epochLoss / Float(epochSamples) : .infinity
-            if avgLoss < bestLoss {
-                bestLoss = avgLoss
+            setTrainingMode(false)
+            let validationLoss = AdapterValidationEvaluator.validationLoss(
+                model: model,
+                samples: dataset,
+                validationIndices: split.validationIndices,
+                seed: AdapterTrainingRandom.mix(runSeed, UInt64(truncatingIfNeeded: epoch))
+            )
+            setTrainingMode(true)
+            if let validationLoss {
+                validationHistory.append(TrainingValidationPoint(
+                    epoch: epoch,
+                    step: globalStep,
+                    loss: validationLoss
+                ))
+            }
+            let selectionLoss = validationLoss ?? avgLoss
+            if selectionLoss < bestLoss {
+                bestLoss = selectionLoss
                 bestWeights = LoRAInjector.extractWeights(model: model, paths: injectedPaths)
             }
             AudioDiagnostics.note(
                 "training/trainer/epochEnd",
-                "kind=lora epoch=\(epoch)/\(config.maxEpochs) samples=\(epochSamples) cfgDropped=\(epochCFGDropouts) avgLoss=\(avgLoss) bestLoss=\(bestLoss) globalStep=\(globalStep)"
+                "kind=lora epoch=\(epoch)/\(config.maxEpochs) samples=\(epochSamples) cfgDropped=\(epochCFGDropouts) avgLoss=\(avgLoss) validationLoss=\(validationLoss.map { String($0) } ?? "nil") bestSelectionLoss=\(bestLoss) globalStep=\(globalStep)"
             )
             AudioDiagnostics.memory("training/trainer/epochEnd")
+            emitProgress(
+                epoch: epoch,
+                loss: avgLoss,
+                validationLoss: validationLoss,
+                startTime: startTime,
+                onProgress: onProgress
+            )
 
             // Yield at epoch boundary so the enclosing actor can process
             // pending messages (e.g. cancelTraining()) between epochs.
@@ -400,7 +483,18 @@ public final class LoRATrainer {
             "kind=lora cancelled=\(isCancelled) globalStep=\(globalStep) bestLoss=\(bestWeights != nil ? String(bestLoss) : "nil")"
         )
         AudioDiagnostics.memory("training/trainer/end")
-        return bestWeights ?? LoRAInjector.extractWeights(model: model, paths: injectedPaths)
+        let currentWeights = LoRAInjector.extractWeights(model: model, paths: injectedPaths)
+        let selectedWeights = isCancelled ? currentWeights : (bestWeights ?? currentWeights)
+        return AdapterTrainingResult(
+            weights: selectedWeights,
+            finalLoss: bestWeights != nil ? bestLoss : nil,
+            trainedPaths: injectedPaths,
+            optimizerState: AdapterOptimizerState.namedState(
+                optimizer: optimizer,
+                trainableParameterKeys: trainableParameterKeys
+            ),
+            wasCancelled: isCancelled
+        )
     }
 
     /// Request cancellation. Training stops after the current sample completes.
@@ -430,6 +524,7 @@ public final class LoRATrainer {
             totalSteps: totalSteps,
             bestLoss: bestWeights != nil ? bestLoss : nil,
             lossHistory: lossHistory,
+            validationHistory: validationHistory,
             weightsURL: weightsURL,
             optimizerStateURL: optimizerStateURL,
             config: config,
@@ -439,6 +534,8 @@ public final class LoRATrainer {
 
     /// Current loss history (for checkpoint saving from outside).
     public var currentLossHistory: [Float] { lossHistory }
+
+    public var currentValidationHistory: [TrainingValidationPoint] { validationHistory }
 
     /// Current global step.
     public var currentGlobalStep: Int { globalStep }
@@ -546,8 +643,42 @@ public final class LoRATrainer {
             gradientNorm: gradientNorm,
             parameterNorm: parameterNorm,
             updateNorm: updateNorm,
+            validationLoss: nil,
             estimatedTimeRemaining: eta,
             lossHistory: lossHistory,
+            validationHistory: validationHistory,
+            elapsedTime: elapsed
+        ))
+    }
+
+    private func emitProgress(
+        epoch: Int,
+        loss: Float,
+        validationLoss: Float?,
+        startTime: Date,
+        onProgress: @escaping @Sendable (TrainingProgress) -> Void
+    ) {
+        let currentLR = scheduler.learningRate(atStep: globalStep)
+        let elapsed = Date().timeIntervalSince(startTime)
+        let stepsRemaining = max(0, totalSteps - globalStep)
+        let eta: TimeInterval? = globalStep > 0
+            ? elapsed / Double(globalStep) * Double(stepsRemaining)
+            : nil
+
+        onProgress(TrainingProgress(
+            epoch: epoch,
+            totalEpochs: config.maxEpochs,
+            step: globalStep,
+            loss: loss,
+            learningRate: currentLR,
+            lossMovingAverage: Self.movingAverage(lossHistory),
+            gradientNorm: nil,
+            parameterNorm: nil,
+            updateNorm: nil,
+            validationLoss: validationLoss,
+            estimatedTimeRemaining: eta,
+            lossHistory: lossHistory,
+            validationHistory: validationHistory,
             elapsedTime: elapsed
         ))
     }

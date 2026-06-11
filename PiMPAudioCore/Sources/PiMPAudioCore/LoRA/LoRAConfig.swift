@@ -31,6 +31,8 @@ public enum TargetLayer: String, Codable, CaseIterable, Sendable, Hashable {
 
 /// Configuration for LoRA adapter training and injection.
 public struct LoRAConfig: Codable, Sendable, Equatable, Hashable {
+    public static let defaultTrainingSeed: UInt64 = 42
+
     /// Low-rank dimension. Higher = more expressive, more memory. Typical: 8, 16, 32, 64, 96.
     public var rank: Int
 
@@ -73,6 +75,9 @@ public struct LoRAConfig: Codable, Sendable, Equatable, Hashable {
     /// can still be injected from their saved weight paths.
     public var trainingLayerCount: Int?
 
+    /// Seed for local trainer shuffling, timestep/noise sampling, and CFG dropout.
+    public var trainingSeed: UInt64?
+
     /// Full attention projection surface used by higher-capacity ACE-Step PEFT
     /// recipes: q/k/v/o on both self-attention and cross-attention.
     public static let fullAttentionInjectionPatterns: [String] = [
@@ -97,7 +102,8 @@ public struct LoRAConfig: Codable, Sendable, Equatable, Hashable {
         batchSize: Int = 1,
         warmupFraction: Float = 0.10,
         gradientAccumulationSteps: Int = 1,
-        trainingLayerCount: Int? = nil
+        trainingLayerCount: Int? = nil,
+        trainingSeed: UInt64? = Self.defaultTrainingSeed
     ) {
         self.rank = rank
         self.alpha = alpha ?? Float(rank)
@@ -110,6 +116,7 @@ public struct LoRAConfig: Codable, Sendable, Equatable, Hashable {
         self.warmupFraction = warmupFraction
         self.gradientAccumulationSteps = gradientAccumulationSteps
         self.trainingLayerCount = trainingLayerCount
+        self.trainingSeed = trainingSeed
     }
 
     /// Expands targetLayers into the full list of injection pattern strings
@@ -125,6 +132,10 @@ public struct LoRAConfig: Codable, Sendable, Equatable, Hashable {
     /// Runtime contribution scale applied to this adapter's learned delta.
     public var scaling: Float {
         alpha / Float(max(1, rank))
+    }
+
+    public var effectiveTrainingSeed: UInt64 {
+        trainingSeed ?? Self.defaultTrainingSeed
     }
 }
 
@@ -169,6 +180,9 @@ public struct LoKRConfig: Codable, Sendable, Equatable, Hashable {
     /// Number of DiT decoder layers to train from the end of the stack.
     public var trainingLayerCount: Int?
 
+    /// Seed for local trainer shuffling, timestep/noise sampling, and CFG dropout.
+    public var trainingSeed: UInt64?
+
     /// Enable DoRA-style weight decomposition for LoKR.
     ///
     /// New local LoKR runs default this on to match the ACE-Step 1.5 LoKR
@@ -188,6 +202,7 @@ public struct LoKRConfig: Codable, Sendable, Equatable, Hashable {
         warmupFraction: Float = 0.10,
         gradientAccumulationSteps: Int = 1,
         trainingLayerCount: Int? = nil,
+        trainingSeed: UInt64? = LoRAConfig.defaultTrainingSeed,
         weightDecompose: Bool = true
     ) {
         self.linearDim = linearDim
@@ -201,6 +216,7 @@ public struct LoKRConfig: Codable, Sendable, Equatable, Hashable {
         self.warmupFraction = warmupFraction
         self.gradientAccumulationSteps = gradientAccumulationSteps
         self.trainingLayerCount = trainingLayerCount
+        self.trainingSeed = trainingSeed
         self.weightDecompose = weightDecompose
     }
 
@@ -217,6 +233,7 @@ public struct LoKRConfig: Codable, Sendable, Equatable, Hashable {
             warmupFraction: config.warmupFraction,
             gradientAccumulationSteps: config.gradientAccumulationSteps,
             trainingLayerCount: config.trainingLayerCount,
+            trainingSeed: config.trainingSeed,
             weightDecompose: weightDecompose
         )
     }
@@ -224,7 +241,7 @@ public struct LoKRConfig: Codable, Sendable, Equatable, Hashable {
     enum CodingKeys: String, CodingKey {
         case linearDim, alpha, dropout, targetLayers, exactInjectionPatterns
         case learningRate, maxEpochs, batchSize, warmupFraction
-        case gradientAccumulationSteps, trainingLayerCount, weightDecompose
+        case gradientAccumulationSteps, trainingLayerCount, trainingSeed, weightDecompose
     }
 
     public init(from decoder: Decoder) throws {
@@ -240,6 +257,7 @@ public struct LoKRConfig: Codable, Sendable, Equatable, Hashable {
         warmupFraction = try container.decode(Float.self, forKey: .warmupFraction)
         gradientAccumulationSteps = try container.decode(Int.self, forKey: .gradientAccumulationSteps)
         trainingLayerCount = try container.decodeIfPresent(Int.self, forKey: .trainingLayerCount)
+        trainingSeed = try container.decodeIfPresent(UInt64.self, forKey: .trainingSeed)
         weightDecompose = try container.decodeIfPresent(Bool.self, forKey: .weightDecompose) ?? false
     }
 
@@ -268,8 +286,13 @@ public struct LoKRConfig: Codable, Sendable, Equatable, Hashable {
             batchSize: batchSize,
             warmupFraction: warmupFraction,
             gradientAccumulationSteps: gradientAccumulationSteps,
-            trainingLayerCount: trainingLayerCount
+            trainingLayerCount: trainingLayerCount,
+            trainingSeed: trainingSeed
         )
+    }
+
+    public var effectiveTrainingSeed: UInt64 {
+        trainingSeed ?? LoRAConfig.defaultTrainingSeed
     }
 }
 

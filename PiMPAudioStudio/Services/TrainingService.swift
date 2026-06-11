@@ -32,9 +32,11 @@ struct TrainingUIState: Equatable {
     let gradientNorm: Float?
     let parameterNorm: Float?
     let updateNorm: Float?
+    let validationLoss: Float?
     let elapsed: TimeInterval
     let remaining: TimeInterval?
     let lossHistory: [Float]
+    let validationHistory: [TrainingValidationPoint]
 }
 
 /// Result returned from the pipeline's training method (added in Task 10).
@@ -42,6 +44,8 @@ struct LoRATrainingResult {
     let weights: [(String, MLXArray)]
     let finalLoss: Float?
     let trainedPaths: [String]
+    let optimizerState: [(String, MLXArray)]
+    let wasCancelled: Bool
 }
 
 private struct TrainingPreprocessResult {
@@ -494,7 +498,9 @@ final class TrainingService: ObservableObject {
                     result = LoRATrainingResult(
                         weights: trained.weights,
                         finalLoss: trained.finalLoss,
-                        trainedPaths: trained.trainedPaths
+                        trainedPaths: trained.trainedPaths,
+                        optimizerState: trained.optimizerState,
+                        wasCancelled: trained.wasCancelled
                     )
                 case .lokr:
                     guard let sessionLoKRConfig else {
@@ -511,7 +517,9 @@ final class TrainingService: ObservableObject {
                     result = LoRATrainingResult(
                         weights: trained.weights,
                         finalLoss: trained.finalLoss,
-                        trainedPaths: trained.trainedPaths
+                        trainedPaths: trained.trainedPaths,
+                        optimizerState: trained.optimizerState,
+                        wasCancelled: trained.wasCancelled
                     )
                 }
                 self.logTrainingPhase(
@@ -549,9 +557,11 @@ final class TrainingService: ObservableObject {
                             config: sessionConfig,
                             activeModelID: activeModelID,
                             sampleCount: samples.count,
+                            bestLoss: result.finalLoss,
                             fallback: resumeCheckpoint
                         )
                         try AdapterRegistry.save(adapter: adapter, weights: result.weights)
+                        try AdapterRegistry.saveOptimizerState(result.optimizerState, adapterID: adapterID)
                         AdapterRegistry.saveManifest(manifest, adapterID: adapterID)
                         try AdapterRegistry.saveCheckpoint(checkpoint, adapterID: adapterID)
                         self.finishActiveRunLog(
@@ -685,13 +695,16 @@ final class TrainingService: ObservableObject {
             gradientNorm: progress.gradientNorm,
             parameterNorm: progress.parameterNorm,
             updateNorm: progress.updateNorm,
+            validationLoss: progress.validationLoss,
             elapsed: progress.elapsedTime,
             remaining: progress.estimatedTimeRemaining,
-            lossHistory: progress.lossHistory
+            lossHistory: progress.lossHistory,
+            validationHistory: progress.validationHistory
         ))
 
         let now = Date()
         activeRunLog?.lossHistory = progress.lossHistory
+        activeRunLog?.validationHistory = progress.validationHistory
         activeRunLog?.updatedAt = now
 
         guard progress.step == 1 || progress.step - lastTrainingProgressLogStep >= 25 else {
@@ -710,10 +723,12 @@ final class TrainingService: ObservableObject {
                 gradientNorm: progress.gradientNorm,
                 parameterNorm: progress.parameterNorm,
                 updateNorm: progress.updateNorm,
+                validationLoss: progress.validationLoss,
                 elapsed: progress.elapsedTime,
                 estimatedRemaining: progress.estimatedTimeRemaining
             ),
-            lossHistory: progress.lossHistory
+            lossHistory: progress.lossHistory,
+            validationHistory: progress.validationHistory
         )
         let lossText = String(format: "%.5f", progress.loss)
         let lrText = String(format: "%.2e", progress.learningRate)
@@ -721,12 +736,13 @@ final class TrainingService: ObservableObject {
         let gradNormText = progress.gradientNorm.map { String(format: "%.3e", $0) } ?? "nil"
         let paramNormText = progress.parameterNorm.map { String(format: "%.3e", $0) } ?? "nil"
         let updateNormText = progress.updateNorm.map { String(format: "%.3e", $0) } ?? "nil"
+        let validationLossText = progress.validationLoss.map { String(format: "%.5f", $0) } ?? "nil"
         trainingLogger.info(
-            "\(kind.rawValue.uppercased()) training progress name='\(adapterName)' epoch=\(progress.epoch)/\(progress.totalEpochs) step=\(progress.step) loss=\(lossText) avgLoss=\(movingLossText) lr=\(lrText) gradNorm=\(gradNormText) paramNorm=\(paramNormText) updateNorm=\(updateNormText)"
+            "\(kind.rawValue.uppercased()) training progress name='\(adapterName)' epoch=\(progress.epoch)/\(progress.totalEpochs) step=\(progress.step) loss=\(lossText) valLoss=\(validationLossText) avgLoss=\(movingLossText) lr=\(lrText) gradNorm=\(gradNormText) paramNorm=\(paramNormText) updateNorm=\(updateNormText)"
         )
         AudioDiagnostics.note(
             "training/progress",
-            "kind=\(kind.rawValue) name=\(adapterName) epoch=\(progress.epoch)/\(progress.totalEpochs) step=\(progress.step) loss=\(lossText) avgLoss=\(movingLossText) lr=\(lrText) gradNorm=\(gradNormText) paramNorm=\(paramNormText) updateNorm=\(updateNormText)"
+            "kind=\(kind.rawValue) name=\(adapterName) epoch=\(progress.epoch)/\(progress.totalEpochs) step=\(progress.step) loss=\(lossText) valLoss=\(validationLossText) avgLoss=\(movingLossText) lr=\(lrText) gradNorm=\(gradNormText) paramNorm=\(paramNormText) updateNorm=\(updateNormText)"
         )
     }
 
@@ -746,11 +762,12 @@ final class TrainingService: ObservableObject {
         let dropout = lokrConfig?.dropout ?? config.dropout
         let learningRate = lokrConfig?.learningRate ?? config.learningRate
         let gradientAccumulationSteps = lokrConfig?.gradientAccumulationSteps ?? config.gradientAccumulationSteps
+        let trainingSeed = lokrConfig?.effectiveTrainingSeed ?? config.effectiveTrainingSeed
         let weightDecomposeText = kind == .lokr
             ? " weightDecompose=\(lokrConfig?.weightDecompose ?? false)"
             : ""
         let targets = config.injectionPatterns.joined(separator: ",")
-        let numericSummary = "alpha=\(String(format: "%.3f", alpha)) dropout=\(String(format: "%.3f", dropout)) lr=\(String(format: "%.2e", learningRate)) gradAccum=\(gradientAccumulationSteps)\(weightDecomposeText)"
+        let numericSummary = "alpha=\(String(format: "%.3f", alpha)) dropout=\(String(format: "%.3f", dropout)) lr=\(String(format: "%.2e", learningRate)) gradAccum=\(gradientAccumulationSteps) seed=\(trainingSeed)\(weightDecomposeText)"
         trainingLogger.info(
             "Starting \(kind.rawValue.uppercased()) training name='\(adapterName)' base=\(activeModelID) samples=\(sampleCount) \(rankLabel) \(numericSummary) epochs=\(config.maxEpochs) layerCoverage=\(layerCount ?? 0) targets=\(targets)"
         )
@@ -966,6 +983,7 @@ final class TrainingService: ObservableObject {
         config: LoRAConfig,
         activeModelID: String,
         sampleCount: Int,
+        bestLoss: Float?,
         fallback: TrainingCheckpoint?
     ) -> TrainingCheckpoint {
         let uiState: TrainingUIState?
@@ -975,18 +993,20 @@ final class TrainingService: ObservableObject {
             uiState = nil
         }
 
-        let effectiveSampleCount = max(1, sampleCount)
+        let effectiveSampleCount = max(1, AdapterTrainingSplit.trainingSampleCount(total: sampleCount))
         let accumulation = min(max(1, config.gradientAccumulationSteps), effectiveSampleCount)
         let updatesPerEpoch = max(1, (effectiveSampleCount + accumulation - 1) / accumulation)
         let totalSteps = updatesPerEpoch * config.maxEpochs
         let lossHistory = uiState?.lossHistory ?? fallback?.lossHistory ?? []
+        let validationHistory = uiState?.validationHistory ?? fallback?.validationHistory ?? []
 
         return TrainingCheckpoint(
             epoch: uiState?.epoch ?? fallback?.epoch ?? 0,
             globalStep: uiState?.step ?? fallback?.globalStep ?? 0,
             totalSteps: totalSteps,
-            bestLoss: lossHistory.min() ?? fallback?.bestLoss,
+            bestLoss: bestLoss ?? fallback?.bestLoss ?? validationHistory.map(\.loss).min() ?? lossHistory.min(),
             lossHistory: lossHistory,
+            validationHistory: validationHistory,
             weightsURL: AdapterRegistry.weightsURL(adapterID: adapterID),
             optimizerStateURL: AdapterRegistry.optimizerStateURL(adapterID: adapterID),
             config: config,

@@ -397,7 +397,7 @@ public actor DiffusionActor {
         resumeFrom checkpoint: TrainingCheckpoint? = nil,
         initialWeights: [(String, MLXArray)]? = nil,
         onProgress: @escaping @Sendable (TrainingProgress) -> Void
-    ) async throws -> (weights: [(String, MLXArray)], finalLoss: Float?, trainedPaths: [String]) {
+    ) async throws -> AdapterTrainingResult {
         try await dit.trainLoRA(
             samples: samples,
             config: config,
@@ -413,7 +413,7 @@ public actor DiffusionActor {
         resumeFrom checkpoint: TrainingCheckpoint? = nil,
         initialWeights: [(String, MLXArray)]? = nil,
         onProgress: @escaping @Sendable (TrainingProgress) -> Void
-    ) async throws -> (weights: [(String, MLXArray)], finalLoss: Float?, trainedPaths: [String]) {
+    ) async throws -> AdapterTrainingResult {
         try await dit.trainLoKR(
             samples: samples,
             config: config,

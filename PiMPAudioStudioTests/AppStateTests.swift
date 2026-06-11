@@ -625,7 +625,10 @@ private extension JSONDecoder {
             elapsed: 10,
             estimatedRemaining: 240
         ),
-        lossHistory: [1.5, 1.25]
+        lossHistory: [1.5, 1.25],
+        validationHistory: [
+            TrainingValidationPoint(epoch: 2, step: 25, loss: 1.125)
+        ]
     )
     log.finish(
         status: .completed,
@@ -656,7 +659,9 @@ private extension JSONDecoder {
     #expect(decoded.progress.first?.gradientNorm == 0.125)
     #expect(decoded.progress.first?.parameterNorm == 12.5)
     #expect(decoded.progress.first?.updateNorm == 0.03125)
+    #expect(decoded.progress.first?.validationLoss == nil)
     #expect(decoded.lossHistory == [1.5, 1.25])
+    #expect(decoded.validationHistory == [TrainingValidationPoint(epoch: 2, step: 25, loss: 1.125)])
     #expect(decoded.finalLoss == 0.75)
     #expect(decoded.trainedLayerIndices == [28, 29])
     #expect(decoded.weightsTensorCount == 4)
