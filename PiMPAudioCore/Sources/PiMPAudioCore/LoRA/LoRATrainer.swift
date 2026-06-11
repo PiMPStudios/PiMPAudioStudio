@@ -127,7 +127,7 @@ public final class LoRATrainer {
     ) async throws -> [(String, MLXArray)] {
         AudioDiagnostics.note(
             "training/trainer/begin",
-            "kind=lora dataset=\(dataset.count) paths=\(injectedPaths.count) maxEpochs=\(config.maxEpochs) gradAccum=\(config.gradientAccumulationSteps) weightDecay=0 gradClipNorm=\(Self.gradientClipNorm)"
+            "kind=lora dataset=\(dataset.count) paths=\(injectedPaths.count) maxEpochs=\(config.maxEpochs) gradAccum=\(config.gradientAccumulationSteps) weightDecay=0 gradClipNorm=\(Self.gradientClipNorm) \(AdapterTrainingSchedule.diagnosticsSummary)"
         )
         AudioDiagnostics.memory("training/trainer/begin")
         guard !dataset.isEmpty else {
@@ -228,6 +228,7 @@ public final class LoRATrainer {
 
             var epochLoss: Float = 0
             var epochSamples: Int = 0
+            var epochCFGDropouts = 0
             let shuffledIndices = Array(0..<dataset.count).shuffled()
             AudioDiagnostics.note(
                 "training/trainer/epochBegin",
@@ -252,8 +253,7 @@ public final class LoRATrainer {
                     )
                 }
 
-                // Sample random timestep t in [0, 1]
-                let t = MLXRandom.uniform(0..<1, [1])
+                let t = AdapterTrainingSchedule.sampleTimestep()
 
                 // Interpolate: x_t = (1 - t) * x_0 + t * noise
                 let noise = MLXRandom.normal(sample.latent.shape)
@@ -262,16 +262,21 @@ public final class LoRATrainer {
                 // Target velocity: v_target = noise - x_0
                 let vTarget = noise - sample.latent
 
+                let conditioning = AdapterTrainingSchedule.conditionedSample(sample, model: model)
+                if conditioning.didDropConditioning {
+                    epochCFGDropouts += 1
+                }
+
                 // Build args array
-                var args = [xt, t, sample.encoderStates, sample.contextLatents, vTarget]
-                if let mask = sample.encoderMask {
+                var args = [xt, t, conditioning.encoderStates, conditioning.contextLatents, vTarget]
+                if let mask = conditioning.encoderMask {
                     args.append(mask)
                 }
 
                 if shouldLogSample {
                     AudioDiagnostics.note(
                         "training/trainer/firstValueAndGrad",
-                        "kind=lora argShapes=\(args.map { $0.shape })"
+                        "kind=lora argShapes=\(args.map { $0.shape }) cfgDropped=\(conditioning.didDropConditioning) \(AdapterTrainingSchedule.diagnosticsSummary)"
                     )
                 }
 
@@ -381,7 +386,7 @@ public final class LoRATrainer {
             }
             AudioDiagnostics.note(
                 "training/trainer/epochEnd",
-                "kind=lora epoch=\(epoch)/\(config.maxEpochs) samples=\(epochSamples) avgLoss=\(avgLoss) bestLoss=\(bestLoss) globalStep=\(globalStep)"
+                "kind=lora epoch=\(epoch)/\(config.maxEpochs) samples=\(epochSamples) cfgDropped=\(epochCFGDropouts) avgLoss=\(avgLoss) bestLoss=\(bestLoss) globalStep=\(globalStep)"
             )
             AudioDiagnostics.memory("training/trainer/epochEnd")
 

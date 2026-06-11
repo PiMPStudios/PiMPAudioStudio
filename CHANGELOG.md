@@ -9,6 +9,7 @@ All notable changes to PiMP Audio Studio are documented here.
 ### Changed
 
 - **Local LoRA/LoKR training now uses no hidden AdamW decay and clips gradients** — adapter trainers explicitly set optimizer weight decay to zero and apply conservative global norm clipping before each optimizer step.
+- **Local LoRA/LoKR training now follows the corrected ACE-Step timestep/CFG recipe** — native Swift trainers sample the same logit-normal max timestep schedule used by fixed ACE-Step training and apply 15% CFG dropout with the learned null condition embedding while keeping random draws outside the MLX gradient closure.
 
 ### Fixed
 

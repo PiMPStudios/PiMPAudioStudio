@@ -62,7 +62,7 @@ public final class LoKRTrainer {
     ) async throws -> [(String, MLXArray)] {
         AudioDiagnostics.note(
             "training/trainer/begin",
-            "kind=lokr dataset=\(dataset.count) paths=\(injectedPaths.count) maxEpochs=\(config.maxEpochs) gradAccum=\(config.gradientAccumulationSteps) weightDecompose=\(config.weightDecompose) weightDecay=0 gradClipNorm=\(Self.gradientClipNorm)"
+            "kind=lokr dataset=\(dataset.count) paths=\(injectedPaths.count) maxEpochs=\(config.maxEpochs) gradAccum=\(config.gradientAccumulationSteps) weightDecompose=\(config.weightDecompose) weightDecay=0 gradClipNorm=\(Self.gradientClipNorm) \(AdapterTrainingSchedule.diagnosticsSummary)"
         )
         AudioDiagnostics.memory("training/trainer/begin")
         guard !dataset.isEmpty else {
@@ -152,6 +152,7 @@ public final class LoKRTrainer {
 
             var epochLoss: Float = 0
             var epochSamples = 0
+            var epochCFGDropouts = 0
             var windowLoss: Float = 0
             var windowSamples = 0
             var accumulatedFlatGrads: [MLXArray]?
@@ -174,19 +175,24 @@ public final class LoKRTrainer {
                     )
                 }
 
-                let t = MLXRandom.uniform(0..<1, [1])
+                let t = AdapterTrainingSchedule.sampleTimestep()
                 let noise = MLXRandom.normal(sample.latent.shape)
                 let xt = (1.0 - t) * sample.latent + t * noise
                 let vTarget = noise - sample.latent
 
-                var args = [xt, t, sample.encoderStates, sample.contextLatents, vTarget]
-                if let mask = sample.encoderMask {
+                let conditioning = AdapterTrainingSchedule.conditionedSample(sample, model: model)
+                if conditioning.didDropConditioning {
+                    epochCFGDropouts += 1
+                }
+
+                var args = [xt, t, conditioning.encoderStates, conditioning.contextLatents, vTarget]
+                if let mask = conditioning.encoderMask {
                     args.append(mask)
                 }
                 if shouldLogSample {
                     AudioDiagnostics.note(
                         "training/trainer/firstValueAndGrad",
-                        "kind=lokr argShapes=\(args.map { $0.shape })"
+                        "kind=lokr argShapes=\(args.map { $0.shape }) cfgDropped=\(conditioning.didDropConditioning) \(AdapterTrainingSchedule.diagnosticsSummary)"
                     )
                 }
 
@@ -291,7 +297,7 @@ public final class LoKRTrainer {
             }
             AudioDiagnostics.note(
                 "training/trainer/epochEnd",
-                "kind=lokr epoch=\(epoch)/\(config.maxEpochs) samples=\(epochSamples) avgLoss=\(avgLoss) bestLoss=\(bestLoss) globalStep=\(globalStep)"
+                "kind=lokr epoch=\(epoch)/\(config.maxEpochs) samples=\(epochSamples) cfgDropped=\(epochCFGDropouts) avgLoss=\(avgLoss) bestLoss=\(bestLoss) globalStep=\(globalStep)"
             )
             AudioDiagnostics.memory("training/trainer/epochEnd")
             await Task.yield()
