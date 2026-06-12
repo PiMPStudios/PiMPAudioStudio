@@ -4,7 +4,9 @@ import SwiftUI
 @MainActor
 final class RunPodService: ObservableObject {
     @Published private(set) var pods: [RunPodPodSummary] = []
+    @Published private(set) var gpuTypes: [RunPodGPUType] = []
     @Published private(set) var isRefreshing = false
+    @Published private(set) var isRefreshingGPUTypes = false
     @Published private(set) var isLaunching = false
     @Published private(set) var stoppingPodID: String?
     @Published var lastMessage: String?
@@ -58,7 +60,25 @@ final class RunPodService: ObservableObject {
             lastMessage = "Loaded \(pods.count) RunPod pod\(pods.count == 1 ? "" : "s")."
             lastError = nil
         } catch {
-            lastError = error.localizedDescription
+            lastError = RunPodError.userFacingMessage(for: error)
+        }
+    }
+
+    func refreshGPUTypes() async {
+        guard let token = runPodToken() else {
+            lastError = "Add a RunPod API key before refreshing GPU types."
+            return
+        }
+
+        isRefreshingGPUTypes = true
+        defer { isRefreshingGPUTypes = false }
+
+        do {
+            gpuTypes = try await client.listGPUTypes(token: token)
+            lastMessage = "Loaded \(gpuTypes.count) RunPod GPU type\(gpuTypes.count == 1 ? "" : "s")."
+            lastError = nil
+        } catch {
+            lastError = RunPodError.userFacingMessage(for: error)
         }
     }
 
@@ -79,7 +99,7 @@ final class RunPodService: ObservableObject {
             lastError = nil
             return pod
         } catch {
-            lastError = error.localizedDescription
+            lastError = RunPodError.userFacingMessage(for: error)
             return nil
         }
     }
@@ -99,7 +119,7 @@ final class RunPodService: ObservableObject {
             lastError = nil
             await refreshPods()
         } catch {
-            lastError = error.localizedDescription
+            lastError = RunPodError.userFacingMessage(for: error)
         }
     }
 
@@ -305,6 +325,94 @@ struct RunPodGPU: Decodable, Equatable, Sendable {
     var communitySpotPrice: RunPodFlexibleDouble?
 }
 
+struct RunPodGPUType: Identifiable, Decodable, Equatable, Sendable {
+    var id: String
+    var displayName: String?
+    var manufacturer: String?
+    var memoryInGb: Int?
+    var secureCloud: Bool?
+    var communityCloud: Bool?
+    var securePrice: RunPodFlexibleDouble?
+    var communityPrice: RunPodFlexibleDouble?
+    var secureSpotPrice: RunPodFlexibleDouble?
+    var communitySpotPrice: RunPodFlexibleDouble?
+    var maxGpuCount: Int?
+    var maxGpuCountSecureCloud: Int?
+    var maxGpuCountCommunityCloud: Int?
+
+    var selectionValue: String {
+        let trimmedID = id.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedID.isEmpty {
+            return trimmedID
+        }
+        return displayNameValue
+    }
+
+    var displayNameValue: String {
+        let trimmed = (displayName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? id : trimmed
+    }
+
+    var menuTitle: String {
+        var details: [String] = []
+        if let memoryInGb {
+            details.append("\(memoryInGb) GB")
+        }
+        if let lowestHourlyPriceLabel {
+            details.append("from \(lowestHourlyPriceLabel)")
+        }
+        if details.isEmpty {
+            return displayNameValue
+        }
+        return "\(displayNameValue) (\(details.joined(separator: ", ")))"
+    }
+
+    var detailLabel: String {
+        var details: [String] = []
+        if let memoryInGb {
+            details.append("\(memoryInGb) GB VRAM")
+        }
+        details.append(availabilityLabel)
+        if let lowestHourlyPriceLabel {
+            details.append("from \(lowestHourlyPriceLabel)")
+        }
+        if let maxGpuCount, maxGpuCount > 0 {
+            details.append("up to \(maxGpuCount) GPU\(maxGpuCount == 1 ? "" : "s")")
+        }
+        return details.joined(separator: " · ")
+    }
+
+    var availabilityLabel: String {
+        switch (secureCloud == true, communityCloud == true) {
+        case (true, true):
+            return "Secure + Community"
+        case (true, false):
+            return "Secure"
+        case (false, true):
+            return "Community"
+        default:
+            return "Availability unknown"
+        }
+    }
+
+    var lowestHourlyPriceLabel: String? {
+        let prices = [
+            securePrice?.value,
+            communityPrice?.value,
+            secureSpotPrice?.value,
+            communitySpotPrice?.value,
+        ].compactMap { $0 }.filter { $0 > 0 }
+
+        guard let lowest = prices.min() else { return nil }
+        return String(format: "$%.2f/hr", lowest)
+    }
+
+    func matches(_ value: String) -> Bool {
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return normalized == id || normalized == displayNameValue
+    }
+}
+
 struct RunPodMachine: Decodable, Equatable, Sendable {
     var gpuTypeId: String?
     var gpuDisplayName: String?
@@ -365,6 +473,23 @@ struct RunPodCreatePodRequest: Encodable, Equatable, Sendable {
     var volumeMountPath: String
 }
 
+private struct RunPodGraphQLRequest: Encodable {
+    var query: String
+}
+
+private struct RunPodGraphQLResponse<Payload: Decodable>: Decodable {
+    var data: Payload?
+    var errors: [RunPodGraphQLError]?
+}
+
+private struct RunPodGraphQLError: Decodable, Equatable {
+    var message: String
+}
+
+private struct RunPodGPUTypesPayload: Decodable {
+    var gpuTypes: [RunPodGPUType]
+}
+
 protocol RunPodTransport: Sendable {
     func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse)
 }
@@ -383,13 +508,16 @@ struct URLSessionRunPodTransport: RunPodTransport {
 
 struct RunPodAPIClient {
     var baseURL: URL
+    var graphQLURL: URL
     var transport: any RunPodTransport
 
     init(
         baseURL: URL = URL(string: "https://rest.runpod.io/v1")!,
+        graphQLURL: URL = URL(string: "https://api.runpod.io/graphql")!,
         transport: any RunPodTransport = URLSessionRunPodTransport()
     ) {
         self.baseURL = baseURL
+        self.graphQLURL = graphQLURL
         self.transport = transport
     }
 
@@ -398,6 +526,25 @@ struct RunPodAPIClient {
         let (data, response) = try await transport.data(for: request)
         try validate(response: response, data: data)
         return try JSONDecoder().decode([RunPodPodSummary].self, from: data)
+    }
+
+    func listGPUTypes(token: String) async throws -> [RunPodGPUType] {
+        let body = try JSONEncoder().encode(RunPodGraphQLRequest(query: Self.gpuTypesQuery))
+        let request = try makeGraphQLRequest(token: token, body: body)
+        let (data, response) = try await transport.data(for: request)
+        try validate(response: response, data: data)
+
+        let payload = try JSONDecoder().decode(RunPodGraphQLResponse<RunPodGPUTypesPayload>.self, from: data)
+        if let errors = payload.errors, !errors.isEmpty {
+            throw RunPodError.graphQLErrors(errors.map(\.message))
+        }
+        guard let data = payload.data else {
+            throw RunPodError.invalidResponse
+        }
+
+        return data.gpuTypes.sorted {
+            $0.displayNameValue.localizedStandardCompare($1.displayNameValue) == .orderedAscending
+        }
     }
 
     func createPod(token: String, configuration: RunPodLaunchConfiguration) async throws -> RunPodPodSummary {
@@ -438,6 +585,21 @@ struct RunPodAPIClient {
         return request
     }
 
+    private func makeGraphQLRequest(token: String, body: Data) throws -> URLRequest {
+        let trimmedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedToken.isEmpty else {
+            throw RunPodError.missingAPIKey
+        }
+
+        var request = URLRequest(url: graphQLURL)
+        request.httpMethod = "POST"
+        request.httpBody = body
+        request.setValue("Bearer \(trimmedToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        return request
+    }
+
     private func validate(response: HTTPURLResponse, data: Data) throws {
         guard (200..<300).contains(response.statusCode) else {
             let body = String(data: data, encoding: .utf8)?
@@ -445,12 +607,33 @@ struct RunPodAPIClient {
             throw RunPodError.httpStatus(response.statusCode, body)
         }
     }
+
+    private static let gpuTypesQuery = """
+    query PiMPAudioRunPodGPUTypes {
+      gpuTypes {
+        id
+        displayName
+        manufacturer
+        memoryInGb
+        secureCloud
+        communityCloud
+        securePrice
+        communityPrice
+        secureSpotPrice
+        communitySpotPrice
+        maxGpuCount
+        maxGpuCountSecureCloud
+        maxGpuCountCommunityCloud
+      }
+    }
+    """
 }
 
 enum RunPodError: LocalizedError, Equatable {
     case missingAPIKey
     case invalidConfiguration(String)
     case invalidResponse
+    case graphQLErrors([String])
     case httpStatus(Int, String?)
 
     var errorDescription: String? {
@@ -460,11 +643,68 @@ enum RunPodError: LocalizedError, Equatable {
         case .invalidConfiguration(let message):
             return message
         case .invalidResponse:
-            return "RunPod returned a non-HTTP response."
+            return "RunPod returned a response PiMP Audio Studio could not read."
+        case .graphQLErrors(let messages):
+            return "RunPod rejected the GPU type request: \(Self.joinedDetails(messages))"
         case .httpStatus(let status, let body):
-            let detail = body?.isEmpty == false ? ": \(body!)" : ""
-            return "RunPod request failed with HTTP \(status)\(detail)"
+            return Self.message(forHTTPStatus: status, body: body)
         }
+    }
+
+    static func userFacingMessage(for error: Error) -> String {
+        if let runPodError = error as? RunPodError {
+            return runPodError.localizedDescription
+        }
+
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .notConnectedToInternet,
+                 .cannotFindHost,
+                 .cannotConnectToHost,
+                 .networkConnectionLost,
+                 .dnsLookupFailed,
+                 .timedOut:
+                return "Could not reach RunPod. Check your connection and try again. (\(urlError.localizedDescription))"
+            default:
+                return "RunPod network request failed: \(urlError.localizedDescription)"
+            }
+        }
+
+        return error.localizedDescription
+    }
+
+    private static func message(forHTTPStatus status: Int, body: String?) -> String {
+        let detail = cleanDetail(body)
+        switch status {
+        case 401:
+            return "RunPod rejected the API key. Check that it was copied correctly or generate a new key in RunPod.\(detail)"
+        case 403:
+            return "RunPod accepted the request but this API key is not authorized for that action. Check the key permissions or account status.\(detail)"
+        case 404:
+            return "RunPod could not find that resource. Refresh pods and try again.\(detail)"
+        case 429:
+            return "RunPod rate-limited the request. Wait a minute and try again.\(detail)"
+        case 500...599:
+            return "RunPod is having trouble right now (HTTP \(status)). Try again shortly.\(detail)"
+        default:
+            return "RunPod request failed with HTTP \(status).\(detail)"
+        }
+    }
+
+    private static func cleanDetail(_ body: String?) -> String {
+        guard let body, !body.isEmpty else { return "" }
+        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+        let capped = trimmed.count > 240 ? "\(trimmed.prefix(240))..." : trimmed
+        return " Detail: \(capped)"
+    }
+
+    private static func joinedDetails(_ messages: [String]) -> String {
+        let clean = messages
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !clean.isEmpty else { return "unknown error" }
+        return clean.joined(separator: "; ")
     }
 }
 

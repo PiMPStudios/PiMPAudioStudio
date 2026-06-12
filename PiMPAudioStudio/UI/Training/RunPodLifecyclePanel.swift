@@ -3,6 +3,7 @@ import SwiftUI
 
 struct RunPodLifecyclePanel: View {
     @EnvironmentObject private var runPodService: RunPodService
+    private static let runPodReferralURL = URL(string: "https://runpod.io?ref=sox5p475")!
 
     let hasSelectedPackage: Bool
     let preparedArchiveURL: URL?
@@ -71,6 +72,12 @@ struct RunPodLifecyclePanel: View {
                     Label("Console", systemImage: "safari")
                 }
 
+                Button {
+                    NSWorkspace.shared.open(Self.runPodReferralURL)
+                } label: {
+                    Label("Create Account", systemImage: "person.crop.circle.badge.plus")
+                }
+
                 Spacer()
 
                 if runPodService.isRefreshing {
@@ -90,6 +97,12 @@ struct RunPodLifecyclePanel: View {
                     .font(.caption)
                     .foregroundStyle(.orange)
             }
+
+            if !runPodService.hasAPIKey {
+                Text("No RunPod account yet? Create one, generate an API key in RunPod, then paste it here. You can still export the remote job zip without connecting RunPod.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -100,14 +113,56 @@ struct RunPodLifecyclePanel: View {
 
             HStack {
                 TextField("GPU Type", text: $gpuType)
-                Menu("Common") {
-                    ForEach(commonRunPodGPUTypes, id: \.self) { gpuType in
-                        Button(gpuType) {
-                            self.gpuType = gpuType
+                Menu(runPodService.gpuTypes.isEmpty ? "Common" : "GPU Types") {
+                    if !runPodService.gpuTypes.isEmpty {
+                        Section("RunPod") {
+                            ForEach(runPodService.gpuTypes) { gpuType in
+                                Button(gpuType.menuTitle) {
+                                    self.gpuType = gpuType.selectionValue
+                                }
+                            }
+                        }
+
+                        Divider()
+                    }
+
+                    Section(runPodService.gpuTypes.isEmpty ? "Common" : "Fallback") {
+                        ForEach(commonRunPodGPUTypes, id: \.self) { gpuType in
+                            Button(gpuType) {
+                                self.gpuType = gpuType
+                            }
                         }
                     }
                 }
                 .menuStyle(.borderlessButton)
+
+                Button {
+                    Task { await runPodService.refreshGPUTypes() }
+                } label: {
+                    Label("Refresh GPU Types", systemImage: "arrow.clockwise")
+                }
+                .disabled(!runPodService.hasAPIKey || runPodService.isRefreshingGPUTypes)
+            }
+
+            if runPodService.isRefreshingGPUTypes {
+                HStack {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Loading GPU availability from RunPod\u{2026}")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if let selectedRunPodGPUType {
+                Text(selectedRunPodGPUType.detailLabel)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if !runPodService.gpuTypes.isEmpty,
+                      !gpuType.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text("Selected GPU type is not in the refreshed RunPod list. Manual values are still allowed.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Picker("Cloud", selection: runPodCloudTypeBinding) {
@@ -203,6 +258,10 @@ struct RunPodLifecyclePanel: View {
             "NVIDIA A100-SXM4-80GB",
             "NVIDIA H100 80GB HBM3",
         ]
+    }
+
+    private var selectedRunPodGPUType: RunPodGPUType? {
+        runPodService.gpuTypes.first { $0.matches(gpuType) }
     }
 
     private func runPodPodRow(_ pod: RunPodPodSummary) -> some View {

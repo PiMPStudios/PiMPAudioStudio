@@ -2,22 +2,39 @@ import Foundation
 import Testing
 @testable import PiMPAudioStudio
 
+private enum RunPodMockOutcome {
+    case response(statusCode: Int, data: Data)
+    case failure(Error)
+}
+
 private final class RunPodMockTransport: RunPodTransport, @unchecked Sendable {
     private let lock = NSLock()
-    private var responses: [(statusCode: Int, data: Data)]
+    private var outcomes: [RunPodMockOutcome]
     private(set) var requests: [URLRequest] = []
 
     init(responses: [(statusCode: Int, data: Data)]) {
-        self.responses = responses
+        self.outcomes = responses.map { .response(statusCode: $0.statusCode, data: $0.data) }
+    }
+
+    init(outcomes: [RunPodMockOutcome]) {
+        self.outcomes = outcomes
     }
 
     func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         lock.lock()
         requests.append(request)
-        let response = responses.isEmpty
-            ? (statusCode: 200, data: Data("{}".utf8))
-            : responses.removeFirst()
+        let outcome = outcomes.isEmpty
+            ? .response(statusCode: 200, data: Data("{}".utf8))
+            : outcomes.removeFirst()
         lock.unlock()
+
+        let response: (statusCode: Int, data: Data)
+        switch outcome {
+        case .response(let statusCode, let data):
+            response = (statusCode, data)
+        case .failure(let error):
+            throw error
+        }
 
         let httpResponse = HTTPURLResponse(
             url: request.url!,
@@ -70,6 +87,68 @@ private final class RunPodMockTransport: RunPodTransport, @unchecked Sendable {
     #expect(transport.requests.first?.httpMethod == "GET")
     #expect(transport.requests.first?.url?.absoluteString == "https://rest.runpod.io/v1/pods")
     #expect(transport.requests.first?.value(forHTTPHeaderField: "Authorization") == "Bearer rp_test_token")
+}
+
+@Test func runPodClientListGPUTypesParsesPricingAndAvailability() async throws {
+    let transport = RunPodMockTransport(responses: [(
+        statusCode: 200,
+        data: Data("""
+        {
+          "data": {
+            "gpuTypes": [
+              {
+                "id": "NVIDIA GeForce RTX 4090",
+                "displayName": "NVIDIA GeForce RTX 4090",
+                "manufacturer": "NVIDIA",
+                "memoryInGb": 24,
+                "secureCloud": true,
+                "communityCloud": true,
+                "securePrice": 0.74,
+                "communityPrice": "0.44",
+                "secureSpotPrice": 0.50,
+                "communitySpotPrice": 0.29,
+                "maxGpuCount": 8,
+                "maxGpuCountSecureCloud": 4,
+                "maxGpuCountCommunityCloud": 8
+              },
+              {
+                "id": "NVIDIA H100 PCIe",
+                "displayName": "NVIDIA H100 PCIe",
+                "memoryInGb": 80,
+                "secureCloud": true,
+                "communityCloud": false,
+                "securePrice": 4.25,
+                "maxGpuCount": 2
+              }
+            ]
+          }
+        }
+        """.utf8)
+    )])
+    let client = RunPodAPIClient(
+        baseURL: URL(string: "https://rest.runpod.io/v1")!,
+        graphQLURL: URL(string: "https://api.runpod.io/graphql")!,
+        transport: transport
+    )
+
+    let gpuTypes = try await client.listGPUTypes(token: "rp_test_token")
+
+    #expect(gpuTypes.count == 2)
+    let rtx4090 = try #require(gpuTypes.first { $0.id == "NVIDIA GeForce RTX 4090" })
+    #expect(rtx4090.selectionValue == "NVIDIA GeForce RTX 4090")
+    #expect(rtx4090.menuTitle.contains("24 GB"))
+    #expect(rtx4090.menuTitle.contains("from $0.29/hr"))
+    #expect(rtx4090.detailLabel.contains("Secure + Community"))
+    #expect(rtx4090.detailLabel.contains("up to 8 GPUs"))
+
+    let request = try #require(transport.requests.first)
+    #expect(request.httpMethod == "POST")
+    #expect(request.url?.absoluteString == "https://api.runpod.io/graphql")
+    #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer rp_test_token")
+    let bodyData = try #require(request.httpBody)
+    let body = String(data: bodyData, encoding: .utf8) ?? ""
+    #expect(body.contains("gpuTypes"))
+    #expect(!body.contains("rp_test_token"))
 }
 
 @Test func runPodClientCreatePodBuildsBearerRequestWithoutLeakingTokenIntoBody() async throws {
@@ -134,4 +213,52 @@ private final class RunPodMockTransport: RunPodTransport, @unchecked Sendable {
     #expect(request.httpMethod == "POST")
     #expect(request.url?.absoluteString == "https://rest.runpod.io/v1/pods/abc123/stop")
     #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer rp_test_token")
+}
+
+@Test func runPodClientInvalidAPIKeyErrorIsSpecific() async throws {
+    let transport = RunPodMockTransport(responses: [(
+        statusCode: 401,
+        data: Data(#"{"error":"JWT expired"}"#.utf8)
+    )])
+    let client = RunPodAPIClient(
+        baseURL: URL(string: "https://rest.runpod.io/v1")!,
+        transport: transport
+    )
+
+    do {
+        _ = try await client.listPods(token: "expired-token")
+        Issue.record("Expected invalid API key error")
+    } catch {
+        #expect(error.localizedDescription.contains("RunPod rejected the API key"))
+        #expect(error.localizedDescription.contains("generate a new key"))
+    }
+}
+
+@Test func runPodGraphQLErrorsAreReadable() async throws {
+    let transport = RunPodMockTransport(responses: [(
+        statusCode: 200,
+        data: Data("""
+        {
+          "errors": [
+            {"message": "Unauthorized"}
+          ]
+        }
+        """.utf8)
+    )])
+    let client = RunPodAPIClient(transport: transport)
+
+    do {
+        _ = try await client.listGPUTypes(token: "bad-token")
+        Issue.record("Expected GraphQL error")
+    } catch {
+        #expect(error.localizedDescription.contains("RunPod rejected the GPU type request"))
+        #expect(error.localizedDescription.contains("Unauthorized"))
+    }
+}
+
+@Test func runPodNetworkErrorsAreReadable() {
+    let message = RunPodError.userFacingMessage(for: URLError(.timedOut))
+
+    #expect(message.contains("Could not reach RunPod"))
+    #expect(message.contains("try again"))
 }

@@ -8,7 +8,7 @@ All notable changes to PiMP Audio Studio are documented here.
 
 ### Added
 
-- **Remote GPU now has a RunPod control-plane starter** — the Remote GPU workspace can save a RunPod API token in Keychain, list current pods, launch a pod from a template or image only after an explicit billable-resource confirmation, stop pods, and copy SSH/upload handoff commands for the most recently exported remote job zip.
+- **Remote GPU now has a RunPod control-plane starter** — the Remote GPU workspace can save a RunPod API token in Keychain, link new users to RunPod account setup, list current pods, refresh live GPU type details with VRAM, availability, and pricing, launch a pod from a template or image only after an explicit billable-resource confirmation, stop pods, and copy SSH/upload handoff commands for the most recently exported remote job zip.
 - **LyCORIS/PEFT LoKR checkpoints can import directly** — local and Hugging Face adapter import now accepts compatible `lokr_weights.safetensors` / LoKR `adapter_model.safetensors` files, converts `lokr_w1`/`lokr_w2` plus simple factored pairs and DoRA magnitudes into PiMP-native LoKR keys, preserves alpha/dim scaling from metadata when present, and clearly rejects unsupported Tucker LoKR variants.
 - **Training completion can render adapter audition snapshots** — completed LoRA/LoKR adapters now offer a fixed-seed snapshot run that renders Base plus selected adapter gains, saves each take to History with listening-note tags, and opens Trace Compare for quick A/B listening.
 
@@ -24,6 +24,7 @@ All notable changes to PiMP Audio Studio are documented here.
 
 ### Fixed
 
+- **RunPod API failures are easier to diagnose** — invalid or expired API keys now show credential-specific guidance, network failures are called out separately, and RunPod server/rate-limit responses no longer appear as generic HTTP blobs.
 - **MCP trace payloads now keep adapter strength numeric** — `get_trace` now serializes trace adapters with the same explicit payload builder used elsewhere, so adapter `weight` reports as `1.0`, `1.6`, etc. instead of bridging to a boolean in structured JSON.
 - **Generation restart now waits for the previous run to unwind** — starting a new generation cancels the old task, waits for it to finish, and ignores stale cleanup from superseded runs so cancelled diffusion cannot clobber the new trace state, reload the LLM mid-run, or clear adapters under an active generation.
 - **WAV export now correctly interleaves planar stereo buffers** — `[channels, frames]` audio is transposed to `[frames, channels]` before writing PCM, with a regression test using distinct left/right samples.
