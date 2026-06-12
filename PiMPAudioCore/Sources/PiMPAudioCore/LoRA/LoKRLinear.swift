@@ -10,12 +10,11 @@ import MLXRandom
 /// differentiable while matching LoKR's core Kronecker-factor idea.
 ///
 /// FORMAT NOTE: this is a PiMP-native, simplified LoKR. The saved tensors
-/// are `.lokrW1`, `.lokrW2`, and optionally `.lokrMagnitude` (DoRA). It is
-/// NOT interchangeable with PEFT/Kohya/LyCORIS LoKR checkpoints, which use
-/// factored key layouts such as `lokr_w1_a`/`lokr_w1_b`/`lokr_w2_a`/
-/// `lokr_w2_b` (upstream ACE-Step trains LoKR via LyCORIS). The PEFT key
-/// remapper also only detects LoRA `lora_A`/`lora_B` keys — community LoKR
-/// adapters cannot currently be imported without a converter.
+/// are `.lokrW1`, `.lokrW2`, and optionally `.lokrMagnitude` (DoRA). Local
+/// import converts compatible PEFT/Kohya/LyCORIS LoKR checkpoints into this
+/// native layout, including direct `lokr_w1`/`lokr_w2` tensors and simple
+/// factored `lokr_w*_a`/`lokr_w*_b` pairs. Tucker-style variants still need
+/// a richer runtime representation and are rejected at import time.
 public class LoKRLinear: Linear {
     let baseWeight: MLXArray
     let baseBias: MLXArray?

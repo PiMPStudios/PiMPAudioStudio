@@ -1303,6 +1303,76 @@ private extension JSONDecoder {
     )
 }
 
+@Test func lycorisLoKRRemapperConvertsDirectAndFactoredWeights() throws {
+    let rawArrays: [String: MLXArray] = [
+        "lycoris_layers_0_self_attn_q_proj.lokr_w1": MLXArray([Float](repeating: 1, count: 6), [2, 3]),
+        "lycoris_layers_0_self_attn_q_proj.lokr_w2": MLXArray([Float](repeating: 2, count: 12), [3, 4]),
+        "lycoris_layers_0_self_attn_q_proj.dora_scale": MLXArray([Float](repeating: 1, count: 8), [8, 1]),
+        "lycoris_layers_0_self_attn_q_proj.alpha": MLXArray([Float(8)], [1]),
+        "lycoris_layers_1_cross_attn_k_proj.lokr_w1_a": MLXArray([Float](repeating: 1, count: 6), [2, 3]),
+        "lycoris_layers_1_cross_attn_k_proj.lokr_w1_b": MLXArray([Float](repeating: 1, count: 12), [3, 4]),
+        "lycoris_layers_1_cross_attn_k_proj.lokr_w2_a": MLXArray([Float](repeating: 1, count: 8), [4, 2]),
+        "lycoris_layers_1_cross_attn_k_proj.lokr_w2_b": MLXArray([Float](repeating: 1, count: 10), [2, 5]),
+        "lycoris_condition_embedder.lokr_w1": MLXArray([Float](repeating: 1, count: 4), [2, 2]),
+        "lycoris_condition_embedder.lokr_w2": MLXArray([Float](repeating: 1, count: 4), [2, 2]),
+    ]
+
+    let result = try PEFTKeyRemapper.remapLyCORISLoKR(rawArrays)
+
+    let directW1 = try #require(result.weights["layers.0.selfAttn.qProj.lokrW1"])
+    let directW2 = try #require(result.weights["layers.0.selfAttn.qProj.lokrW2"])
+    let magnitude = try #require(result.weights["layers.0.selfAttn.qProj.lokrMagnitude"])
+    let factoredW1 = try #require(result.weights["layers.1.crossAttn.kProj.lokrW1"])
+    let factoredW2 = try #require(result.weights["layers.1.crossAttn.kProj.lokrW2"])
+
+    #expect(directW1.shape == [2, 3])
+    #expect(directW2.shape == [3, 4])
+    #expect(magnitude.shape == [8])
+    #expect(factoredW1.shape == [2, 4])
+    #expect(factoredW2.shape == [4, 5])
+    #expect(result.sourceAlpha == 8)
+    #expect(result.exactInjectionPatterns == ["selfAttn.qProj", "crossAttn.kProj"])
+    #expect(result.trainedPaths == ["layers.0.selfAttn.qProj", "layers.1.crossAttn.kProj"])
+    #expect(result.trainedLayerIndices == [0, 1])
+    #expect(result.weightDecompose == true)
+    #expect(result.weights["lycoris_condition_embedder.lokrW1"] == nil)
+}
+
+@Test @MainActor func localLyCORISLoKRFolderImportConvertsSideStepWeights() async throws {
+    let sourceDir = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(at: sourceDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: sourceDir) }
+
+    let weightsURL = sourceDir.appendingPathComponent("lokr_weights.safetensors")
+    let rawArrays: [String: MLXArray] = [
+        "lycoris_layers_0_self_attn_q_proj.lokr_w1": MLXArray([Float](repeating: 1, count: 16), [4, 4]),
+        "lycoris_layers_0_self_attn_q_proj.lokr_w2": MLXArray([Float](repeating: 1, count: 16), [4, 4]),
+        "lycoris_layers_0_self_attn_q_proj.dora_scale": MLXArray([Float](repeating: 1, count: 8), [8, 1]),
+        "lycoris_layers_0_self_attn_q_proj.alpha": MLXArray([Float(8)], [1]),
+    ]
+    try MLX.save(arrays: rawArrays, url: weightsURL)
+
+    let service = CommunityService()
+    let imported = try await service.importLocalAdapter(directoryURL: sourceDir)
+    defer { try? FileManager.default.removeItem(at: AdapterRegistry.adapterDirectory(id: imported.id)) }
+
+    #expect(imported.kind == .lokr)
+    #expect(imported.source == .imported)
+    #expect(imported.baseModelID == "ace-step-dit-xl-sft")
+    #expect(imported.config.rank == 4)
+    #expect(imported.config.alpha == 8)
+    #expect(imported.config.exactInjectionPatterns == ["selfAttn.qProj"])
+    #expect(imported.lokrConfig?.weightDecompose == true)
+    #expect(imported.trainedPaths == ["layers.0.selfAttn.qProj"])
+    #expect(imported.trainedLayerIndices == [0])
+
+    let installedKeys = try await AdapterRegistry.loadWeights(adapterID: imported.id).map(\.0)
+    #expect(installedKeys.contains("layers.0.selfAttn.qProj.lokrW1"))
+    #expect(installedKeys.contains("layers.0.selfAttn.qProj.lokrW2"))
+    #expect(installedKeys.contains("layers.0.selfAttn.qProj.lokrMagnitude"))
+}
+
 @Test @MainActor func localNativeAdapterFolderImportCopiesPiMPAdapter() async throws {
     let sourceDir = FileManager.default.temporaryDirectory
         .appendingPathComponent(UUID().uuidString, isDirectory: true)

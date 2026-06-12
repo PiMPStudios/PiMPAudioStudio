@@ -186,13 +186,14 @@ final class CommunityService: ObservableObject {
     ///
     /// Probes three formats in order, stopping at the first hit:
     ///
-    /// 1. **PEFT with config** (`adapter_config.json` + `adapter_model.safetensors`) —
-    ///    rank/alpha/target_modules parsed from the config; keys remapped at import time.
+    /// 1. **PEFT with config** (`adapter_config.json` + `adapter_model.safetensors`
+    ///    or `lokr_weights.safetensors`) — rank/alpha/target_modules parsed from
+    ///    the config; keys remapped at import time.
     /// 2. **Native PiMP Audio Studio** (`adapter.json` + `adapter.safetensors`) —
     ///    metadata loaded verbatim, weights stored as-is.
-    /// 3. **Weights-only PEFT** (`adapter_model.safetensors` only, no config) —
-    ///    rank inferred from tensor shape, target modules inferred from key names.
-    ///    Handles community repos that ship only the weights file.
+    /// 3. **Weights-only PEFT/LyCORIS** (`adapter_model.safetensors` or
+    ///    `lokr_weights.safetensors` only, no config) — rank/dim inferred from
+    ///    tensor shape or safetensors metadata, target modules inferred from key names.
     ///
     /// - Parameter repoURL: The HuggingFace repo URL (e.g. `https://huggingface.co/user/repo`)
     /// - Returns: The installed `LoRAAdapter`.
@@ -250,17 +251,33 @@ final class CommunityService: ObservableObject {
             return adapter
         }
 
-        // ── 3. Weights-only PEFT (no adapter_config.json) ────────────────────
+        // ── 3. Weights-only LyCORIS LoKR (no adapter_config.json) ────────────
+        let lokrWeightsURL = baseURL.appendingPathComponent("lokr_weights.safetensors")
+        let (lokrWeightsData, lokrWeightsResp) = try await URLSession.shared.data(from: lokrWeightsURL)
+        if let http = lokrWeightsResp as? HTTPURLResponse, http.statusCode == 200 {
+            return try await importWeightsOnlyPEFT(
+                repoURL: repoURL,
+                weightsData: lokrWeightsData,
+                fileName: "lokr_weights.safetensors"
+            )
+        }
+
+        // ── 4. Weights-only PEFT (no adapter_config.json) ────────────────────
         // Community repos often ship only adapter_model.safetensors. Infer rank
         // and target modules from the tensor shapes and key names.
         let peftWeightsURL = baseURL.appendingPathComponent("adapter_model.safetensors")
         let (peftWeightsData, peftWeightsResp) = try await URLSession.shared.data(from: peftWeightsURL)
         if let http = peftWeightsResp as? HTTPURLResponse, http.statusCode == 200 {
-            return try await importWeightsOnlyPEFT(repoURL: repoURL, weightsData: peftWeightsData)
+            return try await importWeightsOnlyPEFT(
+                repoURL: repoURL,
+                weightsData: peftWeightsData,
+                fileName: "adapter_model.safetensors"
+            )
         }
 
         throw CommunityError.missingFile(
-            "adapter_config.json, adapter.json, or adapter_model.safetensors", repoURL
+            "adapter_config.json, adapter.json, lokr_weights.safetensors, or adapter_model.safetensors",
+            repoURL
         )
     }
 
@@ -274,22 +291,26 @@ final class CommunityService: ObservableObject {
     ) async throws -> LoRAAdapter {
         let peftConfig = try JSONDecoder().decode(PEFTAdapterConfig.self, from: configData)
 
-        guard peftConfig.peftType.lowercased() == "lora" else {
-            throw CommunityError.unsupportedPEFTType(peftConfig.peftType)
-        }
-
         let repoSlug = repoURL.lastPathComponent
 
         if AdapterRegistry.listAdapters().contains(where: { $0.remoteRepoURL == repoURL }) {
             throw CommunityError.alreadyInstalled(repoSlug)
         }
 
-        // Download PEFT weights (adapter_model.safetensors)
-        let weightsURL = baseURL.appendingPathComponent("adapter_model.safetensors")
-        let (weightsData, weightsResponse) = try await URLSession.shared.data(from: weightsURL)
-        guard let http = weightsResponse as? HTTPURLResponse, http.statusCode == 200 else {
-            throw CommunityError.missingFile("adapter_model.safetensors", repoURL)
+        let type = peftConfig.peftType.lowercased()
+        let candidateWeights = type == "lokr"
+            ? ["adapter_model.safetensors", "lokr_weights.safetensors"]
+            : ["adapter_model.safetensors"]
+
+        guard type == "lora" || type == "lokr" else {
+            throw CommunityError.unsupportedPEFTType(peftConfig.peftType)
         }
+
+        let weightsDownload = try await downloadFirstAvailable(
+            fileNames: candidateWeights,
+            baseURL: baseURL,
+            errorURL: repoURL
+        )
 
         // Write to a temp file, load with MLX, remap keys, re-save in PiMPAudioStudio format.
         // This ensures the on-disk safetensors always uses native key names so
@@ -298,14 +319,27 @@ final class CommunityService: ObservableObject {
             .appendingPathComponent(UUID().uuidString)
             .appendingPathExtension("safetensors")
         defer { try? FileManager.default.removeItem(at: tmp) }
-        try weightsData.write(to: tmp)
+        try weightsDownload.data.write(to: tmp)
         try await verifyAdapterWeights(
             at: tmp,
             expectedSHA256: adapterSHA256(from: configData),
-            fileName: "adapter_model.safetensors"
+            fileName: weightsDownload.fileName
         )
 
         let rawArrays = try MLX.loadArrays(url: tmp)
+        if type == "lokr" {
+            let metadata = (try? safetensorsMetadata(from: tmp)) ?? [:]
+            return try saveLyCORISLoKRAdapter(
+                rawArrays: rawArrays,
+                safetensorsMetadata: metadata,
+                peftConfig: peftConfig,
+                nameSeed: repoSlug,
+                source: .huggingface,
+                remoteRepoURL: repoURL,
+                errorURL: repoURL
+            )
+        }
+
         return try savePEFTAdapter(
             rawArrays: rawArrays,
             peftConfig: peftConfig,
@@ -316,13 +350,29 @@ final class CommunityService: ObservableObject {
         )
     }
 
+    private func downloadFirstAvailable(
+        fileNames: [String],
+        baseURL: URL,
+        errorURL: URL
+    ) async throws -> (fileName: String, data: Data) {
+        for fileName in fileNames {
+            let url = baseURL.appendingPathComponent(fileName)
+            let (data, response) = try await URLSession.shared.data(from: url)
+            if let http = response as? HTTPURLResponse, http.statusCode == 200 {
+                return (fileName, data)
+            }
+        }
+        throw CommunityError.missingFile(fileNames.joined(separator: " or "), errorURL)
+    }
+
     /// Import a weights-only PEFT repo (no `adapter_config.json`).
     ///
     /// Rank is inferred from the `lora_A` tensor shape; target modules from key names.
     /// This handles community repos that publish only `adapter_model.safetensors`.
     private func importWeightsOnlyPEFT(
         repoURL: URL,
-        weightsData: Data
+        weightsData: Data,
+        fileName: String
     ) async throws -> LoRAAdapter {
         let repoSlug = repoURL.lastPathComponent
 
@@ -338,6 +388,19 @@ final class CommunityService: ObservableObject {
         try weightsData.write(to: tmp)
 
         let rawArrays = try MLX.loadArrays(url: tmp)
+        let metadata = (try? safetensorsMetadata(from: tmp)) ?? [:]
+
+        if PEFTKeyRemapper.isLyCORISLoKR(Array(rawArrays.keys)) {
+            return try saveLyCORISLoKRAdapter(
+                rawArrays: rawArrays,
+                safetensorsMetadata: metadata,
+                peftConfig: nil,
+                nameSeed: repoSlug,
+                source: .huggingface,
+                remoteRepoURL: repoURL,
+                errorURL: repoURL
+            )
+        }
 
         guard PEFTKeyRemapper.isPEFT(Array(rawArrays.keys)) else {
             throw CommunityError.noMappableWeights(repoURL)
@@ -358,9 +421,11 @@ final class CommunityService: ObservableObject {
         )
     }
 
-    /// Import a local adapter directory, accepting either native PiMP Audio Studio
-    /// folders (`adapter.json` + `adapter.safetensors`) or PEFT LoRA folders
-    /// (`adapter_config.json` + `adapter_model.safetensors`).
+    /// Import a local adapter directory, accepting native PiMP Audio Studio
+    /// folders (`adapter.json` + `adapter.safetensors`), PEFT LoRA/LoKR folders
+    /// (`adapter_config.json` + `adapter_model.safetensors` or
+    /// `lokr_weights.safetensors`), or raw LyCORIS LoKR folders containing only
+    /// `lokr_weights.safetensors`.
     func importLocalAdapter(directoryURL: URL) async throws -> LoRAAdapter {
         let didAccess = directoryURL.startAccessingSecurityScopedResource()
         defer {
@@ -371,8 +436,11 @@ final class CommunityService: ObservableObject {
 
         let peftConfigURL = directoryURL.appending(path: "adapter_config.json")
         let peftWeightsURL = directoryURL.appending(path: "adapter_model.safetensors")
-        if FileManager.default.fileExists(atPath: peftConfigURL.path(percentEncoded: false)),
-           FileManager.default.fileExists(atPath: peftWeightsURL.path(percentEncoded: false)) {
+        let lokrWeightsURL = directoryURL.appending(path: "lokr_weights.safetensors")
+        let hasPEFTConfig = FileManager.default.fileExists(atPath: peftConfigURL.path(percentEncoded: false))
+        let hasPEFTWeights = FileManager.default.fileExists(atPath: peftWeightsURL.path(percentEncoded: false))
+        let hasLoKRWeights = FileManager.default.fileExists(atPath: lokrWeightsURL.path(percentEncoded: false))
+        if hasPEFTConfig && (hasPEFTWeights || hasLoKRWeights) {
             return try importLocalPEFTAdapterUnlocked(directoryURL: directoryURL)
         }
 
@@ -387,15 +455,21 @@ final class CommunityService: ObservableObject {
             )
         }
 
+        if hasLoKRWeights {
+            return try importLocalLyCORISLoKRAdapterUnlocked(
+                directoryURL: directoryURL,
+                weightsURL: lokrWeightsURL
+            )
+        }
+
         throw CommunityError.missingFile(
-            "adapter_config.json + adapter_model.safetensors, or adapter.json + adapter.safetensors",
+            "adapter_config.json + adapter_model.safetensors, adapter_config.json + lokr_weights.safetensors, adapter.json + adapter.safetensors, or lokr_weights.safetensors",
             directoryURL
         )
     }
 
-    /// Import a local PEFT LoRA directory (`adapter_config.json` +
-    /// `adapter_model.safetensors`) and save it in PiMPAudioStudio's native adapter
-    /// registry format.
+    /// Import a local PEFT LoRA/LoKR directory and save it in PiMPAudioStudio's
+    /// native adapter registry format.
     func importLocalPEFTAdapter(directoryURL: URL) async throws -> LoRAAdapter {
         let didAccess = directoryURL.startAccessingSecurityScopedResource()
         defer {
@@ -411,25 +485,69 @@ final class CommunityService: ObservableObject {
 
         let configURL = directoryURL.appending(path: "adapter_config.json")
         let weightsURL = directoryURL.appending(path: "adapter_model.safetensors")
+        let lokrWeightsURL = directoryURL.appending(path: "lokr_weights.safetensors")
 
         guard FileManager.default.fileExists(atPath: configURL.path(percentEncoded: false)) else {
             throw CommunityError.missingFile("adapter_config.json", directoryURL)
-        }
-        guard FileManager.default.fileExists(atPath: weightsURL.path(percentEncoded: false)) else {
-            throw CommunityError.missingFile("adapter_model.safetensors", directoryURL)
         }
 
         let configData = try Data(contentsOf: configURL)
         let peftConfig = try JSONDecoder().decode(PEFTAdapterConfig.self, from: configData)
 
-        guard peftConfig.peftType.lowercased() == "lora" else {
+        let type = peftConfig.peftType.lowercased()
+        guard type == "lora" || type == "lokr" else {
             throw CommunityError.unsupportedPEFTType(peftConfig.peftType)
         }
 
-        let rawArrays = try MLX.loadArrays(url: weightsURL)
+        let selectedWeightsURL: URL
+        if type == "lokr",
+           FileManager.default.fileExists(atPath: lokrWeightsURL.path(percentEncoded: false)) {
+            selectedWeightsURL = lokrWeightsURL
+        } else {
+            guard FileManager.default.fileExists(atPath: weightsURL.path(percentEncoded: false)) else {
+                let expected = type == "lokr"
+                    ? "adapter_model.safetensors or lokr_weights.safetensors"
+                    : "adapter_model.safetensors"
+                throw CommunityError.missingFile(expected, directoryURL)
+            }
+            selectedWeightsURL = weightsURL
+        }
+
+        let rawArrays = try MLX.loadArrays(url: selectedWeightsURL)
+
+        if type == "lokr" {
+            let metadata = (try? safetensorsMetadata(from: selectedWeightsURL)) ?? [:]
+            return try saveLyCORISLoKRAdapter(
+                rawArrays: rawArrays,
+                safetensorsMetadata: metadata,
+                peftConfig: peftConfig,
+                nameSeed: localPEFTNameSeed(for: directoryURL),
+                source: .imported,
+                remoteRepoURL: nil,
+                errorURL: directoryURL
+            )
+        }
+
         return try savePEFTAdapter(
             rawArrays: rawArrays,
             peftConfig: peftConfig,
+            nameSeed: localPEFTNameSeed(for: directoryURL),
+            source: .imported,
+            remoteRepoURL: nil,
+            errorURL: directoryURL
+        )
+    }
+
+    private func importLocalLyCORISLoKRAdapterUnlocked(
+        directoryURL: URL,
+        weightsURL: URL
+    ) throws -> LoRAAdapter {
+        let rawArrays = try MLX.loadArrays(url: weightsURL)
+        let metadata = (try? safetensorsMetadata(from: weightsURL)) ?? [:]
+        return try saveLyCORISLoKRAdapter(
+            rawArrays: rawArrays,
+            safetensorsMetadata: metadata,
+            peftConfig: nil,
             nameSeed: localPEFTNameSeed(for: directoryURL),
             source: .imported,
             remoteRepoURL: nil,
@@ -540,6 +658,98 @@ final class CommunityService: ObservableObject {
         return adapter
     }
 
+    private func saveLyCORISLoKRAdapter(
+        rawArrays: [String: MLXArray],
+        safetensorsMetadata: [String: String],
+        peftConfig: PEFTAdapterConfig?,
+        nameSeed: String,
+        source: AdapterSource,
+        remoteRepoURL: URL?,
+        errorURL: URL
+    ) throws -> LoRAAdapter {
+        let metadataConfig = LyCORISLoKRMetadataConfig(metadata: safetensorsMetadata)
+        if metadataConfig.useTucker == true {
+            throw CommunityError.unsupportedLoKRFormat(
+                "This LoKR checkpoint uses Tucker decomposition (`use_tucker=true`), which PiMP Audio Studio cannot import yet.",
+                errorURL
+            )
+        }
+
+        let remapped: PEFTKeyRemapper.LoKRRemapResult
+        do {
+            remapped = try PEFTKeyRemapper.remapLyCORISLoKR(rawArrays)
+        } catch let error as PEFTKeyRemapper.LoKRRemapError {
+            switch error {
+            case .noConvertibleWeights:
+                throw CommunityError.noMappableWeights(errorURL)
+            case .unsupportedVariant(let detail):
+                throw CommunityError.unsupportedLoKRFormat(detail, errorURL)
+            }
+        }
+
+        let linearDim = max(
+            1,
+            peftConfig?.loKRLinearDim
+                ?? metadataConfig.linearDim
+                ?? remapped.inferredLinearDim
+        )
+        let alpha = peftConfig?.loKRAlpha
+            ?? metadataConfig.linearAlpha
+            ?? remapped.sourceAlpha
+            ?? Float(linearDim)
+        let dropout = peftConfig?.loKRDropout ?? 0.0
+        let weightDecompose = metadataConfig.weightDecompose ?? remapped.weightDecompose
+        let trainingLayerCount = remapped.trainedLayerIndices.isEmpty
+            ? nil
+            : remapped.trainedLayerIndices.count
+
+        let config = LoRAConfig(
+            rank: linearDim,
+            alpha: alpha,
+            dropout: dropout,
+            targetLayers: remapped.targetLayers,
+            exactInjectionPatterns: remapped.exactInjectionPatterns,
+            trainingLayerCount: trainingLayerCount
+        )
+        let lokrConfig = LoKRConfig(
+            linearDim: linearDim,
+            alpha: alpha,
+            dropout: dropout,
+            targetLayers: remapped.targetLayers,
+            exactInjectionPatterns: remapped.exactInjectionPatterns,
+            trainingLayerCount: trainingLayerCount,
+            weightDecompose: weightDecompose
+        )
+
+        let adapterID = uniqueAdapterID(from: nameSeed)
+        let adapterName = nameSeed
+        let baseModelID = peftConfig?.baseModelNameOrPath != nil
+            ? PEFTKeyRemapper.resolveBaseModelID(from: peftConfig?.baseModelNameOrPath)
+            : "ace-step-dit-xl-sft"
+
+        let adapter = LoRAAdapter(
+            id: adapterID,
+            name: adapterName,
+            config: config,
+            kind: .lokr,
+            lokrConfig: lokrConfig,
+            baseModelID: baseModelID,
+            baseModelCategory: .aceStepDiT,
+            createdAt: Date(),
+            sampleCount: 0,
+            finalLoss: nil,
+            source: source,
+            remoteRepoURL: remoteRepoURL,
+            trainedPaths: remapped.trainedPaths,
+            trainedLayerIndices: remapped.trainedLayerIndices
+        )
+
+        let remappedWeights = remapped.weights.map { ($0.key, $0.value) }
+        try AdapterRegistry.save(adapter: adapter, weights: remappedWeights)
+
+        return adapter
+    }
+
     private func uniqueAdapterID(from seed: String) -> String {
         let baseID = seed
             .lowercased()
@@ -584,6 +794,41 @@ final class CommunityService: ObservableObject {
             }
         }
         return nil
+    }
+
+    private func safetensorsMetadata(from url: URL) throws -> [String: String] {
+        let data = try Data(contentsOf: url, options: [.mappedIfSafe])
+        guard data.count >= 8 else { return [:] }
+
+        var headerLengthLE: UInt64 = 0
+        withUnsafeMutableBytes(of: &headerLengthLE) { buffer in
+            data.copyBytes(to: buffer, from: 0..<8)
+        }
+
+        let headerLength = Int(UInt64(littleEndian: headerLengthLE))
+        guard headerLength > 0,
+              headerLength <= data.count - 8 else {
+            return [:]
+        }
+
+        let headerData = data.subdata(in: 8..<(8 + headerLength))
+        guard let object = try JSONSerialization.jsonObject(with: headerData) as? [String: Any],
+              let metadata = object["__metadata__"] as? [String: Any] else {
+            return [:]
+        }
+
+        var strings: [String: String] = [:]
+        for (key, value) in metadata {
+            switch value {
+            case let string as String:
+                strings[key] = string
+            case let number as NSNumber:
+                strings[key] = number.stringValue
+            default:
+                continue
+            }
+        }
+        return strings
     }
 
     // MARK: - Private
@@ -674,20 +919,23 @@ enum CommunityError: Error, LocalizedError {
     case alreadyInstalled(String)
     case incompatibleVersion(String)
     case unsupportedPEFTType(String)
+    case unsupportedLoKRFormat(String, URL)
     case noMappableWeights(URL)
 
     var errorDescription: String? {
         switch self {
         case .missingFile(let file, let url):
-            return "Couldn't find \(file) in this repo. Check that the URL points to a valid PiMP Audio Studio or PEFT LoRA adapter. (\(url.absoluteString))"
+            return "Couldn't find \(file) in this repo. Check that the URL points to a valid PiMP Audio Studio, PEFT LoRA, or compatible LyCORIS LoKR adapter. (\(url.absoluteString))"
         case .alreadyInstalled(let name):
             return "\"\(name)\" is already installed. Delete it first to re-download."
         case .incompatibleVersion(let required):
             return "This adapter requires PiMP Audio Studio \(required) or later."
         case .unsupportedPEFTType(let type):
-            return "Unsupported PEFT adapter type '\(type)'. Only LoRA adapters are supported."
+            return "Unsupported PEFT adapter type '\(type)'. Only LoRA and compatible full-matrix LoKR adapters are supported."
+        case .unsupportedLoKRFormat(let detail, let url):
+            return "\(detail) (\(url.absoluteString))"
         case .noMappableWeights(let url):
-            return "No compatible LoRA weights found in this repo. The adapter key format may not be supported. (\(url.absoluteString))"
+            return "No compatible LoRA or LoKR weights found in this repo. The adapter key format may not be supported. (\(url.absoluteString))"
         }
     }
 }
@@ -700,14 +948,34 @@ private struct PEFTAdapterConfig: Decodable {
     let r: Int
     let loraAlpha: Float
     let loraDropout: Float
+    let alpha: Float?
+    let linearDim: Int?
+    let linearAlpha: Float?
+    let moduleDropout: Float?
     let targetModules: [String]
     let baseModelNameOrPath: String?
+
+    var loKRLinearDim: Int {
+        max(1, linearDim ?? r)
+    }
+
+    var loKRAlpha: Float {
+        alpha ?? linearAlpha ?? Float(loKRLinearDim)
+    }
+
+    var loKRDropout: Float {
+        moduleDropout ?? loraDropout
+    }
 
     enum CodingKeys: String, CodingKey {
         case peftType           = "peft_type"
         case r
         case loraAlpha          = "lora_alpha"
         case loraDropout        = "lora_dropout"
+        case alpha
+        case linearDim          = "linear_dim"
+        case linearAlpha        = "linear_alpha"
+        case moduleDropout      = "module_dropout"
         case targetModules      = "target_modules"
         case baseModelNameOrPath = "base_model_name_or_path"
     }
@@ -715,19 +983,88 @@ private struct PEFTAdapterConfig: Decodable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         peftType = try c.decode(String.self, forKey: .peftType)
-        r        = try c.decodeIfPresent(Int.self, forKey: .r) ?? 16
+        let decodedLinearDim = try c.decodeIfPresent(Int.self, forKey: .linearDim)
+        r = try c.decodeIfPresent(Int.self, forKey: .r) ?? decodedLinearDim ?? 16
 
         // lora_alpha and lora_dropout may be stored as Int or Float in JSON —
         // decode via Double to avoid type-mismatch errors.
-        func decodeFloat(_ key: CodingKeys, default defaultVal: Float) -> Float {
+        func decodeOptionalFloat(_ key: CodingKeys) -> Float? {
             if let v = try? c.decodeIfPresent(Double.self, forKey: key) { return Float(v) }
             if let v = try? c.decodeIfPresent(Int.self,    forKey: key) { return Float(v) }
-            return defaultVal
+            return nil
         }
+
+        func decodeFloat(_ key: CodingKeys, default defaultVal: Float) -> Float {
+            decodeOptionalFloat(key) ?? defaultVal
+        }
+
         loraAlpha   = decodeFloat(.loraAlpha,   default: Float(r))
         loraDropout = decodeFloat(.loraDropout, default: 0.0)
+        alpha = decodeOptionalFloat(.alpha)
+        linearDim = decodedLinearDim
+        linearAlpha = decodeOptionalFloat(.linearAlpha)
+        moduleDropout = decodeOptionalFloat(.moduleDropout)
 
-        targetModules      = (try? c.decodeIfPresent([String].self, forKey: .targetModules)) ?? []
+        if let modules = try? c.decodeIfPresent([String].self, forKey: .targetModules) {
+            targetModules = modules
+        } else if let module = try? c.decodeIfPresent(String.self, forKey: .targetModules) {
+            targetModules = [module]
+        } else {
+            targetModules = []
+        }
         baseModelNameOrPath = try? c.decodeIfPresent(String.self, forKey: .baseModelNameOrPath)
+    }
+}
+
+private struct LyCORISLoKRMetadataConfig {
+    let linearDim: Int?
+    let linearAlpha: Float?
+    let weightDecompose: Bool?
+    let useTucker: Bool?
+
+    init(metadata: [String: String]) {
+        guard let rawConfig = metadata["lokr_config"],
+              let data = rawConfig.data(using: .utf8),
+              let decoded = try? JSONDecoder().decode(Decoded.self, from: data) else {
+            linearDim = nil
+            linearAlpha = nil
+            weightDecompose = nil
+            useTucker = nil
+            return
+        }
+
+        linearDim = decoded.linearDim
+        linearAlpha = decoded.linearAlpha
+        weightDecompose = decoded.weightDecompose
+        useTucker = decoded.useTucker
+    }
+
+    private struct Decoded: Decodable {
+        let linearDim: Int?
+        let linearAlpha: Float?
+        let weightDecompose: Bool?
+        let useTucker: Bool?
+
+        enum CodingKeys: String, CodingKey {
+            case linearDim = "linear_dim"
+            case linearAlpha = "linear_alpha"
+            case weightDecompose = "weight_decompose"
+            case useTucker = "use_tucker"
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            linearDim = try c.decodeIfPresent(Int.self, forKey: .linearDim)
+            weightDecompose = try c.decodeIfPresent(Bool.self, forKey: .weightDecompose)
+            useTucker = try c.decodeIfPresent(Bool.self, forKey: .useTucker)
+
+            if let v = try? c.decodeIfPresent(Double.self, forKey: .linearAlpha) {
+                linearAlpha = Float(v)
+            } else if let v = try? c.decodeIfPresent(Int.self, forKey: .linearAlpha) {
+                linearAlpha = Float(v)
+            } else {
+                linearAlpha = nil
+            }
+        }
     }
 }

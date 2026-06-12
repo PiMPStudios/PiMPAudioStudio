@@ -144,6 +144,140 @@ enum PEFTKeyRemapper {
         return InferredConfig(rank: rank, alpha: Float(rank), targetModules: targetModules)
     }
 
+    // MARK: - LyCORIS / PEFT LoKR Remapping
+
+    struct LoKRRemapResult {
+        let weights: [String: MLXArray]
+        let inferredLinearDim: Int
+        let sourceAlpha: Float?
+        let exactInjectionPatterns: [String]
+        let targetLayers: Set<TargetLayer>
+        let trainedPaths: [String]
+        let trainedLayerIndices: [Int]
+        let weightDecompose: Bool
+    }
+
+    enum LoKRRemapError: Error, LocalizedError {
+        case noConvertibleWeights
+        case unsupportedVariant(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .noConvertibleWeights:
+                return "No compatible LoKR weights were found."
+            case .unsupportedVariant(let detail):
+                return detail
+            }
+        }
+    }
+
+    /// Returns `true` when a safetensors payload looks like LyCORIS/PEFT LoKR.
+    static func isLyCORISLoKR(_ keys: [String]) -> Bool {
+        keys.contains { key in
+            splitLoKRSuffix(key) != nil ||
+            key.contains(".lokr_w1") ||
+            key.contains(".lokr_w2") ||
+            key.contains(".dora_scale")
+        }
+    }
+
+    /// Convert compatible LyCORIS/PEFT LoKR tensors to PiMP-native LoKR keys.
+    ///
+    /// Supported source layouts:
+    /// - `prefix.lokr_w1` + `prefix.lokr_w2`
+    /// - `prefix.lokr_w1_a`/`prefix.lokr_w1_b` and
+    ///   `prefix.lokr_w2_a`/`prefix.lokr_w2_b` (multiplied during import)
+    /// - optional `prefix.dora_scale` mapped to `.lokrMagnitude`
+    ///
+    /// Tucker-style `lokr_t2` tensors are rejected because the native runtime
+    /// cannot represent them without changing the adapter algebra.
+    static func remapLyCORISLoKR(_ dict: [String: MLXArray]) throws -> LoKRRemapResult {
+        for key in dict.keys where splitLoKRSuffix(key)?.suffix.hasPrefix("lokr_t2") == true {
+            throw LoKRRemapError.unsupportedVariant(
+                "This LoKR checkpoint uses Tucker tensors (`lokr_t2`), which PiMP Audio Studio cannot import yet."
+            )
+        }
+
+        let prefixes = Set(dict.keys.compactMap { splitLoKRSuffix($0)?.prefix })
+        var remapped: [String: MLXArray] = [:]
+        var sourceAlpha: Float?
+        var hasDoraMagnitude = false
+
+        for prefix in prefixes.sorted() {
+            guard let nativePath = mapLyCORISLoKRPrefix(prefix),
+                  let w1 = loKRTensorOrProduct(
+                    dict,
+                    prefix: prefix,
+                    direct: "lokr_w1",
+                    left: "lokr_w1_a",
+                    right: "lokr_w1_b"
+                  ),
+                  let w2 = loKRTensorOrProduct(
+                    dict,
+                    prefix: prefix,
+                    direct: "lokr_w2",
+                    left: "lokr_w2_a",
+                    right: "lokr_w2_b"
+                  ) else {
+                continue
+            }
+
+            remapped["\(nativePath).lokrW1"] = w1
+            remapped["\(nativePath).lokrW2"] = w2
+
+            if let doraScale = dict["\(prefix).dora_scale"] {
+                remapped["\(nativePath).lokrMagnitude"] = doraScale.asType(.float32).reshaped([-1])
+                hasDoraMagnitude = true
+            }
+
+            if sourceAlpha == nil, let alpha = dict["\(prefix).alpha"] {
+                sourceAlpha = alpha.asType(.float32).item(Float.self)
+            }
+        }
+
+        guard !remapped.isEmpty else {
+            throw LoKRRemapError.noConvertibleWeights
+        }
+
+        let exactPatterns = inferLoKRInjectionPatterns(fromRemappedKeys: Array(remapped.keys))
+        let targetLayers = inferTargetLayers(fromInjectionPatterns: exactPatterns)
+        let trainedPaths = LoRAAdapter.trainedPaths(fromWeightKeys: Array(remapped.keys), kind: .lokr)
+
+        return LoKRRemapResult(
+            weights: remapped,
+            inferredLinearDim: inferLoKRLinearDim(fromRemappedWeights: remapped),
+            sourceAlpha: sourceAlpha,
+            exactInjectionPatterns: exactPatterns,
+            targetLayers: targetLayers,
+            trainedPaths: trainedPaths,
+            trainedLayerIndices: LoRAAdapter.layerIndices(from: trainedPaths),
+            weightDecompose: hasDoraMagnitude
+        )
+    }
+
+    /// Infer exact PiMP Audio Studio injection subpaths from remapped LoKR keys.
+    static func inferLoKRInjectionPatterns(fromRemappedKeys keys: [String]) -> [String] {
+        var patterns = Set<String>()
+
+        for key in keys {
+            let parts = key.split(separator: ".")
+            guard parts.count >= 5,
+                  parts[0] == "layers",
+                  Int(parts[1]) != nil,
+                  parts.last == "lokrW1" || parts.last == "lokrW2" || parts.last == "lokrMagnitude" else {
+                continue
+            }
+
+            let module = String(parts[2])
+            let projection = String(parts[3])
+            patterns.insert("\(module).\(projection)")
+        }
+
+        return patterns.sorted { lhs, rhs in
+            patternSortKey(lhs) < patternSortKey(rhs)
+        }
+    }
+
     /// Scan raw PEFT key strings for known projection names (e.g. `q_proj`, `v_proj`).
     private static func extractTargetModules(from keys: [String]) -> [String] {
         let known = ["q_proj", "k_proj", "v_proj", "o_proj", "out_proj",
@@ -219,6 +353,117 @@ enum PEFTKeyRemapper {
     }
 
     // MARK: - Private Helpers
+
+    private static func splitLoKRSuffix(_ key: String) -> (prefix: String, suffix: String)? {
+        let suffixes = [
+            "lokr_w1", "lokr_w2",
+            "lokr_w1_a", "lokr_w1_b",
+            "lokr_w2_a", "lokr_w2_b",
+            "lokr_t2", "lokr_t2_a", "lokr_t2_b",
+            "dora_scale", "alpha",
+        ]
+
+        for suffix in suffixes {
+            let tail = ".\(suffix)"
+            if key.hasSuffix(tail) {
+                return (String(key.dropLast(tail.count)), suffix)
+            }
+        }
+
+        return nil
+    }
+
+    private static func loKRTensorOrProduct(
+        _ dict: [String: MLXArray],
+        prefix: String,
+        direct: String,
+        left: String,
+        right: String
+    ) -> MLXArray? {
+        if let directTensor = dict["\(prefix).\(direct)"] {
+            return directTensor.asType(.float32)
+        }
+
+        guard let leftTensor = dict["\(prefix).\(left)"],
+              let rightTensor = dict["\(prefix).\(right)"] else {
+            return nil
+        }
+
+        return matmul(leftTensor.asType(.float32), rightTensor.asType(.float32))
+    }
+
+    private static func mapLyCORISLoKRPrefix(_ prefix: String) -> String? {
+        var key = prefix
+
+        while key.hasPrefix("base_model.model.") {
+            key = String(key.dropFirst("base_model.model.".count))
+        }
+
+        for wrapper in ["transformer.", "dit.", "model."] {
+            if key.hasPrefix(wrapper) {
+                key = String(key.dropFirst(wrapper.count))
+                break
+            }
+        }
+
+        if key.hasPrefix("lycoris_") {
+            key = String(key.dropFirst("lycoris_".count))
+        }
+
+        if let underscorePath = mapLyCORISUnderscorePrefix(key) {
+            return underscorePath
+        }
+
+        let components = key.components(separatedBy: ".")
+        guard components.count >= 3,
+              components[0] == "layers",
+              Int(components[1]) != nil else {
+            return nil
+        }
+
+        let layerPrefix = "layers.\(components[1])."
+        let rest = components.dropFirst(2).joined(separator: ".")
+        guard let mappedPath = mapModulePath(rest) else { return nil }
+        return layerPrefix + mappedPath
+    }
+
+    private static func mapLyCORISUnderscorePrefix(_ key: String) -> String? {
+        guard key.hasPrefix("layers_") else { return nil }
+        let afterLayers = String(key.dropFirst("layers_".count))
+        guard let separator = afterLayers.firstIndex(of: "_") else { return nil }
+
+        let layerText = String(afterLayers[..<separator])
+        guard Int(layerText) != nil else { return nil }
+
+        let restStart = afterLayers.index(after: separator)
+        let rest = String(afterLayers[restStart...])
+        let layerPrefix = "layers.\(layerText)."
+
+        if rest.hasPrefix("self_attn_") {
+            let projection = String(rest.dropFirst("self_attn_".count))
+            return mapAttnProj(projection).map { layerPrefix + "selfAttn.\($0)" }
+        }
+
+        if rest.hasPrefix("cross_attn_") {
+            let projection = String(rest.dropFirst("cross_attn_".count))
+            return mapAttnProj(projection).map { layerPrefix + "crossAttn.\($0)" }
+        }
+
+        if rest.hasPrefix("mlp_") {
+            let projection = String(rest.dropFirst("mlp_".count))
+            return mapMLPProj(projection).map { layerPrefix + "mlp.\($0)" }
+        }
+
+        return nil
+    }
+
+    private static func inferLoKRLinearDim(fromRemappedWeights weights: [String: MLXArray]) -> Int {
+        let inferred = weights
+            .filter { $0.key.hasSuffix(".lokrW1") || $0.key.hasSuffix(".lokrW2") }
+            .flatMap { $0.value.shape }
+            .max() ?? 64
+        return max(1, inferred)
+    }
 
     /// Map a PEFT module subpath (e.g. `"self_attn.q_proj"`) to PiMPAudioStudio format (`"selfAttn.qProj"`).
     private static func mapModulePath(_ path: String) -> String? {
