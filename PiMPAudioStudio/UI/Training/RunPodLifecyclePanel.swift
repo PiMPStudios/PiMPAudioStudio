@@ -155,7 +155,10 @@ struct RunPodLifecyclePanel: View {
             }
 
             if let selectedRunPodGPUType {
-                Text(selectedRunPodGPUType.detailLabel)
+                Text(selectedRunPodGPUType.detailLabel(
+                    cloudType: runPodCloudTypeBinding.wrappedValue,
+                    interruptible: interruptible
+                ))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else if !runPodService.gpuTypes.isEmpty,
