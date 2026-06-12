@@ -45,6 +45,7 @@
 		48C1D4CCBB95609618A4C90A /* CommunityService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF5C8822A6F0B121B6259586 /* CommunityService.swift */; };
 		4C3DF5AE0DB4BB5075B15825 /* AppRuntimeIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 127582913C97D8C75CF1450A /* AppRuntimeIdentity.swift */; };
 		4FBA8122499600CE9E2A1338 /* HuggingFaceImportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D278A4F69183EB5824B0863 /* HuggingFaceImportSheet.swift */; };
+		51446D34E426AC6B093619AD /* RunPodService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA8B8FFF44362F04A4369E81 /* RunPodService.swift */; };
 		5153534B0DACDE8F7F99A75B /* AdapterStackView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0289E58F6A0E77CDC343102A /* AdapterStackView.swift */; };
 		51FE470CF2AB778783784315 /* HistoryListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4F7666A5DAAC6A25C563792 /* HistoryListView.swift */; };
 		57E03D391DA4E957BC629F4C /* GenerationParameters.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8AB5D51C2A7489C08F838AA /* GenerationParameters.swift */; };
@@ -109,12 +110,14 @@
 		DA48A4D833CC79D1815CB890 /* YouTubeImportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 571F4E36A931A0AB27761F6E /* YouTubeImportSheet.swift */; };
 		DD2870044DB10DAAE27B7895 /* MLX in Frameworks */ = {isa = PBXBuildFile; productRef = 28DE1D2B81644C7206C96A3D /* MLX */; };
 		E133F6EE78ED39C41C86D3AE /* GeminiLyricWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD51955FCB857FA6EED59A02 /* GeminiLyricWriter.swift */; };
+		E20A5D424BADF425B03820DB /* RunPodLifecyclePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F7645D3E144BF07A7F8334C /* RunPodLifecyclePanel.swift */; };
 		E4B50AF1D03F696914736797 /* DownloadProgressRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52C8C25A4491970DEAAAFCA4 /* DownloadProgressRow.swift */; };
 		E86FB740CCF3CA9ECEF81C4F /* AddModelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4627645D8B5AC0E1C1109CB9 /* AddModelView.swift */; };
 		E9A54C2C33832A121DCFEE1D /* OpenAILyricWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 527FF7C333039F09DDAFD004 /* OpenAILyricWriter.swift */; };
 		EA1DB745567420036A4D5D03 /* APIKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3747A32ED0DA7C80736A0625 /* APIKeyStore.swift */; };
 		EA1E6832453976AD680F7B96 /* PiMPAudioCommandFacade+Resources.swift in Sources */ = {isa = PBXBuildFile; fileRef = 519F17EA3A81614AFA7C1649 /* PiMPAudioCommandFacade+Resources.swift */; };
 		F08B1A427042D36F1F029C28 /* EditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3D980E94EAEFD25B9B9FE25 /* EditorView.swift */; };
+		F60961C7902C664688989A30 /* RunPodServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0C92036F078AF469DFB2533 /* RunPodServiceTests.swift */; };
 		F68777438E3B033AF10A1E46 /* ACEStepGenerationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23E3669212635DA76F1F31BB /* ACEStepGenerationService.swift */; };
 		F9F62614EF9238A108984C92 /* AudioFileLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1922ED80936C6D49A9DBE3AF /* AudioFileLoader.swift */; };
 		FA7854B193DBBAF8A5822061 /* GenerateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331B6BA9555DFC16D57A8D16 /* GenerateView.swift */; };
@@ -202,6 +205,7 @@
 		801F725A93F45D28B64D2BC5 /* TrainingDatasetPackageEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingDatasetPackageEditor.swift; sourceTree = "<group>"; };
 		86E9FD577ED231C6654F4B3D /* Resampler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Resampler.swift; sourceTree = "<group>"; };
 		89A033EBCC29848A6AB1942E /* TimeStretchControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimeStretchControlView.swift; sourceTree = "<group>"; };
+		8F7645D3E144BF07A7F8334C /* RunPodLifecyclePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunPodLifecyclePanel.swift; sourceTree = "<group>"; };
 		9393D7D26AFD717C9B830A10 /* LoRACoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoRACoordinator.swift; sourceTree = "<group>"; };
 		9764574A837708EFE458372A /* TrainingManifest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingManifest.swift; sourceTree = "<group>"; };
 		97FD0BB7B9F19C6BD8C4E549 /* EditorState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorState.swift; sourceTree = "<group>"; };
@@ -209,6 +213,7 @@
 		9DB96FF2FA197031AA3FA72E /* SFXGenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SFXGenerationService.swift; sourceTree = "<group>"; };
 		9E9D5E74344ECD70EDE5DD2F /* GenerationTraceComparator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationTraceComparator.swift; sourceTree = "<group>"; };
 		9F022A9AD7928468C806ACE5 /* MCPSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MCPSettingsView.swift; sourceTree = "<group>"; };
+		A0C92036F078AF469DFB2533 /* RunPodServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunPodServiceTests.swift; sourceTree = "<group>"; };
 		A76327519B864619ABEF9DD6 /* EditorControlsBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorControlsBar.swift; sourceTree = "<group>"; };
 		A8AB5D51C2A7489C08F838AA /* GenerationParameters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationParameters.swift; sourceTree = "<group>"; };
 		A98FE13318125AE341A28854 /* GenerationRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationRequest.swift; sourceTree = "<group>"; };
@@ -234,6 +239,7 @@
 		D86270EFEFBCD098089A4A29 /* PiMPAudioCommandFacade.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiMPAudioCommandFacade.swift; sourceTree = "<group>"; };
 		D9833CA38211A8C643BAE09B /* LocalLyricWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLyricWriter.swift; sourceTree = "<group>"; };
 		DA120575D5C225BFB3148920 /* EditorService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorService.swift; sourceTree = "<group>"; };
+		DA8B8FFF44362F04A4369E81 /* RunPodService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunPodService.swift; sourceTree = "<group>"; };
 		DAEBC0221FBFBE74FC50074F /* EditorToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorToolbar.swift; sourceTree = "<group>"; };
 		DF5C8822A6F0B121B6259586 /* CommunityService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommunityService.swift; sourceTree = "<group>"; };
 		E0BAE2D98D7CB4D300D75CCF /* WSOLAProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WSOLAProcessor.swift; sourceTree = "<group>"; };
@@ -305,6 +311,7 @@
 				C79807A5A367107A18B34BEE /* DatasetReviewView.swift */,
 				ED69726963E9E51F4E929435 /* LocalFilesImportSheet.swift */,
 				08280CE82EED7121DD142A12 /* LossCurveView.swift */,
+				8F7645D3E144BF07A7F8334C /* RunPodLifecyclePanel.swift */,
 				3EEFBDC4E18557553BEABBA7 /* TrainingSheet.swift */,
 				571F4E36A931A0AB27761F6E /* YouTubeImportSheet.swift */,
 			);
@@ -348,6 +355,7 @@
 				B2BBE32A110AD18FA798DA39 /* PromptEnhancer.swift */,
 				170F4A62CC218DA23066DBFA /* ProviderAccessStore.swift */,
 				B05AAEB4E90F482157FAA733 /* RemoteTrainingJob.swift */,
+				DA8B8FFF44362F04A4369E81 /* RunPodService.swift */,
 				9DB96FF2FA197031AA3FA72E /* SFXGenerationService.swift */,
 				0DD92064FAD410A700E4F870 /* SFXModelManager.swift */,
 				394C36D243808316A9A70117 /* SourceSeparationService.swift */,
@@ -507,6 +515,7 @@
 				41A93059238ED07185F25CF5 /* AppStateTests.swift */,
 				FC09327803C8A79922A3B4F2 /* HistoryStoreTests.swift */,
 				ED4AC7C94D81749A9705316C /* ProviderAccessStoreTests.swift */,
+				A0C92036F078AF469DFB2533 /* RunPodServiceTests.swift */,
 			);
 			path = PiMPAudioStudioTests;
 			sourceTree = "<group>";
@@ -603,6 +612,7 @@
 				247E8913C3C2CC1E309EA7A2 /* AppStateTests.swift in Sources */,
 				2D8016252183EB12AD027E62 /* HistoryStoreTests.swift in Sources */,
 				7A7B53861467729A61453BBC /* ProviderAccessStoreTests.swift in Sources */,
+				F60961C7902C664688989A30 /* RunPodServiceTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -699,6 +709,8 @@
 				62C7199D49B7D342A5CA937C /* RemoteTrainingJob.swift in Sources */,
 				164E4B0B7027803F2507DC29 /* Resampler.swift in Sources */,
 				BA1DFB141168AD67A6579F8A /* ReverbControlView.swift in Sources */,
+				E20A5D424BADF425B03820DB /* RunPodLifecyclePanel.swift in Sources */,
+				51446D34E426AC6B093619AD /* RunPodService.swift in Sources */,
 				B98CC5CDDB4DCE8AB0D2B427 /* SFXGenerationService.swift in Sources */,
 				42F7C25DED41A07CD77F2476 /* SFXModelManager.swift in Sources */,
 				76641356B5E98E279811359B /* SimpleDSP.swift in Sources */,

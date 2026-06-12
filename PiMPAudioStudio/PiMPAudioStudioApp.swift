@@ -10,6 +10,7 @@ struct PiMPAudioStudioApp: App {
     @StateObject private var services: AppServices
     @StateObject private var apiKeyStore: APIKeyStore
     @StateObject private var providerAccessStore: ProviderAccessStore
+    @StateObject private var runPodService: RunPodService
     @StateObject private var modelManager: LLMModelManager
     @StateObject private var intentRouter: IntentRouter
     @StateObject private var promptEnhancer: PromptEnhancer
@@ -26,6 +27,7 @@ struct PiMPAudioStudioApp: App {
 
         let apiKeys = APIKeyStore()
         let providerAccess = ProviderAccessStore()
+        let runPodService = RunPodService(apiKeyStore: apiKeys)
         let appState = AppState(apiKeyStore: apiKeys)
         let outputManager = OutputDirectoryManager()
         let playerService = AudioPlayerService()
@@ -52,6 +54,7 @@ struct PiMPAudioStudioApp: App {
         _services = StateObject(wrappedValue: services)
         _apiKeyStore = StateObject(wrappedValue: apiKeys)
         _providerAccessStore = StateObject(wrappedValue: providerAccess)
+        _runPodService = StateObject(wrappedValue: runPodService)
         _modelManager = StateObject(wrappedValue: manager)
         _intentRouter = StateObject(wrappedValue: router)
         _promptEnhancer = StateObject(wrappedValue: enhancer)
@@ -69,6 +72,7 @@ struct PiMPAudioStudioApp: App {
                 .environmentObject(services.generationService)
                 .environmentObject(apiKeyStore)
                 .environmentObject(providerAccessStore)
+                .environmentObject(runPodService)
                 .environmentObject(modelManager)
                 .environmentObject(intentRouter)
                 .environmentObject(promptEnhancer)

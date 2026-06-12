@@ -426,14 +426,19 @@ private struct BuildDatasetsView: View {
 private struct BuildTrainingView: View {
     @EnvironmentObject private var trainingService: TrainingService
     @EnvironmentObject private var outputManager: OutputDirectoryManager
+    @EnvironmentObject private var runPodService: RunPodService
 
     @State private var selectedTrainingMode: BuildTrainingMode = .lora
     @State private var trainingPresentation: TrainingPresentation?
     @State private var showingStopConfirmation = false
+    @State private var showingRunPodLaunchConfirmation = false
+    @State private var pendingRunPodStop: RunPodPodSummary?
     @State private var remotePackages: [DatasetPackageSummary] = []
     @State private var selectedRemotePackageID: String?
     @State private var remoteNotice: String?
     @State private var isExportingRemotePackage = false
+    @State private var remotePreparedArchiveURL: URL?
+    @State private var remotePreparedJobID: String?
     @State private var remoteAdapterKind: AdapterKind = .lokr
     @State private var remoteRecipe: RemoteJobRecipe = .wide
     @State private var remoteBundle: RemoteJobBundle = .fullMix
@@ -444,6 +449,15 @@ private struct BuildTrainingView: View {
     @State private var remoteSeed = 42
     @State private var remoteMaxRuntimeHours = 18
     @State private var remoteMaxCostText = ""
+    @State private var runPodAPIKey = ""
+    @AppStorage(AppUserDefaultsKeys.runPodTemplateID) private var runPodTemplateID = ""
+    @AppStorage(AppUserDefaultsKeys.runPodImageName) private var runPodImageName = ""
+    @AppStorage(AppUserDefaultsKeys.runPodGPUType) private var runPodGPUType = "NVIDIA RTX PRO 6000 Blackwell Server Edition"
+    @AppStorage(AppUserDefaultsKeys.runPodCloudType) private var runPodCloudTypeRaw = RunPodCloudType.secure.rawValue
+    @AppStorage(AppUserDefaultsKeys.runPodInterruptible) private var runPodInterruptible = false
+    @AppStorage(AppUserDefaultsKeys.runPodContainerDiskGB) private var runPodContainerDiskGB = 80
+    @AppStorage(AppUserDefaultsKeys.runPodVolumeGB) private var runPodVolumeGB = 80
+    @AppStorage(AppUserDefaultsKeys.runPodSSHKeyPath) private var runPodSSHKeyPath = "~/.ssh/id_ed25519"
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -470,6 +484,33 @@ private struct BuildTrainingView: View {
             } else {
                 Text("No training step has completed yet. Progress will be lost.")
             }
+        }
+        .alert("Launch RunPod Pod?", isPresented: $showingRunPodLaunchConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Launch Pod") {
+                launchRunPodPod()
+            }
+        } message: {
+            Text("This creates billable RunPod GPU time. Only continue if you are ready to start a remote server.")
+        }
+        .alert("Stop RunPod Pod?", isPresented: Binding(
+            get: { pendingRunPodStop != nil },
+            set: { isPresented in
+                if !isPresented {
+                    pendingRunPodStop = nil
+                }
+            }
+        )) {
+            Button("Cancel", role: .cancel) {
+                pendingRunPodStop = nil
+            }
+            Button("Stop Pod", role: .destructive) {
+                guard let pod = pendingRunPodStop else { return }
+                pendingRunPodStop = nil
+                Task { await runPodService.stopPod(id: pod.id) }
+            }
+        } message: {
+            Text("Stopping releases the GPU for this pod. Volume data should remain available according to the RunPod pod configuration.")
         }
         .onChange(of: outputManager.directory) { _, _ in
             refreshRemotePackages()
@@ -881,6 +922,23 @@ private struct BuildTrainingView: View {
                 }
             }
 
+            RunPodLifecyclePanel(
+                hasSelectedPackage: selectedRemotePackage != nil,
+                preparedArchiveURL: remotePreparedArchiveURL,
+                apiKey: $runPodAPIKey,
+                templateID: $runPodTemplateID,
+                imageName: $runPodImageName,
+                gpuType: $runPodGPUType,
+                cloudTypeRaw: $runPodCloudTypeRaw,
+                interruptible: $runPodInterruptible,
+                containerDiskGB: $runPodContainerDiskGB,
+                volumeGB: $runPodVolumeGB,
+                sshKeyPath: $runPodSSHKeyPath,
+                onLaunchRequested: { showingRunPodLaunchConfirmation = true },
+                onStopRequested: { pendingRunPodStop = $0 },
+                onNotice: { remoteNotice = $0 }
+            )
+
             Section {
                 Text("The zip includes the reviewed package, remote_job.json, README_REMOTE_GPU.md, and run_remote_training.sh. Provider secrets are not included.")
                     .font(.caption)
@@ -889,6 +947,32 @@ private struct BuildTrainingView: View {
         }
         .formStyle(.grouped)
         .padding(.vertical, 6)
+    }
+
+    private func launchRunPodPod() {
+        let configuration = RunPodLaunchConfiguration(
+            name: runPodLaunchName(),
+            templateID: runPodTemplateID,
+            imageName: runPodImageName,
+            gpuTypeID: runPodGPUType,
+            cloudType: RunPodCloudType(rawValue: runPodCloudTypeRaw) ?? .secure,
+            interruptible: runPodInterruptible,
+            containerDiskGB: runPodContainerDiskGB,
+            volumeGB: runPodVolumeGB
+        )
+
+        Task {
+            await runPodService.launchPod(configuration: configuration)
+        }
+    }
+
+    private func runPodLaunchName() -> String {
+        let base = normalizedRemoteAdapterName()
+            .lowercased()
+            .replacingOccurrences(of: "[^a-z0-9\\-]+", with: "-", options: .regularExpression)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        let suffix = remotePreparedJobID?.prefix(8) ?? UUID().uuidString.prefix(8)
+        return String("pimp-\(base)-\(suffix)".prefix(120))
     }
 
     private func remotePackageRow(_ package: DatasetPackageSummary) -> some View {
@@ -1077,6 +1161,8 @@ private struct BuildTrainingView: View {
                 to: destination,
                 extraFiles: extraFiles
             )
+            remotePreparedArchiveURL = archiveURL
+            remotePreparedJobID = job.jobID
             remoteNotice = "Remote job exported to \(archiveURL.path(percentEncoded: false))."
             refreshRemotePackages()
         } catch {

@@ -8,6 +8,7 @@ All notable changes to PiMP Audio Studio are documented here.
 
 ### Added
 
+- **Remote GPU now has a RunPod control-plane starter** — the Remote GPU workspace can save a RunPod API token in Keychain, list current pods, launch a pod from a template or image only after an explicit billable-resource confirmation, stop pods, and copy SSH/upload handoff commands for the most recently exported remote job zip.
 - **LyCORIS/PEFT LoKR checkpoints can import directly** — local and Hugging Face adapter import now accepts compatible `lokr_weights.safetensors` / LoKR `adapter_model.safetensors` files, converts `lokr_w1`/`lokr_w2` plus simple factored pairs and DoRA magnitudes into PiMP-native LoKR keys, preserves alpha/dim scaling from metadata when present, and clearly rejects unsupported Tucker LoKR variants.
 - **Training completion can render adapter audition snapshots** — completed LoRA/LoKR adapters now offer a fixed-seed snapshot run that renders Base plus selected adapter gains, saves each take to History with listening-note tags, and opens Trace Compare for quick A/B listening.
 

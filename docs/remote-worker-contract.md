@@ -201,21 +201,32 @@ Provider adapters are thin. A RunPod adapter and a DigitalOcean adapter should i
 
 Provider adapters may store provider-specific IDs locally in PiMP Audio Studio, but those IDs do not belong in the dataset package or `remote_job.json`.
 
+### RunPod Control Plane
+
+The first RunPod integration is intentionally app-local provider control, not a package-schema change:
+
+- RunPod API keys are stored through the same Keychain-backed `APIKeyStore` path as other remote credentials, with `RUNPOD_API_KEY` as the environment fallback.
+- The Remote GPU panel can list pods, request a new pod from a template or image, and stop pods through RunPod's REST API.
+- Pod launch is always behind a confirmation prompt because it can start billable GPU time.
+- The app can copy SSH/upload handoff commands for the most recently exported job zip.
+
+Worker logs, progress metrics, artifact pullback, and adapter import should still come from the provider-neutral `remote_artifacts/**` contract. RunPod pod status is a host lifecycle signal; it is not a replacement for worker-level training status.
+
 ## Security And Privacy
 
 - Provider API tokens must be stored in Keychain.
 - `remote_job.json` must not contain API keys, bearer tokens, SSH keys, or provider account IDs.
 - Absolute local paths should be redacted before upload.
 - Audio upload must require explicit user approval.
-- A future launch UI should show estimated package size, requested GPU class, max runtime, and optional max cost before launch.
+- Launch UI must show requested GPU class and make billable pod creation an explicit user confirmation. Future upload UI should also show estimated package size, max runtime, and optional max cost before transfer.
 
 ## First Implementation Path
 
 1. Generate and validate `remote_job.json` locally.
 2. Export package zip plus job request.
 3. Add a local "dry-run worker" command or test harness that reads the zip and writes fake `remote_artifacts`.
-4. Add provider settings and Keychain-backed credentials.
-5. Implement one provider adapter.
+4. Add provider settings and Keychain-backed credentials. Shipped for RunPod API tokens.
+5. Implement one provider adapter. Partially shipped for RunPod pod list/launch/stop and SSH upload handoff commands.
 6. Add the second provider adapter against the same app-side protocol.
 
-RunPod and DigitalOcean should arrive after steps 1-3, so provider-specific choices do not distort the contract.
+Remaining RunPod work should focus on upload execution, worker log/progress polling, artifact download, and one-click adapter import without changing the provider-neutral package/result shape.

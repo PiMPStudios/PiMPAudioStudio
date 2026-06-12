@@ -47,6 +47,15 @@ enum AppUserDefaultsKeys {
     static let selectedAdapterStrength = AppRuntimeIdentity.defaultsKey("selectedAdapterStrength")
     static let legacySelectedAdapterStrength = "selectedAdapterStrength"
 
+    static let runPodTemplateID = AppRuntimeIdentity.defaultsKey("runpod.templateID")
+    static let runPodImageName = AppRuntimeIdentity.defaultsKey("runpod.imageName")
+    static let runPodGPUType = AppRuntimeIdentity.defaultsKey("runpod.gpuType")
+    static let runPodCloudType = AppRuntimeIdentity.defaultsKey("runpod.cloudType")
+    static let runPodInterruptible = AppRuntimeIdentity.defaultsKey("runpod.interruptible")
+    static let runPodContainerDiskGB = AppRuntimeIdentity.defaultsKey("runpod.containerDiskGB")
+    static let runPodVolumeGB = AppRuntimeIdentity.defaultsKey("runpod.volumeGB")
+    static let runPodSSHKeyPath = AppRuntimeIdentity.defaultsKey("runpod.sshKeyPath")
+
     static let runtimeIdentityMigration = AppRuntimeIdentity.defaultsKey("migration.runtimeIdentity.v1")
     static let dataDirectoryMigration = AppRuntimeIdentity.defaultsKey("migration.dataDirectories.v2")
 }

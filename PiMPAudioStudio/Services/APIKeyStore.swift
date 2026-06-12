@@ -15,6 +15,15 @@ final class APIKeyStore: ObservableObject {
     ]
 
     static let huggingFaceProviderID = "huggingface"
+    static let runPodProviderID = "runpod"
+    static let runPodProvider: (id: String, displayName: String, envVar: String) = (
+        runPodProviderID,
+        "RunPod",
+        "RUNPOD_API_KEY"
+    )
+    static let apiKeyProviders: [(id: String, displayName: String, envVar: String)] = providers + [
+        runPodProvider,
+    ]
 
     private static let serviceName = AppRuntimeIdentity.keychainServiceName
     private static let legacyServiceName = AppRuntimeIdentity.legacyKeychainServiceName
@@ -27,7 +36,7 @@ final class APIKeyStore: ObservableObject {
         if let keychainKey = readFromKeychain(account: provider) {
             return keychainKey
         }
-        if let envVar = Self.providers.first(where: { $0.id == provider })?.envVar {
+        if let envVar = Self.apiKeyProviders.first(where: { $0.id == provider })?.envVar {
             return ProcessInfo.processInfo.environment[envVar]
         }
         return nil
@@ -51,11 +60,15 @@ final class APIKeyStore: ObservableObject {
         apiKey(for: Self.huggingFaceProviderID)
     }
 
+    func runPodToken() -> String? {
+        apiKey(for: Self.runPodProviderID)
+    }
+
     func keySource(for provider: String) -> KeySource {
         if readFromKeychain(account: provider) != nil {
             return .keychain
         }
-        if let envVar = Self.providers.first(where: { $0.id == provider })?.envVar,
+        if let envVar = Self.apiKeyProviders.first(where: { $0.id == provider })?.envVar,
            ProcessInfo.processInfo.environment[envVar] != nil {
             return .environment
         }
@@ -70,7 +83,7 @@ final class APIKeyStore: ObservableObject {
 
     private func refreshAvailableProviders() {
         var available = Set<String>()
-        for provider in Self.providers {
+        for provider in Self.apiKeyProviders {
             if apiKey(for: provider.id) != nil {
                 available.insert(provider.id)
             }

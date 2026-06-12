@@ -364,7 +364,9 @@ DEMON is not primarily a dataset-builder reference. Now that PiMP Audio Studio h
 - Shipped: provider-neutral `remote_job.json` schema and `docs/remote-worker-contract.md`.
 - Shipped: Remote GPU export creates a package zip with `remote_job.json`, `README_REMOTE_GPU.md`, and `run_remote_training.sh`.
 - Shipped: packages include training bundle descriptors for full mix, vocals, and instrumental roles.
-- Future: in-app RunPod/DigitalOcean provider setup, API-token Keychain storage, GPU class/cost controls, launch/monitor/stop, artifact collection, and import.
+- Partial: in-app RunPod provider setup now stores the API token in Keychain, lists pods, launches pods only after explicit confirmation, stops pods, and copies SSH/upload handoff commands for exported job zips.
+- Future: execute upload/run/pull operations directly, stream worker logs/progress from `remote_artifacts/**`, collect final/checkpoint artifacts, and import adapters without leaving the Remote GPU workspace.
+- Future: DigitalOcean provider setup against the same app-side remote-provider boundary.
 - Future: remote annotation jobs using the same package/result shape.
 
 ### Mostly Shipped: Training Workspace Expansion
