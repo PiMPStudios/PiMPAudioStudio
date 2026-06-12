@@ -1841,6 +1841,9 @@ private extension JSONDecoder {
     let imported = try TrainingDatasetImporter.importFiles(from: bundleURL)
     #expect(imported.count == 2)
     #expect(imported.allSatisfy { $0.url.pathExtension == "wav" })
+    #expect(imported[0].sourceClip?.fileName == "source.wav")
+    #expect(imported[0].sourceClip?.startFrame == 1_102)
+    #expect(abs((imported[0].sourceClip?.startSeconds ?? 0) - (Double(1_102) / 22_050.0)) < 0.001)
 
     let manifestData = try Data(contentsOf: result.outputDirectory.appendingPathComponent("dataset_manifest.json"))
     let manifestJSON = try JSONSerialization.jsonObject(with: manifestData) as? [String: Any]
@@ -1849,6 +1852,17 @@ private extension JSONDecoder {
     #expect(audioJSON?["metadata_status"] as? String == "audio_properties_collected")
     let samplingJSON = manifestJSON?["clip_sampling"] as? [String: Any]
     #expect(samplingJSON?["mode"] as? String == LocalDatasetClipSamplingMode.evenlySpread.rawValue)
+    let manifestClips = manifestJSON?["clips"] as? [[String: Any]]
+    let manifestFirstClip = manifestClips?.first
+    #expect((manifestFirstClip?["source_start_frame"] as? NSNumber)?.int64Value == 1_102)
+    #expect((manifestFirstClip?["source_start_seconds"] as? NSNumber)?.doubleValue ?? 0 > 0)
+    #expect((manifestFirstClip?["source"] as? [String: Any])?["file_name"] as? String == "source.wav")
+
+    let captionsData = try Data(contentsOf: result.outputDirectory.appendingPathComponent("captions.json"))
+    let captionsJSON = try JSONSerialization.jsonObject(with: captionsData) as? [[String: Any]]
+    let firstCaption = captionsJSON?.first
+    #expect((firstCaption?["source_start_frame"] as? NSNumber)?.int64Value == 1_102)
+    #expect((firstCaption?["source"] as? [String: Any])?["file_name"] as? String == "source.wav")
 }
 
 @Test @MainActor func localFilesDatasetBuilderUsesCustomDatasetName() async throws {
@@ -1887,9 +1901,10 @@ private extension JSONDecoder {
     )
 
     #expect(starts.count == 8)
-    #expect(starts.first == 0)
-    #expect(abs((starts.last ?? 0) - ((90.0 * 60.0) - 35.0)) < 0.001)
-    #expect(starts[1] > 35)
+    #expect((starts.first ?? 0) > 0)
+    #expect((starts.last ?? 0) < ((90.0 * 60.0) - 35.0))
+    #expect(abs((starts.first ?? 0) - (((90.0 * 60.0) - 35.0) / 16.0)) < 0.001)
+    #expect(starts[1] > starts[0])
 }
 
 @Test func localClipSamplerRandomSeedIsDeterministicAndSorted() throws {

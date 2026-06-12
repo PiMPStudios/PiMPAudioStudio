@@ -12,17 +12,21 @@ struct TrainingImportedFile: Codable, Hashable, Sendable {
     /// Optional reusable preprocess cache target, present when imported from an
     /// PiMP Audio Studio dataset bundle that declares `preprocess_cache.json`.
     var preprocessCache: TrainingPreprocessCacheReference?
+    /// Optional source timing metadata for clips cut from larger local files.
+    var sourceClip: TrainingSourceClipMetadata?
 
     init(
         url: URL,
         description: String,
         lyrics: String = "",
-        preprocessCache: TrainingPreprocessCacheReference? = nil
+        preprocessCache: TrainingPreprocessCacheReference? = nil,
+        sourceClip: TrainingSourceClipMetadata? = nil
     ) {
         self.url = url
         self.description = description
         self.lyrics = lyrics
         self.preprocessCache = preprocessCache
+        self.sourceClip = sourceClip
     }
 
     enum CodingKeys: String, CodingKey {
@@ -30,6 +34,7 @@ struct TrainingImportedFile: Codable, Hashable, Sendable {
         case description
         case lyrics
         case preprocessCache
+        case sourceClip
     }
 
     init(from decoder: Decoder) throws {
@@ -38,6 +43,29 @@ struct TrainingImportedFile: Codable, Hashable, Sendable {
         description = try container.decode(String.self, forKey: .description)
         lyrics = try container.decodeIfPresent(String.self, forKey: .lyrics) ?? ""
         preprocessCache = try container.decodeIfPresent(TrainingPreprocessCacheReference.self, forKey: .preprocessCache)
+        sourceClip = try container.decodeIfPresent(TrainingSourceClipMetadata.self, forKey: .sourceClip)
+    }
+}
+
+struct TrainingSourceClipMetadata: Codable, Hashable, Sendable {
+    var fileName: String?
+    var startSeconds: Double?
+    var startFrame: Int64?
+    var frameCount: Int64?
+    var sampleRate: Double?
+
+    init(
+        fileName: String? = nil,
+        startSeconds: Double? = nil,
+        startFrame: Int64? = nil,
+        frameCount: Int64? = nil,
+        sampleRate: Double? = nil
+    ) {
+        self.fileName = fileName
+        self.startSeconds = startSeconds
+        self.startFrame = startFrame
+        self.frameCount = frameCount
+        self.sampleRate = sampleRate
     }
 }
 
@@ -379,7 +407,8 @@ enum TrainingDatasetImporter {
                 url: audioURL,
                 description: description,
                 lyrics: lyrics,
-                preprocessCache: cache
+                preprocessCache: cache,
+                sourceClip: sourceClipMetadata(from: clip)
             )
         }
     }
@@ -700,6 +729,35 @@ enum TrainingDatasetImporter {
         return ""
     }
 
+    private static func sourceClipMetadata(from clip: [String: Any]) -> TrainingSourceClipMetadata? {
+        let source = clip["source"] as? [String: Any] ?? [:]
+        let fileName = firstString(clip, keys: ["source_file_name"])
+            ?? firstString(source, keys: ["file_name"])
+        let startSeconds = firstDouble(clip, keys: ["source_start_seconds"])
+            ?? firstDouble(source, keys: ["source_start_seconds", "start_seconds"])
+        let startFrame = firstInt64(clip, keys: ["source_start_frame"])
+            ?? firstInt64(source, keys: ["source_start_frame", "start_frame"])
+        let frameCount = firstInt64(clip, keys: ["source_frame_count"])
+            ?? firstInt64(source, keys: ["source_frame_count", "frame_count"])
+        let sampleRate = firstDouble(clip, keys: ["source_sample_rate"])
+            ?? firstDouble(source, keys: ["source_sample_rate", "sample_rate"])
+
+        guard fileName != nil ||
+            startSeconds != nil ||
+            startFrame != nil ||
+            frameCount != nil ||
+            sampleRate != nil else {
+            return nil
+        }
+        return TrainingSourceClipMetadata(
+            fileName: fileName,
+            startSeconds: startSeconds,
+            startFrame: startFrame,
+            frameCount: frameCount,
+            sampleRate: sampleRate
+        )
+    }
+
     private static func tagsDescription(from clip: [String: Any]) -> String? {
         guard let tags = clip["tags"] as? [String], !tags.isEmpty else { return nil }
         return tags.joined(separator: ", ")
@@ -712,6 +770,50 @@ enum TrainingDatasetImporter {
                 if !trimmed.isEmpty {
                     return trimmed
                 }
+            }
+        }
+        return nil
+    }
+
+    private static func firstDouble(_ dict: [String: Any], keys: [String]) -> Double? {
+        for key in keys {
+            switch dict[key] {
+            case let value as Double:
+                return value
+            case let value as Float:
+                return Double(value)
+            case let value as Int:
+                return Double(value)
+            case let value as Int64:
+                return Double(value)
+            case let value as NSNumber:
+                return value.doubleValue
+            case let value as String:
+                if let parsed = Double(value) {
+                    return parsed
+                }
+            default:
+                continue
+            }
+        }
+        return nil
+    }
+
+    private static func firstInt64(_ dict: [String: Any], keys: [String]) -> Int64? {
+        for key in keys {
+            switch dict[key] {
+            case let value as Int64:
+                return value
+            case let value as Int:
+                return Int64(value)
+            case let value as NSNumber:
+                return value.int64Value
+            case let value as String:
+                if let parsed = Int64(value) {
+                    return parsed
+                }
+            default:
+                continue
             }
         }
         return nil

@@ -45,7 +45,7 @@ enum LocalDatasetClipSamplingMode: String, CaseIterable, Hashable, Identifiable 
         case .sequential:
             return "Takes clips from the start of each file in order."
         case .evenlySpread:
-            return "Spreads clips across each full source file. Recommended for long recordings."
+            return "Spreads clips across each full source file while avoiding exact starts and endings."
         case .randomSeeded:
             return "Uses reproducible random clip positions from across each source file."
         }
@@ -82,10 +82,9 @@ enum LocalDatasetClipSampler {
         case .sequential:
             return (0..<clipCount).map { Double($0) * clipLength }
         case .evenlySpread:
-            guard clipCount > 1 else { return [0] }
             let maxStart = max(0, totalSeconds - clipLength)
             return (0..<clipCount).map { index in
-                maxStart * Double(index) / Double(clipCount - 1)
+                maxStart * (Double(index) + 0.5) / Double(clipCount)
             }
         case .randomSeeded:
             let availableSlots = max(1, Int(totalSeconds / clipLength))
@@ -117,10 +116,9 @@ enum LocalDatasetClipSampler {
         case .sequential:
             return (0..<clipCount).map { AVAudioFramePosition($0) * framesPerClip }
         case .evenlySpread:
-            guard clipCount > 1 else { return [0] }
             let maxStart = totalFrames - framesPerClip
             return (0..<clipCount).map { index in
-                AVAudioFramePosition((Double(maxStart) * Double(index) / Double(clipCount - 1)).rounded(.down))
+                AVAudioFramePosition((Double(maxStart) * (Double(index) + 0.5) / Double(clipCount)).rounded(.down))
             }
         case .randomSeeded:
             let availableSlots = max(1, Int(totalFrames / framesPerClip))
@@ -394,9 +392,7 @@ final class LocalFilesDatasetBuilder: ObservableObject {
                     samplingMode: config.samplingMode,
                     samplingSeed: config.samplingSeed
                 )
-                allClips.append(contentsOf: chunks.map {
-                    TrainingImportedFile(url: $0.url, description: $0.caption)
-                })
+                allClips.append(contentsOf: chunks)
                 AudioDiagnostics.note(
                     "dataset/local/sourceEnd",
                     "index=\(idx + 1)/\(sourceFiles.count) file=\(sourceURL.lastPathComponent) "
@@ -457,7 +453,7 @@ final class LocalFilesDatasetBuilder: ObservableObject {
         clipFormat: LocalDatasetClipFormat,
         samplingMode: LocalDatasetClipSamplingMode,
         samplingSeed: Int
-    ) async throws -> [(url: URL, caption: String)] {
+    ) async throws -> [TrainingImportedFile] {
         switch clipFormat {
         case .wav:
             return try chunkAudioToWAV(
@@ -484,7 +480,9 @@ final class LocalFilesDatasetBuilder: ObservableObject {
                 samplingMode: samplingMode,
                 samplingSeed: samplingSeed,
                 sourceIdentifier: sourceURL.standardizedFileURL.path
-            )
+            ).map {
+                TrainingImportedFile(url: $0.url, description: $0.caption)
+            }
         }
     }
 
@@ -498,7 +496,7 @@ final class LocalFilesDatasetBuilder: ObservableObject {
         outputDirectory: URL,
         samplingMode: LocalDatasetClipSamplingMode,
         samplingSeed: Int
-    ) throws -> [(url: URL, caption: String)] {
+    ) throws -> [TrainingImportedFile] {
         let sourceFile = try AVAudioFile(forReading: sourceURL)
         let format = sourceFile.processingFormat
         let sampleRate = format.sampleRate
@@ -523,7 +521,7 @@ final class LocalFilesDatasetBuilder: ObservableObject {
                 + "clipLength=\(secondsText(clipLength))"
         )
 
-        var clips: [(url: URL, caption: String)] = []
+        var clips: [TrainingImportedFile] = []
         for (i, startFrame) in startFrames.enumerated() {
             try Task.checkCancellation()
             let frameCount = min(framesPerClip, totalFrames - startFrame)
@@ -543,7 +541,17 @@ final class LocalFilesDatasetBuilder: ObservableObject {
             let caption = styleTemplate.isEmpty
                 ? (startFrames.count > 1 ? "\(title) (clip \(i + 1))" : title)
                 : styleTemplate
-            clips.append((url: dest, caption: caption))
+            clips.append(TrainingImportedFile(
+                url: dest,
+                description: caption,
+                sourceClip: TrainingSourceClipMetadata(
+                    fileName: sourceURL.lastPathComponent,
+                    startSeconds: Double(startFrame) / sampleRate,
+                    startFrame: Int64(startFrame),
+                    frameCount: Int64(frameCount),
+                    sampleRate: sampleRate
+                )
+            ))
             let clipIndex = i + 1
             if shouldLogClipProgress(index: clipIndex, total: startFrames.count) {
                 AudioDiagnostics.note(

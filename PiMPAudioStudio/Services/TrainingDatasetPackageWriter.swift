@@ -189,11 +189,9 @@ enum TrainingDatasetPackageWriter {
         let trimmedStyle = styleTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
         let packageCaptionSource = trimmedStyle.isEmpty ? "filename" : "manual"
         try writeCaptionsFile(
-            clips: clips.map { (
-                url: $0.url,
-                caption: normalizedCaption(for: $0),
-                captionSource: packageCaptionSource
-            ) },
+            clips: clips,
+            sourceFiles: sourceFiles,
+            captionSource: packageCaptionSource,
             to: outputDirectory,
             existingRecordsByFile: existingCaptionRecords
         )
@@ -831,10 +829,11 @@ enum TrainingDatasetPackageWriter {
                 ],
                 "audio": metadata.jsonObject,
                 "clip_length_seconds": metadata.durationSeconds.map(seconds) ?? seconds(config.clipLength),
-                "source": sourceMetadata(for: clip.url, sourceFiles: sourceFiles),
+                "source": sourceMetadata(for: clip, sourceFiles: sourceFiles),
                 "tags": [],
                 "negative_tags": [],
             ]
+            applySourceAuditFields(to: &object, source: object["source"] as? [String: Any])
             preserveEnrichmentMetadata(
                 from: existingCaptionRecordsByFile[relativePath],
                 into: &object
@@ -851,6 +850,7 @@ enum TrainingDatasetPackageWriter {
             object["assets"] = [
                 "full_mix": relativePath,
             ]
+            applySourceAuditFields(to: &object, source: sourceMetadata(for: clip, sourceFiles: sourceFiles))
             return object
         }
     }
@@ -977,14 +977,48 @@ enum TrainingDatasetPackageWriter {
         return clip.url.deletingPathExtension().lastPathComponent
     }
 
-    private static func sourceMetadata(for clipURL: URL, sourceFiles: [URL]) -> [String: Any] {
+    private static func sourceMetadata(for clip: TrainingImportedFile, sourceFiles: [URL]) -> [String: Any] {
         var metadata: [String: Any] = [
             "kind": "local_file",
         ]
-        if let source = sourceFileName(for: clipURL, sourceFiles: sourceFiles) {
+        if let source = clip.sourceClip?.fileName ?? sourceFileName(for: clip.url, sourceFiles: sourceFiles) {
             metadata["file_name"] = source
         }
+        if let startSeconds = clip.sourceClip?.startSeconds {
+            metadata["start_seconds"] = seconds(startSeconds)
+            metadata["source_start_seconds"] = seconds(startSeconds)
+        }
+        if let startFrame = clip.sourceClip?.startFrame {
+            metadata["start_frame"] = startFrame
+            metadata["source_start_frame"] = startFrame
+        }
+        if let frameCount = clip.sourceClip?.frameCount {
+            metadata["frame_count"] = frameCount
+        }
+        if let sampleRate = clip.sourceClip?.sampleRate {
+            metadata["sample_rate"] = sampleRate
+        }
         return metadata
+    }
+
+    private static func applySourceAuditFields(to object: inout [String: Any], source: [String: Any]?) {
+        guard let source else { return }
+        object["source"] = source
+        if let fileName = source["file_name"] {
+            object["source_file_name"] = fileName
+        }
+        if let startSeconds = source["source_start_seconds"] ?? source["start_seconds"] {
+            object["source_start_seconds"] = startSeconds
+        }
+        if let startFrame = source["source_start_frame"] ?? source["start_frame"] {
+            object["source_start_frame"] = startFrame
+        }
+        if let frameCount = source["frame_count"] {
+            object["source_frame_count"] = frameCount
+        }
+        if let sampleRate = source["sample_rate"] {
+            object["source_sample_rate"] = sampleRate
+        }
     }
 
     private static func sourceFileMetadata(for url: URL, metadata: AudioFileMetadata?) -> [String: Any] {
@@ -1491,18 +1525,22 @@ enum TrainingDatasetPackageWriter {
     }
 
     private static func writeCaptionsFile(
-        clips: [(url: URL, caption: String, captionSource: String)],
+        clips: [TrainingImportedFile],
+        sourceFiles: [URL],
+        captionSource: String,
         to outputDir: URL,
         existingRecordsByFile: [String: [String: Any]]
     ) throws {
-        let entries = clips.map {
-            let file = "clips/\($0.url.lastPathComponent)"
+        let entries = clips.map { clip in
+            let file = relativeClipPath(for: clip.url, from: outputDir)
             var entry = existingRecordsByFile[file] ?? [:]
             entry["file"] = file
-            entry["caption"] = $0.caption
-            entry["caption_source"] = $0.caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            let caption = normalizedCaption(for: clip)
+            entry["caption"] = caption
+            entry["caption_source"] = caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? "none"
-                : $0.captionSource
+                : captionSource
+            applySourceAuditFields(to: &entry, source: sourceMetadata(for: clip, sourceFiles: sourceFiles))
             return entry
         }
         try writeJSONObjectArray(entries, to: outputDir.appendingPathComponent(captionsFileName))

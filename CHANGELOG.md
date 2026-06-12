@@ -14,6 +14,7 @@ All notable changes to PiMP Audio Studio are documented here.
 
 ### Changed
 
+- **Dataset evenly-spread sampling now avoids source edges** — local dataset builds now sample the center of each spread bin instead of the exact first/last valid positions, and new packages record each generated clip's source file, start seconds, start frame, frame count, and sample rate in `captions.json`, `dataset_manifest.json`, and training bundles for easier audit/debugging.
 - **Dataset annotation roadmap was refreshed** — the roadmap now reflects shipped dataset review, sidecar import/export, LoRA/LoKR training, remote job export, trace compare, and the PiMP Audio Studio rebrand.
 - **RunPod launches now use Secure Cloud only** — the Remote GPU setup no longer asks users to choose between Secure and Community capacity; PiMP Audio Studio launches the standard Secure RunPod path and leaves custom provider-pool choices to the RunPod console.
 - **Local LoRA/LoKR training now uses no hidden AdamW decay and clips gradients** — adapter trainers explicitly set optimizer weight decay to zero and apply conservative global norm clipping before each optimizer step.
