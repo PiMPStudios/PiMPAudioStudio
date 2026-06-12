@@ -57,6 +57,33 @@ struct DiffusionSamplerTests {
         #expect(diffFromCond > 0.01)
     }
 
+    @Test("APG momentum matches upstream MomentumBuffer recurrence")
+    func apgMomentumRecurrence() {
+        // Upstream (acestep apg_guidance.MomentumBuffer, momentum = -0.75):
+        //   running = diff + momentum * running
+        let momentum = APGMomentum()
+        let uncond = MLXArray.zeros([1, 1, 3])
+
+        let cond1 = MLXArray(converting: [1.0, 0.0, 0.0]).reshaped([1, 1, 3])
+        _ = DiffusionSampler.apgForward(
+            predCond: cond1, predUncond: uncond,
+            guidanceScale: 2.0, momentum: momentum, normThreshold: 0
+        )
+        // running == d1 == [1, 0, 0]
+
+        let cond2 = MLXArray(converting: [0.0, 2.0, 0.0]).reshaped([1, 1, 3])
+        _ = DiffusionSampler.apgForward(
+            predCond: cond2, predUncond: uncond,
+            guidanceScale: 2.0, momentum: momentum, normThreshold: 0
+        )
+        // running == d2 - 0.75 * d1 == [-0.75, 2, 0]
+        eval(momentum.running)
+        let vals = momentum.running.reshaped([-1]).asArray(Float.self)
+        #expect(abs(vals[0] + 0.75) < 1e-5)
+        #expect(abs(vals[1] - 2.0) < 1e-5)
+        #expect(abs(vals[2]) < 1e-5)
+    }
+
     @Test("Noise generation with seed is deterministic")
     func deterministicNoise() {
         let noise1 = DiffusionSampler.generateNoise(shape: [1, 10, 64], seed: 42)

@@ -370,6 +370,9 @@ final class TrainingService: ObservableObject {
 
                 var samples: [TrainingSample] = []
 
+                let runTrainingSeed = sessionLoKRConfig?.effectiveTrainingSeed
+                    ?? sessionConfig.effectiveTrainingSeed
+
                 for (idx, entry) in entries.enumerated() {
                     try Task.checkCancellation()
                     let url = audioURLs[idx]
@@ -377,7 +380,11 @@ final class TrainingService: ObservableObject {
                         audioURL: url,
                         prompt: entry.prompt,
                         lyrics: entry.lyrics,
-                        duration: entry.duration
+                        duration: entry.duration,
+                        windowSeed: Self.windowSeed(
+                            trainingSeed: runTrainingSeed,
+                            clipIdentifier: "history|\(idx)|\(url.lastPathComponent)"
+                        )
                     )
                     let sample = preprocessResult.sample
                     samples.append(sample)
@@ -401,6 +408,11 @@ final class TrainingService: ObservableObject {
                         prompt: imported.description,
                         lyrics: imported.lyrics,
                         duration: 0,
+                        windowSeed: Self.windowSeed(
+                            trainingSeed: runTrainingSeed,
+                            clipIdentifier: imported.preprocessCache?.clipID
+                                ?? "imported|\(idx)|\(imported.url.lastPathComponent)"
+                        ),
                         cache: imported.preprocessCache
                     )
                     let sample = preprocessResult.sample
@@ -1224,6 +1236,7 @@ final class TrainingService: ObservableObject {
         prompt: String,
         lyrics: String,
         duration: TimeInterval,
+        windowSeed: UInt64,
         cache: TrainingPreprocessCacheReference? = nil
     ) async throws -> TrainingPreprocessResult {
         if let cache {
@@ -1273,7 +1286,8 @@ final class TrainingService: ObservableObject {
 
         let (windowedLatent, windowedContextLatents) = Self.trainingWindow(
             latent: latent,
-            contextLatents: cond.contextLatents
+            contextLatents: cond.contextLatents,
+            seed: windowSeed
         )
 
         let frozenLatent = stopGradient(windowedLatent)
@@ -1314,7 +1328,8 @@ final class TrainingService: ObservableObject {
 
     private static func trainingWindow(
         latent: MLXArray,
-        contextLatents: MLXArray
+        contextLatents: MLXArray,
+        seed: UInt64
     ) -> (latent: MLXArray, contextLatents: MLXArray) {
         let availableFrames = min(latent.shape[1], contextLatents.shape[1])
         guard availableFrames > 0 else {
@@ -1323,13 +1338,57 @@ final class TrainingService: ObservableObject {
 
         let frameCount = min(availableFrames, maxTrainingLatentFrames)
         let maxStart = max(0, availableFrames - frameCount)
-        let start = maxStart > 0 ? Int.random(in: 0...maxStart) : 0
+        // Deterministic window selection: derived from the run's training
+        // seed and the clip identity (see windowSeed(...)). Previously this
+        // used `Int.random`, so two runs with identical training seeds could
+        // still train on different latent windows.
+        let start: Int
+        if maxStart > 0 {
+            var rng = SeededWindowRandomNumberGenerator(seed: seed)
+            start = Int.random(in: 0...maxStart, using: &rng)
+        } else {
+            start = 0
+        }
         let end = start + frameCount
+        AudioDiagnostics.note(
+            "training/preprocess/window",
+            "seed=\(seed) start=\(start) frames=\(frameCount) available=\(availableFrames)"
+        )
 
         return (
             latent[0..., start..<end, 0...],
             contextLatents[0..., start..<end, 0...]
         )
+    }
+
+    /// Derive a per-clip window seed from the run's training seed and the
+    /// clip's identity, so preprocessing is reproducible for a fixed seed
+    /// but still selects different windows for different clips.
+    static func windowSeed(trainingSeed: UInt64, clipIdentifier: String) -> UInt64 {
+        // FNV-1a over "seed|clipIdentifier"
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        for byte in "\(trainingSeed)|\(clipIdentifier)".utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* 0x0000_0100_0000_01B3
+        }
+        return hash == 0 ? 0x9e37_79b9_7f4a_7c15 : hash
+    }
+
+    /// SplitMix64 — deterministic RNG for window selection.
+    private struct SeededWindowRandomNumberGenerator: RandomNumberGenerator {
+        private var state: UInt64
+
+        init(seed: UInt64) {
+            self.state = seed == 0 ? 0x9e37_79b9_7f4a_7c15 : seed
+        }
+
+        mutating func next() -> UInt64 {
+            state &+= 0x9e37_79b9_7f4a_7c15
+            var z = state
+            z = (z ^ (z >> 30)) &* 0xbf58_476d_1ce4_e5b9
+            z = (z ^ (z >> 27)) &* 0x94d0_49bb_1331_11eb
+            return z ^ (z >> 31)
+        }
     }
 }
 

@@ -17,6 +17,16 @@ public enum TargetLayer: String, Codable, CaseIterable, Sendable, Hashable {
 
     /// Returns the injection patterns for this target layer category.
     /// E.g. selfAttention → ["selfAttn.qProj", "selfAttn.vProj"]
+    ///
+    /// These are deliberately conservative memory-saving defaults for
+    /// on-device training (q/v only for attention; gate/down only for MLP —
+    /// `mlp.upProj` is intentionally excluded, so the MLP default covers
+    /// only part of the SwiGLU block). Upstream ACE-Step training presets
+    /// use q/k/v/o attention and no MLP. Use
+    /// `LoRAConfig.exactInjectionPatterns` (e.g.
+    /// `fullAttentionInjectionPatterns`, or adding `"mlp.upProj"`) for a
+    /// larger surface — the injector and PEFT remapper support all seven
+    /// projections.
     public var defaultPatterns: [String] {
         switch self {
         case .selfAttention:
@@ -59,7 +69,12 @@ public struct LoRAConfig: Codable, Sendable, Equatable, Hashable {
     /// Maximum number of training epochs.
     public var maxEpochs: Int
 
-    /// Training batch size. Default 1 (memory constrained on-device).
+    /// Training batch size for remote/cloud training jobs.
+    ///
+    /// NOTE: the local Swift trainers (`LoRATrainer`/`LoKRTrainer`) always
+    /// process one sample at a time (microbatch = 1) and IGNORE this value;
+    /// use `gradientAccumulationSteps` to control the effective batch size
+    /// for on-device training.
     public var batchSize: Int
 
     /// Fraction of total steps used for linear LR warmup. Default 0.10.
@@ -168,7 +183,11 @@ public struct LoKRConfig: Codable, Sendable, Equatable, Hashable {
     /// Maximum number of training epochs.
     public var maxEpochs: Int
 
-    /// Training batch size. Default 1 (memory constrained on-device).
+    /// Training batch size for remote/cloud training jobs.
+    ///
+    /// NOTE: the local Swift trainers always process one sample at a time
+    /// (microbatch = 1) and IGNORE this value; use
+    /// `gradientAccumulationSteps` to control the effective batch size.
     public var batchSize: Int
 
     /// Fraction of total steps used for linear LR warmup.

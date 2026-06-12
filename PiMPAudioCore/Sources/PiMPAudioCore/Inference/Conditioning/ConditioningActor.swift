@@ -316,41 +316,28 @@ public actor ConditioningActor {
             let autoMask = MLXArray.full([1, tFrames, 64], values: MLXArray(Self.fullGenerationChunkMaskValue))
                 .asType(precision.mlxDtype)
             contextLatents = concatenated([src.asType(precision.mlxDtype), autoMask], axis: -1)
-        } else if referenceAudio != nil {
-            // Use the already-prepared (padded/truncated) referenceLatents
-            let chunkMask = MLXArray.full(referenceLatents.shape, values: MLXArray(Self.fullGenerationChunkMaskValue))
-                .asType(precision.mlxDtype)
-            contextLatents = concatenated([referenceLatents, chunkMask], axis: -1)
         } else {
-            // Match upstream text2music context construction:
+            // Match upstream context construction (acestep
+            // conditioning_masks._build_chunk_masks_and_src_latents):
             //   context_latents = cat([silence_latent[:, :tFrames, :], auto_mask], axis=-1)
             //
             // The first half (64 channels) is the trained silence_latent —
-            // a learned "no source audio" prior. The second half (64 channels)
+            // a learned "no source audio" prior (zeros fallback if
+            // silence_latent.pt isn't loaded). The second half (64 channels)
             // is the full-generation chunk mask.
-            let srcLatents: MLXArray
-            if let silence = silenceLatent {
-                // silence has shape [1, 15000, 64]; tFrames typically 750.
-                // (Tile if duration would exceed 600s — upstream tiles too.)
-                let available = silence.shape[1]
-                if tFrames <= available {
-                    srcLatents = silence[0..., 0..<tFrames, 0...]
-                } else {
-                    let repeats = Int(ceil(Double(tFrames) / Double(available)))
-                    var tiled = silence
-                    for _ in 1..<repeats {
-                        tiled = concatenated([tiled, silence], axis: 1)
-                    }
-                    srcLatents = tiled[0..., 0..<tFrames, 0...]
-                }
-            } else {
-                // Fall back to zeros if silence_latent.pt isn't loaded —
-                // produces still-functional but slightly noisy output.
-                srcLatents = MLXArray.zeros([1, tFrames, 64])
-            }
+            //
+            // NOTE: this branch is used for reference-audio generation too.
+            // Upstream feeds reference audio ONLY to the timbre encoder
+            // (infer_refer_latent → one timbre token); it never becomes the
+            // src half of context_latents. The previous implementation used
+            // the 750-frame `referenceLatents` here, which both diverged
+            // from upstream and broke the [contextLatents, hiddenStates]
+            // channel concat in DiTModel whenever duration ≠ 30s
+            // (tFrames ≠ timbreFixFrame).
+            let srcLatents = silenceLatentSlice(length: tFrames, precision: precision)
             let autoMask = MLXArray.full([1, tFrames, 64], values: MLXArray(Self.fullGenerationChunkMaskValue))
-            contextLatents = concatenated([srcLatents, autoMask], axis: -1)
                 .asType(precision.mlxDtype)
+            contextLatents = concatenated([srcLatents, autoMask], axis: -1)
         }
         AudioDiagnostics.note(
             "cond/chunkMask",

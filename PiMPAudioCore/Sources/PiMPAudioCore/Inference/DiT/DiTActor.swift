@@ -168,6 +168,17 @@ public actor DiTActor {
         guard let decoder else {
             throw DiTActorError.weightsNotLoaded
         }
+        // A LoKR adapter is currently active: remove it first so its
+        // wrappers can't be nested inside (or orphaned by) the new LoRA
+        // injection. The injectors themselves also refuse to wrap a
+        // foreign adapter kind as a second line of defence.
+        if injectedKind == .lokr {
+            AudioDiagnostics.note(
+                "lora/inject/removeExisting",
+                "existingKind=lokr paths=\(injectedPaths.count)"
+            )
+            removeLoRA()
+        }
         let paths = LoRAInjector.inject(model: decoder, config: config, layerIndices: layerIndices)
         injectedPaths = paths
         injectedKind = .lora
@@ -250,6 +261,17 @@ public actor DiTActor {
     public func injectLoKR(config: LoKRConfig, layerIndices: Set<Int>? = nil) throws -> [String] {
         guard let decoder else {
             throw DiTActorError.weightsNotLoaded
+        }
+        // A LoRA adapter is currently active: remove it first so its
+        // wrappers can't be nested inside (or orphaned by) the new LoKR
+        // injection. The injectors themselves also refuse to wrap a
+        // foreign adapter kind as a second line of defence.
+        if injectedKind == .lora {
+            AudioDiagnostics.note(
+                "lokr/inject/removeExisting",
+                "existingKind=lora paths=\(injectedPaths.count)"
+            )
+            removeLoRA()
         }
         let paths = LoKRInjector.inject(model: decoder, config: config, layerIndices: layerIndices)
         injectedPaths = paths

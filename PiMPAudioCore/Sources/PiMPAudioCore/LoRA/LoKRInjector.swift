@@ -25,6 +25,17 @@ public enum LoKRInjector {
                         existingPaths.append(keyPath)
                         continue
                     }
+                    // Never wrap an adapter of a different kind — nesting a
+                    // LoRALinear inside a LoKRLinear corrupts the layer.
+                    // Callers must remove the existing adapter first
+                    // (DiTActor.injectLoKR does this automatically).
+                    if linear is LoRALinear {
+                        AudioDiagnostics.note(
+                            "lokr/inject/skipForeignAdapter",
+                            "path=\(keyPath) existing=LoRALinear"
+                        )
+                        continue
+                    }
 
                     let lokrLinear = LoKRLinear(
                         base: linear,

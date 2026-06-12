@@ -36,6 +36,17 @@ public enum LoRAInjector {
                         existingPaths.append(keyPath)
                         continue
                     }
+                    // Never wrap an adapter of a different kind — nesting a
+                    // LoKRLinear inside a LoRALinear corrupts the layer.
+                    // Callers must remove the existing adapter first
+                    // (DiTActor.injectLoRA does this automatically).
+                    if linear is LoKRLinear {
+                        AudioDiagnostics.note(
+                            "lora/inject/skipForeignAdapter",
+                            "path=\(keyPath) existing=LoKRLinear"
+                        )
+                        continue
+                    }
 
                     let loraLinear = LoRALinear(
                         base: linear,
@@ -257,6 +268,12 @@ extension LoRAInjector {
 
     /// Apply a full adapter stack to the model. Replaces all current contributions
     /// on every LoRALinear layer matching the given paths.
+    ///
+    /// Each contribution carries the tensors for one specific layer/projection
+    /// (`contribution.path`), so only contributions whose path matches the
+    /// layer being updated are attached. (Previously every contribution was
+    /// attached to every layer, which would matmul wrong-shaped / wrong-layer
+    /// tensors at inference.)
     public static func applyStack(
         model: DiTDecoder,
         contributions: [LoRAContribution],
@@ -273,11 +290,7 @@ extension LoRAInjector {
                 continue
             }
 
-            var layerContributions: [LoRAContribution] = []
-            for contribution in contributions {
-                layerContributions.append(contribution)
-            }
-            loraLinear.contributions = layerContributions
+            loraLinear.contributions = contributions.filter { $0.path == path }
         }
     }
 

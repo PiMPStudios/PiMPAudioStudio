@@ -8,6 +8,14 @@ import MLXRandom
 /// The learned delta weight is `kron(W1, W2)` cropped to the base linear
 /// weight shape. This keeps the native implementation small and fully MLX
 /// differentiable while matching LoKR's core Kronecker-factor idea.
+///
+/// FORMAT NOTE: this is a PiMP-native, simplified LoKR. The saved tensors
+/// are `.lokrW1`, `.lokrW2`, and optionally `.lokrMagnitude` (DoRA). It is
+/// NOT interchangeable with PEFT/Kohya/LyCORIS LoKR checkpoints, which use
+/// factored key layouts such as `lokr_w1_a`/`lokr_w1_b`/`lokr_w2_a`/
+/// `lokr_w2_b` (upstream ACE-Step trains LoKR via LyCORIS). The PEFT key
+/// remapper also only detects LoRA `lora_A`/`lora_B` keys — community LoKR
+/// adapters cannot currently be imported without a converter.
 public class LoKRLinear: Linear {
     let baseWeight: MLXArray
     let baseBias: MLXArray?
@@ -238,16 +246,31 @@ public class LoKRLinear: Linear {
         scaling: Float,
         magnitude: MLXArray
     ) -> MLXArray {
+        // PEFT-parity DoRA training step with dropout: the magnitude-
+        // normalised correction term is computed entirely on the (possibly
+        // dropout-masked) adapter input, while the plain base output uses
+        // the full input:
+        //
+        //   out = base(x) + (m/‖W+sΔ‖ − 1)·(xd Wᵀ) + (m/‖W+sΔ‖)·s·(xd Δᵀ)
+        //
+        // where xd is the dropout-masked input. With dropout = 0 this
+        // reduces exactly to m/‖W+sΔ‖ · (x Wᵀ + s·x Δᵀ) + bias.
+        //
+        // The previous form applied the row scale to the full-input base
+        // term while the adapter term used the dropped input — not a valid
+        // sample of the decomposed weight when dropout > 0.
         let scaledDelta = scaling * delta
         let directionalWeight = baseWeight + scaledDelta
         let outputScale = magnitude / (stopGradient(rowNorm(directionalWeight)) + 1e-6)
-        let baseNoBias = matmul(x, baseWeight.T)
-        let adapterOut = scaling * matmul(adapterInput, delta.T)
-        let noBias = (baseNoBias + adapterOut) * outputScale
+        let baseOut: MLXArray
         if let baseBias {
-            return noBias + baseBias
+            baseOut = addMM(baseBias, x, baseWeight.T)
+        } else {
+            baseOut = matmul(x, baseWeight.T)
         }
-        return noBias
+        let droppedBase = matmul(adapterInput, baseWeight.T)
+        let adapterOut = scaling * matmul(adapterInput, delta.T)
+        return baseOut + (outputScale - 1.0) * droppedBase + outputScale * adapterOut
     }
 
     private static func ceilDiv(_ lhs: Int, _ rhs: Int) -> Int {

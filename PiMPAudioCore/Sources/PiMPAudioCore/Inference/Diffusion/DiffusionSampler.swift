@@ -82,10 +82,20 @@ public enum DiffusionSampler {
     ) -> MLXArray {
         var diff = predCond - predUncond
         if let momentum = momentum {
-            diff = diff + momentum.running
-            momentum.running = diff
+            // Upstream MomentumBuffer.update (apg_guidance.py):
+            //   running = update + momentum * running   (momentum = -0.75)
+            //   diff = running
+            // The previous Swift form (`diff += running; running = diff`)
+            // was an unbounded cumulative sum (effective momentum = +1.0).
+            momentum.running = diff + MLXArray(momentum.momentum) * momentum.running
+            diff = momentum.running
         }
 
+        // All norms/projections reduce over axis 1 (the time/frame axis of
+        // [B, T, C] tensors). This matches upstream exactly: ACE-Step v1.5
+        // calls `apg_forward(..., dims=[1])` on [B, T, C] velocity tensors
+        // (modeling_acestep_v15_base.py), i.e. a per-channel projection
+        // across time — intentional, despite looking unusual.
         if normThreshold > 0 {
             let diffNorm = sqrt((diff * diff).sum(axis: 1, keepDims: true))
             let scaleFactor = minimum(MLXArray.ones(like: diffNorm), MLXArray(normThreshold) / (diffNorm + 1e-8))
@@ -109,10 +119,14 @@ public enum DiffusionSampler {
     }
 }
 
+/// Running-average buffer for APG guidance. Mirrors upstream ACE-Step
+/// `MomentumBuffer(momentum=-0.75)` in `acestep/models/base/apg_guidance.py`.
 public class APGMomentum {
     var running: MLXArray
+    let momentum: Float
 
-    public init() {
+    public init(momentum: Float = -0.75) {
         self.running = MLXArray(Float(0))
+        self.momentum = momentum
     }
 }

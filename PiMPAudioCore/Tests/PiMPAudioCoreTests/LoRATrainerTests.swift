@@ -1,6 +1,8 @@
 import Testing
 import Foundation
 import MLX
+import MLXNN
+import MLXRandom
 @testable import PiMPAudioCore
 
 @Test func cosineSchedulerUsesWarmupFraction() {
@@ -152,6 +154,33 @@ import MLX
     zip(values, baseValues).forEach { value, expected in
         #expect(abs(value - expected) < 0.00001)
     }
+}
+
+@Test func lokrDoraTrainingMatchesInferenceWithZeroDropout() {
+    // With dropout == 0 the PEFT-parity DoRA training branch must produce
+    // exactly the same output as the inference branch (full reconstructed
+    // DoRA weight applied to x).
+    MLXRandom.seed(7)
+    let base = Linear(weight: MLXRandom.normal([6, 5]), bias: MLXRandom.normal([6]))
+    let lokr = LoKRLinear(
+        base: base,
+        linearDim: 2,
+        alpha: 2.0,
+        dropout: 0.0,
+        weightDecompose: true
+    )
+    // Give the adapter a non-zero delta so the test is meaningful.
+    lokr.lokrW2._updateInternal(MLXRandom.normal(lokr.lokrW2.shape) * 0.1)
+
+    let x = MLXRandom.normal([1, 3, 5])
+    lokr.isTraining = true
+    let trainOut = lokr(x)
+    lokr.isTraining = false
+    let inferOut = lokr(x)
+    eval(trainOut, inferOut)
+
+    let maxDiff = MLX.abs(trainOut - inferOut).max().item(Float.self)
+    #expect(maxDiff < 1e-4)
 }
 
 @Test func oldAdapterJSONDecodesAsLoRAKind() throws {

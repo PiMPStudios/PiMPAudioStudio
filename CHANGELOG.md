@@ -18,6 +18,7 @@ All notable changes to PiMP Audio Studio are documented here.
 - **Local LoRA/LoKR training is now seeded and validation-aware** — training setup exposes a deterministic seed, trainers use seeded shuffling/noise/timestep/CFG/dropout streams, and epoch-end validation loss uses a fixed held-out split with dropout disabled for best-checkpoint selection.
 - **Training pause/resume now saves real optimizer state** — paused LoRA/LoKR runs write Adam optimizer tensors to `optimizer_state.safetensors`, save the current in-progress adapter weights, and restore optimizer moments on resume instead of writing a placeholder state file.
 - **Training diagnostics and MCP payloads now include validation loss** — local training progress, run logs, loss charts, checkpoints, and MCP training inspection surfaces include validation history so epoch comparisons have a steadier signal than noisy train loss alone.
+- **Adapter API docs now state real behavior and format compatibility** — `batchSize` is documented as remote-only (local trainers run microbatch-1 with gradient accumulation), native LoKR is labeled as a PiMP-native format not interchangeable with PEFT/Kohya/LyCORIS LoKR checkpoints, the conservative MLP LoRA default (gate/down only, no `upProj`) is documented against upstream's q/k/v/o presets, and APG's axis-1 projection is annotated as verified upstream parity (`apg_forward(..., dims=[1])`).
 
 ### Fixed
 
@@ -31,6 +32,12 @@ All notable changes to PiMP Audio Studio are documented here.
 - **Stacked adapters now keep their own alpha scaling** — LoRA/LoKR stacks now apply each adapter's saved alpha/rank or alpha/linear-dim scale instead of reusing the primary adapter's scale for every contribution.
 - **LoKR DoRA training now matches PEFT norm handling more closely** — DoRA magnitude scaling now stops gradients through the directional norm denominator while leaving inference output unchanged.
 - **LoKR Train from Files is available again** — the Training toolbar button now opens a LoKR training session when LoKR mode is selected instead of only enabling for LoRA.
+- **Reference-audio generation no longer breaks at durations other than 30 s** — context latents are now built from the silence latent at the requested frame count (matching upstream, where reference audio feeds only the timbre encoder), instead of the fixed 750-frame reference latents that mismatched the diffusion sequence length in the DiT channel concat.
+- **APG guidance momentum now matches upstream ACE-Step** — the momentum buffer uses the upstream recurrence `running = diff − 0.75·running` instead of an unbounded cumulative sum, with a regression test against the upstream formula.
+- **Training window selection is now seeded** — preprocessing derives each clip's latent window from the run's training seed plus the clip identity (FNV-1a → SplitMix64) instead of `Int.random`, so identical seeds train on identical windows; the chosen window is logged in training diagnostics. Note: previously cached preprocess samples keep the window they were created with.
+- **`LoRAInjector.applyStack` now filters contributions by layer path** — each `LoRALinear` receives only the contributions whose `path` matches it, instead of every layer receiving the full stack of wrong-shaped/wrong-layer tensors.
+- **Cross-kind adapter injection can no longer nest wrappers** — both injectors refuse to wrap a layer already wrapped by the other adapter kind, and `DiTActor.injectLoRA`/`injectLoKR` remove an active opposite-kind adapter before injecting, with regression tests for both directions.
+- **LoKR DoRA training with dropout is now mathematically consistent** — the DoRA training branch uses the PEFT-parity formulation where the magnitude-normalized correction is computed entirely on the dropout-masked input; with dropout 0 the output is unchanged and now verified equal to the inference path by a regression test.
 
 ---
 

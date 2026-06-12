@@ -38,6 +38,26 @@ struct ConditioningActorTests {
         #expect(result.contextLatents.shape[2] == 128)
     }
 
+    @Test("Reference-audio context length matches requested duration, not timbreFixFrame")
+    func referenceContextMatchesRequestedDuration() async throws {
+        let actor = try ConditioningActor.stub()
+        let refAudio = MLXArray.zeros([1, 4096, 2])
+        let duration = 10.0
+        let result = try await actor.encode(
+            text: "A pop song",
+            lyrics: "",
+            referenceAudio: refAudio,
+            duration: duration,
+            precision: .float32
+        )
+        let expectedFrames = ConditioningActor.latentFrames(forDuration: duration)
+        // Regression: contextLatents was previously built from the
+        // 750-frame reference latents, breaking the channel concat in
+        // DiTModel for any duration ≠ 30 s.
+        #expect(expectedFrames != ConditioningActor.timbreFixFrame)
+        #expect(result.contextLatents.shape[1] == expectedFrames)
+    }
+
     @Test("ConditioningActor contextLatents uses silence source and full mask for text-only")
     func contextLatentsTextOnlyPath() async throws {
         let actor = try ConditioningActor.stub()
