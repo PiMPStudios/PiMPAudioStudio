@@ -23,6 +23,7 @@ All notable changes to PiMP Audio Studio are documented here.
 
 ### Fixed
 
+- **MCP trace payloads now keep adapter strength numeric** — `get_trace` now serializes trace adapters with the same explicit payload builder used elsewhere, so adapter `weight` reports as `1.0`, `1.6`, etc. instead of bridging to a boolean in structured JSON.
 - **Generation restart now waits for the previous run to unwind** — starting a new generation cancels the old task, waits for it to finish, and ignores stale cleanup from superseded runs so cancelled diffusion cannot clobber the new trace state, reload the LLM mid-run, or clear adapters under an active generation.
 - **WAV export now correctly interleaves planar stereo buffers** — `[channels, frames]` audio is transposed to `[frames, channels]` before writing PCM, with a regression test using distinct left/right samples.
 - **Corrupt history indexes are preserved before reset** — if `history.json` cannot be decoded, the unreadable file is moved to `history.json.corrupt` before the in-memory history falls back to an empty list.

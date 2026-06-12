@@ -2312,6 +2312,25 @@ private actor FakeDatasetLyricsTranscriber: DatasetLyricsTranscribing, DatasetLy
     #expect(samplingRows?["Cover Strength"]?.right == "35%")
 }
 
+@Test func tracePayloadKeepsAdapterWeightNumeric() async throws {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("TracePayloadTests-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let payload = try await MainActor.run {
+        let facade = makeTestCommandFacade(root: root)
+        let trace = traceForComparison(sourceAudioFileName: nil, coverStrength: 0.7, adapterWeight: 1.6)
+        return try facade.tracePayload(trace)
+    }
+    let adapters = try #require(payload["adapters"] as? [[String: Any]])
+    let adapter = try #require(adapters.first)
+    let weight = try #require(adapter["weight"] as? Float)
+
+    #expect(weight == 1.6)
+    #expect(!(adapter["weight"] is Bool))
+}
+
 @Test func editorAudioExporterNormalizesDestinationExtensions() {
     let baseURL = URL(fileURLWithPath: "/tmp/edited-render")
     let wrongExtensionURL = URL(fileURLWithPath: "/tmp/edited-render.caf")
@@ -2358,7 +2377,8 @@ private func editorExportTestBuffer(
 
 private func traceForComparison(
     sourceAudioFileName: String?,
-    coverStrength: Float
+    coverStrength: Float,
+    adapterWeight: Float? = nil
 ) -> GenerationTrace {
     GenerationTrace(
         historyEntryID: UUID(),
@@ -2392,7 +2412,18 @@ private func traceForComparison(
             displayName: "ACE-Step Test"
         ),
         supportingModels: [],
-        adapters: [],
+        adapters: adapterWeight.map {
+            [
+                HistoryAdapterSnapshot(
+                    id: "test-lokr-adapter",
+                    name: "Test LoKR Adapter",
+                    weight: $0,
+                    source: "imported",
+                    rank: 128,
+                    baseModelID: "ace-step-dit-xl-sft"
+                )
+            ]
+        } ?? [],
         featureFlags: GenerationTraceFeatureFlags(
             lmThinkingEnabled: false,
             cotMetadataEnabled: false,

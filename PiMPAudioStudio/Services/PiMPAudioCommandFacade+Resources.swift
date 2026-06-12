@@ -951,6 +951,7 @@ extension PiMPAudioCommandFacade {
 
     func tracePayload(_ trace: GenerationTrace) throws -> [String: Any] {
         var payload = try encodedJSONObject(trace)
+        payload["adapters"] = trace.adapters.map(historyAdapterPayload)
         payload["audioFilePath"] = historyStore.fileURL(forAudioFileName: trace.audioFileName).path(percentEncoded: false)
         return payload
     }
