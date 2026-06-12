@@ -15,6 +15,7 @@ All notable changes to PiMP Audio Studio are documented here.
 ### Changed
 
 - **Dataset annotation roadmap was refreshed** — the roadmap now reflects shipped dataset review, sidecar import/export, LoRA/LoKR training, remote job export, trace compare, and the PiMP Audio Studio rebrand.
+- **RunPod launches now use Secure Cloud only** — the Remote GPU setup no longer asks users to choose between Secure and Community capacity; PiMP Audio Studio launches the standard Secure RunPod path and leaves custom provider-pool choices to the RunPod console.
 - **Local LoRA/LoKR training now uses no hidden AdamW decay and clips gradients** — adapter trainers explicitly set optimizer weight decay to zero and apply conservative global norm clipping before each optimizer step.
 - **Local LoRA/LoKR training now follows the corrected ACE-Step timestep/CFG recipe** — native Swift trainers sample the same logit-normal max timestep schedule used by fixed ACE-Step training and apply 15% CFG dropout with the learned null condition embedding while keeping random draws outside the MLX gradient closure.
 - **Local LoRA/LoKR training is now seeded and validation-aware** — training setup exposes a deterministic seed, trainers use seeded shuffling/noise/timestep/CFG/dropout streams, and epoch-end validation loss uses a fixed held-out split with dropout disabled for best-checkpoint selection.

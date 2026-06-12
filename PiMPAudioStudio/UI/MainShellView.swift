@@ -453,7 +453,6 @@ private struct BuildTrainingView: View {
     @AppStorage(AppUserDefaultsKeys.runPodTemplateID) private var runPodTemplateID = ""
     @AppStorage(AppUserDefaultsKeys.runPodImageName) private var runPodImageName = ""
     @AppStorage(AppUserDefaultsKeys.runPodGPUType) private var runPodGPUType = "NVIDIA RTX PRO 6000 Blackwell Server Edition"
-    @AppStorage(AppUserDefaultsKeys.runPodCloudType) private var runPodCloudTypeRaw = RunPodCloudType.secure.rawValue
     @AppStorage(AppUserDefaultsKeys.runPodInterruptible) private var runPodInterruptible = false
     @AppStorage(AppUserDefaultsKeys.runPodContainerDiskGB) private var runPodContainerDiskGB = 80
     @AppStorage(AppUserDefaultsKeys.runPodVolumeGB) private var runPodVolumeGB = 80
@@ -929,7 +928,6 @@ private struct BuildTrainingView: View {
                 templateID: $runPodTemplateID,
                 imageName: $runPodImageName,
                 gpuType: $runPodGPUType,
-                cloudTypeRaw: $runPodCloudTypeRaw,
                 interruptible: $runPodInterruptible,
                 containerDiskGB: $runPodContainerDiskGB,
                 volumeGB: $runPodVolumeGB,
@@ -955,7 +953,6 @@ private struct BuildTrainingView: View {
             templateID: runPodTemplateID,
             imageName: runPodImageName,
             gpuTypeID: runPodGPUType,
-            cloudType: RunPodCloudType(rawValue: runPodCloudTypeRaw) ?? .secure,
             interruptible: runPodInterruptible,
             containerDiskGB: runPodContainerDiskGB,
             volumeGB: runPodVolumeGB

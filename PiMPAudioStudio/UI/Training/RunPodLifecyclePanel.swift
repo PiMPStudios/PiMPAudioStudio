@@ -11,7 +11,6 @@ struct RunPodLifecyclePanel: View {
     @Binding var templateID: String
     @Binding var imageName: String
     @Binding var gpuType: String
-    @Binding var cloudTypeRaw: String
     @Binding var interruptible: Bool
     @Binding var containerDiskGB: Int
     @Binding var volumeGB: Int
@@ -155,10 +154,7 @@ struct RunPodLifecyclePanel: View {
             }
 
             if let selectedRunPodGPUType {
-                Text(selectedRunPodGPUType.detailLabel(
-                    cloudType: runPodCloudTypeBinding.wrappedValue,
-                    interruptible: interruptible
-                ))
+                Text(selectedRunPodGPUType.detailLabel(interruptible: interruptible))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else if !runPodService.gpuTypes.isEmpty,
@@ -167,13 +163,6 @@ struct RunPodLifecyclePanel: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-
-            Picker("Cloud", selection: runPodCloudTypeBinding) {
-                ForEach(RunPodCloudType.allCases) { cloudType in
-                    Text(cloudType.title).tag(cloudType)
-                }
-            }
-            .pickerStyle(.segmented)
 
             Toggle("Interruptible", isOn: $interruptible)
 
@@ -232,13 +221,6 @@ struct RunPodLifecyclePanel: View {
         case .none:
             return "Not configured"
         }
-    }
-
-    private var runPodCloudTypeBinding: Binding<RunPodCloudType> {
-        Binding(
-            get: { RunPodCloudType(rawValue: cloudTypeRaw) ?? .secure },
-            set: { cloudTypeRaw = $0.rawValue }
-        )
     }
 
     private var canLaunchRunPodPod: Bool {

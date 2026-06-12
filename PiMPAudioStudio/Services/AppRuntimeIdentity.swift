@@ -50,7 +50,6 @@ enum AppUserDefaultsKeys {
     static let runPodTemplateID = AppRuntimeIdentity.defaultsKey("runpod.templateID")
     static let runPodImageName = AppRuntimeIdentity.defaultsKey("runpod.imageName")
     static let runPodGPUType = AppRuntimeIdentity.defaultsKey("runpod.gpuType")
-    static let runPodCloudType = AppRuntimeIdentity.defaultsKey("runpod.cloudType")
     static let runPodInterruptible = AppRuntimeIdentity.defaultsKey("runpod.interruptible")
     static let runPodContainerDiskGB = AppRuntimeIdentity.defaultsKey("runpod.containerDiskGB")
     static let runPodVolumeGB = AppRuntimeIdentity.defaultsKey("runpod.volumeGB")

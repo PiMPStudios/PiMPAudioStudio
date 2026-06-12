@@ -102,52 +102,35 @@ private final class RunPodMockTransport: RunPodTransport, @unchecked Sendable {
                 "manufacturer": "NVIDIA",
                 "memoryInGb": 24,
                 "secureCloud": true,
-                "communityCloud": true,
-                "lowestPrice": {
-                  "gpuName": "RTX 4090",
-                  "gpuTypeId": "NVIDIA GeForce RTX 4090",
-                  "minimumBidPrice": 0.29,
-                  "uninterruptablePrice": 0.44,
-                  "stockStatus": "High",
-                  "availableGpuCounts": [1, 2, 4],
-                  "maxGpuCount": 8,
-                  "maxUnreservedGpuCount": 4,
-                  "rentedCount": 2,
-                  "totalCount": 10
-                },
                 "secureLowestPrice": {
                   "minimumBidPrice": 0.50,
                   "uninterruptablePrice": 0.74,
                   "stockStatus": "Medium",
                   "availableGpuCounts": [1, 2]
                 },
-                "communityLowestPrice": {
-                  "minimumBidPrice": 0.29,
-                  "uninterruptablePrice": 0.44,
-                  "stockStatus": "High",
-                  "availableGpuCounts": [1, 2, 4]
-                },
                 "securePrice": 0.74,
-                "communityPrice": "0.44",
                 "secureSpotPrice": 0.50,
-                "communitySpotPrice": 0.29,
                 "maxGpuCount": 8,
-                "maxGpuCountSecureCloud": 4,
-                "maxGpuCountCommunityCloud": 8
+                "maxGpuCountSecureCloud": 4
               },
               {
                 "id": "NVIDIA H100 PCIe",
                 "displayName": "NVIDIA H100 PCIe",
                 "memoryInGb": 80,
                 "secureCloud": true,
-                "communityCloud": false,
-                "lowestPrice": {
+                "secureLowestPrice": {
                   "uninterruptablePrice": 4.25,
                   "stockStatus": "None",
                   "availableGpuCounts": []
                 },
                 "securePrice": 4.25,
                 "maxGpuCount": 2
+              },
+              {
+                "id": "community-only-gpu",
+                "displayName": "Community Only GPU",
+                "memoryInGb": 24,
+                "secureCloud": false
               }
             ]
           }
@@ -163,21 +146,22 @@ private final class RunPodMockTransport: RunPodTransport, @unchecked Sendable {
     let gpuTypes = try await client.listGPUTypes(token: "rp_test_token")
 
     #expect(gpuTypes.count == 2)
+    #expect(!gpuTypes.contains { $0.id == "community-only-gpu" })
     let rtx4090 = try #require(gpuTypes.first { $0.id == "NVIDIA GeForce RTX 4090" })
     #expect(rtx4090.selectionValue == "NVIDIA GeForce RTX 4090")
     #expect(rtx4090.menuTitle.contains("24 GB"))
-    #expect(rtx4090.menuTitle.contains("High stock"))
-    #expect(rtx4090.menuTitle.contains("from $0.29/hr"))
-    let secureDetail = rtx4090.detailLabel(cloudType: .secure, interruptible: false)
-    #expect(secureDetail.contains("Catalog: Secure + Community"))
+    #expect(rtx4090.menuTitle.contains("Medium stock"))
+    #expect(rtx4090.menuTitle.contains("from $0.50/hr"))
+    let secureDetail = rtx4090.detailLabel(interruptible: false)
+    #expect(secureDetail.contains("Secure Cloud"))
     #expect(secureDetail.contains("Medium stock"))
     #expect(secureDetail.contains("counts 1/2"))
     #expect(secureDetail.contains("On-demand $0.74/hr"))
-    #expect(secureDetail.contains("up to 8 GPUs"))
+    #expect(secureDetail.contains("up to 4 GPUs"))
 
-    let communitySpotDetail = rtx4090.detailLabel(cloudType: .community, interruptible: true)
-    #expect(communitySpotDetail.contains("High stock"))
-    #expect(communitySpotDetail.contains("Spot $0.29/hr"))
+    let secureSpotDetail = rtx4090.detailLabel(interruptible: true)
+    #expect(secureSpotDetail.contains("Medium stock"))
+    #expect(secureSpotDetail.contains("Spot $0.50/hr"))
 
     let request = try #require(transport.requests.first)
     #expect(request.httpMethod == "POST")
@@ -212,7 +196,6 @@ private final class RunPodMockTransport: RunPodTransport, @unchecked Sendable {
         templateID: "template-123",
         imageName: "",
         gpuTypeID: "NVIDIA GeForce RTX 4090",
-        cloudType: .secure,
         interruptible: false,
         containerDiskGB: 80,
         volumeGB: 120

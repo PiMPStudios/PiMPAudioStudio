@@ -141,7 +141,6 @@ struct RunPodLaunchConfiguration: Equatable, Sendable {
     var templateID: String
     var imageName: String
     var gpuTypeID: String
-    var cloudType: RunPodCloudType
     var interruptible: Bool
     var containerDiskGB: Int
     var volumeGB: Int
@@ -168,7 +167,7 @@ struct RunPodLaunchConfiguration: Equatable, Sendable {
         }
 
         return RunPodCreatePodRequest(
-            cloudType: cloudType.rawValue,
+            cloudType: "SECURE",
             computeType: "GPU",
             containerDiskInGb: containerDiskGB,
             gpuCount: 1,
@@ -184,20 +183,6 @@ struct RunPodLaunchConfiguration: Equatable, Sendable {
             volumeInGb: volumeGB,
             volumeMountPath: "/workspace"
         )
-    }
-}
-
-enum RunPodCloudType: String, CaseIterable, Identifiable, Codable, Sendable {
-    case secure = "SECURE"
-    case community = "COMMUNITY"
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .secure: return "Secure"
-        case .community: return "Community"
-        }
     }
 }
 
@@ -320,9 +305,7 @@ struct RunPodGPU: Decodable, Equatable, Sendable {
     var count: Int?
     var displayName: String?
     var securePrice: RunPodFlexibleDouble?
-    var communityPrice: RunPodFlexibleDouble?
     var secureSpotPrice: RunPodFlexibleDouble?
-    var communitySpotPrice: RunPodFlexibleDouble?
 }
 
 struct RunPodGPUType: Identifiable, Decodable, Equatable, Sendable {
@@ -331,17 +314,11 @@ struct RunPodGPUType: Identifiable, Decodable, Equatable, Sendable {
     var manufacturer: String?
     var memoryInGb: Int?
     var secureCloud: Bool?
-    var communityCloud: Bool?
-    var lowestPrice: RunPodLowestPrice?
     var secureLowestPrice: RunPodLowestPrice?
-    var communityLowestPrice: RunPodLowestPrice?
     var securePrice: RunPodFlexibleDouble?
-    var communityPrice: RunPodFlexibleDouble?
     var secureSpotPrice: RunPodFlexibleDouble?
-    var communitySpotPrice: RunPodFlexibleDouble?
     var maxGpuCount: Int?
     var maxGpuCountSecureCloud: Int?
-    var maxGpuCountCommunityCloud: Int?
 
     var selectionValue: String {
         let trimmedID = id.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -373,51 +350,39 @@ struct RunPodGPUType: Identifiable, Decodable, Equatable, Sendable {
         return "\(displayNameValue) (\(details.joined(separator: ", ")))"
     }
 
-    func detailLabel(cloudType: RunPodCloudType, interruptible: Bool) -> String {
+    func detailLabel(interruptible: Bool) -> String {
         var details: [String] = []
         if let memoryInGb {
             details.append("\(memoryInGb) GB VRAM")
         }
-        details.append("Catalog: \(availabilityLabel)")
-        details.append(stockLabel(cloudType: cloudType))
-        if let launchPriceLabel = launchPriceLabel(cloudType: cloudType, interruptible: interruptible) {
+        details.append(availabilityLabel)
+        details.append(stockLabel())
+        if let launchPriceLabel = launchPriceLabel(interruptible: interruptible) {
             details.append("\(interruptible ? "Spot" : "On-demand") \(launchPriceLabel)")
         }
-        if let maxGpuCount, maxGpuCount > 0 {
+        if let maxGpuCount = maxGpuCountSecureCloud ?? maxGpuCount, maxGpuCount > 0 {
             details.append("up to \(maxGpuCount) GPU\(maxGpuCount == 1 ? "" : "s")")
         }
         return details.joined(separator: " · ")
     }
 
     var availabilityLabel: String {
-        switch (secureCloud == true, communityCloud == true) {
-        case (true, true):
-            return "Secure + Community"
-        case (true, false):
-            return "Secure"
-        case (false, true):
-            return "Community"
-        default:
-            return "Availability unknown"
+        if secureCloud == false {
+            return "Secure Cloud unavailable"
         }
+        return "Secure Cloud"
     }
 
     var liveStockLabel: String? {
-        lowestPrice?.stockStatusLabel
+        secureLowestPrice?.stockStatusLabel
     }
 
     var lowestHourlyPriceLabel: String? {
         let prices = [
-            lowestPrice?.minimumBidPrice?.value,
-            lowestPrice?.uninterruptablePrice?.value,
             secureLowestPrice?.minimumBidPrice?.value,
             secureLowestPrice?.uninterruptablePrice?.value,
-            communityLowestPrice?.minimumBidPrice?.value,
-            communityLowestPrice?.uninterruptablePrice?.value,
             securePrice?.value,
-            communityPrice?.value,
             secureSpotPrice?.value,
-            communitySpotPrice?.value,
         ].compactMap { $0 }.filter { $0 > 0 }
 
         guard let lowest = prices.min() else { return nil }
@@ -429,8 +394,8 @@ struct RunPodGPUType: Identifiable, Decodable, Equatable, Sendable {
         return normalized == id || normalized == displayNameValue
     }
 
-    private func stockLabel(cloudType: RunPodCloudType) -> String {
-        guard let price = lowestPrice(for: cloudType) else {
+    private func stockLabel() -> String {
+        guard let price = secureLowestPrice else {
             return "Live stock unknown"
         }
 
@@ -441,33 +406,14 @@ struct RunPodGPUType: Identifiable, Decodable, Equatable, Sendable {
         return parts.joined(separator: " · ")
     }
 
-    private func launchPriceLabel(cloudType: RunPodCloudType, interruptible: Bool) -> String? {
-        if let price = lowestPrice(for: cloudType)?.hourlyPriceLabel(interruptible: interruptible) {
+    private func launchPriceLabel(interruptible: Bool) -> String? {
+        if let price = secureLowestPrice?.hourlyPriceLabel(interruptible: interruptible) {
             return price
         }
 
-        let fallback: RunPodFlexibleDouble?
-        switch (cloudType, interruptible) {
-        case (.secure, false):
-            fallback = securePrice
-        case (.secure, true):
-            fallback = secureSpotPrice ?? securePrice
-        case (.community, false):
-            fallback = communityPrice
-        case (.community, true):
-            fallback = communitySpotPrice ?? communityPrice
-        }
+        let fallback = interruptible ? secureSpotPrice ?? securePrice : securePrice
         guard let value = fallback?.value, value > 0 else { return nil }
         return String(format: "$%.2f/hr", value)
-    }
-
-    private func lowestPrice(for cloudType: RunPodCloudType) -> RunPodLowestPrice? {
-        switch cloudType {
-        case .secure:
-            return secureLowestPrice ?? lowestPrice
-        case .community:
-            return communityLowestPrice ?? lowestPrice
-        }
     }
 }
 
@@ -637,9 +583,11 @@ struct RunPodAPIClient {
             throw RunPodError.invalidResponse
         }
 
-        return data.gpuTypes.sorted {
-            $0.displayNameValue.localizedStandardCompare($1.displayNameValue) == .orderedAscending
-        }
+        return data.gpuTypes
+            .filter { $0.secureCloud != false }
+            .sorted {
+                $0.displayNameValue.localizedStandardCompare($1.displayNameValue) == .orderedAscending
+            }
     }
 
     func createPod(token: String, configuration: RunPodLaunchConfiguration) async throws -> RunPodPodSummary {
@@ -711,23 +659,13 @@ struct RunPodAPIClient {
         manufacturer
         memoryInGb
         secureCloud
-        communityCloud
-        lowestPrice(input: { gpuCount: 1 }) {
-          ...RunPodLowestPriceFields
-        }
         secureLowestPrice: lowestPrice(input: { gpuCount: 1, secureCloud: true }) {
           ...RunPodLowestPriceFields
         }
-        communityLowestPrice: lowestPrice(input: { gpuCount: 1, secureCloud: false }) {
-          ...RunPodLowestPriceFields
-        }
         securePrice
-        communityPrice
         secureSpotPrice
-        communitySpotPrice
         maxGpuCount
         maxGpuCountSecureCloud
-        maxGpuCountCommunityCloud
       }
     }
 
