@@ -457,6 +457,7 @@ private struct BuildTrainingView: View {
     @AppStorage(AppUserDefaultsKeys.runPodContainerDiskGB) private var runPodContainerDiskGB = 80
     @AppStorage(AppUserDefaultsKeys.runPodVolumeGB) private var runPodVolumeGB = 80
     @AppStorage(AppUserDefaultsKeys.runPodSSHKeyPath) private var runPodSSHKeyPath = "~/.ssh/id_ed25519"
+    @AppStorage(AppUserDefaultsKeys.runPodLastArchivePath) private var runPodLastArchivePath = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -923,7 +924,7 @@ private struct BuildTrainingView: View {
 
             RunPodLifecyclePanel(
                 hasSelectedPackage: selectedRemotePackage != nil,
-                preparedArchiveURL: remotePreparedArchiveURL,
+                preparedArchiveURL: effectiveRemotePreparedArchiveURL,
                 apiKey: $runPodAPIKey,
                 templateID: $runPodTemplateID,
                 imageName: $runPodImageName,
@@ -933,6 +934,7 @@ private struct BuildTrainingView: View {
                 volumeGB: $runPodVolumeGB,
                 sshKeyPath: $runPodSSHKeyPath,
                 onLaunchRequested: { showingRunPodLaunchConfirmation = true },
+                onSelectArchiveRequested: selectRemoteJobArchive,
                 onStopRequested: { pendingRunPodStop = $0 },
                 onNotice: { remoteNotice = $0 }
             )
@@ -1069,6 +1071,41 @@ private struct BuildTrainingView: View {
         NSWorkspace.shared.open(package.directory)
     }
 
+    private var effectiveRemotePreparedArchiveURL: URL? {
+        if let remotePreparedArchiveURL,
+           FileManager.default.fileExists(atPath: remotePreparedArchiveURL.path(percentEncoded: false)) {
+            return remotePreparedArchiveURL
+        }
+
+        let trimmedPath = runPodLastArchivePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedPath.isEmpty else { return nil }
+        let url = URL(fileURLWithPath: NSString(string: trimmedPath).expandingTildeInPath)
+        guard FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) else { return nil }
+        return url
+    }
+
+    private func rememberRemoteArchive(_ url: URL) {
+        remotePreparedArchiveURL = url
+        runPodLastArchivePath = url.path(percentEncoded: false)
+    }
+
+    private func selectRemoteJobArchive() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.zip]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.prompt = "Choose Job Zip"
+        panel.message = "Choose an exported PiMP Audio Studio remote job zip to upload to the active pod."
+        if let effectiveRemotePreparedArchiveURL {
+            panel.directoryURL = effectiveRemotePreparedArchiveURL.deletingLastPathComponent()
+        }
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        rememberRemoteArchive(url)
+        remotePreparedJobID = nil
+        remoteNotice = "Remote job zip selected: \(url.path(percentEncoded: false))."
+    }
+
     private func openSelectedPackageInTraining(adapterKind: AdapterKind) {
         guard let package = selectedRemotePackage else { return }
         let bundleURL = package.directory.appendingPathComponent(TrainingDatasetPackageWriter.fullMixBundleFileName)
@@ -1158,7 +1195,7 @@ private struct BuildTrainingView: View {
                 to: destination,
                 extraFiles: extraFiles
             )
-            remotePreparedArchiveURL = archiveURL
+            rememberRemoteArchive(archiveURL)
             remotePreparedJobID = job.jobID
             remoteNotice = "Remote job exported to \(archiveURL.path(percentEncoded: false))."
             refreshRemotePackages()

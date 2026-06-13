@@ -16,6 +16,7 @@ struct RunPodLifecyclePanel: View {
     @Binding var volumeGB: Int
     @Binding var sshKeyPath: String
     let onLaunchRequested: () -> Void
+    let onSelectArchiveRequested: () -> Void
     let onStopRequested: (RunPodPodSummary) -> Void
     let onNotice: (String) -> Void
 
@@ -27,6 +28,7 @@ struct RunPodLifecyclePanel: View {
         Group {
             runPodCredentialSection
             runPodLaunchSection
+            runPodArchiveSection
             runPodPodsSection
         }
         .onChange(of: gpuType) { _, _ in
@@ -286,6 +288,36 @@ struct RunPodLifecyclePanel: View {
                     runPodPodRow(pod)
                 }
             }
+        }
+    }
+
+    private var runPodArchiveSection: some View {
+        Section("Remote Job Zip") {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(preparedArchiveURL?.lastPathComponent ?? "No job zip selected")
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+
+                    Text(preparedArchiveURL?.deletingLastPathComponent().path(percentEncoded: false) ?? "Create Remote Job fills this automatically. Choose an existing zip after restarting or launching from an older bundle.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+
+                Spacer()
+
+                Button {
+                    onSelectArchiveRequested()
+                } label: {
+                    Label(preparedArchiveURL == nil ? "Choose Job Zip\u{2026}" : "Change\u{2026}", systemImage: "doc.badge.plus")
+                }
+                .controlSize(.small)
+            }
+
+            Text("Upload and extract commands use this local zip. If those pod icons are disabled, select the exported remote job zip here first.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 

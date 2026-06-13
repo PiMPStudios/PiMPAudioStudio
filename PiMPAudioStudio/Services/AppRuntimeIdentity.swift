@@ -54,6 +54,7 @@ enum AppUserDefaultsKeys {
     static let runPodContainerDiskGB = AppRuntimeIdentity.defaultsKey("runpod.containerDiskGB")
     static let runPodVolumeGB = AppRuntimeIdentity.defaultsKey("runpod.volumeGB")
     static let runPodSSHKeyPath = AppRuntimeIdentity.defaultsKey("runpod.sshKeyPath")
+    static let runPodLastArchivePath = AppRuntimeIdentity.defaultsKey("runpod.lastArchivePath")
 
     static let runtimeIdentityMigration = AppRuntimeIdentity.defaultsKey("migration.runtimeIdentity.v1")
     static let dataDirectoryMigration = AppRuntimeIdentity.defaultsKey("migration.dataDirectories.v2")
