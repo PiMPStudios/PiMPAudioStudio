@@ -175,6 +175,113 @@ private final class RunPodMockTransport: RunPodTransport, @unchecked Sendable {
     #expect(!body.contains("rp_test_token"))
 }
 
+@Test func runPodClientListOfficialPodTemplatesParsesRunPodTemplates() async throws {
+    let transport = RunPodMockTransport(responses: [(
+        statusCode: 200,
+        data: Data("""
+        [
+          {
+            "id": "runpod-pytorch-240",
+            "name": "Runpod Pytorch 2.4.0",
+            "imageName": "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04",
+            "category": "NVIDIA",
+            "isRunpod": true,
+            "isServerless": false,
+            "containerDiskInGb": 50,
+            "volumeInGb": 20,
+            "ports": ["8888/http", "22/tcp"]
+          },
+          {
+            "id": "public-template",
+            "name": "Community Template",
+            "isRunpod": false,
+            "isServerless": false
+          },
+          {
+            "id": "runpod-serverless",
+            "name": "Runpod Serverless Pytorch",
+            "isRunpod": true,
+            "isServerless": true
+          }
+        ]
+        """.utf8)
+    )])
+    let client = RunPodAPIClient(
+        baseURL: URL(string: "https://rest.runpod.io/v1")!,
+        transport: transport
+    )
+
+    let templates = try await client.listOfficialPodTemplates(token: "rp_test_token")
+
+    #expect(templates.map(\.id) == ["runpod-pytorch-240"])
+    let template = try #require(templates.first)
+    #expect(template.summaryLabel.contains("Runpod Pytorch 2.4.0"))
+    #expect(template.summaryLabel.contains("runpod/pytorch"))
+    #expect(template.detailLabel.contains("Official RunPod"))
+    #expect(template.detailLabel.contains("container 50 GB"))
+
+    let request = try #require(transport.requests.first)
+    #expect(request.httpMethod == "GET")
+    #expect(request.url?.absoluteString == "https://rest.runpod.io/v1/templates?includeRunpodTemplates=true&includePublicTemplates=false&includeEndpointBoundTemplates=false")
+    #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer rp_test_token")
+}
+
+@Test func runPodTemplateRecommendationPrefersOfficialPyTorchPodTemplate() {
+    let templates = [
+        RunPodTemplate(
+            id: "official-tensorflow",
+            name: "Runpod Tensorflow",
+            imageName: "runpod/tensorflow:latest",
+            category: "NVIDIA",
+            isRunpod: true,
+            isPublic: false,
+            isServerless: false,
+            containerDiskInGb: 50,
+            volumeInGb: 20,
+            volumeMountPath: "/workspace",
+            ports: ["8888/http", "22/tcp"]
+        ),
+        RunPodTemplate(
+            id: "official-pytorch-240",
+            name: "Runpod Pytorch 2.4.0",
+            imageName: "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04",
+            category: "NVIDIA",
+            isRunpod: true,
+            isPublic: false,
+            isServerless: false,
+            containerDiskInGb: 50,
+            volumeInGb: 20,
+            volumeMountPath: "/workspace",
+            ports: ["8888/http", "22/tcp"]
+        ),
+        RunPodTemplate(
+            id: "serverless-pytorch",
+            name: "Runpod Pytorch Serverless",
+            imageName: "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04",
+            category: "NVIDIA",
+            isRunpod: true,
+            isPublic: false,
+            isServerless: true,
+            containerDiskInGb: 50,
+            volumeInGb: 20,
+            volumeMountPath: "/workspace",
+            ports: ["8888/http"]
+        )
+    ]
+
+    let recommended = RunPodTemplate.recommendedTrainingTemplate(
+        for: "NVIDIA GeForce RTX 3090",
+        from: templates
+    )
+    #expect(recommended?.id == "official-pytorch-240")
+
+    let amdRecommended = RunPodTemplate.recommendedTrainingTemplate(
+        for: "AMD Instinct MI300X OAM",
+        from: templates
+    )
+    #expect(amdRecommended == nil)
+}
+
 @Test func runPodClientCreatePodBuildsBearerRequestWithoutLeakingTokenIntoBody() async throws {
     let transport = RunPodMockTransport(responses: [(
         statusCode: 201,
@@ -218,6 +325,23 @@ private final class RunPodMockTransport: RunPodTransport, @unchecked Sendable {
     #expect(body["gpuTypeIds"] as? [String] == ["NVIDIA GeForce RTX 4090"])
     #expect(body["volumeInGb"] as? Int == 120)
     #expect(!String(data: bodyData, encoding: .utf8)!.contains("secret-token"))
+}
+
+@Test func runPodLaunchConfigurationUsesCustomImageInsteadOfTemplateWhenBothAreFilled() throws {
+    let configuration = RunPodLaunchConfiguration(
+        name: "pimp-remote",
+        templateID: "template-123",
+        imageName: "runpod/pytorch:custom",
+        gpuTypeID: "NVIDIA GeForce RTX 4090",
+        interruptible: false,
+        containerDiskGB: 80,
+        volumeGB: 120
+    )
+
+    let requestBody = try configuration.requestBody()
+
+    #expect(requestBody.templateId == nil)
+    #expect(requestBody.imageName == "runpod/pytorch:custom")
 }
 
 @Test func runPodClientStopPodUsesStopEndpoint() async throws {

@@ -5,6 +5,7 @@ import SwiftUI
 final class RunPodService: ObservableObject {
     @Published private(set) var pods: [RunPodPodSummary] = []
     @Published private(set) var gpuTypes: [RunPodGPUType] = []
+    @Published private(set) var podTemplates: [RunPodTemplate] = []
     @Published private(set) var isRefreshing = false
     @Published private(set) var isRefreshingGPUTypes = false
     @Published private(set) var isLaunching = false
@@ -42,6 +43,8 @@ final class RunPodService: ObservableObject {
     func removeAPIKey() {
         apiKeyStore.removeAPIKey(for: APIKeyStore.runPodProviderID)
         pods = []
+        gpuTypes = []
+        podTemplates = []
         lastMessage = "RunPod API key removed."
         lastError = nil
     }
@@ -80,6 +83,34 @@ final class RunPodService: ObservableObject {
         } catch {
             lastError = RunPodError.userFacingMessage(for: error)
         }
+    }
+
+    func refreshLaunchOptions() async {
+        guard let token = runPodToken() else {
+            lastError = "Add a RunPod API key before refreshing RunPod launch options."
+            return
+        }
+
+        isRefreshingGPUTypes = true
+        defer { isRefreshingGPUTypes = false }
+
+        do {
+            let loadedGPUTypes = try await client.listGPUTypes(token: token)
+            let loadedTemplates = try await client.listOfficialPodTemplates(token: token)
+            gpuTypes = loadedGPUTypes
+            podTemplates = loadedTemplates
+            lastMessage = "Loaded \(loadedGPUTypes.count) GPU type\(loadedGPUTypes.count == 1 ? "" : "s") and \(loadedTemplates.count) official RunPod template\(loadedTemplates.count == 1 ? "" : "s")."
+            lastError = nil
+        } catch {
+            lastError = RunPodError.userFacingMessage(for: error)
+        }
+    }
+
+    func recommendedTrainingTemplate(for gpuTypeValue: String) -> RunPodTemplate? {
+        RunPodTemplate.recommendedTrainingTemplate(
+            for: gpuTypeValue,
+            from: podTemplates
+        )
     }
 
     @discardableResult
@@ -166,6 +197,9 @@ struct RunPodLaunchConfiguration: Equatable, Sendable {
             throw RunPodError.invalidConfiguration("Volume must be at least 20 GB.")
         }
 
+        let requestTemplateID = trimmedImageName.isEmpty ? trimmedTemplateID : ""
+        let requestImageName = trimmedImageName
+
         return RunPodCreatePodRequest(
             cloudType: "SECURE",
             computeType: "GPU",
@@ -173,13 +207,13 @@ struct RunPodLaunchConfiguration: Equatable, Sendable {
             gpuCount: 1,
             gpuTypeIds: [trimmedGPUType],
             gpuTypePriority: "availability",
-            imageName: trimmedImageName.isEmpty ? nil : trimmedImageName,
+            imageName: requestImageName.isEmpty ? nil : requestImageName,
             interruptible: interruptible,
             locked: false,
             name: trimmedName.isEmpty ? "PiMP Audio Studio Remote Job" : trimmedName,
             ports: ports,
             supportPublicIp: supportPublicIP,
-            templateId: trimmedTemplateID.isEmpty ? nil : trimmedTemplateID,
+            templateId: requestTemplateID.isEmpty ? nil : requestTemplateID,
             volumeInGb: volumeGB,
             volumeMountPath: "/workspace"
         )
@@ -417,6 +451,114 @@ struct RunPodGPUType: Identifiable, Decodable, Equatable, Sendable {
     }
 }
 
+struct RunPodTemplate: Identifiable, Decodable, Equatable, Sendable {
+    var id: String
+    var name: String?
+    var imageName: String?
+    var category: String?
+    var isRunpod: Bool?
+    var isPublic: Bool?
+    var isServerless: Bool?
+    var containerDiskInGb: Int?
+    var volumeInGb: Int?
+    var volumeMountPath: String?
+    var ports: [String]?
+
+    var displayNameValue: String {
+        let trimmed = (name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? id : trimmed
+    }
+
+    var imageNameValue: String? {
+        let trimmed = (imageName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    var isOfficialPodTemplate: Bool {
+        isRunpod == true && isServerless != true
+    }
+
+    var summaryLabel: String {
+        if let imageNameValue {
+            return "\(displayNameValue) · \(imageNameValue)"
+        }
+        return displayNameValue
+    }
+
+    var detailLabel: String {
+        var details: [String] = []
+        if isRunpod == true {
+            details.append("Official RunPod")
+        }
+        if let containerDiskInGb {
+            details.append("container \(containerDiskInGb) GB")
+        }
+        if let volumeInGb {
+            details.append("volume \(volumeInGb) GB")
+        }
+        if let ports, !ports.isEmpty {
+            details.append(ports.joined(separator: ", "))
+        }
+        return details.joined(separator: " · ")
+    }
+
+    func matchesTemplateID(_ value: String) -> Bool {
+        id == value.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    static func recommendedTrainingTemplate(
+        for gpuTypeValue: String,
+        from templates: [RunPodTemplate]
+    ) -> RunPodTemplate? {
+        guard supportsNVIDIATrainingTemplate(gpuTypeValue) else { return nil }
+
+        return templates
+            .filter { $0.isOfficialPodTemplate }
+            .filter { $0.trainingTemplateScore > 0 }
+            .sorted { lhs, rhs in
+                if lhs.trainingTemplateScore != rhs.trainingTemplateScore {
+                    return lhs.trainingTemplateScore > rhs.trainingTemplateScore
+                }
+                return lhs.displayNameValue.localizedStandardCompare(rhs.displayNameValue) == .orderedAscending
+            }
+            .first
+    }
+
+    private static func supportsNVIDIATrainingTemplate(_ gpuTypeValue: String) -> Bool {
+        let normalized = gpuTypeValue.lowercased()
+        guard !normalized.contains("amd") && !normalized.contains("mi300") else {
+            return false
+        }
+        return normalized.contains("nvidia")
+            || normalized.contains("rtx")
+            || normalized.contains("geforce")
+            || normalized.contains("a100")
+            || normalized.contains("h100")
+            || normalized.contains("h200")
+            || normalized.contains("l40")
+            || normalized.contains("l4")
+            || normalized.contains("tesla")
+    }
+
+    private var trainingTemplateScore: Int {
+        let searchable = "\(displayNameValue) \(imageNameValue ?? "")".lowercased()
+        guard searchable.contains("pytorch") else { return 0 }
+
+        var score = 1_000
+        if searchable.contains("runpod/pytorch") { score += 500 }
+        if searchable.contains("runpod pytorch") { score += 500 }
+        if searchable.contains("cuda") { score += 250 }
+        if searchable.contains("cuda12") { score += 250 }
+        if searchable.contains("cuda12.4") { score += 400 }
+        if searchable.contains("devel") { score += 150 }
+        if searchable.contains("py3.11") { score += 100 }
+        if searchable.contains("ubuntu22.04") { score += 100 }
+        if searchable.contains("2.4.0") { score += 500 }
+        if searchable.contains("serverless") { score -= 1_000 }
+        return score
+    }
+}
+
 struct RunPodLowestPrice: Decodable, Equatable, Sendable {
     var gpuName: String?
     var gpuTypeId: String?
@@ -590,6 +732,26 @@ struct RunPodAPIClient {
             }
     }
 
+    func listOfficialPodTemplates(token: String) async throws -> [RunPodTemplate] {
+        let request = try makeRequest(
+            path: "templates",
+            method: "GET",
+            token: token,
+            queryItems: [
+                URLQueryItem(name: "includeRunpodTemplates", value: "true"),
+                URLQueryItem(name: "includePublicTemplates", value: "false"),
+                URLQueryItem(name: "includeEndpointBoundTemplates", value: "false"),
+            ]
+        )
+        let (data, response) = try await transport.data(for: request)
+        try validate(response: response, data: data)
+        return try JSONDecoder().decode([RunPodTemplate].self, from: data)
+            .filter(\.isOfficialPodTemplate)
+            .sorted {
+                $0.displayNameValue.localizedStandardCompare($1.displayNameValue) == .orderedAscending
+            }
+    }
+
     func createPod(token: String, configuration: RunPodLaunchConfiguration) async throws -> RunPodPodSummary {
         let body = try JSONEncoder().encode(configuration.requestBody())
         let request = try makeRequest(path: "pods", method: "POST", token: token, body: body)
@@ -609,6 +771,7 @@ struct RunPodAPIClient {
         path: String,
         method: String,
         token: String,
+        queryItems: [URLQueryItem] = [],
         body: Data? = nil
     ) throws -> URLRequest {
         let trimmedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -616,7 +779,14 @@ struct RunPodAPIClient {
             throw RunPodError.missingAPIKey
         }
 
-        let url = baseURL.appendingPathComponent(path)
+        let base = baseURL.appendingPathComponent(path)
+        var components = URLComponents(url: base, resolvingAgainstBaseURL: false)
+        if !queryItems.isEmpty {
+            components?.queryItems = queryItems
+        }
+        guard let url = components?.url else {
+            throw RunPodError.invalidResponse
+        }
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue("Bearer \(trimmedToken)", forHTTPHeaderField: "Authorization")

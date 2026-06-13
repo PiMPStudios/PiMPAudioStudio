@@ -19,10 +19,25 @@ struct RunPodLifecyclePanel: View {
     let onStopRequested: (RunPodPodSummary) -> Void
     let onNotice: (String) -> Void
 
+    @State private var showingAdvancedLaunchSource = false
+    @State private var autoSelectedTemplateID: String?
+    @State private var hasRequestedInitialLaunchOptions = false
+
     var body: some View {
-        runPodCredentialSection
-        runPodLaunchSection
-        runPodPodsSection
+        Group {
+            runPodCredentialSection
+            runPodLaunchSection
+            runPodPodsSection
+        }
+        .onChange(of: gpuType) { _, _ in
+            applyRecommendedTemplateIfNeeded()
+        }
+        .onChange(of: runPodService.podTemplates) { _, _ in
+            applyRecommendedTemplateIfNeeded()
+        }
+        .task {
+            await refreshInitialLaunchOptionsIfNeeded()
+        }
     }
 
     private var runPodCredentialSection: some View {
@@ -107,8 +122,7 @@ struct RunPodLifecyclePanel: View {
 
     private var runPodLaunchSection: some View {
         Section("Launch Pod") {
-            TextField("Template ID", text: $templateID)
-            TextField("Image", text: $imageName)
+            runPodLaunchSourceSummary
 
             HStack {
                 TextField("GPU Type", text: $gpuType)
@@ -117,7 +131,7 @@ struct RunPodLifecyclePanel: View {
                         Section("RunPod") {
                             ForEach(runPodService.gpuTypes) { gpuType in
                                 Button(gpuType.menuTitle) {
-                                    self.gpuType = gpuType.selectionValue
+                                    selectGPUType(gpuType.selectionValue)
                                 }
                             }
                         }
@@ -128,7 +142,7 @@ struct RunPodLifecyclePanel: View {
                     Section(runPodService.gpuTypes.isEmpty ? "Common" : "Fallback") {
                         ForEach(commonRunPodGPUTypes, id: \.self) { gpuType in
                             Button(gpuType) {
-                                self.gpuType = gpuType
+                                selectGPUType(gpuType)
                             }
                         }
                     }
@@ -136,9 +150,9 @@ struct RunPodLifecyclePanel: View {
                 .menuStyle(.borderlessButton)
 
                 Button {
-                    Task { await runPodService.refreshGPUTypes() }
+                    Task { await runPodService.refreshLaunchOptions() }
                 } label: {
-                    Label("Refresh GPU Types", systemImage: "arrow.clockwise")
+                    Label("Refresh GPU + Templates", systemImage: "arrow.clockwise")
                 }
                 .disabled(!runPodService.hasAPIKey || runPodService.isRefreshingGPUTypes)
             }
@@ -147,7 +161,7 @@ struct RunPodLifecyclePanel: View {
                 HStack {
                     ProgressView()
                         .controlSize(.small)
-                    Text("Loading GPU availability from RunPod\u{2026}")
+                    Text("Loading GPU availability and official templates from RunPod\u{2026}")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -160,6 +174,15 @@ struct RunPodLifecyclePanel: View {
             } else if !runPodService.gpuTypes.isEmpty,
                       !gpuType.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Text("Selected GPU type is not in the refreshed RunPod list. Manual values are still allowed.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            DisclosureGroup("Advanced Template / Image", isExpanded: $showingAdvancedLaunchSource) {
+                TextField("Template ID", text: $templateID)
+                TextField("Image", text: $imageName)
+
+                Text("Leave Image blank when using a template. A custom Image overrides Template ID at launch time.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -196,6 +219,60 @@ struct RunPodLifecyclePanel: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+    }
+
+    private var runPodLaunchSourceSummary: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Pod Template")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                Spacer()
+                if let recommendedRunPodTemplate,
+                   selectedRunPodTemplate?.id != recommendedRunPodTemplate.id {
+                    Button("Use Recommended") {
+                        applyTemplate(recommendedRunPodTemplate, force: true)
+                    }
+                    .controlSize(.small)
+                }
+            }
+
+            if !imageName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Label("Custom image \(imageName)", systemImage: "shippingbox")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if let selectedRunPodTemplate {
+                Label(selectedRunPodTemplate.summaryLabel, systemImage: "checkmark.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.green)
+                if !selectedRunPodTemplate.detailLabel.isEmpty {
+                    Text(selectedRunPodTemplate.detailLabel)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            } else if !templateID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Label("Custom template \(templateID)", systemImage: "slider.horizontal.3")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if let recommendedRunPodTemplate {
+                Label("Recommended: \(recommendedRunPodTemplate.summaryLabel)", systemImage: "sparkles")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("Select a GPU or click Use Recommended to fill this automatically.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            } else if runPodService.hasAPIKey {
+                Text("Refresh GPU + Templates to load the official RunPod PyTorch pod template.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("Save a RunPod API key to load official templates.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(10)
+        .background(.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
     }
 
     private var runPodPodsSection: some View {
@@ -247,6 +324,57 @@ struct RunPodLifecyclePanel: View {
 
     private var selectedRunPodGPUType: RunPodGPUType? {
         runPodService.gpuTypes.first { $0.matches(gpuType) }
+    }
+
+    private var selectedRunPodTemplate: RunPodTemplate? {
+        runPodService.podTemplates.first { $0.matchesTemplateID(templateID) }
+    }
+
+    private var recommendedRunPodTemplate: RunPodTemplate? {
+        runPodService.recommendedTrainingTemplate(for: gpuType)
+    }
+
+    private func selectGPUType(_ value: String) {
+        gpuType = value
+        applyRecommendedTemplateIfNeeded()
+    }
+
+    private func refreshInitialLaunchOptionsIfNeeded() async {
+        guard !hasRequestedInitialLaunchOptions,
+              runPodService.hasAPIKey,
+              runPodService.gpuTypes.isEmpty || runPodService.podTemplates.isEmpty,
+              !runPodService.isRefreshingGPUTypes else {
+            return
+        }
+        hasRequestedInitialLaunchOptions = true
+        await runPodService.refreshLaunchOptions()
+    }
+
+    private func applyRecommendedTemplateIfNeeded() {
+        guard let recommendedRunPodTemplate else { return }
+        applyTemplate(recommendedRunPodTemplate, force: false)
+    }
+
+    private func applyTemplate(_ template: RunPodTemplate, force: Bool) {
+        let trimmedTemplateID = templateID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedImageName = imageName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let canReplaceExisting = trimmedTemplateID.isEmpty && trimmedImageName.isEmpty
+            || (trimmedImageName.isEmpty && trimmedTemplateID == autoSelectedTemplateID)
+
+        guard force || canReplaceExisting else { return }
+
+        templateID = template.id
+        imageName = ""
+        autoSelectedTemplateID = template.id
+
+        if let templateContainerDiskGB = template.containerDiskInGb,
+           templateContainerDiskGB > containerDiskGB {
+            containerDiskGB = templateContainerDiskGB
+        }
+        if let templateVolumeGB = template.volumeInGb,
+           templateVolumeGB > volumeGB {
+            volumeGB = templateVolumeGB
+        }
     }
 
     private func runPodPodRow(_ pod: RunPodPodSummary) -> some View {
@@ -344,6 +472,10 @@ struct RunPodLifecyclePanel: View {
     private func saveRunPodAPIKey() {
         runPodService.saveAPIKey(apiKey)
         apiKey = ""
+        hasRequestedInitialLaunchOptions = true
+        Task {
+            await runPodService.refreshLaunchOptions()
+        }
     }
 
     private func copyRunPodSSHCommand(for pod: RunPodPodSummary) {
