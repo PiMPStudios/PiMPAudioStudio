@@ -729,12 +729,11 @@ struct TrainingSheet: View {
     // MARK: - Completion View
 
     private func completionView(adapter: LoRAAdapter) -> some View {
-        VStack(spacing: 16) {
-            Spacer()
-
+        VStack(spacing: 18) {
             Image(systemName: "checkmark.circle.fill")
                 .font(.largeTitle)
                 .foregroundStyle(.green)
+                .padding(.top, 12)
 
             Text("Training Complete")
                 .font(.headline)
@@ -743,6 +742,9 @@ struct TrainingSheet: View {
                 Text(adapter.name)
                     .font(.title3)
                     .fontWeight(.semibold)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
                 if let loss = adapter.finalLoss {
                     Text("Final loss: \(String(format: "%.4f", loss))")
                         .font(.caption)
@@ -751,11 +753,12 @@ struct TrainingSheet: View {
                 Text("\(adapter.kind == .lokr ? "Linear dim" : "Rank") \(adapter.kind == .lokr ? adapter.lokrConfig?.linearDim ?? adapter.config.rank : adapter.config.rank) \u{2022} last \(adapter.trainedLayerIndices?.count ?? adapter.config.trainingLayerCount ?? selectedLayerCount) layers \u{2022} \(adapter.sampleCount) tracks")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+            .frame(maxWidth: 420)
 
-            Spacer()
-
-            VStack(spacing: 8) {
+            VStack(spacing: 10) {
                 adapterAuditionPanel(adapter)
 
                 Button {
@@ -798,10 +801,15 @@ struct TrainingSheet: View {
                     Text(completionStatusMessage)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
+            .frame(maxWidth: 440)
         }
-        .padding()
+        .frame(maxWidth: .infinity, alignment: .top)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 22)
     }
 
     private func adapterAuditionPanel(_ adapter: LoRAAdapter) -> some View {
@@ -817,58 +825,48 @@ struct TrainingSheet: View {
                 }
             }
 
-            HStack(spacing: 10) {
-                Toggle("Base", isOn: $auditionIncludeBase)
-                    .toggleStyle(.checkbox)
-                    .controlSize(.small)
-                    .disabled(isAuditioning)
-                    .help("Include one no-adapter baseline take.")
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 12) {
+                    Toggle("Base", isOn: $auditionIncludeBase)
+                        .toggleStyle(.checkbox)
+                        .controlSize(.small)
+                        .disabled(isAuditioning)
+                        .help("Include one no-adapter baseline take.")
 
-                Text("Seed")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                TextField("42", text: $auditionSeedText)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.caption.monospacedDigit())
-                    .frame(width: 72)
-                    .disabled(isAuditioning)
+                    auditionField("Seed", placeholder: "42", text: $auditionSeedText, width: 72)
+                    auditionField("Seconds", placeholder: "30", text: $auditionDurationText, width: 60)
+                }
 
-                Text("Seconds")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                TextField("30", text: $auditionDurationText)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.caption.monospacedDigit())
-                    .frame(width: 60)
-                    .disabled(isAuditioning)
-
-                Text("Gain")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                TextField("1.0, 1.6, 2.0", text: $auditionStrengthsText)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.caption.monospacedDigit())
-                    .frame(minWidth: 130)
-                    .disabled(isAuditioning)
+                HStack(spacing: 10) {
+                    auditionField(
+                        "Gain",
+                        placeholder: "1.0, 1.6, 2.0",
+                        text: $auditionStrengthsText,
+                        minWidth: 170
+                    )
                     .help("Comma-separated adapter gains to render with the same seed and prompt.")
 
-                Button {
-                    startAdapterAudition(adapter)
-                } label: {
-                    Label("Render", systemImage: "play.fill")
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .disabled(!canStartAdapterAudition)
+                    Spacer(minLength: 8)
 
-                if isAuditioning {
-                    Button("Cancel", role: .destructive) {
-                        cancelAdapterAudition()
+                    Button {
+                        startAdapterAudition(adapter)
+                    } label: {
+                        Label("Render", systemImage: "play.fill")
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.borderedProminent)
                     .controlSize(.small)
+                    .disabled(!canStartAdapterAudition)
+
+                    if isAuditioning {
+                        Button("Cancel", role: .destructive) {
+                            cancelAdapterAudition()
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             if let auditionProgressFraction {
                 ProgressView(value: auditionProgressFraction)
@@ -883,6 +881,26 @@ struct TrainingSheet: View {
         }
         .padding(10)
         .background(.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func auditionField(
+        _ label: String,
+        placeholder: String,
+        text: Binding<String>,
+        width: CGFloat? = nil,
+        minWidth: CGFloat? = nil
+    ) -> some View {
+        HStack(spacing: 6) {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            TextField(placeholder, text: text)
+                .textFieldStyle(.roundedBorder)
+                .font(.caption.monospacedDigit())
+                .frame(width: width)
+                .frame(minWidth: minWidth)
+                .disabled(isAuditioning)
+        }
     }
 
     // MARK: - Helpers
