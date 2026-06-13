@@ -44,7 +44,7 @@ Stem bundles are optional until local enrichment has run. `preprocessed/**` can 
 
 Before launch, PiMP Audio Studio creates a provider-neutral `remote_job.json`. The provider adapter sends that file with the package zip or writes it into the unzipped package before the worker starts.
 
-The Training workspace's **Remote GPU -> Create Remote Job** export writes `remote_job.json`, `README_REMOTE_GPU.md`, and `run_remote_training.sh` into the package root. The shell script is a thin handoff for an installed `pimp-remote-worker` command or official provider template; provider credentials still stay outside the archive.
+The Training workspace's **Remote GPU -> Create Remote Job** export writes `remote_job.json`, `README_REMOTE_GPU.md`, and `run_remote_training.sh` into the package root. The shell script is a thin handoff for an installed `pimp-remote-worker` command or official provider template; provider credentials still stay outside the archive. The first portable worker lives in `remote-worker/` and can be copied onto a stock RunPod PyTorch pod, installed once, and run against the exported zip or package root.
 
 Minimal shape:
 
@@ -206,7 +206,7 @@ Provider adapters may store provider-specific IDs locally in PiMP Audio Studio, 
 The first RunPod integration is intentionally app-local provider control, not a package-schema change:
 
 - RunPod API keys are stored through the same Keychain-backed `APIKeyStore` path as other remote credentials, with `RUNPOD_API_KEY` as the environment fallback.
-- The Remote GPU panel can list pods, request a new pod from a template or image, and stop pods through RunPod's REST API.
+- The Remote GPU panel can list pods, request a new pod from a template or image, and terminate pods through RunPod's REST API.
 - In-app launches use RunPod Secure Cloud capacity only; users who need Community Cloud or other non-standard placement controls should launch those pods from the RunPod console and use the exported job package manually.
 - Pod launch is always behind a confirmation prompt because it can start billable GPU time.
 - The app can copy SSH/upload handoff commands for the most recently exported job zip.
@@ -225,9 +225,9 @@ Worker logs, progress metrics, artifact pullback, and adapter import should stil
 
 1. Generate and validate `remote_job.json` locally.
 2. Export package zip plus job request.
-3. Add a local "dry-run worker" command or test harness that reads the zip and writes fake `remote_artifacts`.
+3. Add a local "dry-run worker" command or test harness that reads the zip and writes fake `remote_artifacts`. Shipped as `remote-worker/pimp-remote-worker train <job.zip> --dry-run`.
 4. Add provider settings and Keychain-backed credentials. Shipped for RunPod API tokens.
 5. Implement one provider adapter. Partially shipped for RunPod pod list/launch/stop and SSH upload handoff commands.
 6. Add the second provider adapter against the same app-side protocol.
 
-Remaining RunPod work should focus on upload execution, worker log/progress polling, artifact download, and one-click adapter import without changing the provider-neutral package/result shape.
+Remaining RunPod work should focus on one-click worker install/run, worker log/progress polling, artifact download, and one-click adapter import without changing the provider-neutral package/result shape.

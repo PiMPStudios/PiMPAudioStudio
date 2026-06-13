@@ -372,10 +372,11 @@ extension PiMPAudioCommandFacade {
         }
 
         let podID = try requiredString("podID", aliases: ["id", "pod"], in: arguments)
-        await runPodService.stopPod(id: podID)
+        await runPodService.terminatePod(id: podID)
         return [
             "submitted": runPodService.lastError == nil,
             "podID": podID,
+            "action": "terminate",
             "error": runPodService.lastError ?? NSNull(),
             "status": runPodStatusPayload(service: runPodService, recommendedForGPUType: nil)
         ]
@@ -1615,7 +1616,8 @@ extension PiMPAudioCommandFacade {
             "isRefreshingPods": service.isRefreshing,
             "isRefreshingLaunchOptions": service.isRefreshingGPUTypes,
             "isLaunching": service.isLaunching,
-            "stoppingPodID": service.stoppingPodID ?? NSNull(),
+            "terminatingPodID": service.terminatingPodID ?? NSNull(),
+            "stoppingPodID": service.terminatingPodID ?? NSNull(),
             "lastMessage": service.lastMessage ?? NSNull(),
             "lastError": service.lastError ?? NSNull(),
             "gpuTypeCount": service.gpuTypes.count,

@@ -7,6 +7,10 @@ DerivedData/
 .build/
 .swiftpm/
 
+# Python bytecode for remote-worker validation
+__pycache__/
+*.pyc
+
 # macOS
 .DS_Store
 

@@ -364,8 +364,9 @@ DEMON is not primarily a dataset-builder reference. Now that PiMP Audio Studio h
 - Shipped: provider-neutral `remote_job.json` schema and `docs/remote-worker-contract.md`.
 - Shipped: Remote GPU export creates a package zip with `remote_job.json`, `README_REMOTE_GPU.md`, and `run_remote_training.sh`.
 - Shipped: packages include training bundle descriptors for full mix, vocals, and instrumental roles.
-- Partial: in-app RunPod provider setup now stores the API token in Keychain, lists pods, launches pods only after explicit confirmation, stops pods, and copies SSH/upload handoff commands for exported job zips.
-- Future: execute upload/run/pull operations directly, stream worker logs/progress from `remote_artifacts/**`, collect final/checkpoint artifacts, and import adapters without leaving the Remote GPU workspace.
+- Shipped: a portable `remote-worker/` handoff can be copied to a stock RunPod PyTorch pod, installed once, and run against exported job zips.
+- Partial: in-app RunPod provider setup now stores the API token in Keychain, lists pods, launches pods only after explicit confirmation, terminates pods, and copies SSH/upload/extract-run handoff commands for exported job zips.
+- Future: execute worker install/run/pull operations directly, stream worker logs/progress from `remote_artifacts/**`, collect final/checkpoint artifacts, and import adapters without leaving the Remote GPU workspace.
 - Future: DigitalOcean provider setup against the same app-side remote-provider boundary.
 - Future: remote annotation jobs using the same package/result shape.
 
@@ -404,7 +405,7 @@ DEMON is not primarily a dataset-builder reference. Now that PiMP Audio Studio h
   - live training charts
   - auto-labeling
   - inpainting masks
-- Evaluate hosted/remote runners and Docker templates for a standard PiMP Audio Studio remote-worker contract.
+- Evaluate hosted/remote runners and Docker templates for turning the portable PiMP Audio Studio remote worker into a public, standard template.
 - Keep a curated "worth revisiting" list rather than copying the entire awesome list into PiMP Audio Studio docs.
 
 ## Hard-To-Reverse Decisions

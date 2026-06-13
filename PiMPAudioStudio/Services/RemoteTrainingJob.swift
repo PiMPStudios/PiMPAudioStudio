@@ -488,9 +488,11 @@ enum RemoteTrainingJobCodec {
 
         1. Upload this zip to a GPU worker.
         2. Unzip it or pass the zip path to `run_remote_training.sh`.
-        3. The worker reads `remote_job.json`.
+        3. The script locates `remote_job.json` and hands the job to `pimp-remote-worker`.
         4. The worker writes logs, metrics, checkpoints, and final adapters under `remote_artifacts/`.
-        5. Download the folder named `pimp_native_adapter` from the checkpoint or final artifact you want to test.
+        5. Download/import `remote_artifacts/final_adapter/` or a folder under `remote_artifacts/checkpoints/` to test a specific epoch.
+
+        A stock official RunPod PyTorch template is only a clean CUDA pod. It can host the job, but it does not include `pimp-remote-worker` yet. For the current portable flow, copy this repo's `remote-worker/` folder to the pod, run `bash install.sh`, then run this job.
 
         ## One Command
 
@@ -506,7 +508,14 @@ enum RemoteTrainingJobCodec {
         bash run_remote_training.sh /workspace/jobs/\(job.package.packageName).zip
         ```
 
-        The script expects an installed `pimp-remote-worker` command or an official PiMP Audio Studio worker template.
+        If the worker has not been installed on the pod yet:
+
+        ```bash
+        scp -P <ssh-port> -i ~/.ssh/id_ed25519 -r remote-worker root@<pod-ip>:/workspace/pimp-remote-worker-src
+        ssh -p <ssh-port> -i ~/.ssh/id_ed25519 root@<pod-ip> 'bash /workspace/pimp-remote-worker-src/install.sh'
+        ```
+
+        The script can extract zips with either `unzip` or Python's built-in `zipfile` module. It expects an installed `pimp-remote-worker` command or an official PiMP Audio Studio worker template.
         Provider API keys, SSH keys, and account IDs are intentionally not stored in this archive.
         """
     }
@@ -522,7 +531,14 @@ enum RemoteTrainingJobCodec {
         if [ -f "$INPUT" ]; then
           WORKDIR="/workspace/pimp-remote-jobs/\(job.jobID)"
           mkdir -p "$WORKDIR"
-          unzip -oq "$INPUT" -d "$WORKDIR"
+          if command -v unzip >/dev/null 2>&1; then
+            unzip -oq "$INPUT" -d "$WORKDIR"
+          elif command -v python3 >/dev/null 2>&1; then
+            python3 -m zipfile -e "$INPUT" "$WORKDIR"
+          else
+            echo "Could not extract $INPUT. Install unzip or python3, then rerun this script."
+            exit 3
+          fi
           JOB_FILE="$(find "$WORKDIR" -maxdepth 3 -name remote_job.json -print -quit)"
           if [ -n "$JOB_FILE" ]; then
             PACKAGE_ROOT="$(dirname "$JOB_FILE")"
@@ -549,8 +565,12 @@ enum RemoteTrainingJobCodec {
         No `pimp-remote-worker` command was found.
 
         This bundle is ready for a PiMP Audio Studio remote worker/template, but this server image does not have the worker installed yet.
+        If you launched a stock official RunPod PyTorch pod, this is expected: launch, upload, extraction, and package validation worked, but training needs the PiMP worker.
 
-        Use an official PiMP Audio Studio RunPod/DigitalOcean template, or install the worker, then run:
+        Copy this repo's remote-worker/ folder to the pod, install it, then run:
+
+            scp -P <ssh-port> -i ~/.ssh/id_ed25519 -r remote-worker root@<pod-ip>:/workspace/pimp-remote-worker-src
+            ssh -p <ssh-port> -i ~/.ssh/id_ed25519 root@<pod-ip> 'bash /workspace/pimp-remote-worker-src/install.sh'
 
             pimp-remote-worker train remote_job.json
 

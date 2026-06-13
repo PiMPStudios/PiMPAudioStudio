@@ -931,6 +931,16 @@ private extension JSONDecoder {
     #expect(lokrJob.training?.cfgRatio == 0.15)
     #expect(lokrJob.package.selectedBundle.name == "instrumental")
 
+    let jobExtraFiles = try RemoteTrainingJobCodec.archiveExtraFiles(for: lokrJob)
+    let runScriptData = try #require(jobExtraFiles[RemoteTrainingJobCodec.runScriptFileName])
+    let runScript = try #require(String(data: runScriptData, encoding: .utf8))
+    #expect(runScript.contains("python3 -m zipfile -e"))
+    #expect(runScript.contains("stock official RunPod PyTorch pod"))
+
+    let readmeData = try #require(jobExtraFiles[RemoteTrainingJobCodec.readmeFileName])
+    let readme = try #require(String(data: readmeData, encoding: .utf8))
+    #expect(readme.contains("stock official RunPod PyTorch template"))
+
     let jobArchiveURL = FileManager.default.temporaryDirectory
         .appendingPathComponent(UUID().uuidString)
         .appendingPathExtension("zip")
@@ -938,7 +948,7 @@ private extension JSONDecoder {
     try TrainingDatasetPackageWriter.exportPackageArchive(
         outputDirectory: datasetDir,
         to: jobArchiveURL,
-        extraFiles: try RemoteTrainingJobCodec.archiveExtraFiles(for: lokrJob)
+        extraFiles: jobExtraFiles
     )
     let jobArchiveEntries = try zipEntries(in: jobArchiveURL)
     #expect(jobArchiveEntries.contains("\(archiveRoot)remote_job.json"))

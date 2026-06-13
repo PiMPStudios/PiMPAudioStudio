@@ -10,7 +10,7 @@ final class RunPodService: ObservableObject {
     @Published private(set) var isRefreshing = false
     @Published private(set) var isRefreshingGPUTypes = false
     @Published private(set) var isLaunching = false
-    @Published private(set) var stoppingPodID: String?
+    @Published private(set) var terminatingPodID: String?
     @Published var lastMessage: String?
     @Published var lastError: String?
 
@@ -163,26 +163,31 @@ final class RunPodService: ObservableObject {
         }
     }
 
-    func stopPod(id: String) async {
+    func terminatePod(id: String) async {
         guard let token = runPodToken() else {
-            lastError = "Add a RunPod API key before stopping a pod."
+            lastError = "Add a RunPod API key before terminating a pod."
             return
         }
 
-        stoppingPodID = id
-        defer { stoppingPodID = nil }
+        terminatingPodID = id
+        defer { terminatingPodID = nil }
 
         do {
-            note("stop/begin", "podID=\(id)")
-            try await client.stopPod(token: token, podID: id)
-            note("stop/success", "podID=\(id)")
-            lastMessage = "Stop requested for RunPod pod \(id)."
+            note("terminate/begin", "podID=\(id)")
+            try await client.deletePod(token: token, podID: id)
+            pods.removeAll { $0.id == id }
+            note("terminate/success", "podID=\(id)")
+            lastMessage = "Terminate requested for RunPod pod \(id)."
             lastError = nil
             await refreshPods()
         } catch {
-            note("stop/error", "podID=\(id) error=\(RunPodError.userFacingMessage(for: error))")
+            note("terminate/error", "podID=\(id) error=\(RunPodError.userFacingMessage(for: error))")
             lastError = RunPodError.userFacingMessage(for: error)
         }
+    }
+
+    var stoppingPodID: String? {
+        terminatingPodID
     }
 
     private func runPodToken() -> String? {
@@ -377,7 +382,7 @@ struct RunPodPodSummary: Identifiable, Decodable, Equatable, Sendable {
         guard let publicIp, !publicIp.isEmpty, let sshPort else { return nil }
         let key = sshKeyPath.trimmingCharacters(in: .whitespacesAndNewlines)
         let keyArgument = key.isEmpty ? "" : " -i \(shellPathQuoted(key))"
-        return "ssh root@\(publicIp) -p \(sshPort)\(keyArgument)"
+        return "ssh -p \(sshPort)\(keyArgument) root@\(publicIp)"
     }
 
     func uploadCommand(archiveURL: URL?, sshKeyPath: String) -> String? {
@@ -387,7 +392,28 @@ struct RunPodPodSummary: Identifiable, Decodable, Equatable, Sendable {
               let sshPort else { return nil }
         let key = sshKeyPath.trimmingCharacters(in: .whitespacesAndNewlines)
         let keyArgument = key.isEmpty ? "" : " -i \(shellPathQuoted(key))"
-        return "scp -P \(sshPort)\(keyArgument) \(shellPathQuoted(archiveURL.path(percentEncoded: false))) root@\(publicIp):/workspace/jobs/"
+        let makeJobsDirectory = "ssh -p \(sshPort)\(keyArgument) root@\(publicIp) 'mkdir -p /workspace/jobs'"
+        let uploadArchive = "scp -P \(sshPort)\(keyArgument) \(shellPathQuoted(archiveURL.path(percentEncoded: false))) root@\(publicIp):/workspace/jobs/"
+        return "\(makeJobsDirectory) && \(uploadArchive)"
+    }
+
+    func remotePackageCommand(archiveURL: URL?) -> String? {
+        guard let archiveURL else { return nil }
+        let zipName = shellQuoted(archiveURL.lastPathComponent)
+        return """
+        cd /workspace/jobs
+        ZIP=\(zipName)
+        mkdir -p /workspace/pimp-remote-jobs/current
+        if command -v unzip >/dev/null 2>&1; then
+          unzip -oq "$ZIP" -d /workspace/pimp-remote-jobs/current
+        elif command -v python3 >/dev/null 2>&1; then
+          python3 -m zipfile -e "$ZIP" /workspace/pimp-remote-jobs/current
+        else
+          echo "Install unzip or python3 first."; exit 3
+        fi
+        cd "$(dirname "$(find /workspace/pimp-remote-jobs/current -maxdepth 4 -name remote_job.json -print -quit)")"
+        bash run_remote_training.sh .
+        """
     }
 
     var diagnosticsSummary: String {
@@ -829,9 +855,9 @@ struct RunPodAPIClient {
         return try JSONDecoder().decode(RunPodPodSummary.self, from: data)
     }
 
-    func stopPod(token: String, podID: String) async throws {
+    func deletePod(token: String, podID: String) async throws {
         let encodedID = podID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? podID
-        let request = try makeRequest(path: "pods/\(encodedID)/stop", method: "POST", token: token)
+        let request = try makeRequest(path: "pods/\(encodedID)", method: "DELETE", token: token)
         let (data, response) = try await transport.data(for: request)
         try validate(response: response, data: data)
     }

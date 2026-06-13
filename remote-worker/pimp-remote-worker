@@ -1,0 +1,853 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import datetime as _dt
+import json
+import os
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+import time
+import zipfile
+from pathlib import Path
+from typing import Any
+
+
+VERSION = "0.1.0"
+DEFAULT_WORKDIR = Path("/workspace/pimp-remote-worker")
+
+
+def default_jobs_dir() -> Path:
+    override = os.environ.get("PIMP_REMOTE_JOB_DIR")
+    if override:
+        return Path(override).expanduser()
+    workspace = Path("/workspace")
+    if workspace.exists() and os.access(workspace, os.W_OK):
+        return workspace / "pimp-remote-jobs/current"
+    return Path("/tmp/pimp-remote-jobs/current")
+
+
+def utc_now() -> str:
+    return _dt.datetime.now(_dt.timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def read_json(path: Path) -> dict[str, Any]:
+    with path.open("r", encoding="utf-8") as handle:
+        value = json.load(handle)
+    if not isinstance(value, dict):
+        raise ValueError(f"{path} must contain a JSON object")
+    return value
+
+
+def write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+
+
+def append_jsonl(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        json.dump(payload, handle, sort_keys=True)
+        handle.write("\n")
+
+
+def shell_join(args: list[str]) -> str:
+    return shlex.join([str(arg) for arg in args])
+
+
+def safe_name(raw: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", raw.strip())
+    return cleaned.strip("-._") or "pimp-remote-job"
+
+
+def relative_path(path: Path, root: Path) -> str:
+    try:
+        return path.relative_to(root).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
+def first_string(*values: Any) -> str | None:
+    for value in values:
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def first_number(*values: Any) -> float | None:
+    for value in values:
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, str):
+            try:
+                return float(value)
+            except ValueError:
+                continue
+    return None
+
+
+def find_remote_job(root: Path) -> Path:
+    if root.is_file() and root.name == "remote_job.json":
+        return root.resolve()
+    if root.is_file() and root.suffix.lower() == ".zip":
+        target = default_jobs_dir() / safe_name(root.stem)
+        if target.exists():
+            shutil.rmtree(target)
+        target.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(root) as archive:
+            archive.extractall(target)
+        return find_remote_job(target)
+    if root.is_dir():
+        direct = root / "remote_job.json"
+        if direct.exists():
+            return direct.resolve()
+        for candidate in root.rglob("remote_job.json"):
+            return candidate.resolve()
+    raise FileNotFoundError(f"Could not find remote_job.json from {root}")
+
+
+def normalize_variant(raw: str | None) -> str:
+    lower = (raw or "").lower().replace("_", "-")
+    if "xl" in lower:
+        if "turbo" in lower:
+            return "acestep-v15-xl-turbo"
+        if "base" in lower:
+            return "acestep-v15-xl-base"
+        return "acestep-v15-xl-sft"
+    if "sft" in lower:
+        return "acestep-v15-sft"
+    if "base" in lower or "full" in lower:
+        return "acestep-v15-base"
+    return "acestep-v15-turbo"
+
+
+def base_model_for_variant(variant: str) -> str:
+    lower = variant.lower()
+    if "turbo" in lower:
+        return "turbo"
+    if "sft" in lower:
+        return "sft"
+    return "base"
+
+
+def schedule_for_variant(variant: str) -> tuple[float, int]:
+    if "turbo" in variant.lower():
+        return 3.0, 8
+    return 1.0, 50
+
+
+def variant_repo(variant: str) -> str:
+    return {
+        "acestep-v15-xl-sft": "ACE-Step/acestep-v15-xl-sft",
+        "acestep-v15-xl-base": "ACE-Step/acestep-v15-xl-base",
+        "acestep-v15-xl-turbo": "ACE-Step/acestep-v15-xl-turbo",
+        "acestep-v15-sft": "ACE-Step/acestep-v15-sft",
+        "acestep-v15-base": "ACE-Step/acestep-v15-base",
+        "acestep-v15-turbo": "ACE-Step/Ace-Step1.5",
+    }.get(variant, f"ACE-Step/{variant}")
+
+
+def contains_weights(path: Path) -> bool:
+    if not path.is_dir():
+        return False
+    names = {
+        "model.safetensors",
+        "model.safetensors.index.json",
+        "pytorch_model.bin",
+        "pytorch_model.bin.index.json",
+        "diffusion_pytorch_model.safetensors",
+        "diffusion_pytorch_model.safetensors.index.json",
+    }
+    return any((path / name).exists() for name in names)
+
+
+class RemoteWorker:
+    def __init__(self, args: argparse.Namespace):
+        self.args = args
+        self.job_path = find_remote_job(Path(args.job).expanduser().resolve())
+        self.job = read_json(self.job_path)
+        self.package_root = self.resolve_package_root()
+        outputs = self.job.get("outputs") if isinstance(self.job.get("outputs"), dict) else {}
+        self.logs_file = self.package_root / outputs.get("logs_file", "remote_artifacts/logs.jsonl")
+        self.metrics_file = self.package_root / outputs.get("metrics_file", "remote_artifacts/metrics.jsonl")
+        self.result_file = self.package_root / outputs.get("result_file", "remote_artifacts/result.json")
+        self.checkpoints_dir = self.package_root / outputs.get("checkpoints_directory", "remote_artifacts/checkpoints")
+        self.final_adapter_dir = self.package_root / outputs.get("final_adapter_directory", "remote_artifacts/final_adapter")
+        self.artifacts_dir = self.result_file.parent
+        self.command_dir = self.artifacts_dir / "command"
+        self.tensor_dir = self.artifacts_dir / "tensors"
+        self.output_dir = self.artifacts_dir / "side_step_output"
+        self.preprocess_placeholder = self.artifacts_dir / "preprocess_placeholder"
+        self.side_step_dataset = self.artifacts_dir / "side_step_dataset.json"
+        self.started_at: str | None = None
+        self.artifacts_dir.mkdir(parents=True, exist_ok=True)
+        self.command_dir.mkdir(parents=True, exist_ok=True)
+
+    def resolve_package_root(self) -> Path:
+        package = self.job.get("package") if isinstance(self.job.get("package"), dict) else {}
+        raw_root = package.get("package_root", ".")
+        root = Path(str(raw_root))
+        if not root.is_absolute():
+            root = self.job_path.parent / root
+        return root.resolve()
+
+    def log(self, stage: str, message: str, level: str = "info", **fields: Any) -> None:
+        event = {
+            "ts": utc_now(),
+            "level": level,
+            "stage": stage,
+            "message": message,
+            **fields,
+        }
+        append_jsonl(self.logs_file, event)
+        print(f"[{level.upper()}] {stage}: {message}", flush=True)
+
+    def metric(self, **fields: Any) -> None:
+        append_jsonl(self.metrics_file, {"ts": utc_now(), **fields})
+
+    def write_result(
+        self,
+        status: str,
+        metrics: dict[str, float] | None = None,
+        error: dict[str, Any] | None = None,
+        extra_artifacts: list[dict[str, Any]] | None = None,
+    ) -> None:
+        artifacts: list[dict[str, Any]] = [
+            {
+                "kind": "final_adapter",
+                "path": relative_path(self.final_adapter_dir, self.package_root),
+                "media_type": "application/vnd.pimp-audio.adapter",
+            },
+            {
+                "kind": "checkpoints",
+                "path": relative_path(self.checkpoints_dir, self.package_root),
+                "media_type": "inode/directory",
+            },
+            {
+                "kind": "logs",
+                "path": relative_path(self.logs_file, self.package_root),
+                "media_type": "application/x-ndjson",
+            },
+            {
+                "kind": "metrics",
+                "path": relative_path(self.metrics_file, self.package_root),
+                "media_type": "application/x-ndjson",
+            },
+        ]
+        if extra_artifacts:
+            artifacts.extend(extra_artifacts)
+        result = {
+            "pimp_audio_remote_result_version": "1.0",
+            "job_id": self.job.get("job_id", "unknown"),
+            "task": self.job.get("task", "unknown"),
+            "status": status,
+            "started_at": self.started_at,
+            "finished_at": utc_now(),
+            "artifacts": artifacts,
+            "metrics": metrics or {},
+        }
+        if error:
+            result["error"] = error
+        write_json(self.result_file, result)
+
+    def selected_bundle_path(self) -> Path:
+        package = self.job.get("package") if isinstance(self.job.get("package"), dict) else {}
+        raw = package.get("entry_bundle") or (
+            package.get("selected_bundle", {}).get("path")
+            if isinstance(package.get("selected_bundle"), dict)
+            else None
+        )
+        if not raw:
+            raise ValueError("remote_job.json package.entry_bundle is missing")
+        return (self.package_root / str(raw)).resolve()
+
+    def selected_include(self) -> list[str]:
+        package = self.job.get("package") if isinstance(self.job.get("package"), dict) else {}
+        selected = package.get("selected_bundle") if isinstance(package.get("selected_bundle"), dict) else {}
+        include = selected.get("include") if isinstance(selected.get("include"), list) else []
+        return [str(item) for item in include]
+
+    def make_sidestep_dataset(self) -> dict[str, Any]:
+        bundle_path = self.selected_bundle_path()
+        bundle = read_json(bundle_path)
+        clips = bundle.get("clips")
+        if not isinstance(clips, list) or not clips:
+            raise ValueError(f"{bundle_path} does not contain clips")
+
+        package = self.job.get("package") if isinstance(self.job.get("package"), dict) else {}
+        training = self.job.get("training") if isinstance(self.job.get("training"), dict) else {}
+        selected = package.get("selected_bundle") if isinstance(package.get("selected_bundle"), dict) else {}
+        includes = self.selected_include()
+        bundle_name = selected.get("name") or bundle_path.stem
+        training_lyrics = first_string(selected.get("training_lyrics"), bundle.get("training_lyrics"))
+        force_instrumental = (
+            "instrumental" in [item.lower() for item in includes]
+            or training_lyrics == "[Instrumental]"
+        )
+
+        samples: list[dict[str, Any]] = []
+        missing_audio: list[str] = []
+        for index, clip in enumerate(clips):
+            if not isinstance(clip, dict):
+                continue
+            assets = clip.get("assets") if isinstance(clip.get("assets"), dict) else {}
+            analysis = clip.get("analysis") if isinstance(clip.get("analysis"), dict) else {}
+            rel_audio = first_string(clip.get("file"))
+            if not rel_audio:
+                for include in includes:
+                    rel_audio = first_string(assets.get(include))
+                    if rel_audio:
+                        break
+            rel_audio = rel_audio or first_string(
+                assets.get("full_mix"),
+                assets.get("instrumental"),
+                assets.get("vocals"),
+                clip.get("id"),
+            )
+            if not rel_audio:
+                missing_audio.append(str(clip.get("id", index)))
+                continue
+            audio_path = (self.package_root / rel_audio).resolve()
+            if not audio_path.exists():
+                missing_audio.append(rel_audio)
+                continue
+
+            caption = first_string(clip.get("caption"), clip.get("prompt"), clip.get("id"), audio_path.stem)
+            lyrics = "[Instrumental]" if force_instrumental else first_string(
+                clip.get("lyrics"),
+                clip.get("transcript"),
+                training_lyrics,
+                "[Instrumental]",
+            )
+            if not lyrics:
+                lyrics = "[Instrumental]"
+            duration = first_number(
+                clip.get("duration"),
+                analysis.get("duration_seconds"),
+                clip.get("seconds_total"),
+            )
+            bpm = first_number(clip.get("bpm"), analysis.get("tempo_bpm_estimate"))
+            keyscale = first_string(clip.get("keyscale"), clip.get("key"), analysis.get("keyscale"))
+            sample: dict[str, Any] = {
+                "id": str(clip.get("id") or f"clip-{index + 1:04d}"),
+                "audio_path": audio_path.as_posix(),
+                "filename": audio_path.name,
+                "caption": caption,
+                "genre": caption,
+                "lyrics": lyrics,
+                "raw_lyrics": first_string(clip.get("raw_lyrics"), clip.get("transcript"), lyrics) or lyrics,
+                "formatted_lyrics": lyrics,
+                "bpm": bpm if bpm is not None else "N/A",
+                "keyscale": keyscale or "N/A",
+                "timesignature": first_string(clip.get("timesignature"), clip.get("time_signature"), "4/4"),
+                "duration": duration if duration is not None else 0,
+                "language": first_string(
+                    clip.get("language"),
+                    (clip.get("annotation") or {}).get("language") if isinstance(clip.get("annotation"), dict) else None,
+                    "en",
+                ),
+                "is_instrumental": lyrics.strip() == "[Instrumental]",
+                "custom_tag": "",
+                "labeled": True,
+                "prompt_override": "caption",
+            }
+            samples.append(sample)
+
+        if missing_audio:
+            preview = ", ".join(missing_audio[:8])
+            raise FileNotFoundError(
+                f"{len(missing_audio)} clip audio file(s) are missing from the package. First missing: {preview}"
+            )
+        if not samples:
+            raise ValueError("No usable samples were found in the selected training bundle")
+
+        dataset = {
+            "metadata": {
+                "name": str(training.get("adapter_name") or package.get("package_name") or "pimp_remote_dataset"),
+                "custom_tag": "",
+                "tag_position": "prepend",
+                "created_at": utc_now(),
+                "num_samples": len(samples),
+                "all_instrumental": all(sample["is_instrumental"] for sample in samples),
+                "genre_ratio": 0,
+                "source_bundle": str(bundle_name),
+                "pimp_audio_remote_job_id": self.job.get("job_id"),
+            },
+            "samples": samples,
+        }
+        write_json(self.side_step_dataset, dataset)
+        self.log(
+            "dataset",
+            "Wrote Side-Step dataset JSON",
+            samples=len(samples),
+            bundle=Path(bundle_path).name,
+            path=relative_path(self.side_step_dataset, self.package_root),
+        )
+        self.metric(stage="dataset", sample_count=len(samples))
+        return dataset
+
+    def env_paths(self) -> tuple[Path, Path, Path]:
+        workdir = Path(os.environ.get("PIMP_REMOTE_WORKDIR", str(DEFAULT_WORKDIR))).expanduser()
+        ace_dir = Path(os.environ.get("PIMP_ACE_DIR", str(workdir / "ACE-Step-1.5"))).expanduser()
+        checkpoints = Path(os.environ.get("PIMP_CHECKPOINT_DIR", str(workdir / "checkpoints"))).expanduser()
+        python = Path(os.environ.get("PIMP_REMOTE_PYTHON", str(workdir / "venv/bin/python"))).expanduser()
+        return ace_dir.resolve(), checkpoints.resolve(), python.resolve()
+
+    def ensure_environment(self, variant: str) -> tuple[Path, Path, Path]:
+        ace_dir, checkpoints, python = self.env_paths()
+        train_py = ace_dir / "train.py"
+        if not train_py.exists():
+            raise FileNotFoundError(
+                f"ACE-Step training source not found at {train_py}. "
+                "Run remote-worker/install.sh on the pod first."
+            )
+        if not python.exists():
+            raise FileNotFoundError(
+                f"Worker Python not found at {python}. Run remote-worker/install.sh on the pod first."
+            )
+        checkpoints.mkdir(parents=True, exist_ok=True)
+        if not self.args.no_download and os.environ.get("PIMP_REMOTE_DOWNLOAD_MODELS", "1") != "0":
+            self.ensure_model_assets(python, ace_dir, checkpoints, variant)
+        return ace_dir, checkpoints, python
+
+    def ensure_model_assets(self, python: Path, ace_dir: Path, checkpoints: Path, variant: str) -> None:
+        variant_dir = checkpoints / variant
+        shared_missing = not contains_weights(checkpoints / "vae") or not contains_weights(checkpoints / "Qwen3-Embedding-0.6B")
+        variant_missing = not contains_weights(variant_dir)
+        if not shared_missing and not variant_missing:
+            self.log("models", "Model assets already present", variant=variant, checkpoints=checkpoints.as_posix())
+            return
+
+        self.log(
+            "models",
+            "Downloading missing ACE-Step model assets",
+            variant=variant,
+            variant_missing=variant_missing,
+            shared_missing=shared_missing,
+        )
+        script = f"""
+import os
+import sys
+from pathlib import Path
+from huggingface_hub import snapshot_download
+
+ace_dir = Path({str(ace_dir)!r})
+checkpoints = Path({str(checkpoints)!r})
+variant = {variant!r}
+token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_HUB_TOKEN")
+source = os.environ.get("PIMP_REMOTE_SOURCE", "huggingface")
+
+repo_map = {{
+    "acestep-v15-xl-sft": "ACE-Step/acestep-v15-xl-sft",
+    "acestep-v15-xl-base": "ACE-Step/acestep-v15-xl-base",
+    "acestep-v15-xl-turbo": "ACE-Step/acestep-v15-xl-turbo",
+    "acestep-v15-sft": "ACE-Step/acestep-v15-sft",
+    "acestep-v15-base": "ACE-Step/acestep-v15-base",
+}}
+
+def has_weights(path):
+    names = [
+        "model.safetensors",
+        "model.safetensors.index.json",
+        "pytorch_model.bin",
+        "pytorch_model.bin.index.json",
+        "diffusion_pytorch_model.safetensors",
+        "diffusion_pytorch_model.safetensors.index.json",
+    ]
+    return path.is_dir() and any((path / name).exists() for name in names)
+
+checkpoints.mkdir(parents=True, exist_ok=True)
+if not has_weights(checkpoints / "vae") or not has_weights(checkpoints / "Qwen3-Embedding-0.6B"):
+    snapshot_download(
+        repo_id="ACE-Step/Ace-Step1.5",
+        local_dir=str(checkpoints),
+        allow_patterns=["vae/**", "Qwen3-Embedding-0.6B/**"],
+        local_dir_use_symlinks=False,
+        token=token,
+    )
+
+variant_dir = checkpoints / variant
+if not has_weights(variant_dir):
+    if variant == "acestep-v15-turbo":
+        snapshot_download(
+            repo_id="ACE-Step/Ace-Step1.5",
+            local_dir=str(checkpoints),
+            allow_patterns=["acestep-v15-turbo/**"],
+            local_dir_use_symlinks=False,
+            token=token,
+        )
+    else:
+        snapshot_download(
+            repo_id=repo_map.get(variant, "ACE-Step/" + variant),
+            local_dir=str(variant_dir),
+            local_dir_use_symlinks=False,
+            token=token,
+        )
+
+sys.path.insert(0, str(ace_dir))
+try:
+    from acestep.model_downloader import _sync_model_code_files
+    synced = _sync_model_code_files(variant, checkpoints)
+    if synced:
+        print("synced_model_code", synced)
+except Exception as exc:
+    print("model_code_sync_warning", exc)
+"""
+        subprocess.run([str(python), "-c", script], cwd=str(ace_dir), check=True)
+        self.log("models", "Model assets ready", variant=variant, checkpoints=checkpoints.as_posix())
+
+    def build_commands(self) -> tuple[list[str], list[str]]:
+        training = self.job.get("training") if isinstance(self.job.get("training"), dict) else {}
+        runtime = self.job.get("runtime") if isinstance(self.job.get("runtime"), dict) else {}
+        task = str(self.job.get("task") or "")
+        if task not in {"train_lora", "train_lokr", "preprocess"}:
+            raise ValueError(f"Unsupported remote task for this worker: {task}")
+
+        variant = normalize_variant(
+            first_string(training.get("worker_model_variant"), training.get("base_model_id"))
+        )
+        base_model = base_model_for_variant(variant)
+        shift, inference_steps = schedule_for_variant(variant)
+        precision = first_string(runtime.get("precision"), "bf16_or_fp16") or "bf16"
+        if precision == "bf16_or_fp16":
+            precision = "bf16"
+        elif precision not in {"auto", "bf16", "fp16", "fp32"}:
+            precision = "bf16"
+
+        ace_dir, checkpoints, python = self.env_paths()
+        train_py = ace_dir / "train.py"
+        max_duration = int(training.get("max_duration_seconds") or 60)
+        epochs = int(training.get("epochs") or (100 if task == "train_lora" else 80))
+        save_every = int(training.get("save_every") or 10)
+        batch_size = int(training.get("batch_size") or 1)
+        grad_accum = int(training.get("gradient_accumulation_steps") or 2)
+        lr = float(training.get("learning_rate") or 0.00008)
+        cfg_ratio = float(training.get("cfg_ratio") or 0.15)
+        seed = int(training.get("seed") or 42)
+        target_modules = training.get("target_modules") if isinstance(training.get("target_modules"), list) else []
+        target_modules = [str(item) for item in target_modules] or ["q_proj", "v_proj"]
+        attention_type = first_string(training.get("attention_type"), "both") or "both"
+        if attention_type not in {"self", "cross", "both"}:
+            attention_type = "both"
+
+        num_workers = int(os.environ.get("PIMP_REMOTE_NUM_WORKERS", "4"))
+        prefetch_factor = int(os.environ.get("PIMP_REMOTE_PREFETCH_FACTOR", "2"))
+
+        preprocess_cmd = [
+            str(python),
+            str(train_py),
+            "--plain",
+            "--yes",
+            "fixed",
+            "--checkpoint-dir",
+            str(checkpoints),
+            "--model-variant",
+            variant,
+            "--base-model",
+            base_model,
+            "--device",
+            "cuda",
+            "--precision",
+            precision,
+            "--dataset-dir",
+            str(self.tensor_dir),
+            "--output-dir",
+            str(self.preprocess_placeholder),
+            "--preprocess",
+            "--audio-dir",
+            str(self.package_root),
+            "--dataset-json",
+            str(self.side_step_dataset),
+            "--tensor-output",
+            str(self.tensor_dir),
+            "--max-duration",
+            str(max_duration),
+        ]
+
+        adapter_type = "lokr" if task == "train_lokr" or training.get("adapter_mode") == "lokr" else "lora"
+        train_cmd = [
+            str(python),
+            str(train_py),
+            "--plain",
+            "--yes",
+            "fixed",
+            "--checkpoint-dir",
+            str(checkpoints),
+            "--model-variant",
+            variant,
+            "--base-model",
+            base_model,
+            "--device",
+            "cuda",
+            "--precision",
+            precision,
+            "--dataset-dir",
+            str(self.tensor_dir),
+            "--output-dir",
+            str(self.output_dir),
+            "--adapter-type",
+            adapter_type,
+            "--target-modules",
+            *target_modules,
+            "--attention-type",
+            attention_type,
+            "--epochs",
+            str(epochs),
+            "--save-every",
+            str(save_every),
+            "--batch-size",
+            str(batch_size),
+            "--gradient-accumulation",
+            str(grad_accum),
+            "--lr",
+            str(lr),
+            "--warmup-steps",
+            "100",
+            "--weight-decay",
+            "0",
+            "--max-grad-norm",
+            "1.0",
+            "--seed",
+            str(seed),
+            "--shift",
+            str(shift),
+            "--num-inference-steps",
+            str(inference_steps),
+            "--optimizer-type",
+            "adamw",
+            "--scheduler-type",
+            "cosine",
+            "--num-workers",
+            str(num_workers),
+            "--prefetch-factor",
+            str(prefetch_factor),
+            "--persistent-workers" if num_workers > 0 else "--no-persistent-workers",
+            "--log-dir",
+            str(self.output_dir / "runs"),
+            "--log-every",
+            "10",
+            "--log-heavy-every",
+            "50",
+            "--cfg-ratio",
+            str(cfg_ratio),
+        ]
+        if adapter_type == "lokr":
+            train_cmd.extend([
+                "--lokr-linear-dim",
+                str(int(training.get("lokr_linear_dim") or 32)),
+                "--lokr-linear-alpha",
+                str(int(training.get("lokr_linear_alpha") or 64)),
+            ])
+            if bool(training.get("lokr_weight_decompose", True)):
+                train_cmd.append("--lokr-weight-decompose")
+        else:
+            train_cmd.extend([
+                "--rank",
+                str(int(training.get("rank") or 64)),
+                "--alpha",
+                str(int(training.get("alpha") or 64)),
+                "--dropout",
+                str(float(training.get("dropout") or 0.0)),
+            ])
+
+        self.write_command_script("preprocess.sh", preprocess_cmd, cwd=ace_dir)
+        self.write_command_script("train.sh", train_cmd, cwd=ace_dir)
+        return preprocess_cmd, train_cmd
+
+    def write_command_script(self, name: str, command: list[str], cwd: Path) -> None:
+        path = self.command_dir / name
+        path.write_text(
+            "#!/usr/bin/env bash\n"
+            "set -euo pipefail\n"
+            f"cd {shlex.quote(str(cwd))}\n"
+            f"exec {shell_join(command)}\n",
+            encoding="utf-8",
+        )
+        path.chmod(0o755)
+
+    def run_command(self, stage: str, command: list[str], cwd: Path) -> None:
+        self.log(stage, "Starting command", command=shell_join(command), cwd=cwd.as_posix())
+        start = time.time()
+        process = subprocess.Popen(
+            command,
+            cwd=str(cwd),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+        assert process.stdout is not None
+        for line in process.stdout:
+            line = line.rstrip()
+            if line:
+                self.log(stage, line)
+                self.extract_metric(line)
+        rc = process.wait()
+        elapsed = time.time() - start
+        self.metric(stage=stage, elapsed_seconds=elapsed, return_code=rc)
+        if rc != 0:
+            raise subprocess.CalledProcessError(rc, command)
+        self.log(stage, "Command finished", elapsed_seconds=round(elapsed, 2))
+
+    def extract_metric(self, line: str) -> None:
+        lower = line.lower()
+        if "loss" not in lower and "lr" not in lower:
+            return
+        fields: dict[str, Any] = {"stage": "training_log"}
+        step = re.search(r"\bstep[=: ]+(\d+)", lower)
+        epoch = re.search(r"\bepoch[=: ]+(\d+)", lower)
+        loss = re.search(r"\bloss[=: ]+([0-9]+(?:\.[0-9]+)?(?:e[-+]?\d+)?)", lower)
+        lr = re.search(r"\blr[=: ]+([0-9]+(?:\.[0-9]+)?(?:e[-+]?\d+)?)", lower)
+        if step:
+            fields["step"] = int(step.group(1))
+        if epoch:
+            fields["epoch"] = int(epoch.group(1))
+        if loss:
+            fields["loss"] = float(loss.group(1))
+        if lr:
+            fields["lr"] = float(lr.group(1))
+        if len(fields) > 1:
+            self.metric(**fields)
+
+    def count_tensors(self) -> int:
+        if not self.tensor_dir.exists():
+            return 0
+        return len(list(self.tensor_dir.glob("*.pt")))
+
+    def copy_outputs(self) -> dict[str, float]:
+        self.checkpoints_dir.mkdir(parents=True, exist_ok=True)
+        self.final_adapter_dir.mkdir(parents=True, exist_ok=True)
+        src_final = self.output_dir / "final"
+        src_checkpoints = self.output_dir / "checkpoints"
+        if src_final.exists():
+            if self.final_adapter_dir.exists():
+                shutil.rmtree(self.final_adapter_dir)
+            shutil.copytree(src_final, self.final_adapter_dir)
+        if src_checkpoints.exists():
+            if self.checkpoints_dir.exists():
+                shutil.rmtree(self.checkpoints_dir)
+            shutil.copytree(src_checkpoints, self.checkpoints_dir)
+        final_files = list(self.final_adapter_dir.rglob("*")) if self.final_adapter_dir.exists() else []
+        checkpoint_count = len([path for path in self.checkpoints_dir.iterdir() if path.is_dir()]) if self.checkpoints_dir.exists() else 0
+        return {
+            "tensor_count": float(self.count_tensors()),
+            "final_file_count": float(len([path for path in final_files if path.is_file()])),
+            "checkpoint_count": float(checkpoint_count),
+        }
+
+    def train(self) -> int:
+        self.started_at = utc_now()
+        try:
+            self.log("setup", "Loaded remote job", job=str(self.job_path), package_root=str(self.package_root))
+            dataset = self.make_sidestep_dataset()
+            preprocess_cmd, train_cmd = self.build_commands()
+            training = self.job.get("training") if isinstance(self.job.get("training"), dict) else {}
+            variant = normalize_variant(
+                first_string(training.get("worker_model_variant"), training.get("base_model_id"))
+            )
+            ace_dir, _checkpoints, _python = self.ensure_environment(variant) if not self.args.dry_run else self.env_paths()
+            dry_run_payload = {
+                "job": str(self.job_path),
+                "package_root": str(self.package_root),
+                "side_step_dataset": str(self.side_step_dataset),
+                "sample_count": len(dataset.get("samples", [])),
+                "preprocess_command": preprocess_cmd,
+                "train_command": train_cmd,
+            }
+            write_json(self.command_dir / "dry_run.json", dry_run_payload)
+            if self.args.dry_run:
+                self.log("dry_run", "Dry run complete; training was not started")
+                self.write_result(
+                    "succeeded",
+                    metrics={"sample_count": float(len(dataset.get("samples", []))), "dry_run": 1.0},
+                    extra_artifacts=[
+                        {
+                            "kind": "side_step_dataset",
+                            "path": relative_path(self.side_step_dataset, self.package_root),
+                            "media_type": "application/json",
+                        }
+                    ],
+                )
+                return 0
+
+            if self.tensor_dir.exists() and self.count_tensors() > 0 and os.environ.get("PIMP_REMOTE_FORCE_PREPROCESS", "0") != "1":
+                self.log("preprocess", "Reusing existing preprocessed tensors", tensor_count=self.count_tensors())
+            else:
+                if self.tensor_dir.exists():
+                    shutil.rmtree(self.tensor_dir)
+                self.tensor_dir.mkdir(parents=True, exist_ok=True)
+                self.preprocess_placeholder.mkdir(parents=True, exist_ok=True)
+                self.run_command("preprocess", preprocess_cmd, cwd=ace_dir)
+            tensor_count = self.count_tensors()
+            if tensor_count <= 0:
+                raise RuntimeError("Preprocessing finished without producing .pt tensors")
+            self.metric(stage="preprocess", tensor_count=tensor_count)
+
+            if self.output_dir.exists():
+                shutil.rmtree(self.output_dir)
+            self.output_dir.mkdir(parents=True, exist_ok=True)
+            self.run_command("train", train_cmd, cwd=ace_dir)
+            metrics = self.copy_outputs()
+            metrics["sample_count"] = float(len(dataset.get("samples", [])))
+            self.log("complete", "Training complete", metrics=metrics)
+            self.write_result("succeeded", metrics=metrics)
+            return 0
+        except Exception as exc:
+            self.log("error", str(exc), level="error")
+            self.write_result(
+                "failed",
+                error={
+                    "code": exc.__class__.__name__,
+                    "message": str(exc),
+                    "recoverable": True,
+                },
+            )
+            return 1
+
+
+def command_doctor(_args: argparse.Namespace) -> int:
+    workdir = Path(os.environ.get("PIMP_REMOTE_WORKDIR", str(DEFAULT_WORKDIR))).expanduser()
+    ace_dir = Path(os.environ.get("PIMP_ACE_DIR", str(workdir / "ACE-Step-1.5"))).expanduser()
+    python = Path(os.environ.get("PIMP_REMOTE_PYTHON", str(workdir / "venv/bin/python"))).expanduser()
+    checkpoints = Path(os.environ.get("PIMP_CHECKPOINT_DIR", str(workdir / "checkpoints"))).expanduser()
+    print(f"pimp-remote-worker {VERSION}")
+    print(f"workdir: {workdir}")
+    print(f"ace_dir: {ace_dir} ({'ok' if (ace_dir / 'train.py').exists() else 'missing train.py'})")
+    print(f"python: {python} ({'ok' if python.exists() else 'missing'})")
+    print(f"checkpoints: {checkpoints}")
+    if python.exists():
+        subprocess.run([str(python), "-c", "import torch; print('torch', torch.__version__); print('cuda', torch.cuda.is_available()); print('gpu', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'none')"], check=False)
+    return 0
+
+
+def command_train(args: argparse.Namespace) -> int:
+    return RemoteWorker(args).train()
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="pimp-remote-worker")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
+    sub = parser.add_subparsers(dest="command", required=True)
+    doctor = sub.add_parser("doctor", help="Check worker environment")
+    doctor.set_defaults(func=command_doctor)
+    train = sub.add_parser("train", help="Run a PiMP Audio Studio remote job")
+    train.add_argument("job", help="remote_job.json, package directory, or exported job zip")
+    train.add_argument("--dry-run", action="store_true", help="Validate package and write commands without downloading models or training")
+    train.add_argument("--no-download", action="store_true", help="Do not download missing ACE-Step model assets")
+    train.set_defaults(func=command_train)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    return int(args.func(args))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

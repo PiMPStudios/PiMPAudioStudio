@@ -492,7 +492,7 @@ private struct BuildTrainingView: View {
         } message: {
             Text("This creates billable RunPod GPU time. Only continue if you are ready to start a remote server.")
         }
-        .alert("Stop RunPod Pod?", isPresented: Binding(
+        .alert("Terminate RunPod Pod?", isPresented: Binding(
             get: { pendingRunPodStop != nil },
             set: { isPresented in
                 if !isPresented {
@@ -503,13 +503,13 @@ private struct BuildTrainingView: View {
             Button("Cancel", role: .cancel) {
                 pendingRunPodStop = nil
             }
-            Button("Stop Pod", role: .destructive) {
+            Button("Terminate Pod", role: .destructive) {
                 guard let pod = pendingRunPodStop else { return }
                 pendingRunPodStop = nil
-                Task { await runPodService.stopPod(id: pod.id) }
+                Task { await runPodService.terminatePod(id: pod.id) }
             }
         } message: {
-            Text("Stopping releases the GPU for this pod. Volume data should remain available according to the RunPod pod configuration.")
+            Text("This permanently deletes the RunPod pod and releases its storage billing. Download anything you need from the pod first; data not stored in a network volume can be lost.")
         }
         .onChange(of: outputManager.directory) { _, _ in
             refreshRemotePackages()

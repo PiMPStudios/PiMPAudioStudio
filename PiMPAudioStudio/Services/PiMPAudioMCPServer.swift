@@ -1084,7 +1084,7 @@ private final class PiMPAudioMCPSDKBridge {
         case "launch_runpod_pod":
             return "PiMP Audio Studio wants to launch a billable RunPod GPU pod. Approve this action?"
         case "stop_runpod_pod":
-            return "PiMP Audio Studio wants to stop a RunPod GPU pod. Approve this action?"
+            return "PiMP Audio Studio wants to terminate/delete a RunPod GPU pod. Approve this action?"
         case "release_memory":
             return "PiMP Audio Studio wants to cancel active generation if needed, unload model weights, and flush MLX GPU cache. Approve this action?"
         default:

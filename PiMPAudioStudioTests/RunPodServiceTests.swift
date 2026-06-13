@@ -82,7 +82,17 @@ private final class RunPodMockTransport: RunPodTransport, @unchecked Sendable {
     #expect(pods[0].statusLabel == "RUNNING")
     #expect(pods[0].hourlyCostLabel == "$0.69/hr")
     #expect(pods[0].sshPort == 11646)
-    #expect(pods[0].sshCommand(sshKeyPath: "~/.ssh/id_ed25519") == "ssh root@216.81.151.42 -p 11646 -i ~/.ssh/id_ed25519")
+    #expect(pods[0].sshCommand(sshKeyPath: "~/.ssh/id_ed25519") == "ssh -p 11646 -i ~/.ssh/id_ed25519 root@216.81.151.42")
+
+    let archiveURL = URL(filePath: "/Users/test/Training Jobs/job one.zip")
+    let uploadCommand = try #require(pods[0].uploadCommand(archiveURL: archiveURL, sshKeyPath: "~/.ssh/id_ed25519"))
+    #expect(uploadCommand.contains("ssh -p 11646 -i ~/.ssh/id_ed25519 root@216.81.151.42 'mkdir -p /workspace/jobs'"))
+    #expect(uploadCommand.contains("scp -P 11646 -i ~/.ssh/id_ed25519 '/Users/test/Training Jobs/job one.zip' root@216.81.151.42:/workspace/jobs/"))
+
+    let remoteCommand = try #require(pods[0].remotePackageCommand(archiveURL: archiveURL))
+    #expect(remoteCommand.contains("python3 -m zipfile -e"))
+    #expect(remoteCommand.contains("ZIP='job one.zip'"))
+    #expect(remoteCommand.contains("bash run_remote_training.sh ."))
 
     #expect(transport.requests.first?.httpMethod == "GET")
     #expect(transport.requests.first?.url?.absoluteString == "https://rest.runpod.io/v1/pods")
@@ -362,7 +372,7 @@ private final class RunPodMockTransport: RunPodTransport, @unchecked Sendable {
     #expect(requestBody.imageName == "runpod/pytorch:custom")
 }
 
-@Test func runPodClientStopPodUsesStopEndpoint() async throws {
+@Test func runPodClientDeletePodUsesDeleteEndpoint() async throws {
     let transport = RunPodMockTransport(responses: [(
         statusCode: 200,
         data: Data()
@@ -372,11 +382,11 @@ private final class RunPodMockTransport: RunPodTransport, @unchecked Sendable {
         transport: transport
     )
 
-    try await client.stopPod(token: "rp_test_token", podID: "abc123")
+    try await client.deletePod(token: "rp_test_token", podID: "abc123")
 
     let request = try #require(transport.requests.first)
-    #expect(request.httpMethod == "POST")
-    #expect(request.url?.absoluteString == "https://rest.runpod.io/v1/pods/abc123/stop")
+    #expect(request.httpMethod == "DELETE")
+    #expect(request.url?.absoluteString == "https://rest.runpod.io/v1/pods/abc123")
     #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer rp_test_token")
 }
 

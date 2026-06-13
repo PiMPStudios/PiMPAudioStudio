@@ -215,7 +215,7 @@ struct RunPodLifecyclePanel: View {
                 }
             }
 
-            Text("Launch only creates the RunPod pod. Upload the exported job zip to the pod, run the included script, then pull artifacts back for import.")
+            Text("Launch creates the RunPod pod. Official RunPod PyTorch templates do not include the PiMP worker yet, so upload the exported job zip, run the included script, and install/use a PiMP worker template before training can start.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -404,7 +404,7 @@ struct RunPodLifecyclePanel: View {
 
                 Spacer()
 
-                if runPodService.stoppingPodID == pod.id {
+                if runPodService.terminatingPodID == pod.id {
                     ProgressView()
                         .controlSize(.small)
                 }
@@ -427,14 +427,23 @@ struct RunPodLifecyclePanel: View {
                 .disabled(pod.uploadCommand(archiveURL: preparedArchiveURL, sshKeyPath: sshKeyPath) == nil)
                 .help("Copy upload command for the last exported job zip")
 
+                Button {
+                    copyRunPodRemotePackageCommand(for: pod)
+                } label: {
+                    Image(systemName: "play.rectangle")
+                }
+                .buttonStyle(.borderless)
+                .disabled(pod.remotePackageCommand(archiveURL: preparedArchiveURL) == nil)
+                .help("Copy extract and run command for the pod")
+
                 Button(role: .destructive) {
                     onStopRequested(pod)
                 } label: {
-                    Image(systemName: "stop.circle")
+                    Image(systemName: "trash")
                 }
                 .buttonStyle(.borderless)
-                .disabled(runPodService.stoppingPodID != nil || pod.locked == true)
-                .help("Stop this RunPod pod")
+                .disabled(runPodService.terminatingPodID != nil || pod.locked == true)
+                .help("Terminate this RunPod pod")
             }
 
             if let publicIp = pod.publicIp, let sshPort = pod.sshPort {
@@ -491,6 +500,15 @@ struct RunPodLifecyclePanel: View {
         }
         copyToPasteboard(command)
         onNotice("Copied upload command for \(pod.displayName).")
+    }
+
+    private func copyRunPodRemotePackageCommand(for pod: RunPodPodSummary) {
+        guard let command = pod.remotePackageCommand(archiveURL: preparedArchiveURL) else {
+            onNotice("Export a remote job zip first, then copy the pod run command.")
+            return
+        }
+        copyToPasteboard(command)
+        onNotice("Copied extract/run command for \(pod.displayName).")
     }
 
     private func copyToPasteboard(_ value: String) {
