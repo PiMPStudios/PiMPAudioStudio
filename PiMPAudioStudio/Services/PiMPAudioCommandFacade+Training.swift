@@ -273,6 +273,114 @@ extension PiMPAudioCommandFacade {
         ]
     }
 
+    func runPodStatus(arguments: [String: Any]) async throws -> [String: Any] {
+        guard let runPodService else {
+            throw PiMPAudioCommandFacadeError.runPodServiceUnavailable
+        }
+
+        if boolValue(arguments["refreshLaunchOptions"] ?? arguments["refreshOptions"]) == true {
+            await runPodService.refreshLaunchOptions()
+        }
+        if boolValue(arguments["refreshPods"]) == true {
+            await runPodService.refreshPods()
+        }
+
+        return runPodStatusPayload(
+            service: runPodService,
+            recommendedForGPUType: stringValue(arguments["gpuType"] ?? arguments["gpuTypeID"] ?? arguments["gpu"])
+        )
+    }
+
+    func refreshRunPodLaunchOptions(arguments: [String: Any]) async throws -> [String: Any] {
+        guard let runPodService else {
+            throw PiMPAudioCommandFacadeError.runPodServiceUnavailable
+        }
+
+        await runPodService.refreshLaunchOptions()
+        var payload = runPodStatusPayload(
+            service: runPodService,
+            recommendedForGPUType: stringValue(arguments["gpuType"] ?? arguments["gpuTypeID"] ?? arguments["gpu"])
+        )
+        payload["refreshed"] = runPodService.lastError == nil
+        return payload
+    }
+
+    func launchRunPodPod(arguments: [String: Any]) async throws -> [String: Any] {
+        guard let runPodService else {
+            throw PiMPAudioCommandFacadeError.runPodServiceUnavailable
+        }
+
+        let dryRun = boolValue(arguments["dryRun"] ?? arguments["validateOnly"]) ?? true
+        let resolution = try await resolveRunPodLaunchConfiguration(
+            arguments: arguments,
+            service: runPodService
+        )
+        _ = try resolution.configuration.requestBody()
+
+        var payload = runPodLaunchPayload(
+            configuration: resolution.configuration,
+            recommendedTemplate: resolution.recommendedTemplate,
+            usedRecommendedTemplate: resolution.usedRecommendedTemplate,
+            submitted: false,
+            dryRun: dryRun,
+            pod: nil,
+            error: nil
+        )
+
+        guard !dryRun else {
+            payload["confirmation"] = confirmationRequirementPayload(toolName: "launch_runpod_pod")
+            payload["status"] = runPodStatusPayload(service: runPodService, recommendedForGPUType: resolution.configuration.gpuTypeID)
+            return payload
+        }
+        guard boolValue(arguments["confirm"]) == true else {
+            throw PiMPAudioCommandFacadeError.confirmationRequired("launch_runpod_pod")
+        }
+
+        guard runPodService.hasAPIKey else {
+            let message = "Add a RunPod API key before launching a pod."
+            return runPodLaunchPayload(
+                configuration: resolution.configuration,
+                recommendedTemplate: resolution.recommendedTemplate,
+                usedRecommendedTemplate: resolution.usedRecommendedTemplate,
+                submitted: false,
+                dryRun: false,
+                pod: nil,
+                error: message
+            )
+        }
+
+        let pod = await runPodService.launchPod(configuration: resolution.configuration)
+        payload = runPodLaunchPayload(
+            configuration: resolution.configuration,
+            recommendedTemplate: resolution.recommendedTemplate,
+            usedRecommendedTemplate: resolution.usedRecommendedTemplate,
+            submitted: pod != nil,
+            dryRun: false,
+            pod: pod,
+            error: pod == nil ? runPodService.lastError : nil
+        )
+        payload["status"] = runPodStatusPayload(service: runPodService, recommendedForGPUType: resolution.configuration.gpuTypeID)
+        return payload
+    }
+
+    func stopRunPodPod(arguments: [String: Any]) async throws -> [String: Any] {
+        guard boolValue(arguments["confirm"]) == true else {
+            throw PiMPAudioCommandFacadeError.confirmationRequired("stop_runpod_pod")
+        }
+        guard let runPodService else {
+            throw PiMPAudioCommandFacadeError.runPodServiceUnavailable
+        }
+
+        let podID = try requiredString("podID", aliases: ["id", "pod"], in: arguments)
+        await runPodService.stopPod(id: podID)
+        return [
+            "submitted": runPodService.lastError == nil,
+            "podID": podID,
+            "error": runPodService.lastError ?? NSNull(),
+            "status": runPodStatusPayload(service: runPodService, recommendedForGPUType: nil)
+        ]
+    }
+
 
     func trainingStatePayload(_ state: TrainingState) -> [String: Any] {
         switch state {
@@ -1490,6 +1598,201 @@ extension PiMPAudioCommandFacade {
             "status": event.status.rawValue,
             "message": event.message
         ]
+    }
+
+    func runPodStatusPayload(
+        service: RunPodService,
+        recommendedForGPUType gpuTypeValue: String?
+    ) -> [String: Any] {
+        let limit = 100
+        let trimmedGPUType = gpuTypeValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let recommended = trimmedGPUType.isEmpty
+            ? nil
+            : service.recommendedTrainingTemplate(for: trimmedGPUType)
+        return [
+            "hasAPIKey": service.hasAPIKey,
+            "keySource": runPodKeySourcePayload(service.keySource),
+            "isRefreshingPods": service.isRefreshing,
+            "isRefreshingLaunchOptions": service.isRefreshingGPUTypes,
+            "isLaunching": service.isLaunching,
+            "stoppingPodID": service.stoppingPodID ?? NSNull(),
+            "lastMessage": service.lastMessage ?? NSNull(),
+            "lastError": service.lastError ?? NSNull(),
+            "gpuTypeCount": service.gpuTypes.count,
+            "templateCount": service.podTemplates.count,
+            "podCount": service.pods.count,
+            "recommendedTemplate": recommended.map(runPodTemplatePayload) ?? NSNull(),
+            "gpuTypes": service.gpuTypes.prefix(limit).map(runPodGPUTypePayload),
+            "templates": service.podTemplates.prefix(limit).map(runPodTemplatePayload),
+            "pods": service.pods.prefix(limit).map(runPodPodPayload)
+        ]
+    }
+
+    func resolveRunPodLaunchConfiguration(
+        arguments: [String: Any],
+        service: RunPodService
+    ) async throws -> (
+        configuration: RunPodLaunchConfiguration,
+        recommendedTemplate: RunPodTemplate?,
+        usedRecommendedTemplate: Bool
+    ) {
+        let gpuType = try requiredString(
+            "gpuType",
+            aliases: ["gpuTypeID", "gpu"],
+            in: arguments
+        )
+        var templateID = stringValue(arguments["templateID"] ?? arguments["templateId"] ?? arguments["template"])?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let imageName = stringValue(arguments["imageName"] ?? arguments["image"])?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        var containerDiskGB = integerValue(arguments["containerDiskGB"] ?? arguments["containerDiskGb"] ?? arguments["containerDisk"]) ?? 80
+        var volumeGB = integerValue(arguments["volumeGB"] ?? arguments["volumeGb"] ?? arguments["volume"]) ?? 80
+        let interruptible = boolValue(arguments["interruptible"] ?? arguments["spot"]) ?? false
+        let name = stringValue(arguments["name"] ?? arguments["podName"])?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let useRecommendedTemplate = boolValue(arguments["useRecommendedTemplate"] ?? arguments["autoTemplate"]) ?? true
+
+        var recommendedTemplate: RunPodTemplate?
+        var usedRecommendedTemplate = false
+        if templateID.isEmpty,
+           imageName.isEmpty,
+           useRecommendedTemplate {
+            if service.hasAPIKey,
+               service.gpuTypes.isEmpty || service.podTemplates.isEmpty {
+                await service.refreshLaunchOptions()
+            }
+            if let template = service.recommendedTrainingTemplate(for: gpuType) {
+                templateID = template.id
+                recommendedTemplate = template
+                usedRecommendedTemplate = true
+                if let templateContainerDiskGB = template.containerDiskInGb {
+                    containerDiskGB = max(containerDiskGB, templateContainerDiskGB)
+                }
+                if let templateVolumeGB = template.volumeInGb {
+                    volumeGB = max(volumeGB, templateVolumeGB)
+                }
+            }
+        }
+
+        let configuration = RunPodLaunchConfiguration(
+            name: name?.isEmpty == false ? name! : runPodDefaultPodName(),
+            templateID: templateID,
+            imageName: imageName,
+            gpuTypeID: gpuType,
+            interruptible: interruptible,
+            containerDiskGB: containerDiskGB,
+            volumeGB: volumeGB
+        )
+        return (configuration, recommendedTemplate, usedRecommendedTemplate)
+    }
+
+    func runPodLaunchPayload(
+        configuration: RunPodLaunchConfiguration,
+        recommendedTemplate: RunPodTemplate?,
+        usedRecommendedTemplate: Bool,
+        submitted: Bool,
+        dryRun: Bool,
+        pod: RunPodPodSummary?,
+        error: String?
+    ) -> [String: Any] {
+        [
+            "submitted": submitted,
+            "dryRun": dryRun,
+            "configuration": runPodLaunchConfigurationPayload(configuration),
+            "usedRecommendedTemplate": usedRecommendedTemplate,
+            "recommendedTemplate": recommendedTemplate.map(runPodTemplatePayload) ?? NSNull(),
+            "pod": pod.map(runPodPodPayload) ?? NSNull(),
+            "error": error ?? NSNull(),
+            "note": dryRun
+                ? "Dry run only. Call launch_runpod_pod with dryRun: false and confirm: true to create billable RunPod GPU time."
+                : "Launch submitted through the same RunPodService path as the UI."
+        ]
+    }
+
+    func runPodLaunchConfigurationPayload(_ configuration: RunPodLaunchConfiguration) -> [String: Any] {
+        [
+            "name": configuration.name,
+            "templateID": configuration.templateID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? NSNull()
+                : configuration.templateID,
+            "imageName": configuration.imageName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? NSNull()
+                : configuration.imageName,
+            "gpuType": configuration.gpuTypeID,
+            "interruptible": configuration.interruptible,
+            "containerDiskGB": configuration.containerDiskGB,
+            "volumeGB": configuration.volumeGB,
+            "ports": configuration.ports,
+            "supportPublicIP": configuration.supportPublicIP
+        ]
+    }
+
+    func runPodPodPayload(_ pod: RunPodPodSummary) -> [String: Any] {
+        [
+            "id": pod.id,
+            "name": pod.displayName,
+            "status": pod.statusLabel,
+            "gpu": pod.gpuLabel,
+            "gpuCount": pod.gpuCount ?? NSNull(),
+            "hourlyCost": pod.hourlyCostLabel ?? NSNull(),
+            "publicIP": pod.publicIp ?? NSNull(),
+            "sshPort": pod.sshPort ?? NSNull(),
+            "locked": pod.locked ?? NSNull(),
+            "templateID": pod.templateId ?? NSNull(),
+            "image": pod.image ?? NSNull(),
+            "containerDiskGB": pod.containerDiskInGb ?? NSNull(),
+            "volumeGB": pod.volumeInGb ?? NSNull(),
+            "volumeMountPath": pod.volumeMountPath ?? NSNull()
+        ]
+    }
+
+    func runPodGPUTypePayload(_ gpuType: RunPodGPUType) -> [String: Any] {
+        [
+            "id": gpuType.id,
+            "displayName": gpuType.displayName ?? gpuType.id,
+            "manufacturer": gpuType.manufacturer ?? NSNull(),
+            "memoryGB": gpuType.memoryInGb ?? NSNull(),
+            "secureCloud": gpuType.secureCloud ?? NSNull(),
+            "stockStatus": gpuType.secureLowestPrice?.stockStatus ?? NSNull(),
+            "menuTitle": gpuType.menuTitle,
+            "selectionValue": gpuType.selectionValue,
+            "detail": gpuType.detailLabel(interruptible: false),
+            "spotDetail": gpuType.detailLabel(interruptible: true)
+        ]
+    }
+
+    func runPodTemplatePayload(_ template: RunPodTemplate) -> [String: Any] {
+        [
+            "id": template.id,
+            "name": template.displayNameValue,
+            "imageName": template.imageNameValue ?? NSNull(),
+            "category": template.category ?? NSNull(),
+            "isRunpod": template.isRunpod ?? NSNull(),
+            "isPublic": template.isPublic ?? NSNull(),
+            "isServerless": template.isServerless ?? NSNull(),
+            "isOfficialPodTemplate": template.isOfficialPodTemplate,
+            "containerDiskGB": template.containerDiskInGb ?? NSNull(),
+            "volumeGB": template.volumeInGb ?? NSNull(),
+            "volumeMountPath": template.volumeMountPath ?? NSNull(),
+            "ports": template.ports ?? [],
+            "summary": template.summaryLabel,
+            "detail": template.detailLabel
+        ]
+    }
+
+    func runPodKeySourcePayload(_ source: APIKeyStore.KeySource) -> String {
+        switch source {
+        case .keychain:
+            return "keychain"
+        case .environment:
+            return "environment"
+        case .none:
+            return "none"
+        }
+    }
+
+    func runPodDefaultPodName() -> String {
+        "pimp-audio-remote-\(UUID().uuidString.prefix(8).lowercased())"
     }
 
 

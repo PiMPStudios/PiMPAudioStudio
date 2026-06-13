@@ -207,6 +207,106 @@ enum MCPToolCatalog {
             ]
         ),
         tool(
+            name: "runpod_status",
+            title: "RunPod Status",
+            description: "Return RunPod API-key state, cached live GPU/template launch options, pods, and the recommended official template for an optional GPU type.",
+            properties: [
+                "gpuType": [
+                    "type": "string",
+                    "description": "Optional GPU type to use when returning the recommended official RunPod PyTorch template."
+                ],
+                "refreshLaunchOptions": [
+                    "type": "boolean",
+                    "description": "When true, refresh GPU availability and official RunPod templates before returning status."
+                ],
+                "refreshPods": [
+                    "type": "boolean",
+                    "description": "When true, refresh the RunPod pod list before returning status."
+                ]
+            ]
+        ),
+        tool(
+            name: "refresh_runpod_launch_options",
+            title: "Refresh RunPod Launch Options",
+            description: "Refresh live Secure RunPod GPU availability and official RunPod pod templates, then return the recommended official PyTorch template for an optional GPU type.",
+            properties: [
+                "gpuType": [
+                    "type": "string",
+                    "description": "Optional GPU type to use when returning the recommended official RunPod PyTorch template."
+                ]
+            ]
+        ),
+        tool(
+            name: "launch_runpod_pod",
+            title: "Launch RunPod Pod",
+            description: "Preflight or launch a RunPod pod for remote training. Defaults to dryRun: true; actual launches require dryRun: false plus confirm: true or MCP form approval because they create billable GPU time.",
+            required: ["gpuType"],
+            properties: [
+                "gpuType": [
+                    "type": "string",
+                    "description": "RunPod GPU type id or display name, for example NVIDIA GeForce RTX 4090."
+                ],
+                "templateID": [
+                    "type": "string",
+                    "description": "Optional RunPod template id. If omitted with no imageName, PiMP Audio Studio tries the recommended official RunPod PyTorch pod template."
+                ],
+                "imageName": [
+                    "type": "string",
+                    "description": "Optional container image. A custom image overrides templateID at launch time."
+                ],
+                "useRecommendedTemplate": [
+                    "type": "boolean",
+                    "description": "Defaults to true. When templateID and imageName are empty, use the recommended official RunPod PyTorch pod template if available."
+                ],
+                "name": [
+                    "type": "string",
+                    "description": "Optional RunPod pod name. Defaults to a PiMP Audio Studio generated name."
+                ],
+                "interruptible": [
+                    "type": "boolean",
+                    "description": "Use interruptible Secure RunPod pricing. Defaults to false."
+                ],
+                "containerDiskGB": [
+                    "type": "integer",
+                    "minimum": 20,
+                    "description": "Container disk size in GB. Defaults to 80 and is raised to the selected template's default when needed."
+                ],
+                "volumeGB": [
+                    "type": "integer",
+                    "minimum": 20,
+                    "description": "Persistent volume size in GB. Defaults to 80 and is raised to the selected template's default when needed."
+                ],
+                "dryRun": [
+                    "type": "boolean",
+                    "description": "Defaults to true. Set false, with confirmation, to actually create billable RunPod GPU time."
+                ],
+                "validateOnly": [
+                    "type": "boolean",
+                    "description": "Alias for dryRun."
+                ],
+                "confirm": [
+                    "type": "boolean",
+                    "description": "Required for actual launches when the client does not support MCP elicitation."
+                ]
+            ]
+        ),
+        tool(
+            name: "stop_runpod_pod",
+            title: "Stop RunPod Pod",
+            description: "Stop a RunPod pod through the same RunPodService path as the UI. Requires confirm: true or MCP form approval.",
+            required: ["podID"],
+            properties: [
+                "podID": [
+                    "type": "string",
+                    "description": "RunPod pod id to stop."
+                ],
+                "confirm": [
+                    "type": "boolean",
+                    "description": "Required for clients that do not support MCP elicitation."
+                ]
+            ]
+        ),
+        tool(
             name: "list_history",
             title: "List History",
             description: "Return recent generation history rows with model, seed, prompt summary, and trace availability.",

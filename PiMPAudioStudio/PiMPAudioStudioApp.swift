@@ -44,6 +44,7 @@ struct PiMPAudioStudioApp: App {
             registry: appState.registry,
             outputManager: outputManager,
             llmManager: manager,
+            runPodService: runPodService,
             promptEnhancer: enhancer,
             lyricWriterManager: lyricManager
         )
@@ -211,6 +212,7 @@ final class AppServices: ObservableObject {
         registry: ModelRegistry,
         outputManager: OutputDirectoryManager,
         llmManager: LLMModelManager,
+        runPodService: RunPodService,
         promptEnhancer: PromptEnhancer,
         lyricWriterManager: LyricWriterManager
     ) {
@@ -268,6 +270,7 @@ final class AppServices: ObservableObject {
         )
         facade.configure(editorService: editorSvc)
         facade.configure(trainingService: self.trainingService)
+        facade.configure(runPodService: runPodService)
         self.commandFacade = facade
         self.mcpServer = PiMPAudioMCPServer(facade: facade)
         let generationService = Self.makeGenerationService(

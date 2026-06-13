@@ -282,6 +282,24 @@ private final class RunPodMockTransport: RunPodTransport, @unchecked Sendable {
     #expect(amdRecommended == nil)
 }
 
+@Test func mcpToolCatalogExposesRunPodLifecycleTools() throws {
+    let tools = MCPToolCatalog.tools
+    let names = Set(tools.compactMap { $0["name"] as? String })
+
+    #expect(names.contains("runpod_status"))
+    #expect(names.contains("refresh_runpod_launch_options"))
+    #expect(names.contains("launch_runpod_pod"))
+    #expect(names.contains("stop_runpod_pod"))
+
+    let launchTool = try #require(tools.first { $0["name"] as? String == "launch_runpod_pod" })
+    let schema = try #require(launchTool["inputSchema"] as? [String: Any])
+    #expect(schema["required"] as? [String] == ["gpuType"])
+    let properties = try #require(schema["properties"] as? [String: Any])
+    #expect(properties["dryRun"] != nil)
+    #expect(properties["confirm"] != nil)
+    #expect(properties["useRecommendedTemplate"] != nil)
+}
+
 @Test func runPodClientCreatePodBuildsBearerRequestWithoutLeakingTokenIntoBody() async throws {
     let transport = RunPodMockTransport(responses: [(
         statusCode: 201,

@@ -11,6 +11,7 @@ final class PiMPAudioCommandFacade {
     var generationService: GenerationService?
     var editorService: EditorService?
     var trainingService: TrainingService?
+    var runPodService: RunPodService?
     let dateFormatter = ISO8601DateFormatter()
     let renderFileDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -101,6 +102,10 @@ final class PiMPAudioCommandFacade {
 
     func configure(trainingService: TrainingService) {
         self.trainingService = trainingService
+    }
+
+    func configure(runPodService: RunPodService) {
+        self.runPodService = runPodService
     }
 
 }

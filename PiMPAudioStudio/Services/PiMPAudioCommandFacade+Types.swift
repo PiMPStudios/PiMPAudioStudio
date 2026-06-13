@@ -76,6 +76,7 @@ enum PiMPAudioCommandFacadeError: LocalizedError {
     case invalidDSPParameters(String)
     case operationNotFound(String)
     case trainingServiceUnavailable
+    case runPodServiceUnavailable
     case trainingAlreadyActive(String)
     case invalidTrainingKind(String)
     case invalidTrainingRecipe(String)
@@ -164,6 +165,8 @@ enum PiMPAudioCommandFacadeError: LocalizedError {
             return "No MCP operation matched '\(id)'."
         case .trainingServiceUnavailable:
             return "Training service is not ready yet."
+        case .runPodServiceUnavailable:
+            return "RunPod service is not ready yet."
         case .trainingAlreadyActive(let status):
             return "Training is already active (state: \(status)). Stop it before starting another MCP training run."
         case .invalidTrainingKind(let value):

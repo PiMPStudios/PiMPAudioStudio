@@ -901,6 +901,14 @@ private final class PiMPAudioMCPSDKBridge {
             return try await facade.startTraining(arguments: arguments)
         case "stop_training":
             return try facade.stopTraining(arguments: arguments)
+        case "runpod_status":
+            return try await facade.runPodStatus(arguments: arguments)
+        case "refresh_runpod_launch_options":
+            return try await facade.refreshRunPodLaunchOptions(arguments: arguments)
+        case "launch_runpod_pod":
+            return try await facade.launchRunPodPod(arguments: arguments)
+        case "stop_runpod_pod":
+            return try await facade.stopRunPodPod(arguments: arguments)
         case "list_history":
             return facade.listHistory(limit: intValue(arguments["limit"]) ?? 25)
         case "get_trace":
@@ -1000,7 +1008,13 @@ private final class PiMPAudioMCPSDKBridge {
 
     private func requiresElicitableConfirmation(_ toolName: String) -> Bool {
         switch toolName {
-        case "submit_editor_inpaint", "apply_editor_effect_chain", "start_training", "stop_training", "release_memory":
+        case "submit_editor_inpaint",
+             "apply_editor_effect_chain",
+             "start_training",
+             "stop_training",
+             "launch_runpod_pod",
+             "stop_runpod_pod",
+             "release_memory":
             return true
         default:
             return false
@@ -1009,6 +1023,11 @@ private final class PiMPAudioMCPSDKBridge {
 
     private func isDryRun(toolName: String, arguments: [String: Any]) -> Bool {
         if toolName == "start_training",
+           arguments["dryRun"] == nil,
+           arguments["validateOnly"] == nil {
+            return true
+        }
+        if toolName == "launch_runpod_pod",
            arguments["dryRun"] == nil,
            arguments["validateOnly"] == nil {
             return true
@@ -1062,6 +1081,10 @@ private final class PiMPAudioMCPSDKBridge {
             return "PiMP Audio Studio wants to start a local LoRA/LoKR training run. Approve this action?"
         case "stop_training":
             return "PiMP Audio Studio wants to stop the active local training run. Approve this action?"
+        case "launch_runpod_pod":
+            return "PiMP Audio Studio wants to launch a billable RunPod GPU pod. Approve this action?"
+        case "stop_runpod_pod":
+            return "PiMP Audio Studio wants to stop a RunPod GPU pod. Approve this action?"
         case "release_memory":
             return "PiMP Audio Studio wants to cancel active generation if needed, unload model weights, and flush MLX GPU cache. Approve this action?"
         default:

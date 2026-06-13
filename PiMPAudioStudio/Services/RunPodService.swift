@@ -1,4 +1,5 @@
 import Foundation
+import PiMPAudioCore
 import SwiftUI
 
 @MainActor
@@ -36,6 +37,7 @@ final class RunPodService: ObservableObject {
         let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         apiKeyStore.setAPIKey(trimmed, for: APIKeyStore.runPodProviderID)
+        note("apiKeySaved", "source=\(keySourceDiagnosticsLabel)")
         lastMessage = "RunPod API key saved."
         lastError = nil
     }
@@ -45,6 +47,7 @@ final class RunPodService: ObservableObject {
         pods = []
         gpuTypes = []
         podTemplates = []
+        note("apiKeyRemoved", "source=none")
         lastMessage = "RunPod API key removed."
         lastError = nil
     }
@@ -59,10 +62,16 @@ final class RunPodService: ObservableObject {
         defer { isRefreshing = false }
 
         do {
+            note("pods/refreshBegin", "source=\(keySourceDiagnosticsLabel)")
             pods = try await client.listPods(token: token)
+            note(
+                "pods/refreshEnd",
+                "count=\(pods.count) ids=\(pods.map(\.id).prefix(12).joined(separator: ","))"
+            )
             lastMessage = "Loaded \(pods.count) RunPod pod\(pods.count == 1 ? "" : "s")."
             lastError = nil
         } catch {
+            note("pods/refreshError", "error=\(RunPodError.userFacingMessage(for: error))")
             lastError = RunPodError.userFacingMessage(for: error)
         }
     }
@@ -77,10 +86,16 @@ final class RunPodService: ObservableObject {
         defer { isRefreshingGPUTypes = false }
 
         do {
+            note("gpuTypes/refreshBegin", "source=\(keySourceDiagnosticsLabel)")
             gpuTypes = try await client.listGPUTypes(token: token)
+            note(
+                "gpuTypes/refreshEnd",
+                "count=\(gpuTypes.count) preview=\(gpuTypes.map(\.selectionValue).prefix(8).joined(separator: " | "))"
+            )
             lastMessage = "Loaded \(gpuTypes.count) RunPod GPU type\(gpuTypes.count == 1 ? "" : "s")."
             lastError = nil
         } catch {
+            note("gpuTypes/refreshError", "error=\(RunPodError.userFacingMessage(for: error))")
             lastError = RunPodError.userFacingMessage(for: error)
         }
     }
@@ -95,13 +110,23 @@ final class RunPodService: ObservableObject {
         defer { isRefreshingGPUTypes = false }
 
         do {
+            note("launchOptions/refreshBegin", "source=\(keySourceDiagnosticsLabel)")
             let loadedGPUTypes = try await client.listGPUTypes(token: token)
             let loadedTemplates = try await client.listOfficialPodTemplates(token: token)
             gpuTypes = loadedGPUTypes
             podTemplates = loadedTemplates
+            let recommended = RunPodTemplate.recommendedTrainingTemplate(
+                for: loadedGPUTypes.first?.selectionValue ?? "",
+                from: loadedTemplates
+            )
+            note(
+                "launchOptions/refreshEnd",
+                "gpuCount=\(loadedGPUTypes.count) templateCount=\(loadedTemplates.count) firstGPU=\(loadedGPUTypes.first?.selectionValue ?? "none") recommendedTemplate=\(recommended?.id ?? "none")"
+            )
             lastMessage = "Loaded \(loadedGPUTypes.count) GPU type\(loadedGPUTypes.count == 1 ? "" : "s") and \(loadedTemplates.count) official RunPod template\(loadedTemplates.count == 1 ? "" : "s")."
             lastError = nil
         } catch {
+            note("launchOptions/refreshError", "error=\(RunPodError.userFacingMessage(for: error))")
             lastError = RunPodError.userFacingMessage(for: error)
         }
     }
@@ -124,12 +149,15 @@ final class RunPodService: ObservableObject {
         defer { isLaunching = false }
 
         do {
+            note("launch/begin", configuration.diagnosticsSummary)
             let pod = try await client.createPod(token: token, configuration: configuration)
             upsert(pod)
+            note("launch/success", pod.diagnosticsSummary)
             lastMessage = "RunPod launch requested for \(pod.displayName)."
             lastError = nil
             return pod
         } catch {
+            note("launch/error", "configuration={\(configuration.diagnosticsSummary)} error=\(RunPodError.userFacingMessage(for: error))")
             lastError = RunPodError.userFacingMessage(for: error)
             return nil
         }
@@ -145,11 +173,14 @@ final class RunPodService: ObservableObject {
         defer { stoppingPodID = nil }
 
         do {
+            note("stop/begin", "podID=\(id)")
             try await client.stopPod(token: token, podID: id)
+            note("stop/success", "podID=\(id)")
             lastMessage = "Stop requested for RunPod pod \(id)."
             lastError = nil
             await refreshPods()
         } catch {
+            note("stop/error", "podID=\(id) error=\(RunPodError.userFacingMessage(for: error))")
             lastError = RunPodError.userFacingMessage(for: error)
         }
     }
@@ -164,6 +195,21 @@ final class RunPodService: ObservableObject {
         } else {
             pods.insert(pod, at: 0)
         }
+    }
+
+    private var keySourceDiagnosticsLabel: String {
+        switch keySource {
+        case .keychain:
+            return "keychain"
+        case .environment:
+            return "environment"
+        case .none:
+            return "none"
+        }
+    }
+
+    private func note(_ tag: String, _ message: String) {
+        AudioDiagnostics.note("runpod/\(tag)", message)
     }
 }
 
@@ -217,6 +263,18 @@ struct RunPodLaunchConfiguration: Equatable, Sendable {
             volumeInGb: volumeGB,
             volumeMountPath: "/workspace"
         )
+    }
+
+    var diagnosticsSummary: String {
+        [
+            "name=\(name)",
+            "templateID=\(templateID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "none" : templateID)",
+            "image=\(imageName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "none" : imageName)",
+            "gpu=\(gpuTypeID)",
+            "interruptible=\(interruptible)",
+            "containerDiskGB=\(containerDiskGB)",
+            "volumeGB=\(volumeGB)"
+        ].joined(separator: " ")
     }
 }
 
@@ -330,6 +388,17 @@ struct RunPodPodSummary: Identifiable, Decodable, Equatable, Sendable {
         let key = sshKeyPath.trimmingCharacters(in: .whitespacesAndNewlines)
         let keyArgument = key.isEmpty ? "" : " -i \(shellPathQuoted(key))"
         return "scp -P \(sshPort)\(keyArgument) \(shellPathQuoted(archiveURL.path(percentEncoded: false))) root@\(publicIp):/workspace/jobs/"
+    }
+
+    var diagnosticsSummary: String {
+        [
+            "id=\(id)",
+            "name=\(displayName)",
+            "status=\(statusLabel)",
+            "gpu=\(gpuLabel)",
+            "cost=\(hourlyCostLabel ?? "unknown")",
+            "ssh=\(sshPort == nil ? "unavailable" : "available")"
+        ].joined(separator: " ")
     }
 
 }
