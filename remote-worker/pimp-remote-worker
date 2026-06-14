@@ -20,6 +20,35 @@ VERSION = "0.1.0"
 DEFAULT_WORKDIR = Path("/workspace/pimp-remote-worker")
 
 
+def maybe_reexec_worker_python() -> None:
+    if os.environ.get("PIMP_REMOTE_WORKER_NO_REEXEC") == "1":
+        return
+    if os.environ.get("PIMP_REMOTE_WORKER_REEXEC") == "1":
+        return
+
+    workdir = Path(os.environ.get("PIMP_REMOTE_WORKDIR", str(DEFAULT_WORKDIR))).expanduser()
+    target = Path(os.environ.get("PIMP_REMOTE_PYTHON", str(workdir / "venv/bin/python"))).expanduser()
+    if not target.exists():
+        return
+
+    try:
+        current = Path(sys.executable).resolve()
+        resolved_target = target.resolve()
+    except OSError:
+        return
+
+    if current == resolved_target:
+        return
+
+    env = os.environ.copy()
+    env["PIMP_REMOTE_WORKER_REEXEC"] = "1"
+    env.setdefault("PIMP_REMOTE_PYTHON", str(resolved_target))
+    os.execvpe(str(resolved_target), [str(resolved_target), str(Path(__file__).resolve()), *sys.argv[1:]], env)
+
+
+maybe_reexec_worker_python()
+
+
 def default_jobs_dir() -> Path:
     override = os.environ.get("PIMP_REMOTE_JOB_DIR")
     if override:
