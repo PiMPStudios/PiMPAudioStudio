@@ -217,7 +217,7 @@ struct RunPodLifecyclePanel: View {
                 }
             }
 
-            Text("Launch creates the RunPod pod. Official RunPod PyTorch templates do not include the PiMP worker yet, so upload the exported job zip, run the included script, and install/use a PiMP worker template before training can start.")
+            Text("Launch creates the RunPod pod. Use the pod row actions left to right: upload the job zip and PiMP worker, SSH into the pod, then extract/run the worker.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -315,7 +315,7 @@ struct RunPodLifecyclePanel: View {
                 .controlSize(.small)
             }
 
-            Text("Upload and extract commands use this local zip. If those pod icons are disabled, select the exported remote job zip here first.")
+            Text("Upload and extract/run commands use this local zip. If those pod icons are disabled, select the exported remote job zip here first.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -442,6 +442,15 @@ struct RunPodLifecyclePanel: View {
                 }
 
                 Button {
+                    copyRunPodUploadCommand(for: pod)
+                } label: {
+                    Image(systemName: "shippingbox")
+                }
+                .buttonStyle(.borderless)
+                .disabled(pod.uploadCommand(archiveURL: preparedArchiveURL, sshKeyPath: sshKeyPath) == nil)
+                .help("Copy upload command for the job zip and PiMP worker")
+
+                Button {
                     copyRunPodSSHCommand(for: pod)
                 } label: {
                     Image(systemName: "terminal")
@@ -449,15 +458,6 @@ struct RunPodLifecyclePanel: View {
                 .buttonStyle(.borderless)
                 .disabled(pod.sshCommand(sshKeyPath: sshKeyPath) == nil)
                 .help("Copy SSH command")
-
-                Button {
-                    copyRunPodUploadCommand(for: pod)
-                } label: {
-                    Image(systemName: "shippingbox")
-                }
-                .buttonStyle(.borderless)
-                .disabled(pod.uploadCommand(archiveURL: preparedArchiveURL, sshKeyPath: sshKeyPath) == nil)
-                .help("Copy upload command for the last exported job zip")
 
                 Button {
                     copyRunPodRemotePackageCommand(for: pod)
@@ -531,7 +531,7 @@ struct RunPodLifecyclePanel: View {
             return
         }
         copyToPasteboard(command)
-        onNotice("Copied upload command for \(pod.displayName).")
+        onNotice("Copied upload command for \(pod.displayName). It uploads the job zip and PiMP worker.")
     }
 
     private func copyRunPodRemotePackageCommand(for pod: RunPodPodSummary) {

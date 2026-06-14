@@ -85,13 +85,23 @@ private final class RunPodMockTransport: RunPodTransport, @unchecked Sendable {
     #expect(pods[0].sshCommand(sshKeyPath: "~/.ssh/id_ed25519") == "ssh -p 11646 -i ~/.ssh/id_ed25519 root@216.81.151.42")
 
     let archiveURL = URL(filePath: "/Users/test/Training Jobs/job one.zip")
-    let uploadCommand = try #require(pods[0].uploadCommand(archiveURL: archiveURL, sshKeyPath: "~/.ssh/id_ed25519"))
-    #expect(uploadCommand.contains("ssh -p 11646 -i ~/.ssh/id_ed25519 root@216.81.151.42 'mkdir -p /workspace/jobs'"))
+    let workerURL = URL(filePath: "/Users/test/PiMPAudioStudio/remote-worker")
+    let uploadCommand = try #require(pods[0].uploadCommand(
+        archiveURL: archiveURL,
+        sshKeyPath: "~/.ssh/id_ed25519",
+        workerDirectoryURL: workerURL
+    ))
+    #expect(uploadCommand.contains("WORKER_DIR='/Users/test/PiMPAudioStudio/remote-worker'"))
+    #expect(uploadCommand.contains("Could not find PiMP remote worker"))
+    #expect(uploadCommand.contains("ssh -p 11646 -i ~/.ssh/id_ed25519 root@216.81.151.42 'mkdir -p /workspace/jobs && rm -rf /workspace/pimp-remote-worker-src'"))
     #expect(uploadCommand.contains("scp -P 11646 -i ~/.ssh/id_ed25519 '/Users/test/Training Jobs/job one.zip' root@216.81.151.42:/workspace/jobs/"))
+    #expect(uploadCommand.contains("scp -P 11646 -i ~/.ssh/id_ed25519 -r \"$WORKER_DIR\" root@216.81.151.42:/workspace/pimp-remote-worker-src"))
 
     let remoteCommand = try #require(pods[0].remotePackageCommand(archiveURL: archiveURL))
     #expect(remoteCommand.contains("python3 -m zipfile -e"))
     #expect(remoteCommand.contains("ZIP='job one.zip'"))
+    #expect(remoteCommand.contains("bash /workspace/pimp-remote-worker-src/install.sh"))
+    #expect(remoteCommand.contains("source /workspace/pimp-remote-worker/env.sh"))
     #expect(remoteCommand.contains("bash run_remote_training.sh ."))
 
     #expect(transport.requests.first?.httpMethod == "GET")

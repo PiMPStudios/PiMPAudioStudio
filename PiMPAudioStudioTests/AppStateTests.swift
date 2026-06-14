@@ -936,10 +936,13 @@ private extension JSONDecoder {
     let runScript = try #require(String(data: runScriptData, encoding: .utf8))
     #expect(runScript.contains("python3 -m zipfile -e"))
     #expect(runScript.contains("stock official RunPod PyTorch pod"))
+    #expect(runScript.contains("installing uploaded remote worker"))
+    #expect(runScript.contains("/workspace/pimp-remote-worker-src/install.sh"))
 
     let readmeData = try #require(jobExtraFiles[RemoteTrainingJobCodec.readmeFileName])
     let readme = try #require(String(data: readmeData, encoding: .utf8))
     #expect(readme.contains("stock official RunPod PyTorch template"))
+    #expect(readme.contains("copies both the job zip and the portable worker folder"))
 
     let jobArchiveURL = FileManager.default.temporaryDirectory
         .appendingPathComponent(UUID().uuidString)

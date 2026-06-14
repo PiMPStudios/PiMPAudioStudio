@@ -486,13 +486,14 @@ enum RemoteTrainingJobCodec {
 
         ## Expected Remote Flow
 
-        1. Upload this zip to a GPU worker.
-        2. Unzip it or pass the zip path to `run_remote_training.sh`.
-        3. The script locates `remote_job.json` and hands the job to `pimp-remote-worker`.
-        4. The worker writes logs, metrics, checkpoints, and final adapters under `remote_artifacts/`.
-        5. Download/import `remote_artifacts/final_adapter/` or a folder under `remote_artifacts/checkpoints/` to test a specific epoch.
+        1. Upload this zip and the portable `remote-worker/` folder to the GPU pod.
+        2. SSH into the pod.
+        3. Extract the job and run `run_remote_training.sh`.
+        4. The script locates `remote_job.json`, installs the uploaded worker when needed, and hands the job to `pimp-remote-worker`.
+        5. The worker writes logs, metrics, checkpoints, and final adapters under `remote_artifacts/`.
+        6. Download/import `remote_artifacts/final_adapter/` or a folder under `remote_artifacts/checkpoints/` to test a specific epoch.
 
-        A stock official RunPod PyTorch template is only a clean CUDA pod. It can host the job, but it does not include `pimp-remote-worker` yet. For the current portable flow, copy this repo's `remote-worker/` folder to the pod, run `bash install.sh`, then run this job.
+        A stock official RunPod PyTorch template is only a clean CUDA pod. It can host the job, but it does not include `pimp-remote-worker` yet. PiMP Audio Studio's pod row copies both the job zip and the portable worker folder; the extract/run command then installs that worker before training.
 
         ## One Command
 
@@ -515,7 +516,7 @@ enum RemoteTrainingJobCodec {
         ssh -p <ssh-port> -i ~/.ssh/id_ed25519 root@<pod-ip> 'bash /workspace/pimp-remote-worker-src/install.sh'
         ```
 
-        The script can extract zips with either `unzip` or Python's built-in `zipfile` module. It expects an installed `pimp-remote-worker` command or an official PiMP Audio Studio worker template.
+        The script can extract zips with either `unzip` or Python's built-in `zipfile` module. It expects either an installed `pimp-remote-worker` command, `/workspace/pimp-remote-worker-src/install.sh` from the upload command, or an official PiMP Audio Studio worker template.
         Provider API keys, SSH keys, and account IDs are intentionally not stored in this archive.
         """
     }
@@ -557,6 +558,14 @@ enum RemoteTrainingJobCodec {
         echo "[PiMP] job=$(grep -m1 '"job_id"' remote_job.json | sed 's/[",]//g' | xargs || true)"
         echo "[PiMP] task=$(grep -m1 '"task"' remote_job.json | sed 's/[",]//g' | xargs || true)"
 
+        if ! command -v pimp-remote-worker >/dev/null 2>&1 && [ -f /workspace/pimp-remote-worker-src/install.sh ]; then
+          echo "[PiMP] installing uploaded remote worker"
+          bash /workspace/pimp-remote-worker-src/install.sh
+        fi
+        if [ -f /workspace/pimp-remote-worker/env.sh ]; then
+          source /workspace/pimp-remote-worker/env.sh
+        fi
+
         if command -v pimp-remote-worker >/dev/null 2>&1; then
           exec pimp-remote-worker train remote_job.json
         fi
@@ -564,10 +573,10 @@ enum RemoteTrainingJobCodec {
         cat <<'MSG'
         No `pimp-remote-worker` command was found.
 
-        This bundle is ready for a PiMP Audio Studio remote worker/template, but this server image does not have the worker installed yet.
-        If you launched a stock official RunPod PyTorch pod, this is expected: launch, upload, extraction, and package validation worked, but training needs the PiMP worker.
+        This bundle is ready for a PiMP Audio Studio remote worker/template, but this server image does not have the worker installed yet and no uploaded worker installer was found at /workspace/pimp-remote-worker-src/install.sh.
+        If you launched a stock official RunPod PyTorch pod, copy the upload command from the app's pod row first; it uploads both this job zip and the portable PiMP worker.
 
-        Copy this repo's remote-worker/ folder to the pod, install it, then run:
+        Manual equivalent:
 
             scp -P <ssh-port> -i ~/.ssh/id_ed25519 -r remote-worker root@<pod-ip>:/workspace/pimp-remote-worker-src
             ssh -p <ssh-port> -i ~/.ssh/id_ed25519 root@<pod-ip> 'bash /workspace/pimp-remote-worker-src/install.sh'

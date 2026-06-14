@@ -385,22 +385,46 @@ struct RunPodPodSummary: Identifiable, Decodable, Equatable, Sendable {
         return "ssh -p \(sshPort)\(keyArgument) root@\(publicIp)"
     }
 
-    func uploadCommand(archiveURL: URL?, sshKeyPath: String) -> String? {
+    func uploadCommand(
+        archiveURL: URL?,
+        sshKeyPath: String,
+        workerDirectoryURL: URL? = RunPodRemoteWorkerLocator.defaultDirectoryURL()
+    ) -> String? {
         guard let archiveURL,
               let publicIp,
               !publicIp.isEmpty,
               let sshPort else { return nil }
         let key = sshKeyPath.trimmingCharacters(in: .whitespacesAndNewlines)
         let keyArgument = key.isEmpty ? "" : " -i \(shellPathQuoted(key))"
-        let makeJobsDirectory = "ssh -p \(sshPort)\(keyArgument) root@\(publicIp) 'mkdir -p /workspace/jobs'"
+        let workerDirectory = shellQuoted(
+            (workerDirectoryURL ?? RunPodRemoteWorkerLocator.defaultDirectoryURL())
+                .path(percentEncoded: false)
+        )
+        let makeJobsDirectory = "ssh -p \(sshPort)\(keyArgument) root@\(publicIp) 'mkdir -p /workspace/jobs && rm -rf /workspace/pimp-remote-worker-src'"
         let uploadArchive = "scp -P \(sshPort)\(keyArgument) \(shellPathQuoted(archiveURL.path(percentEncoded: false))) root@\(publicIp):/workspace/jobs/"
-        return "\(makeJobsDirectory) && \(uploadArchive)"
+        let uploadWorker = "scp -P \(sshPort)\(keyArgument) -r \"$WORKER_DIR\" root@\(publicIp):/workspace/pimp-remote-worker-src"
+        return """
+        (
+        set -euo pipefail
+        WORKER_DIR=\(workerDirectory)
+        if [ ! -f "$WORKER_DIR/install.sh" ]; then
+          echo "Could not find PiMP remote worker at $WORKER_DIR"
+          echo "Set PIMP_REMOTE_WORKER_DIR=/path/to/remote-worker or rebuild with the worker resource bundled."
+          exit 2
+        fi
+        \(makeJobsDirectory) && \\
+        \(uploadArchive) && \\
+        \(uploadWorker)
+        )
+        """
     }
 
     func remotePackageCommand(archiveURL: URL?) -> String? {
         guard let archiveURL else { return nil }
         let zipName = shellQuoted(archiveURL.lastPathComponent)
         return """
+        bash <<'PIMP_REMOTE_RUN'
+        set -euo pipefail
         cd /workspace/jobs
         ZIP=\(zipName)
         mkdir -p /workspace/pimp-remote-jobs/current
@@ -411,8 +435,20 @@ struct RunPodPodSummary: Identifiable, Decodable, Equatable, Sendable {
         else
           echo "Install unzip or python3 first."; exit 3
         fi
-        cd "$(dirname "$(find /workspace/pimp-remote-jobs/current -maxdepth 4 -name remote_job.json -print -quit)")"
+        JOB_FILE="$(find /workspace/pimp-remote-jobs/current -maxdepth 4 -name remote_job.json -print -quit)"
+        if [ -z "$JOB_FILE" ]; then
+          echo "Could not find remote_job.json after extracting $ZIP"
+          exit 2
+        fi
+        if [ -f /workspace/pimp-remote-worker-src/install.sh ]; then
+          bash /workspace/pimp-remote-worker-src/install.sh
+        fi
+        if [ -f /workspace/pimp-remote-worker/env.sh ]; then
+          source /workspace/pimp-remote-worker/env.sh
+        fi
+        cd "$(dirname "$JOB_FILE")"
         bash run_remote_training.sh .
+        PIMP_REMOTE_RUN
         """
     }
 
@@ -1025,6 +1061,51 @@ enum RunPodError: LocalizedError, Equatable {
             .filter { !$0.isEmpty }
         guard !clean.isEmpty else { return "unknown error" }
         return clean.joined(separator: "; ")
+    }
+}
+
+enum RunPodRemoteWorkerLocator {
+    static func defaultDirectoryURL() -> URL {
+        if let environmentPath = ProcessInfo.processInfo.environment["PIMP_REMOTE_WORKER_DIR"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !environmentPath.isEmpty {
+            let environmentURL = URL(fileURLWithPath: NSString(string: environmentPath).expandingTildeInPath)
+            if isWorkerDirectory(environmentURL) {
+                return environmentURL
+            }
+        }
+
+        if let bundledURL = Bundle.main.resourceURL?.appendingPathComponent("remote-worker", isDirectory: true),
+           isWorkerDirectory(bundledURL) {
+            return bundledURL
+        }
+
+        let sourceTreeURL = sourceTreeDirectoryURL()
+        if isWorkerDirectory(sourceTreeURL) {
+            return sourceTreeURL
+        }
+
+        let currentDirectoryURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("remote-worker", isDirectory: true)
+        if isWorkerDirectory(currentDirectoryURL) {
+            return currentDirectoryURL
+        }
+
+        return sourceTreeURL
+    }
+
+    private static func sourceTreeDirectoryURL() -> URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("remote-worker", isDirectory: true)
+    }
+
+    private static func isWorkerDirectory(_ url: URL) -> Bool {
+        FileManager.default.fileExists(
+            atPath: url.appendingPathComponent("install.sh").path(percentEncoded: false)
+        )
     }
 }
 

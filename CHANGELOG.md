@@ -29,6 +29,7 @@ All notable changes to PiMP Audio Studio are documented here.
 
 ### Fixed
 
+- **Remote GPU pod actions now follow the real setup order** — pod rows now present upload, SSH, extract/run, and terminate in workflow order; the upload command copies both the job zip and portable PiMP worker folder, and generated run scripts can install that uploaded worker before starting training.
 - **Remote GPU pod handoff now survives restarts** — the Remote GPU screen remembers the last exported job zip, offers a `Choose Job Zip...` recovery path, and clearly shows which local archive powers the upload/extract pod commands so those buttons do not appear mysteriously disabled after relaunch.
 - **Remote worker now runs inside its managed venv** — `pimp-remote-worker` re-enters the installed worker Python automatically when launched from `/usr/local/bin`, preserves the venv `python` symlink with `abspath` instead of resolving to system Python, and pins `PIMP_REMOTE_PYTHON` so model-download helpers see dependencies such as `huggingface_hub`.
 - **Remote worker preprocessing now matches stock RunPod Torch images** — the worker pins Diffusers to the Torch 2.4-compatible `0.35.2` release and promotes ACE-Step variant `silence_latent.pt` files into the root checkpoint folder expected by Side-Step preprocessing.
