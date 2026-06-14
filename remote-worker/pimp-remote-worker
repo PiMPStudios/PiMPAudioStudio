@@ -456,7 +456,8 @@ class RemoteWorker:
         variant_dir = checkpoints / variant
         shared_missing = not contains_weights(checkpoints / "vae") or not contains_weights(checkpoints / "Qwen3-Embedding-0.6B")
         variant_missing = not contains_weights(variant_dir)
-        if not shared_missing and not variant_missing:
+        root_silence_missing = not (checkpoints / "silence_latent.pt").is_file()
+        if not shared_missing and not variant_missing and not root_silence_missing:
             self.log("models", "Model assets already present", variant=variant, checkpoints=checkpoints.as_posix())
             return
 
@@ -466,9 +467,11 @@ class RemoteWorker:
             variant=variant,
             variant_missing=variant_missing,
             shared_missing=shared_missing,
+            root_silence_missing=root_silence_missing,
         )
         script = f"""
 import os
+import shutil
 import sys
 from pathlib import Path
 from huggingface_hub import snapshot_download
@@ -498,6 +501,26 @@ def has_weights(path):
     ]
     return path.is_dir() and any((path / name).exists() for name in names)
 
+def promote_silence_latent():
+    root_silence = checkpoints / "silence_latent.pt"
+    if root_silence.is_file():
+        return True
+    candidates = [
+        checkpoints / variant / "silence_latent.pt",
+        checkpoints / "acestep-v15-turbo" / "silence_latent.pt",
+        checkpoints / "acestep-v15-sft" / "silence_latent.pt",
+        checkpoints / "acestep-v15-base" / "silence_latent.pt",
+        checkpoints / "acestep-v15-xl-sft" / "silence_latent.pt",
+        checkpoints / "acestep-v15-xl-base" / "silence_latent.pt",
+        checkpoints / "acestep-v15-xl-turbo" / "silence_latent.pt",
+    ]
+    for candidate in candidates:
+        if candidate.is_file():
+            shutil.copy2(candidate, root_silence)
+            print("promoted_silence_latent", candidate, "->", root_silence)
+            return True
+    return False
+
 checkpoints.mkdir(parents=True, exist_ok=True)
 if not has_weights(checkpoints / "vae") or not has_weights(checkpoints / "Qwen3-Embedding-0.6B"):
     snapshot_download(
@@ -525,6 +548,26 @@ if not has_weights(variant_dir):
             local_dir_use_symlinks=False,
             token=token,
         )
+
+if not promote_silence_latent():
+    if variant == "acestep-v15-turbo":
+        snapshot_download(
+            repo_id="ACE-Step/Ace-Step1.5",
+            local_dir=str(checkpoints),
+            allow_patterns=["acestep-v15-turbo/silence_latent.pt"],
+            local_dir_use_symlinks=False,
+            token=token,
+        )
+    else:
+        snapshot_download(
+            repo_id=repo_map.get(variant, "ACE-Step/" + variant),
+            local_dir=str(variant_dir),
+            allow_patterns=["silence_latent.pt"],
+            local_dir_use_symlinks=False,
+            token=token,
+        )
+    if not promote_silence_latent():
+        raise FileNotFoundError(f"silence_latent.pt missing for {{variant}} under {{checkpoints}}")
 
 sys.path.insert(0, str(ace_dir))
 try:

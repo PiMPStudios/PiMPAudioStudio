@@ -51,7 +51,7 @@ python -m pip install --upgrade pip wheel setuptools
 echo "[PiMP] installing training dependencies without replacing the pod's CUDA torch stack"
 python -m pip install --upgrade \
   "transformers>=4.51.0,<4.58.0" \
-  diffusers \
+  "diffusers==0.35.2" \
   "accelerate>=1.12.0" \
   "peft>=0.18.0" \
   lycoris-lora \
