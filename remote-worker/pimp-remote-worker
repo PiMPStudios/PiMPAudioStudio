@@ -23,11 +23,11 @@ DEFAULT_WORKDIR = Path("/workspace/pimp-remote-worker")
 def preferred_worker_python(workdir: Path) -> Path:
     managed_python = workdir / "venv/bin/python"
     if managed_python.exists():
-        return managed_python.absolute()
+        return Path(os.path.abspath(os.fspath(managed_python)))
     configured_python = os.environ.get("PIMP_REMOTE_PYTHON", "").strip()
     if configured_python:
-        return Path(configured_python).expanduser().absolute()
-    return managed_python.absolute()
+        return Path(os.path.abspath(os.fspath(Path(configured_python).expanduser())))
+    return Path(os.path.abspath(os.fspath(managed_python)))
 
 
 def maybe_reexec_worker_python() -> None:
@@ -40,8 +40,8 @@ def maybe_reexec_worker_python() -> None:
         return
 
     try:
-        current = Path(sys.executable).expanduser().absolute()
-        absolute_target = target.expanduser().absolute()
+        current = Path(os.path.abspath(os.fspath(Path(sys.executable).expanduser())))
+        absolute_target = Path(os.path.abspath(os.fspath(target.expanduser())))
     except OSError:
         return
 
@@ -433,7 +433,7 @@ class RemoteWorker:
         ace_dir = Path(os.environ.get("PIMP_ACE_DIR", str(workdir / "ACE-Step-1.5"))).expanduser()
         checkpoints = Path(os.environ.get("PIMP_CHECKPOINT_DIR", str(workdir / "checkpoints"))).expanduser()
         python = preferred_worker_python(workdir)
-        return ace_dir.resolve(), checkpoints.resolve(), python.resolve()
+        return ace_dir.resolve(), checkpoints.resolve(), python
 
     def ensure_environment(self, variant: str) -> tuple[Path, Path, Path]:
         ace_dir, checkpoints, python = self.env_paths()
