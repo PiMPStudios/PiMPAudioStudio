@@ -20,14 +20,22 @@ VERSION = "0.1.0"
 DEFAULT_WORKDIR = Path("/workspace/pimp-remote-worker")
 
 
+def preferred_worker_python(workdir: Path) -> Path:
+    managed_python = workdir / "venv/bin/python"
+    if managed_python.exists():
+        return managed_python.resolve()
+    configured_python = os.environ.get("PIMP_REMOTE_PYTHON", "").strip()
+    if configured_python:
+        return Path(configured_python).expanduser().resolve()
+    return managed_python.resolve()
+
+
 def maybe_reexec_worker_python() -> None:
     if os.environ.get("PIMP_REMOTE_WORKER_NO_REEXEC") == "1":
         return
-    if os.environ.get("PIMP_REMOTE_WORKER_REEXEC") == "1":
-        return
 
     workdir = Path(os.environ.get("PIMP_REMOTE_WORKDIR", str(DEFAULT_WORKDIR))).expanduser()
-    target = Path(os.environ.get("PIMP_REMOTE_PYTHON", str(workdir / "venv/bin/python"))).expanduser()
+    target = preferred_worker_python(workdir)
     if not target.exists():
         return
 
@@ -42,7 +50,7 @@ def maybe_reexec_worker_python() -> None:
 
     env = os.environ.copy()
     env["PIMP_REMOTE_WORKER_REEXEC"] = "1"
-    env.setdefault("PIMP_REMOTE_PYTHON", str(resolved_target))
+    env["PIMP_REMOTE_PYTHON"] = str(resolved_target)
     os.execvpe(str(resolved_target), [str(resolved_target), str(Path(__file__).resolve()), *sys.argv[1:]], env)
 
 
@@ -424,7 +432,7 @@ class RemoteWorker:
         workdir = Path(os.environ.get("PIMP_REMOTE_WORKDIR", str(DEFAULT_WORKDIR))).expanduser()
         ace_dir = Path(os.environ.get("PIMP_ACE_DIR", str(workdir / "ACE-Step-1.5"))).expanduser()
         checkpoints = Path(os.environ.get("PIMP_CHECKPOINT_DIR", str(workdir / "checkpoints"))).expanduser()
-        python = Path(os.environ.get("PIMP_REMOTE_PYTHON", str(workdir / "venv/bin/python"))).expanduser()
+        python = preferred_worker_python(workdir)
         return ace_dir.resolve(), checkpoints.resolve(), python.resolve()
 
     def ensure_environment(self, variant: str) -> tuple[Path, Path, Path]:
@@ -773,6 +781,14 @@ except Exception as exc:
         self.started_at = utc_now()
         try:
             self.log("setup", "Loaded remote job", job=str(self.job_path), package_root=str(self.package_root))
+            _ace_dir, _checkpoints, worker_python = self.env_paths()
+            self.log(
+                "setup",
+                "Resolved worker Python",
+                executable=sys.executable,
+                worker_python=str(worker_python),
+                env_python=os.environ.get("PIMP_REMOTE_PYTHON", ""),
+            )
             dataset = self.make_sidestep_dataset()
             preprocess_cmd, train_cmd = self.build_commands()
             training = self.job.get("training") if isinstance(self.job.get("training"), dict) else {}
@@ -842,15 +858,19 @@ except Exception as exc:
 def command_doctor(_args: argparse.Namespace) -> int:
     workdir = Path(os.environ.get("PIMP_REMOTE_WORKDIR", str(DEFAULT_WORKDIR))).expanduser()
     ace_dir = Path(os.environ.get("PIMP_ACE_DIR", str(workdir / "ACE-Step-1.5"))).expanduser()
-    python = Path(os.environ.get("PIMP_REMOTE_PYTHON", str(workdir / "venv/bin/python"))).expanduser()
+    python = preferred_worker_python(workdir)
     checkpoints = Path(os.environ.get("PIMP_CHECKPOINT_DIR", str(workdir / "checkpoints"))).expanduser()
     print(f"pimp-remote-worker {VERSION}")
+    print(f"executable: {sys.executable}")
     print(f"workdir: {workdir}")
     print(f"ace_dir: {ace_dir} ({'ok' if (ace_dir / 'train.py').exists() else 'missing train.py'})")
     print(f"python: {python} ({'ok' if python.exists() else 'missing'})")
     print(f"checkpoints: {checkpoints}")
     if python.exists():
-        subprocess.run([str(python), "-c", "import torch; print('torch', torch.__version__); print('cuda', torch.cuda.is_available()); print('gpu', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'none')"], check=False)
+        try:
+            subprocess.run([str(python), "-c", "import torch; print('torch', torch.__version__); print('cuda', torch.cuda.is_available()); print('gpu', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'none')"], check=False)
+        except OSError as exc:
+            print(f"python probe failed: {exc}")
     return 0
 
 

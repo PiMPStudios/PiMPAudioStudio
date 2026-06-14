@@ -82,7 +82,7 @@ cat > "$WORKDIR/env.sh" <<EOF
 export PIMP_REMOTE_WORKDIR="$WORKDIR"
 export PIMP_ACE_DIR="$ACE_DIR"
 export PIMP_CHECKPOINT_DIR="\${PIMP_CHECKPOINT_DIR:-$WORKDIR/checkpoints}"
-export PIMP_REMOTE_PYTHON="\${PIMP_REMOTE_PYTHON:-$VENV_DIR/bin/python}"
+export PIMP_REMOTE_PYTHON="$VENV_DIR/bin/python"
 export PATH="$BIN_DIR:\$PATH"
 EOF
 
