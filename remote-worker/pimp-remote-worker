@@ -604,6 +604,18 @@ except Exception as exc:
         subprocess.run([str(python), "-c", script], cwd=str(ace_dir), check=True)
         self.log("models", "Model assets ready", variant=variant, checkpoints=checkpoints.as_posix())
 
+    def command_cwd(self, ace_dir: Path, checkpoints: Path) -> Path:
+        candidates = [self.package_root, ace_dir, checkpoints]
+        for root in [Path("/workspace"), Path("/tmp")]:
+            if root.is_dir():
+                try:
+                    resolved_root = root.resolve()
+                    if all(path.resolve().is_relative_to(resolved_root) for path in candidates):
+                        return resolved_root
+                except OSError:
+                    continue
+        return ace_dir
+
     def build_commands(self) -> tuple[list[str], list[str]]:
         training = self.job.get("training") if isinstance(self.job.get("training"), dict) else {}
         runtime = self.job.get("runtime") if isinstance(self.job.get("runtime"), dict) else {}
@@ -758,8 +770,9 @@ except Exception as exc:
                 str(float(training.get("dropout") or 0.0)),
             ])
 
-        self.write_command_script("preprocess.sh", preprocess_cmd, cwd=ace_dir)
-        self.write_command_script("train.sh", train_cmd, cwd=ace_dir)
+        command_cwd = self.command_cwd(ace_dir, checkpoints)
+        self.write_command_script("preprocess.sh", preprocess_cmd, cwd=command_cwd)
+        self.write_command_script("train.sh", train_cmd, cwd=command_cwd)
         return preprocess_cmd, train_cmd
 
     def write_command_script(self, name: str, command: list[str], cwd: Path) -> None:
@@ -776,6 +789,7 @@ except Exception as exc:
     def run_command(self, stage: str, command: list[str], cwd: Path) -> None:
         self.log(stage, "Starting command", command=shell_join(command), cwd=cwd.as_posix())
         start = time.time()
+        failure_line: str | None = None
         process = subprocess.Popen(
             command,
             cwd=str(cwd),
@@ -790,11 +804,15 @@ except Exception as exc:
             if line:
                 self.log(stage, line)
                 self.extract_metric(line)
+                if line.startswith("[FAIL]") or "TRAINING FAILED" in line:
+                    failure_line = line
         rc = process.wait()
         elapsed = time.time() - start
         self.metric(stage=stage, elapsed_seconds=elapsed, return_code=rc)
         if rc != 0:
             raise subprocess.CalledProcessError(rc, command)
+        if failure_line:
+            raise RuntimeError(f"{stage} reported failure: {failure_line}")
         self.log(stage, "Command finished", elapsed_seconds=round(elapsed, 2))
 
     def extract_metric(self, line: str) -> None:
@@ -861,12 +879,14 @@ except Exception as exc:
             variant = normalize_variant(
                 first_string(training.get("worker_model_variant"), training.get("base_model_id"))
             )
-            ace_dir, _checkpoints, _python = self.ensure_environment(variant) if not self.args.dry_run else self.env_paths()
+            ace_dir, checkpoints, _python = self.ensure_environment(variant) if not self.args.dry_run else self.env_paths()
+            command_cwd = self.command_cwd(ace_dir, checkpoints)
             dry_run_payload = {
                 "job": str(self.job_path),
                 "package_root": str(self.package_root),
                 "side_step_dataset": str(self.side_step_dataset),
                 "sample_count": len(dataset.get("samples", [])),
+                "command_cwd": str(command_cwd),
                 "preprocess_command": preprocess_cmd,
                 "train_command": train_cmd,
             }
@@ -893,7 +913,7 @@ except Exception as exc:
                     shutil.rmtree(self.tensor_dir)
                 self.tensor_dir.mkdir(parents=True, exist_ok=True)
                 self.preprocess_placeholder.mkdir(parents=True, exist_ok=True)
-                self.run_command("preprocess", preprocess_cmd, cwd=ace_dir)
+                self.run_command("preprocess", preprocess_cmd, cwd=command_cwd)
             tensor_count = self.count_tensors()
             if tensor_count <= 0:
                 raise RuntimeError("Preprocessing finished without producing .pt tensors")
@@ -902,7 +922,7 @@ except Exception as exc:
             if self.output_dir.exists():
                 shutil.rmtree(self.output_dir)
             self.output_dir.mkdir(parents=True, exist_ok=True)
-            self.run_command("train", train_cmd, cwd=ace_dir)
+            self.run_command("train", train_cmd, cwd=command_cwd)
             metrics = self.copy_outputs()
             metrics["sample_count"] = float(len(dataset.get("samples", [])))
             self.log("complete", "Training complete", metrics=metrics)
