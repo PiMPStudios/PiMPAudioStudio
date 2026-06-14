@@ -203,6 +203,26 @@ def contains_weights(path: Path) -> bool:
     return any((path / name).exists() for name in names)
 
 
+def sanitize_precision(raw: str | None, fallback: str) -> str:
+    precision = (raw or fallback).strip().lower()
+    if precision not in {"bf16", "fp16", "fp32"}:
+        return fallback
+    return precision
+
+
+def resolve_precisions(raw: str | None) -> tuple[str, str]:
+    precision = (raw or "bf16_or_fp16").strip().lower()
+    if precision in {"bf16_or_fp16", "auto"}:
+        preprocess = sanitize_precision(
+            os.environ.get("PIMP_REMOTE_PREPROCESS_PRECISION") or os.environ.get("PIMP_REMOTE_PRECISION"),
+            "fp16",
+        )
+        training = sanitize_precision(os.environ.get("PIMP_REMOTE_TRAINING_PRECISION"), "bf16")
+        return preprocess, training
+    resolved = sanitize_precision(precision, "bf16")
+    return resolved, resolved
+
+
 class RemoteWorker:
     def __init__(self, args: argparse.Namespace):
         self.args = args
@@ -473,7 +493,79 @@ class RemoteWorker:
         checkpoints.mkdir(parents=True, exist_ok=True)
         if not self.args.no_download and os.environ.get("PIMP_REMOTE_DOWNLOAD_MODELS", "1") != "0":
             self.ensure_model_assets(python, ace_dir, checkpoints, variant)
+        self.ensure_ace_compatibility_patches(ace_dir)
         return ace_dir, checkpoints, python
+
+    def ensure_ace_compatibility_patches(self, ace_dir: Path) -> None:
+        fixed_module = ace_dir / "acestep/training_v2/fixed_lora_module.py"
+        if fixed_module.is_file():
+            text = fixed_module.read_text(encoding="utf-8")
+            if "PIMP_REMOTE_TRAINING_PRECISION" not in text:
+                text = text.replace(
+                    "def _select_compute_dtype(device_type: str) -> torch.dtype:\n"
+                    "    if device_type in (\"cuda\", \"xpu\"):\n"
+                    "        return torch.bfloat16\n"
+                    "    if device_type == \"mps\":\n"
+                    "        return torch.float16\n"
+                    "    return torch.float32\n",
+                    "def _select_compute_dtype(device_type: str) -> torch.dtype:\n"
+                    "    import os\n"
+                    "    requested = os.environ.get(\"PIMP_REMOTE_TRAINING_PRECISION\", \"\").lower()\n"
+                    "    if requested == \"fp16\":\n"
+                    "        return torch.float16\n"
+                    "    if requested == \"fp32\":\n"
+                    "        return torch.float32\n"
+                    "    if requested == \"bf16\":\n"
+                    "        return torch.bfloat16\n"
+                    "    if device_type in (\"cuda\", \"xpu\"):\n"
+                    "        return torch.bfloat16\n"
+                    "    if device_type == \"mps\":\n"
+                    "        return torch.float16\n"
+                    "    return torch.float32\n",
+                )
+                text = text.replace(
+                    "def _select_fabric_precision(device_type: str) -> str:\n"
+                    "    if device_type in (\"cuda\", \"xpu\"):\n"
+                    "        return \"bf16-mixed\"\n"
+                    "    if device_type == \"mps\":\n"
+                    "        return \"16-mixed\"\n"
+                    "    return \"32-true\"\n",
+                    "def _select_fabric_precision(device_type: str) -> str:\n"
+                    "    import os\n"
+                    "    requested = os.environ.get(\"PIMP_REMOTE_TRAINING_PRECISION\", \"\").lower()\n"
+                    "    if requested == \"fp16\":\n"
+                    "        return \"16-mixed\"\n"
+                    "    if requested == \"fp32\":\n"
+                    "        return \"32-true\"\n"
+                    "    if requested == \"bf16\":\n"
+                    "        return \"bf16-mixed\"\n"
+                    "    if device_type in (\"cuda\", \"xpu\"):\n"
+                    "        return \"bf16-mixed\"\n"
+                    "    if device_type == \"mps\":\n"
+                    "        return \"16-mixed\"\n"
+                    "    return \"32-true\"\n",
+                )
+                fixed_module.write_text(text, encoding="utf-8")
+                self.log("setup", "Applied ACE fixed trainer precision compatibility patch", path=str(fixed_module))
+
+        trainer_fixed = ace_dir / "acestep/training_v2/trainer_fixed.py"
+        if trainer_fixed.is_file():
+            text = trainer_fixed.read_text(encoding="utf-8")
+            clip_call = (
+                "                    self.fabric.clip_gradients(\n"
+                "                        self.module.model.decoder, optimizer, max_norm=cfg.max_grad_norm,\n"
+                "                    )\n"
+            )
+            guarded_clip_call = (
+                "                    if cfg.max_grad_norm and cfg.max_grad_norm > 0 and cfg.precision != \"fp16\":\n"
+                "                        self.fabric.clip_gradients(\n"
+                "                            self.module.model.decoder, optimizer, max_norm=cfg.max_grad_norm,\n"
+                "                        )\n"
+            )
+            if clip_call in text and guarded_clip_call not in text:
+                text = text.replace(clip_call, guarded_clip_call)
+                trainer_fixed.write_text(text, encoding="utf-8")
+                self.log("setup", "Applied ACE fp16 gradient-clipping compatibility patch", path=str(trainer_fixed))
 
     def ensure_model_assets(self, python: Path, ace_dir: Path, checkpoints: Path, variant: str) -> None:
         variant_dir = checkpoints / variant
@@ -628,11 +720,9 @@ except Exception as exc:
         )
         base_model = base_model_for_variant(variant)
         shift, inference_steps = schedule_for_variant(variant)
-        precision = first_string(runtime.get("precision"), "bf16_or_fp16") or "bf16"
-        if precision == "bf16_or_fp16":
-            precision = "bf16"
-        elif precision not in {"auto", "bf16", "fp16", "fp32"}:
-            precision = "bf16"
+        preprocess_precision, training_precision = resolve_precisions(
+            first_string(runtime.get("precision"), "bf16_or_fp16")
+        )
 
         ace_dir, checkpoints, python = self.env_paths()
         train_py = ace_dir / "train.py"
@@ -668,7 +758,7 @@ except Exception as exc:
             "--device",
             "cuda",
             "--precision",
-            precision,
+            preprocess_precision,
             "--dataset-dir",
             str(self.tensor_dir),
             "--output-dir",
@@ -700,7 +790,7 @@ except Exception as exc:
             "--device",
             "cuda",
             "--precision",
-            precision,
+            training_precision,
             "--dataset-dir",
             str(self.tensor_dir),
             "--output-dir",
@@ -790,6 +880,11 @@ except Exception as exc:
         self.log(stage, "Starting command", command=shell_join(command), cwd=cwd.as_posix())
         start = time.time()
         failure_line: str | None = None
+        env = os.environ.copy()
+        if "--precision" in command:
+            precision_index = command.index("--precision") + 1
+            if precision_index < len(command):
+                env["PIMP_REMOTE_TRAINING_PRECISION"] = str(command[precision_index])
         process = subprocess.Popen(
             command,
             cwd=str(cwd),
@@ -797,6 +892,7 @@ except Exception as exc:
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
+            env=env,
         )
         assert process.stdout is not None
         for line in process.stdout:
@@ -839,6 +935,63 @@ except Exception as exc:
         if not self.tensor_dir.exists():
             return 0
         return len(list(self.tensor_dir.glob("*.pt")))
+
+    def tensor_cache_health(self, repair: bool = False) -> tuple[bool, str, int]:
+        if not self.tensor_dir.exists():
+            return False, "tensor directory is missing", 0
+        tensor_paths = sorted(self.tensor_dir.glob("*.pt"))
+        if not tensor_paths:
+            return False, "no tensor files found", 0
+        try:
+            import torch
+        except Exception as exc:
+            return False, f"torch unavailable for tensor validation: {exc}", len(tensor_paths)
+
+        checked_keys = {
+            "target_latents",
+            "attention_mask",
+            "encoder_hidden_states",
+            "encoder_attention_mask",
+            "context_latents",
+        }
+        max_repair_fraction = float(os.environ.get("PIMP_REMOTE_TENSOR_REPAIR_MAX_FRACTION", "0.001"))
+        repaired_files = 0
+        repaired_values = 0
+        for path in tensor_paths:
+            try:
+                payload = torch.load(path, map_location="cpu", weights_only=True)
+            except TypeError:
+                payload = torch.load(path, map_location="cpu")
+            except Exception as exc:
+                return False, f"{path.name} could not be loaded: {exc}", len(tensor_paths)
+            if not isinstance(payload, dict):
+                return False, f"{path.name} is not a tensor payload", len(tensor_paths)
+            changed = False
+            for key in checked_keys:
+                value = payload.get(key)
+                if value is None:
+                    return False, f"{path.name} is missing {key}", len(tensor_paths)
+                if torch.is_tensor(value):
+                    finite = torch.isfinite(value)
+                    if not finite.all().item():
+                        nonfinite_count = int((~finite).sum().item())
+                        total_count = max(int(value.numel()), 1)
+                        fraction = nonfinite_count / total_count
+                        if not repair or fraction > max_repair_fraction:
+                            return (
+                                False,
+                                f"{path.name} contains {nonfinite_count} non-finite values in {key} ({fraction:.4%})",
+                                len(tensor_paths),
+                            )
+                        payload[key] = torch.nan_to_num(value, nan=0.0, posinf=0.0, neginf=0.0)
+                        repaired_values += nonfinite_count
+                        changed = True
+            if changed:
+                torch.save(payload, path)
+                repaired_files += 1
+        if repaired_values > 0:
+            return True, f"repaired {repaired_values} non-finite tensor values across {repaired_files} files", len(tensor_paths)
+        return True, "tensor cache is finite", len(tensor_paths)
 
     def copy_outputs(self) -> dict[str, float]:
         self.checkpoints_dir.mkdir(parents=True, exist_ok=True)
@@ -887,6 +1040,8 @@ except Exception as exc:
                 "side_step_dataset": str(self.side_step_dataset),
                 "sample_count": len(dataset.get("samples", [])),
                 "command_cwd": str(command_cwd),
+                "preprocess_precision": preprocess_cmd[preprocess_cmd.index("--precision") + 1],
+                "training_precision": train_cmd[train_cmd.index("--precision") + 1],
                 "preprocess_command": preprocess_cmd,
                 "train_command": train_cmd,
             }
@@ -906,17 +1061,30 @@ except Exception as exc:
                 )
                 return 0
 
-            if self.tensor_dir.exists() and self.count_tensors() > 0 and os.environ.get("PIMP_REMOTE_FORCE_PREPROCESS", "0") != "1":
-                self.log("preprocess", "Reusing existing preprocessed tensors", tensor_count=self.count_tensors())
+            cache_ok, cache_reason, tensor_count = self.tensor_cache_health(repair=True)
+            force_preprocess = os.environ.get("PIMP_REMOTE_FORCE_PREPROCESS", "0") == "1"
+            if cache_ok and not force_preprocess:
+                if cache_reason != "tensor cache is finite":
+                    self.log("preprocess", "Repaired preprocessed tensor cache", tensor_count=tensor_count, reason=cache_reason)
+                self.log("preprocess", "Reusing existing preprocessed tensors", tensor_count=tensor_count)
             else:
+                if self.tensor_dir.exists() and tensor_count > 0:
+                    self.log(
+                        "preprocess",
+                        "Discarding preprocessed tensor cache",
+                        tensor_count=tensor_count,
+                        reason="forced" if force_preprocess else cache_reason,
+                    )
                 if self.tensor_dir.exists():
                     shutil.rmtree(self.tensor_dir)
                 self.tensor_dir.mkdir(parents=True, exist_ok=True)
                 self.preprocess_placeholder.mkdir(parents=True, exist_ok=True)
                 self.run_command("preprocess", preprocess_cmd, cwd=command_cwd)
-            tensor_count = self.count_tensors()
-            if tensor_count <= 0:
-                raise RuntimeError("Preprocessing finished without producing .pt tensors")
+                cache_ok, cache_reason, tensor_count = self.tensor_cache_health(repair=True)
+                if cache_ok and cache_reason != "tensor cache is finite":
+                    self.log("preprocess", "Repaired preprocessed tensor cache", tensor_count=tensor_count, reason=cache_reason)
+            if not cache_ok:
+                raise RuntimeError(f"Preprocessing did not produce a usable tensor cache: {cache_reason}")
             self.metric(stage="preprocess", tensor_count=tensor_count)
 
             if self.output_dir.exists():
