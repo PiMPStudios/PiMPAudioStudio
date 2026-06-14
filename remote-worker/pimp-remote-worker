@@ -220,6 +220,7 @@ class RemoteWorker:
         self.tensor_dir = self.artifacts_dir / "tensors"
         self.output_dir = self.artifacts_dir / "side_step_output"
         self.preprocess_placeholder = self.artifacts_dir / "preprocess_placeholder"
+        self.preprocess_audio_dir = self.artifacts_dir / "preprocess_audio"
         self.side_step_dataset = self.artifacts_dir / "side_step_dataset.json"
         self.started_at: str | None = None
         self.artifacts_dir.mkdir(parents=True, exist_ok=True)
@@ -329,6 +330,9 @@ class RemoteWorker:
 
         samples: list[dict[str, Any]] = []
         missing_audio: list[str] = []
+        if self.preprocess_audio_dir.exists():
+            shutil.rmtree(self.preprocess_audio_dir)
+        self.preprocess_audio_dir.mkdir(parents=True, exist_ok=True)
         for index, clip in enumerate(clips):
             if not isinstance(clip, dict):
                 continue
@@ -353,6 +357,7 @@ class RemoteWorker:
             if not audio_path.exists():
                 missing_audio.append(rel_audio)
                 continue
+            staged_audio_path = self.stage_preprocess_audio(index, clip, rel_audio, audio_path)
 
             caption = first_string(clip.get("caption"), clip.get("prompt"), clip.get("id"), audio_path.stem)
             lyrics = "[Instrumental]" if force_instrumental else first_string(
@@ -372,8 +377,10 @@ class RemoteWorker:
             keyscale = first_string(clip.get("keyscale"), clip.get("key"), analysis.get("keyscale"))
             sample: dict[str, Any] = {
                 "id": str(clip.get("id") or f"clip-{index + 1:04d}"),
-                "audio_path": audio_path.as_posix(),
-                "filename": audio_path.name,
+                "audio_path": staged_audio_path.as_posix(),
+                "filename": staged_audio_path.name,
+                "source_audio_path": audio_path.as_posix(),
+                "source_filename": audio_path.name,
                 "caption": caption,
                 "genre": caption,
                 "lyrics": lyrics,
@@ -427,6 +434,22 @@ class RemoteWorker:
         )
         self.metric(stage="dataset", sample_count=len(samples))
         return dataset
+
+    def stage_preprocess_audio(self, index: int, clip: dict[str, Any], rel_audio: str, source: Path) -> Path:
+        source_label = Path(str(clip.get("id") or rel_audio)).stem
+        staged_stem = f"{index + 1:04d}-{safe_name(source_label)}"
+        suffix = source.suffix.lower() or ".wav"
+        staged_path = self.preprocess_audio_dir / f"{staged_stem}{suffix}"
+        if staged_path.exists() or staged_path.is_symlink():
+            staged_path.unlink()
+        try:
+            staged_path.symlink_to(source)
+        except OSError:
+            try:
+                os.link(source, staged_path)
+            except OSError:
+                shutil.copy2(source, staged_path)
+        return staged_path
 
     def env_paths(self) -> tuple[Path, Path, Path]:
         workdir = Path(os.environ.get("PIMP_REMOTE_WORKDIR", str(DEFAULT_WORKDIR))).expanduser()
@@ -640,7 +663,7 @@ except Exception as exc:
             str(self.preprocess_placeholder),
             "--preprocess",
             "--audio-dir",
-            str(self.package_root),
+            str(self.preprocess_audio_dir),
             "--dataset-json",
             str(self.side_step_dataset),
             "--tensor-output",
