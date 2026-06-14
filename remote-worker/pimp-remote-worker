@@ -23,11 +23,11 @@ DEFAULT_WORKDIR = Path("/workspace/pimp-remote-worker")
 def preferred_worker_python(workdir: Path) -> Path:
     managed_python = workdir / "venv/bin/python"
     if managed_python.exists():
-        return managed_python.resolve()
+        return managed_python.absolute()
     configured_python = os.environ.get("PIMP_REMOTE_PYTHON", "").strip()
     if configured_python:
-        return Path(configured_python).expanduser().resolve()
-    return managed_python.resolve()
+        return Path(configured_python).expanduser().absolute()
+    return managed_python.absolute()
 
 
 def maybe_reexec_worker_python() -> None:
@@ -40,18 +40,18 @@ def maybe_reexec_worker_python() -> None:
         return
 
     try:
-        current = Path(sys.executable).resolve()
-        resolved_target = target.resolve()
+        current = Path(sys.executable).expanduser().absolute()
+        absolute_target = target.expanduser().absolute()
     except OSError:
         return
 
-    if current == resolved_target:
+    if current == absolute_target:
         return
 
     env = os.environ.copy()
     env["PIMP_REMOTE_WORKER_REEXEC"] = "1"
-    env["PIMP_REMOTE_PYTHON"] = str(resolved_target)
-    os.execvpe(str(resolved_target), [str(resolved_target), str(Path(__file__).resolve()), *sys.argv[1:]], env)
+    env["PIMP_REMOTE_PYTHON"] = str(absolute_target)
+    os.execvpe(str(absolute_target), [str(absolute_target), str(Path(__file__).absolute()), *sys.argv[1:]], env)
 
 
 maybe_reexec_worker_python()
