@@ -424,8 +424,9 @@ final class CommunityService: ObservableObject {
     /// Import a local adapter directory, accepting native PiMP Audio Studio
     /// folders (`adapter.json` + `adapter.safetensors`), PEFT LoRA/LoKR folders
     /// (`adapter_config.json` + `adapter_model.safetensors` or
-    /// `lokr_weights.safetensors`), or raw LyCORIS LoKR folders containing only
-    /// `lokr_weights.safetensors`.
+    /// `lokr_weights.safetensors`), raw LyCORIS LoKR folders containing only
+    /// `lokr_weights.safetensors`, or Side-Step run folders containing
+    /// `best/lokr_weights.safetensors` or `final/lokr_weights.safetensors`.
     func importLocalAdapter(directoryURL: URL) async throws -> LoRAAdapter {
         let didAccess = directoryURL.startAccessingSecurityScopedResource()
         defer {
@@ -462,8 +463,16 @@ final class CommunityService: ObservableObject {
             )
         }
 
+        if let sideStepWeightsURL = preferredSideStepLoKRWeightsURL(in: directoryURL) {
+            return try importLocalLyCORISLoKRAdapterUnlocked(
+                directoryURL: sideStepWeightsURL.deletingLastPathComponent(),
+                weightsURL: sideStepWeightsURL,
+                nameSeedURL: directoryURL
+            )
+        }
+
         throw CommunityError.missingFile(
-            "adapter_config.json + adapter_model.safetensors, adapter_config.json + lokr_weights.safetensors, adapter.json + adapter.safetensors, or lokr_weights.safetensors",
+            "adapter_config.json + adapter_model.safetensors, adapter_config.json + lokr_weights.safetensors, adapter.json + adapter.safetensors, lokr_weights.safetensors, or Side-Step best/final lokr_weights.safetensors",
             directoryURL
         )
     }
@@ -540,15 +549,23 @@ final class CommunityService: ObservableObject {
 
     private func importLocalLyCORISLoKRAdapterUnlocked(
         directoryURL: URL,
-        weightsURL: URL
+        weightsURL: URL,
+        nameSeedURL: URL? = nil
     ) throws -> LoRAAdapter {
         let rawArrays = try MLX.loadArrays(url: weightsURL)
         let metadata = (try? safetensorsMetadata(from: weightsURL)) ?? [:]
+        let trainingConfig = localSideStepTrainingConfig(
+            directoryURL: directoryURL,
+            weightsURL: weightsURL,
+            nameSeedURL: nameSeedURL
+        )
+        let seedURL = nameSeedURL ?? directoryURL
         return try saveLyCORISLoKRAdapter(
             rawArrays: rawArrays,
             safetensorsMetadata: metadata,
             peftConfig: nil,
-            nameSeed: localPEFTNameSeed(for: directoryURL),
+            nameSeed: localPEFTNameSeed(for: seedURL),
+            baseModelIDOverride: trainingConfig?.resolvedBaseModelID,
             source: .imported,
             remoteRepoURL: nil,
             errorURL: directoryURL
@@ -663,6 +680,7 @@ final class CommunityService: ObservableObject {
         safetensorsMetadata: [String: String],
         peftConfig: PEFTAdapterConfig?,
         nameSeed: String,
+        baseModelIDOverride: String? = nil,
         source: AdapterSource,
         remoteRepoURL: URL?,
         errorURL: URL
@@ -675,9 +693,9 @@ final class CommunityService: ObservableObject {
             )
         }
 
-        let remapped: PEFTKeyRemapper.LoKRRemapResult
+        let rawRemapped: PEFTKeyRemapper.LoKRRemapResult
         do {
-            remapped = try PEFTKeyRemapper.remapLyCORISLoKR(rawArrays)
+            rawRemapped = try PEFTKeyRemapper.remapLyCORISLoKR(rawArrays)
         } catch let error as PEFTKeyRemapper.LoKRRemapError {
             switch error {
             case .noConvertibleWeights:
@@ -686,6 +704,7 @@ final class CommunityService: ObservableObject {
                 throw CommunityError.unsupportedLoKRFormat(detail, errorURL)
             }
         }
+        let remapped = metadataConfig.filtered(rawRemapped)
 
         let linearDim = max(
             1,
@@ -723,9 +742,10 @@ final class CommunityService: ObservableObject {
 
         let adapterID = uniqueAdapterID(from: nameSeed)
         let adapterName = nameSeed
-        let baseModelID = peftConfig?.baseModelNameOrPath != nil
+        let baseModelID = baseModelIDOverride
+            ?? (peftConfig?.baseModelNameOrPath != nil
             ? PEFTKeyRemapper.resolveBaseModelID(from: peftConfig?.baseModelNameOrPath)
-            : "ace-step-dit-xl-sft"
+            : "ace-step-dit-xl-sft")
 
         let adapter = LoRAAdapter(
             id: adapterID,
@@ -773,7 +793,9 @@ final class CommunityService: ObservableObject {
             return components[cloudJobsIndex + 1]
         }
 
-        if directoryURL.lastPathComponent == "final" {
+        if directoryURL.lastPathComponent == "final" ||
+            directoryURL.lastPathComponent == "best" ||
+            directoryURL.lastPathComponent.hasPrefix("epoch_") {
             let parent = directoryURL.deletingLastPathComponent().lastPathComponent
             if !parent.isEmpty && parent != "lora" {
                 return parent
@@ -781,6 +803,45 @@ final class CommunityService: ObservableObject {
         }
 
         return directoryURL.lastPathComponent
+    }
+
+    private func preferredSideStepLoKRWeightsURL(in directoryURL: URL) -> URL? {
+        let candidates = [
+            directoryURL
+                .appending(path: "best", directoryHint: .isDirectory)
+                .appending(path: "lokr_weights.safetensors"),
+            directoryURL
+                .appending(path: "final", directoryHint: .isDirectory)
+                .appending(path: "lokr_weights.safetensors"),
+        ]
+        return candidates.first {
+            FileManager.default.fileExists(atPath: $0.path(percentEncoded: false))
+        }
+    }
+
+    private func localSideStepTrainingConfig(
+        directoryURL: URL,
+        weightsURL: URL,
+        nameSeedURL: URL?
+    ) -> SideStepTrainingConfig? {
+        let parentURL = weightsURL.deletingLastPathComponent().deletingLastPathComponent()
+        let candidates = [
+            weightsURL.deletingLastPathComponent().appending(path: "training_config.json"),
+            directoryURL.appending(path: "training_config.json"),
+            parentURL.appending(path: "training_config.json"),
+            nameSeedURL?.appending(path: "training_config.json"),
+        ].compactMap { $0 }
+
+        let decoder = JSONDecoder()
+        for candidate in candidates {
+            guard FileManager.default.fileExists(atPath: candidate.path(percentEncoded: false)),
+                  let data = try? Data(contentsOf: candidate),
+                  let decoded = try? decoder.decode(SideStepTrainingConfig.self, from: data) else {
+                continue
+            }
+            return decoded
+        }
+        return nil
     }
 
     private func adapterSHA256(from metadata: Data) -> String? {
@@ -1021,6 +1082,9 @@ private struct LyCORISLoKRMetadataConfig {
     let linearAlpha: Float?
     let weightDecompose: Bool?
     let useTucker: Bool?
+    let targetModules: [String]?
+    let targetMLP: Bool?
+    let attentionType: String?
 
     init(metadata: [String: String]) {
         guard let rawConfig = metadata["lokr_config"],
@@ -1030,6 +1094,9 @@ private struct LyCORISLoKRMetadataConfig {
             linearAlpha = nil
             weightDecompose = nil
             useTucker = nil
+            targetModules = nil
+            targetMLP = nil
+            attentionType = nil
             return
         }
 
@@ -1037,6 +1104,113 @@ private struct LyCORISLoKRMetadataConfig {
         linearAlpha = decoded.linearAlpha
         weightDecompose = decoded.weightDecompose
         useTucker = decoded.useTucker
+        targetModules = decoded.targetModules
+        targetMLP = decoded.targetMLP
+        attentionType = decoded.attentionType
+    }
+
+    func filtered(
+        _ result: PEFTKeyRemapper.LoKRRemapResult
+    ) -> PEFTKeyRemapper.LoKRRemapResult {
+        guard let allowedPatterns = allowedInjectionPatterns(existing: result.exactInjectionPatterns) else {
+            return result
+        }
+
+        let filteredWeights = result.weights.filter { key, _ in
+            guard let pattern = injectionPattern(fromRemappedKey: key) else { return false }
+            return allowedPatterns.contains(pattern)
+        }
+        guard !filteredWeights.isEmpty else { return result }
+
+        let exactPatterns = PEFTKeyRemapper.inferLoKRInjectionPatterns(
+            fromRemappedKeys: Array(filteredWeights.keys)
+        )
+        let targetLayers = PEFTKeyRemapper.inferTargetLayers(
+            fromInjectionPatterns: exactPatterns
+        )
+        let trainedPaths = LoRAAdapter.trainedPaths(
+            fromWeightKeys: Array(filteredWeights.keys),
+            kind: .lokr
+        )
+
+        return PEFTKeyRemapper.LoKRRemapResult(
+            weights: filteredWeights,
+            inferredLinearDim: result.inferredLinearDim,
+            sourceAlpha: result.sourceAlpha,
+            exactInjectionPatterns: exactPatterns,
+            targetLayers: targetLayers,
+            trainedPaths: trainedPaths,
+            trainedLayerIndices: LoRAAdapter.layerIndices(from: trainedPaths),
+            weightDecompose: filteredWeights.keys.contains { $0.hasSuffix(".lokrMagnitude") }
+        )
+    }
+
+    private func allowedInjectionPatterns(existing: [String]) -> Set<String>? {
+        guard let targetModules, !targetModules.isEmpty else {
+            guard targetMLP == false else { return nil }
+            return Set(existing.filter { !$0.hasPrefix("mlp.") })
+        }
+
+        let attentionSelection = attentionType?.lowercased() ?? "both"
+        let includeSelfAttention = attentionSelection != "cross"
+        let includeCrossAttention = attentionSelection != "self"
+        let includeMLP = targetMLP != false
+        var patterns = Set<String>()
+
+        for module in targetModules {
+            let normalized = module
+                .lowercased()
+                .replacingOccurrences(of: "-", with: "_")
+
+            if let projection = Self.attentionProjection(from: normalized) {
+                if normalized.hasPrefix("self_attn.") {
+                    patterns.insert("selfAttn.\(projection)")
+                } else if normalized.hasPrefix("cross_attn.") {
+                    patterns.insert("crossAttn.\(projection)")
+                } else {
+                    if includeSelfAttention { patterns.insert("selfAttn.\(projection)") }
+                    if includeCrossAttention { patterns.insert("crossAttn.\(projection)") }
+                }
+                continue
+            }
+
+            if includeMLP, let projection = Self.mlpProjection(from: normalized) {
+                patterns.insert("mlp.\(projection)")
+            }
+        }
+
+        return patterns.isEmpty ? nil : patterns
+    }
+
+    private func injectionPattern(fromRemappedKey key: String) -> String? {
+        let parts = key.split(separator: ".")
+        guard parts.count >= 5,
+              parts[0] == "layers",
+              Int(parts[1]) != nil else {
+            return nil
+        }
+        return "\(parts[2]).\(parts[3])"
+    }
+
+    private static func attentionProjection(from module: String) -> String? {
+        let leaf = module.split(separator: ".").last.map(String.init) ?? module
+        switch leaf {
+        case "q_proj", "q": return "qProj"
+        case "k_proj", "k": return "kProj"
+        case "v_proj", "v": return "vProj"
+        case "o_proj", "out_proj", "o": return "oProj"
+        default: return nil
+        }
+    }
+
+    private static func mlpProjection(from module: String) -> String? {
+        let leaf = module.split(separator: ".").last.map(String.init) ?? module
+        switch leaf {
+        case "gate_proj", "w1": return "gateProj"
+        case "up_proj", "w3": return "upProj"
+        case "down_proj", "w2": return "downProj"
+        default: return nil
+        }
     }
 
     private struct Decoded: Decodable {
@@ -1044,12 +1218,18 @@ private struct LyCORISLoKRMetadataConfig {
         let linearAlpha: Float?
         let weightDecompose: Bool?
         let useTucker: Bool?
+        let targetModules: [String]?
+        let targetMLP: Bool?
+        let attentionType: String?
 
         enum CodingKeys: String, CodingKey {
             case linearDim = "linear_dim"
             case linearAlpha = "linear_alpha"
             case weightDecompose = "weight_decompose"
             case useTucker = "use_tucker"
+            case targetModules = "target_modules"
+            case targetMLP = "target_mlp"
+            case attentionType = "attention_type"
         }
 
         init(from decoder: Decoder) throws {
@@ -1057,6 +1237,15 @@ private struct LyCORISLoKRMetadataConfig {
             linearDim = try c.decodeIfPresent(Int.self, forKey: .linearDim)
             weightDecompose = try c.decodeIfPresent(Bool.self, forKey: .weightDecompose)
             useTucker = try c.decodeIfPresent(Bool.self, forKey: .useTucker)
+            targetMLP = try c.decodeIfPresent(Bool.self, forKey: .targetMLP)
+            attentionType = try c.decodeIfPresent(String.self, forKey: .attentionType)
+            if let modules = try? c.decodeIfPresent([String].self, forKey: .targetModules) {
+                targetModules = modules
+            } else if let module = try? c.decodeIfPresent(String.self, forKey: .targetModules) {
+                targetModules = [module]
+            } else {
+                targetModules = nil
+            }
 
             if let v = try? c.decodeIfPresent(Double.self, forKey: .linearAlpha) {
                 linearAlpha = Float(v)
@@ -1066,5 +1255,27 @@ private struct LyCORISLoKRMetadataConfig {
                 linearAlpha = nil
             }
         }
+    }
+}
+
+private struct SideStepTrainingConfig: Decodable {
+    let modelVariant: String?
+    let baseModel: String?
+    let explicitBaseModelID: String?
+
+    var resolvedBaseModelID: String? {
+        if let explicitBaseModelID {
+            return explicitBaseModelID
+        }
+        guard let candidate = modelVariant ?? baseModel else {
+            return nil
+        }
+        return PEFTKeyRemapper.resolveBaseModelID(from: candidate)
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case modelVariant = "model_variant"
+        case baseModel = "base_model"
+        case explicitBaseModelID = "base_model_id"
     }
 }

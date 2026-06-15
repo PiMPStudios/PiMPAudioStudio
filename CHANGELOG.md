@@ -29,6 +29,7 @@ All notable changes to PiMP Audio Studio are documented here.
 
 ### Fixed
 
+- **Side-Step LoKR run folders now import with the right ACE-Step variant** — local adapter import can select a Side-Step run root, prefers `best/lokr_weights.safetensors` over `final`, preserves `xl-base` / `xl-sft` / `xl-turbo` from `training_config.json`, and respects Side-Step target metadata such as `target_mlp=false`.
 - **Remote GPU pod actions now follow the real setup order** — pod rows now present upload, SSH, extract/run, and terminate in workflow order; the upload command copies both the job zip and portable PiMP worker folder, and generated run scripts can install that uploaded worker before starting training.
 - **Remote GPU pod handoff now survives restarts** — the Remote GPU screen remembers the last exported job zip, offers a `Choose Job Zip...` recovery path, and clearly shows which local archive powers the upload/extract pod commands so those buttons do not appear mysteriously disabled after relaunch.
 - **Remote worker now runs inside its managed venv** — `pimp-remote-worker` re-enters the installed worker Python automatically when launched from `/usr/local/bin`, preserves the venv `python` symlink with `abspath` instead of resolving to system Python, and pins `PIMP_REMOTE_PYTHON` so model-download helpers see dependencies such as `huggingface_hub`.

@@ -1386,6 +1386,63 @@ private extension JSONDecoder {
     #expect(installedKeys.contains("layers.0.selfAttn.qProj.lokrMagnitude"))
 }
 
+@Test @MainActor func localSideStepRunFolderImportPrefersBestAndPreservesXLBase() async throws {
+    let sourceDir = FileManager.default.temporaryDirectory
+        .appendingPathComponent("sidestep-xl-base-\(UUID().uuidString)", isDirectory: true)
+    let bestDir = sourceDir.appendingPathComponent("best", isDirectory: true)
+    let finalDir = sourceDir.appendingPathComponent("final", isDirectory: true)
+    try FileManager.default.createDirectory(at: bestDir, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: finalDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: sourceDir) }
+
+    try Data(#"{"model_variant":"xl-base"}"#.utf8)
+        .write(to: sourceDir.appendingPathComponent("training_config.json"))
+
+    let bestArrays: [String: MLXArray] = [
+        "lycoris_layers_0_self_attn_q_proj.lokr_w1": MLXArray([Float](repeating: 1, count: 16), [4, 4]),
+        "lycoris_layers_0_self_attn_q_proj.lokr_w2": MLXArray([Float](repeating: 2, count: 16), [4, 4]),
+        "lycoris_layers_0_self_attn_q_proj.alpha": MLXArray([Float(16)], [1]),
+        "lycoris_layers_0_mlp_gate_proj.lokr_w1": MLXArray([Float](repeating: 5, count: 16), [4, 4]),
+        "lycoris_layers_0_mlp_gate_proj.lokr_w2": MLXArray([Float](repeating: 6, count: 16), [4, 4]),
+        "lycoris_layers_0_mlp_gate_proj.alpha": MLXArray([Float(16)], [1]),
+    ]
+    let finalArrays: [String: MLXArray] = [
+        "lycoris_layers_2_cross_attn_v_proj.lokr_w1": MLXArray([Float](repeating: 3, count: 16), [4, 4]),
+        "lycoris_layers_2_cross_attn_v_proj.lokr_w2": MLXArray([Float](repeating: 4, count: 16), [4, 4]),
+        "lycoris_layers_2_cross_attn_v_proj.alpha": MLXArray([Float(32)], [1]),
+    ]
+    try MLX.save(
+        arrays: bestArrays,
+        metadata: [
+            "lokr_config": #"{"linear_dim":4,"linear_alpha":16,"weight_decompose":false,"target_modules":["q_proj"],"attention_type":"both","target_mlp":false}"#,
+        ],
+        url: bestDir.appendingPathComponent("lokr_weights.safetensors")
+    )
+    try MLX.save(
+        arrays: finalArrays,
+        url: finalDir.appendingPathComponent("lokr_weights.safetensors")
+    )
+
+    let service = CommunityService()
+    let imported = try await service.importLocalAdapter(directoryURL: sourceDir)
+    defer { try? FileManager.default.removeItem(at: AdapterRegistry.adapterDirectory(id: imported.id)) }
+
+    #expect(imported.kind == .lokr)
+    #expect(imported.source == .imported)
+    #expect(imported.baseModelID == "ace-step-dit-xl-base")
+    #expect(imported.config.rank == 4)
+    #expect(imported.config.alpha == 16)
+    #expect(imported.config.exactInjectionPatterns == ["selfAttn.qProj"])
+    #expect(imported.trainedPaths == ["layers.0.selfAttn.qProj"])
+    #expect(imported.trainedLayerIndices == [0])
+
+    let installedKeys = try await AdapterRegistry.loadWeights(adapterID: imported.id).map(\.0)
+    #expect(installedKeys.contains("layers.0.selfAttn.qProj.lokrW1"))
+    #expect(installedKeys.contains("layers.0.selfAttn.qProj.lokrW2"))
+    #expect(!installedKeys.contains("layers.0.mlp.gateProj.lokrW1"))
+    #expect(!installedKeys.contains("layers.2.crossAttn.vProj.lokrW1"))
+}
+
 @Test @MainActor func localNativeAdapterFolderImportCopiesPiMPAdapter() async throws {
     let sourceDir = FileManager.default.temporaryDirectory
         .appendingPathComponent(UUID().uuidString, isDirectory: true)

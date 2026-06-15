@@ -337,7 +337,17 @@ enum PEFTKeyRemapper {
     static func resolveBaseModelID(from hfPath: String?) -> String {
         guard let path = hfPath else { return "ace-step-dit-turbo" }
         let lower = path.lowercased()
-        guard lower.contains("ace-step") || lower.contains("ace_step") || lower.contains("acestep") else {
+        let looksLikeACEVariant =
+            lower.contains("ace-step") ||
+            lower.contains("ace_step") ||
+            lower.contains("acestep") ||
+            lower.hasPrefix("xl-") ||
+            lower.hasPrefix("v15-xl-") ||
+            lower == "xl" ||
+            lower == "sft" ||
+            lower == "base" ||
+            lower == "turbo"
+        guard looksLikeACEVariant else {
             // Unknown model — preserve the HF path so the UI can show a mismatch warning
             return path
         }
