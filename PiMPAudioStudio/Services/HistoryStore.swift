@@ -23,21 +23,26 @@ final class HistoryStore: ObservableObject {
 
     func delete(_ entry: HistoryEntry) {
         entries.removeAll { $0.id == entry.id }
-        let fileURL = directory.appending(path: entry.fileName)
-        try? FileManager.default.removeItem(at: fileURL)
-        if let traceFileName = entry.traceFileName {
-            try? FileManager.default.removeItem(at: directory.appending(path: traceFileName))
+        removeFiles(for: entry)
+        saveToDisk()
+    }
+
+    func delete(ids: Set<HistoryEntry.ID>) {
+        guard !ids.isEmpty else { return }
+
+        let entriesToDelete = entries.filter { ids.contains($0.id) }
+        guard !entriesToDelete.isEmpty else { return }
+
+        for entry in entriesToDelete {
+            removeFiles(for: entry)
         }
+        entries.removeAll { ids.contains($0.id) }
         saveToDisk()
     }
 
     func deleteAll() {
         for entry in entries {
-            let fileURL = directory.appending(path: entry.fileName)
-            try? FileManager.default.removeItem(at: fileURL)
-            if let traceFileName = entry.traceFileName {
-                try? FileManager.default.removeItem(at: directory.appending(path: traceFileName))
-            }
+            removeFiles(for: entry)
         }
         entries.removeAll()
         saveToDisk()
@@ -119,6 +124,13 @@ final class HistoryStore: ObservableObject {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data = try encoder.encode(trace)
         try data.write(to: url, options: .atomic)
+    }
+
+    private func removeFiles(for entry: HistoryEntry) {
+        try? FileManager.default.removeItem(at: directory.appending(path: entry.fileName))
+        if let traceFileName = entry.traceFileName {
+            try? FileManager.default.removeItem(at: directory.appending(path: traceFileName))
+        }
     }
 
     private func updateHistoryReview(

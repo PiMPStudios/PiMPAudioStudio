@@ -69,6 +69,14 @@ struct HistoryListView: View {
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.mini)
+
+                        Button(role: .destructive) {
+                            deleteSelected()
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.mini)
                     }
 
                     Button("Done") {
@@ -255,6 +263,17 @@ struct HistoryListView: View {
             openWindow(id: "generationAnalyzer")
         } catch {
             traceErrorMessage = error.localizedDescription
+        }
+    }
+
+    private func deleteSelected() {
+        let ids = selectedIDs
+        guard !ids.isEmpty else { return }
+
+        historyStore.delete(ids: ids)
+        selectedIDs.removeAll()
+        if historyStore.entries.isEmpty {
+            isSelecting = false
         }
     }
 
