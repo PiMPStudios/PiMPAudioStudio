@@ -1443,6 +1443,69 @@ private extension JSONDecoder {
     #expect(!installedKeys.contains("layers.2.crossAttn.vProj.lokrW1"))
 }
 
+@Test @MainActor func localSideStepLoRARunFolderImportPrefersBestAndFoldsAlphaPattern() async throws {
+    let sourceDir = FileManager.default.temporaryDirectory
+        .appendingPathComponent("sidestep-xl-base-lora-\(UUID().uuidString)", isDirectory: true)
+    let bestDir = sourceDir.appendingPathComponent("best", isDirectory: true)
+    let finalDir = sourceDir.appendingPathComponent("final", isDirectory: true)
+    try FileManager.default.createDirectory(at: bestDir, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: finalDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: sourceDir) }
+
+    let bestConfig = """
+    {
+      "peft_type": "LORA",
+      "base_model_name_or_path": "ACE-Step/acestep-v15-xl-base",
+      "r": 4,
+      "lora_alpha": 4,
+      "lora_dropout": 0.08,
+      "target_modules": ["q_proj"],
+      "alpha_pattern": {"layers.0.self_attn.q_proj": 8},
+      "rank_pattern": {"layers.0.self_attn.q_proj": 4}
+    }
+    """
+    try Data(bestConfig.utf8).write(to: bestDir.appendingPathComponent("adapter_config.json"))
+    try Data(bestConfig.utf8).write(to: finalDir.appendingPathComponent("adapter_config.json"))
+
+    let bestArrays: [String: MLXArray] = [
+        "base_model.model.layers.0.self_attn.q_proj.lora_A.weight": MLXArray([Float](repeating: 1, count: 8), [4, 2]),
+        "base_model.model.layers.0.self_attn.q_proj.lora_B.weight": MLXArray([Float](repeating: 1, count: 12), [3, 4]),
+    ]
+    let finalArrays: [String: MLXArray] = [
+        "base_model.model.layers.2.cross_attn.v_proj.lora_A.weight": MLXArray([Float](repeating: 3, count: 8), [4, 2]),
+        "base_model.model.layers.2.cross_attn.v_proj.lora_B.weight": MLXArray([Float](repeating: 4, count: 12), [3, 4]),
+    ]
+    try MLX.save(
+        arrays: bestArrays,
+        url: bestDir.appendingPathComponent("adapter_model.safetensors")
+    )
+    try MLX.save(
+        arrays: finalArrays,
+        url: finalDir.appendingPathComponent("adapter_model.safetensors")
+    )
+
+    let service = CommunityService()
+    let imported = try await service.importLocalAdapter(directoryURL: sourceDir)
+    defer { try? FileManager.default.removeItem(at: AdapterRegistry.adapterDirectory(id: imported.id)) }
+
+    #expect(imported.kind == .lora)
+    #expect(imported.source == .imported)
+    #expect(imported.baseModelID == "ace-step-dit-xl-base")
+    #expect(imported.config.rank == 4)
+    #expect(imported.config.alpha == 4)
+    #expect(imported.config.exactInjectionPatterns == ["selfAttn.qProj"])
+
+    let installed = Dictionary(
+        try await AdapterRegistry.loadWeights(adapterID: imported.id),
+        uniquingKeysWith: { _, last in last }
+    )
+    #expect(installed["layers.0.selfAttn.qProj.loraA"] != nil)
+    #expect(installed["layers.2.crossAttn.vProj.loraA"] == nil)
+    let importedB = try #require(installed["layers.0.selfAttn.qProj.loraB"])
+    eval(importedB)
+    #expect(importedB.reshaped([-1]).asArray(Float.self).allSatisfy { abs($0 - 2.0) < 0.000_1 })
+}
+
 @Test @MainActor func localNativeAdapterFolderImportCopiesPiMPAdapter() async throws {
     let sourceDir = FileManager.default.temporaryDirectory
         .appendingPathComponent(UUID().uuidString, isDirectory: true)

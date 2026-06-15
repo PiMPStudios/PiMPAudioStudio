@@ -425,8 +425,8 @@ final class CommunityService: ObservableObject {
     /// folders (`adapter.json` + `adapter.safetensors`), PEFT LoRA/LoKR folders
     /// (`adapter_config.json` + `adapter_model.safetensors` or
     /// `lokr_weights.safetensors`), raw LyCORIS LoKR folders containing only
-    /// `lokr_weights.safetensors`, or Side-Step run folders containing
-    /// `best/lokr_weights.safetensors` or `final/lokr_weights.safetensors`.
+    /// `lokr_weights.safetensors`, or Side-Step run folders containing `best`
+    /// or `final` PEFT LoRA / LoKR adapter weights.
     func importLocalAdapter(directoryURL: URL) async throws -> LoRAAdapter {
         let didAccess = directoryURL.startAccessingSecurityScopedResource()
         defer {
@@ -456,6 +456,13 @@ final class CommunityService: ObservableObject {
             )
         }
 
+        if let sideStepPEFTURL = preferredSideStepPEFTAdapterDirectory(in: directoryURL) {
+            return try importLocalPEFTAdapterUnlocked(
+                directoryURL: sideStepPEFTURL,
+                nameSeedURL: directoryURL
+            )
+        }
+
         if hasLoKRWeights {
             return try importLocalLyCORISLoKRAdapterUnlocked(
                 directoryURL: directoryURL,
@@ -472,7 +479,7 @@ final class CommunityService: ObservableObject {
         }
 
         throw CommunityError.missingFile(
-            "adapter_config.json + adapter_model.safetensors, adapter_config.json + lokr_weights.safetensors, adapter.json + adapter.safetensors, lokr_weights.safetensors, or Side-Step best/final lokr_weights.safetensors",
+            "adapter_config.json + adapter_model.safetensors, adapter_config.json + lokr_weights.safetensors, adapter.json + adapter.safetensors, lokr_weights.safetensors, or Side-Step best/final adapter weights",
             directoryURL
         )
     }
@@ -490,7 +497,10 @@ final class CommunityService: ObservableObject {
         return try importLocalPEFTAdapterUnlocked(directoryURL: directoryURL)
     }
 
-    private func importLocalPEFTAdapterUnlocked(directoryURL: URL) throws -> LoRAAdapter {
+    private func importLocalPEFTAdapterUnlocked(
+        directoryURL: URL,
+        nameSeedURL: URL? = nil
+    ) throws -> LoRAAdapter {
 
         let configURL = directoryURL.appending(path: "adapter_config.json")
         let weightsURL = directoryURL.appending(path: "adapter_model.safetensors")
@@ -530,7 +540,7 @@ final class CommunityService: ObservableObject {
                 rawArrays: rawArrays,
                 safetensorsMetadata: metadata,
                 peftConfig: peftConfig,
-                nameSeed: localPEFTNameSeed(for: directoryURL),
+                nameSeed: localPEFTNameSeed(for: nameSeedURL ?? directoryURL),
                 source: .imported,
                 remoteRepoURL: nil,
                 errorURL: directoryURL
@@ -540,7 +550,7 @@ final class CommunityService: ObservableObject {
         return try savePEFTAdapter(
             rawArrays: rawArrays,
             peftConfig: peftConfig,
-            nameSeed: localPEFTNameSeed(for: directoryURL),
+            nameSeed: localPEFTNameSeed(for: nameSeedURL ?? directoryURL),
             source: .imported,
             remoteRepoURL: nil,
             errorURL: directoryURL
@@ -626,10 +636,19 @@ final class CommunityService: ObservableObject {
         remoteRepoURL: URL?,
         errorURL: URL
     ) throws -> LoRAAdapter {
-        let remapped = PEFTKeyRemapper.remap(rawArrays)
-        guard !remapped.isEmpty else {
+        let rawRemapped = PEFTKeyRemapper.remap(rawArrays)
+        guard !rawRemapped.isEmpty else {
             throw CommunityError.noMappableWeights(errorURL)
         }
+
+        let rank = peftConfig?.r ?? inferredConfig?.rank ?? 16
+        let alpha = peftConfig?.loraAlpha ?? inferredConfig?.alpha ?? Float(rank)
+        let remapped = normalizePEFTLoRAScaling(
+            rawRemapped,
+            peftConfig: peftConfig,
+            defaultRank: rank,
+            defaultAlpha: alpha
+        )
 
         let exactPatterns = PEFTKeyRemapper.inferInjectionPatterns(
             fromRemappedKeys: Array(remapped.keys)
@@ -638,8 +657,6 @@ final class CommunityService: ObservableObject {
             fromInjectionPatterns: exactPatterns
         )
 
-        let rank = peftConfig?.r ?? inferredConfig?.rank ?? 16
-        let alpha = peftConfig?.loraAlpha ?? inferredConfig?.alpha ?? Float(rank)
         let dropout = peftConfig?.loraDropout ?? 0.0
 
         let config = LoRAConfig(
@@ -673,6 +690,56 @@ final class CommunityService: ObservableObject {
         try AdapterRegistry.save(adapter: adapter, weights: remappedWeights)
 
         return adapter
+    }
+
+    private func normalizePEFTLoRAScaling(
+        _ remapped: [String: MLXArray],
+        peftConfig: PEFTAdapterConfig?,
+        defaultRank: Int,
+        defaultAlpha: Float
+    ) -> [String: MLXArray] {
+        guard let peftConfig,
+              !peftConfig.alphaPattern.isEmpty || !peftConfig.rankPattern.isEmpty else {
+            return remapped
+        }
+
+        let alphaByPath = peftConfig.alphaPattern.reduce(into: [String: Float]()) { result, entry in
+            if let remappedPath = PEFTKeyRemapper.remapModulePath(entry.key) {
+                result[remappedPath] = entry.value
+            }
+        }
+        let rankByPath = peftConfig.rankPattern.reduce(into: [String: Int]()) { result, entry in
+            if let remappedPath = PEFTKeyRemapper.remapModulePath(entry.key) {
+                result[remappedPath] = entry.value
+            }
+        }
+
+        guard !alphaByPath.isEmpty || !rankByPath.isEmpty else {
+            return remapped
+        }
+
+        let globalScale = defaultAlpha / Float(max(1, defaultRank))
+        guard globalScale.isFinite, abs(globalScale) > Float.ulpOfOne else {
+            return remapped
+        }
+
+        var normalized = remapped
+        for (key, value) in remapped where key.hasSuffix(".loraB") {
+            let path = String(key.dropLast(".loraB".count))
+            let pathAlpha = alphaByPath[path] ?? defaultAlpha
+            let pathRank = rankByPath[path]
+                ?? remapped["\(path).loraA"]?.shape.first
+                ?? defaultRank
+            let pathScale = pathAlpha / Float(max(1, pathRank))
+            let multiplier = pathScale / globalScale
+            guard multiplier.isFinite,
+                  abs(multiplier - 1.0) > 0.000_001 else {
+                continue
+            }
+            normalized[key] = value * multiplier
+        }
+
+        return normalized
     }
 
     private func saveLyCORISLoKRAdapter(
@@ -816,6 +883,20 @@ final class CommunityService: ObservableObject {
         ]
         return candidates.first {
             FileManager.default.fileExists(atPath: $0.path(percentEncoded: false))
+        }
+    }
+
+    private func preferredSideStepPEFTAdapterDirectory(in directoryURL: URL) -> URL? {
+        let candidates = [
+            directoryURL.appending(path: "best", directoryHint: .isDirectory),
+            directoryURL.appending(path: "final", directoryHint: .isDirectory),
+        ]
+        return candidates.first { candidate in
+            FileManager.default.fileExists(
+                atPath: candidate.appending(path: "adapter_config.json").path(percentEncoded: false)
+            ) && FileManager.default.fileExists(
+                atPath: candidate.appending(path: "adapter_model.safetensors").path(percentEncoded: false)
+            )
         }
     }
 
@@ -1015,6 +1096,8 @@ private struct PEFTAdapterConfig: Decodable {
     let moduleDropout: Float?
     let targetModules: [String]
     let baseModelNameOrPath: String?
+    let alphaPattern: [String: Float]
+    let rankPattern: [String: Int]
 
     var loKRLinearDim: Int {
         max(1, linearDim ?? r)
@@ -1039,6 +1122,8 @@ private struct PEFTAdapterConfig: Decodable {
         case moduleDropout      = "module_dropout"
         case targetModules      = "target_modules"
         case baseModelNameOrPath = "base_model_name_or_path"
+        case alphaPattern       = "alpha_pattern"
+        case rankPattern        = "rank_pattern"
     }
 
     init(from decoder: Decoder) throws {
@@ -1074,6 +1159,34 @@ private struct PEFTAdapterConfig: Decodable {
             targetModules = []
         }
         baseModelNameOrPath = try? c.decodeIfPresent(String.self, forKey: .baseModelNameOrPath)
+        alphaPattern = Self.decodeFloatPattern(from: c, key: .alphaPattern)
+        rankPattern = Self.decodeIntPattern(from: c, key: .rankPattern)
+    }
+
+    private static func decodeFloatPattern(
+        from container: KeyedDecodingContainer<CodingKeys>,
+        key: CodingKeys
+    ) -> [String: Float] {
+        if let values = try? container.decodeIfPresent([String: Double].self, forKey: key) {
+            return values.mapValues(Float.init)
+        }
+        if let values = try? container.decodeIfPresent([String: Int].self, forKey: key) {
+            return values.mapValues(Float.init)
+        }
+        return [:]
+    }
+
+    private static func decodeIntPattern(
+        from container: KeyedDecodingContainer<CodingKeys>,
+        key: CodingKeys
+    ) -> [String: Int] {
+        if let values = try? container.decodeIfPresent([String: Int].self, forKey: key) {
+            return values
+        }
+        if let values = try? container.decodeIfPresent([String: Double].self, forKey: key) {
+            return values.mapValues { max(1, Int($0.rounded())) }
+        }
+        return [:]
     }
 }
 

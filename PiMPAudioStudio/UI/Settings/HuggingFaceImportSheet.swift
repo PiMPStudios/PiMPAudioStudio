@@ -101,7 +101,7 @@ struct HuggingFaceImportSheet: View {
                 .buttonStyle(.bordered)
                 .disabled(isFetching)
 
-                Text("Select a native, PEFT, raw LoKR, or Side-Step run folder. Side-Step imports prefer best/ before final/.")
+                Text("Select a native, PEFT, raw LoKR, or Side-Step LoRA/LoKR run folder. Side-Step imports prefer best/ before final/.")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }

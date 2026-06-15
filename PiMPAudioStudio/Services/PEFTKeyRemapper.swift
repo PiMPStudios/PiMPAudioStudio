@@ -115,6 +115,16 @@ enum PEFTKeyRemapper {
         return layerPrefix + mappedPath + loraSuffix
     }
 
+    /// Remap a PEFT module path such as `layers.0.self_attn.q_proj` to the
+    /// PiMP Audio Studio path used by native adapter weights.
+    static func remapModulePath(_ path: String) -> String? {
+        guard let remappedA = remapKey("\(path).lora_A.weight"),
+              remappedA.hasSuffix(".loraA") else {
+            return nil
+        }
+        return String(remappedA.dropLast(".loraA".count))
+    }
+
     // MARK: - Config Inference (weights-only repos)
 
     /// Synthesised configuration inferred from weight keys and tensor shapes.
