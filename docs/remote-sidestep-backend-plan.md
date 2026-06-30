@@ -2,7 +2,11 @@
 
 This note captures the remote-training direction discussed after testing
 Side-Step directly on a remote H200/DigitalOcean GPU and locally on Apple MPS.
-It is a planning document only; no implementation has started from this note.
+It started as a planning document. As of 2026-06-30, the app already has a
+portable remote worker, RunPod launch/termination controls, remote job exports,
+and Side-Step adapter import support. The remaining work is to make Side-Step
+source jobs a first-class backend instead of routing every cloud run through
+PiMP clip-package zips.
 
 ## Decision Candidate
 
@@ -12,6 +16,40 @@ while keeping local training native Swift/MLX.
 The macOS app should remain Swift-only and App Store friendly. Remote GPU jobs
 can use Python, PyTorch, CUDA, Side-Step, and ACE-Step because they run outside
 the app boundary on user-approved cloud hardware.
+
+## Current Status
+
+### Shipped Foundation
+
+- Remote GPU exports write a provider-neutral `remote_job.json`,
+  `README_REMOTE_GPU.md`, and `run_remote_training.sh` into reviewed dataset
+  package zips.
+- The portable `remote-worker/` can be copied to a stock RunPod PyTorch pod,
+  installs its managed Python environment, downloads ACE-Step assets, converts
+  selected PiMP training bundles into Side-Step dataset JSON, preprocesses
+  tensors, trains LoRA/LoKR jobs, and writes `remote_artifacts/**`.
+- The worker has a dry-run mode that validates a clip-package job and writes the
+  exact preprocess/train commands before GPU work starts.
+- The worker repairs or rebuilds unsafe tensor caches, handles Side-Step path
+  safety, stages repeated stem filenames safely, and defaults to fp16
+  preprocessing plus bf16 training on CUDA.
+- The app has RunPod Secure Cloud controls for API-key storage, live GPU/template
+  refresh, pod launch, pod termination, and copy-paste upload/SSH/run commands.
+- Local adapter import understands Side-Step LoRA and LoKR run folders, including
+  `best/`, `final/`, checkpoints, XL Base/SFT/Turbo metadata, PEFT alpha/rank
+  patterns, and LyCORIS LoKR/DoRA weights.
+
+### Not Shipped Yet
+
+- Source-job packaging for long audio files plus Side-Step `.txt` sidecars.
+- Sidecar validation, source metadata preview, and per-field provenance in the
+  app.
+- A worker path that calls Side-Step as a source-prep/product workflow rather
+  than first converting PiMP clip bundles into a generated dataset JSON.
+- Shared tensor-cache sweeps across multiple Side-Step recipes.
+- Remote artifact pullback, log/progress polling, and one-click import from
+  `remote_artifacts/**`.
+- Remote ACE-Step captioner/transcriber or Music Flamingo fill-missing jobs.
 
 ## Why This Came Up
 
@@ -86,7 +124,8 @@ script uses `--max-duration 0` and is the full-length strategy.
 The current portable remote worker is valuable and should not be discarded.
 It already:
 
-- Uploads a reviewed PiMP package zip and portable worker folder to a stock pod.
+- Runs from a reviewed PiMP package zip and portable worker folder on a stock
+  pod.
 - Converts selected PiMP training bundles into Side-Step-style dataset JSON.
 - Runs preprocessing and training through the ACE-Step/Side-Step training source.
 - Writes `remote_artifacts/**` logs, metrics, checkpoints, final adapter, and
@@ -126,6 +165,74 @@ Add a new remote mode rather than replacing the current one immediately:
 
 The Side-Step source job is the better fit for serious cloud adapter production,
 especially on H100/H200 class GPUs.
+
+## Source Job Contract Draft
+
+The source-job path should extend the existing `remote_job.json` contract instead
+of replacing it. The provider layer still only launches pods, uploads files,
+streams status, downloads artifacts, and terminates resources. The job package
+itself describes what the worker should do.
+
+Recommended additions for a schema `1.1` source job:
+
+```json
+{
+  "pimp_audio_remote_job_version": "1.1",
+  "task": "train_lokr",
+  "backend": {
+    "id": "sidestep_source",
+    "repo": "koda-dernet/Side-Step",
+    "revision": "pinned-commit-or-tag",
+    "adapter_output_format": "sidestep"
+  },
+  "source_package": {
+    "sources_directory": "sources/TheDarkGentlemen",
+    "sidecars_directory": "sources/TheDarkGentlemen",
+    "sidecar_format": "sidestep_txt",
+    "audio_globs": ["*.wav", "*.flac", "*.mp3", "*.m4a"],
+    "require_matching_sidecars": true,
+    "max_preprocess_duration_seconds": 0,
+    "chunk_duration_seconds": 60,
+    "chunk_decay_every": null
+  },
+  "preparation": {
+    "mode": "use_existing_sidecars",
+    "merge_policy": "fill_missing",
+    "run_captioner": false,
+    "run_transcriber": false,
+    "run_music_flamingo": false
+  },
+  "sweep": {
+    "enabled": false,
+    "recipes": []
+  }
+}
+```
+
+The current clip-package fields remain valid for `backend.id =
+"pimp_clip_package"`. Source jobs add a `source_package` block and should not
+need `training_bundle_*.json` unless the user explicitly chooses the existing
+clip workflow.
+
+### Worker Dry-Run Requirements
+
+Before any preprocess or training starts, the source worker dry-run should:
+
+- Locate every source audio file and matching sidecar.
+- Parse sidecar fields without overwriting user data.
+- Report missing `caption`, `genre`, `bpm`, `key`, `signature`,
+  `is_instrumental`, and `lyrics` fields.
+- Estimate upload size, source count, sidecar count, and whether long-source
+  preprocessing is capped or full-length.
+- Write `remote_artifacts/command/dry_run.json` with exact Side-Step
+  preprocess, optional analyze, and train commands.
+- Include the pinned Side-Step revision and ACE-Step model variant in the dry-run
+  payload.
+- Exit before downloading models or allocating GPU work unless the user runs the
+  real command.
+
+This gives us the same cheap confidence loop the current clip worker has, but
+for the workflow that actually produced the strongest adapters.
 
 ## Recipe Sweep Idea
 
@@ -332,7 +439,8 @@ model, max preprocess duration, and output paths.
 
 ## Open Questions
 
-- Which Side-Step commit should be pinned for the first supported backend?
+- Which Side-Step commit should be pinned for the first supported backend? This
+  should be decided before source-job execution ships, not after.
 - Should PiMP maintain a small compatibility wrapper around Side-Step CLI output,
   or call Side-Step as a pure subprocess and parse artifacts afterward?
 - Should long-source jobs package raw audio into the zip, upload a folder via
@@ -357,20 +465,46 @@ model, max preprocess duration, and output paths.
 - Best loss is not the final quality metric; audition snapshots and A/B imports
   remain important.
 
-## Initial Implementation Milestones
+## Implementation Roadmap
+
+### Done
 
 1. Document and preserve the manual Side-Step command recipes that worked.
-2. Add a new remote job type for Side-Step source jobs.
-3. Package source audio plus sidecars without forcing clip expansion.
-4. Add source-sidecar validation for caption, genre, BPM, key, time signature,
+2. Ship remote clip-package exports with provider-neutral `remote_job.json`.
+3. Ship a portable worker that can run PiMP clip packages on stock RunPod CUDA
+   pods.
+4. Ship RunPod launch/termination and manual upload/SSH/run handoff.
+5. Ship Side-Step LoRA/LoKR adapter import for run folders and checkpoints.
+
+### Next Slice
+
+1. Add a source-job manifest shape to the Swift remote job model while keeping
+   current clip-package jobs backward compatible.
+2. Add a source-job exporter that packages long audio files plus Side-Step
+   `.txt` sidecars without forcing clip expansion.
+3. Add source-sidecar validation for caption, genre, BPM, key, time signature,
    instrumental flag, structured lyrics, and per-field provenance.
-5. Teach the remote worker to install/use a pinned Side-Step checkout directly.
-6. Add a dry-run command that prints the exact Side-Step preprocess/analyze/train
-   commands before starting.
-7. Add optional remote ACE-Step captioner/transcriber and Music Flamingo
+4. Teach `pimp-remote-worker train <job> --dry-run` to recognize `backend.id =
+   "sidestep_source"`, parse sources/sidecars, and write exact Side-Step
+   preprocess/analyze/train commands without downloading models.
+
+### First Executable Source-Job Milestone
+
+1. Pin the supported Side-Step revision.
+2. Make the worker install/update that pinned revision.
+3. Run Side-Step preprocess once into a named tensor cache.
+4. Train one LoKR DoRA recipe against the tensor cache.
+5. Copy `best/`, `final/`, checkpoints, configs, logs, Side-Step revision, and
+   command scripts into `remote_artifacts/**`.
+6. Import the resulting run folder through the existing Side-Step adapter import
+   path.
+
+### Later
+
+1. Add optional remote ACE-Step captioner/transcriber and Music Flamingo
    source-prep steps with fill-missing merge policy.
-8. Add tensor-cache reuse and multi-recipe sweeps.
-9. Add artifact pullback/import for Side-Step `best/`, `final/`, checkpoints,
-   configs, logs, and commit metadata.
-10. Add UI status for preprocess, analyze, per-recipe training, checkpoint
+2. Add tensor-cache reuse across multi-recipe sweeps.
+3. Add app-side artifact pullback, progress polling, and one-click import from
+   `remote_artifacts/**`.
+4. Add UI status for preprocess, analyze, per-recipe training, checkpoint
    availability, and final import.
