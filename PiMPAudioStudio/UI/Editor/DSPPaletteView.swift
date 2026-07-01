@@ -72,6 +72,7 @@ struct DSPPaletteView: View {
     private func effectButton(_ effect: DSPEffect) -> some View {
         let isExpanded = state.expandedEffect == effect
         let isDisabled = effect.requiresSelection && !state.hasSelection
+        let accent = effect.category.accentColor
 
         return Button {
             if effect.requiresParameters {
@@ -83,32 +84,42 @@ struct DSPPaletteView: View {
                 showConfirmation(effect)
             }
         } label: {
-            ZStack {
+            VStack(spacing: 3) {
+                ZStack {
+                    Image(systemName: effect.iconName)
+                        .font(.system(size: 13, weight: .medium))
+                        .opacity(showingConfirmation == effect ? 0 : 1)
+
+                    if showingConfirmation == effect {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(.green)
+                            .transition(.scale.combined(with: .opacity))
+                    }
+                }
                 Text(effect.displayName)
-                    .font(.system(size: 10, weight: isExpanded ? .semibold : .regular))
+                    .font(.system(size: 9.5, weight: isExpanded ? .semibold : .regular))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 6)
-                    .padding(.horizontal, 4)
-
-                if showingConfirmation == effect {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(.green)
-                }
             }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
+            .padding(.horizontal, 4)
         }
         .buttonStyle(.bordered)
-        .tint(isExpanded ? .blue : .gray)
+        .tint(isExpanded ? accent : .gray)
         .disabled(isDisabled)
     }
 
     private func showConfirmation(_ effect: DSPEffect) {
-        showingConfirmation = effect
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+            showingConfirmation = effect
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
             if showingConfirmation == effect {
-                showingConfirmation = nil
+                withAnimation(.easeOut(duration: 0.25)) {
+                    showingConfirmation = nil
+                }
             }
         }
     }
@@ -117,12 +128,16 @@ struct DSPPaletteView: View {
 
     @ViewBuilder
     private func expandedPanel(for effect: DSPEffect) -> some View {
+        let accent = effect.category.accentColor
         VStack(spacing: 12) {
             HStack {
+                Image(systemName: effect.iconName)
+                    .font(.caption)
+                    .foregroundStyle(accent)
                 Text(effect.displayName)
                     .font(.caption)
                     .fontWeight(.semibold)
-                    .foregroundStyle(.blue)
+                    .foregroundStyle(accent)
                 Spacer()
                 Button {
                     withAnimation { state.expandedEffect = nil }
@@ -153,12 +168,13 @@ struct DSPPaletteView: View {
             applySection(for: effect)
         }
         .padding(12)
-        .background(Color(red: 0.1, green: 0.1, blue: 0.15))
-        .cornerRadius(8)
+        .background(accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(accent.opacity(0.25), lineWidth: 1))
     }
 
     private func applySection(for effect: DSPEffect) -> some View {
-        VStack(spacing: 8) {
+        let accent = effect.category.accentColor
+        return VStack(spacing: 8) {
             HStack {
                 Text("Apply to:")
                     .font(.caption)
@@ -167,9 +183,8 @@ struct DSPPaletteView: View {
                     .font(.caption)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
-                    .background(Color(white: 0.2))
-                    .cornerRadius(4)
-                    .foregroundStyle(.blue)
+                    .background(.secondary.opacity(0.15), in: RoundedRectangle(cornerRadius: 4))
+                    .foregroundStyle(.primary)
                 Spacer()
             }
 
@@ -190,7 +205,7 @@ struct DSPPaletteView: View {
                     .padding(.vertical, 8)
             }
             .buttonStyle(.borderedProminent)
-            .tint(.blue)
+            .tint(accent)
         }
     }
 

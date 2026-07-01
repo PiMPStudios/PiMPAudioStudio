@@ -53,8 +53,7 @@ struct EQControlView: View {
             }
         }
         .padding(8)
-        .background(Color(white: 0.12))
-        .cornerRadius(6)
+        .background(DSPEffectCategory.spectral.accentColor.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
     }
 
     private func formatFrequency(_ freq: Float) -> String {

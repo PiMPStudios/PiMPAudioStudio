@@ -41,7 +41,6 @@ class EditorState: ObservableObject {
     @Published var reverbParameters: ReverbParameters = .default
     @Published var selectedReverbPreset: ReverbPreset? = .hall
     @Published var audioBuffer: AudioBuffer?
-    @Published var dspConfirmation: DSPEffect?
     @Published var timeStretchParameters: TimeStretchParameters = .default
     @Published var pitchShiftParameters: PitchShiftParameters = .default
 

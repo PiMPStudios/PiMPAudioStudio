@@ -28,8 +28,10 @@ struct PitchShiftControlView: View {
                         .font(.caption).monospacedDigit()
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(Color(white: 0.15))
-                        .cornerRadius(4)
+                        .background(
+                            DSPEffectCategory.transform.accentColor.opacity(0.12),
+                            in: RoundedRectangle(cornerRadius: 4)
+                        )
                         .onTapGesture(count: 2) { beginEdit() }
                 }
             }

@@ -167,10 +167,12 @@ struct EditorView: View {
                         VStack(alignment: .leading) {
                             Text("Low Cut: \(Int(state.lowCutHz)) Hz").font(.caption)
                             Slider(value: $state.lowCutHz, in: 20...10000)
+                                .tint(.orange)
                         }
                         VStack(alignment: .leading) {
                             Text("High Cut: \(Int(state.highCutHz)) Hz").font(.caption)
                             Slider(value: $state.highCutHz, in: 100...20000)
+                                .tint(.orange)
                         }
                     }
                 }

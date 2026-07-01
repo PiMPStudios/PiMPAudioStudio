@@ -21,14 +21,14 @@ struct EditorPromptArea: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(state.regionPromptLabel)
-                    .font(.caption).foregroundStyle(.blue)
+                    .font(.caption).foregroundStyle(.orange)
                 TextEditor(text: $state.regionPrompt)
                     .font(.body)
                     .scrollContentBackground(.hidden)
                     .padding(8)
-                    .background(Color.blue.opacity(0.05))
+                    .background(Color.orange.opacity(0.05))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.blue.opacity(0.4), lineWidth: 1))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.orange.opacity(0.4), lineWidth: 1))
                     .frame(minHeight: 60)
             }
         }

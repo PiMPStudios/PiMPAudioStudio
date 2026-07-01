@@ -45,7 +45,7 @@ struct EditorControlsBar: View {
                     Slider(value: $state.guidanceScale, in: 1...15) { _ in
                         state.clearPresetIfManual()
                     }
-                    .tint(.blue)
+                    .tint(.orange)
                 }
             }
 
