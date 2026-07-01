@@ -8,6 +8,8 @@ All notable changes to PiMP Audio Studio are documented here.
 
 ### Added
 
+- **User and developer documentation hubs are started** — added `docs/user/` with Local CLI Access, Remote GPU Training, Diagnostics and Logs, and Troubleshooting guides, plus `docs/developer/` notes for bundling Markdown help into the app for public distribution.
+- **User documentation now covers setup, training, adapters, reports, and release packaging** — added first-launch/model setup, dataset/training workflow, adapter testing, bug-report checklist, and standalone release/packaging docs so the repo has a fuller source for future in-app Help.
 - **Remote Side-Step backend plan is documented** — added a planning note for making Side-Step the first-class remote CUDA training backend while keeping local training Swift/MLX-only, including the observed 32-sample tensor-cache speedup, chunk-duration behavior, Gemini/ACE-Step captioner/Music Flamingo sidecar workflow, recipe-sweep idea, and remote worker boundaries.
 - **History select mode can delete selected takes** — selecting one or more History rows now exposes a destructive Delete action that removes only the selected audio files and trace sidecars while leaving the rest of History intact.
 - **Remote GPU now has a RunPod control-plane starter** — the Remote GPU workspace can save a RunPod API token in Keychain, link new users to RunPod account setup, list current pods, refresh live GPU type details with VRAM, live stock status, available GPU counts, and pricing, launch a pod from a template or image only after an explicit billable-resource confirmation, terminate pods, and copy SSH/upload handoff commands for the most recently exported remote job zip.

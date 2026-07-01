@@ -123,6 +123,8 @@ PiMPAudioStudio/                 App source
 Spikes/
   MCPServerSDKSpike/      Isolated Swift MCP SDK server transport spike
 docs/
+  user/                       User-facing help and troubleshooting docs
+  developer/                  Developer docs for packaging and in-app help
   training-datasets.md      Local dataset package build/import workflow
   dataset-annotation-roadmap.md
                              Future annotation backends and dataset editor ideas
