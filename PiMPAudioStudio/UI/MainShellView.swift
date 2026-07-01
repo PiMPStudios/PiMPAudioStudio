@@ -141,6 +141,7 @@ struct MainShellView: View {
                 LabeledContent("Seed") {
                     TextField("Random", text: $generationParameters.seedText)
                         .multilineTextAlignment(.trailing)
+                        .lineLimit(1)
                 }
                 LabeledContent("Guidance") {
                     TextField("7.5", value: $generationParameters.guidanceScale, format: .number.precision(.fractionLength(1)))

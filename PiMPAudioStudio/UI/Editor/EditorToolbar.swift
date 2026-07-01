@@ -45,6 +45,7 @@ struct EditorToolbar: View {
                     Text("Repaint").tag(EditMode.repaint)
                 }
                 .pickerStyle(.segmented)
+                .labelsHidden()
                 .frame(width: 160)
 
                 Divider().frame(height: 20)
