@@ -117,6 +117,7 @@
 		EA1DB745567420036A4D5D03 /* APIKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3747A32ED0DA7C80736A0625 /* APIKeyStore.swift */; };
 		EA1E6832453976AD680F7B96 /* PiMPAudioCommandFacade+Resources.swift in Sources */ = {isa = PBXBuildFile; fileRef = 519F17EA3A81614AFA7C1649 /* PiMPAudioCommandFacade+Resources.swift */; };
 		F08B1A427042D36F1F029C28 /* EditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3D980E94EAEFD25B9B9FE25 /* EditorView.swift */; };
+		F3965955A26D543BF964A9EB /* DSPEffectPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA6CFDF5DC1AD54EF27BA05D /* DSPEffectPresentation.swift */; };
 		F60961C7902C664688989A30 /* RunPodServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0C92036F078AF469DFB2533 /* RunPodServiceTests.swift */; };
 		F68777438E3B033AF10A1E46 /* ACEStepGenerationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23E3669212635DA76F1F31BB /* ACEStepGenerationService.swift */; };
 		F9F62614EF9238A108984C92 /* AudioFileLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1922ED80936C6D49A9DBE3AF /* AudioFileLoader.swift */; };
@@ -226,6 +227,7 @@
 		B3D980E94EAEFD25B9B9FE25 /* EditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorView.swift; sourceTree = "<group>"; };
 		B4F7666A5DAAC6A25C563792 /* HistoryListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryListView.swift; sourceTree = "<group>"; };
 		B5F6F3673B806F9E1BB30F8D /* AudioBufferConverter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioBufferConverter.swift; sourceTree = "<group>"; };
+		BA6CFDF5DC1AD54EF27BA05D /* DSPEffectPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DSPEffectPresentation.swift; sourceTree = "<group>"; };
 		BABE791CEF9D675C31B253AD /* IntentRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentRouter.swift; sourceTree = "<group>"; };
 		BDAC58AA87C490C06725C8E0 /* TrainingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingService.swift; sourceTree = "<group>"; };
 		C2586CD181CDD97D6353D448 /* LocalDatasetEnrichmentService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalDatasetEnrichmentService.swift; sourceTree = "<group>"; };
@@ -420,6 +422,7 @@
 		8E0BB73B0062712B09D0E316 /* Editor */ = {
 			isa = PBXGroup;
 			children = (
+				BA6CFDF5DC1AD54EF27BA05D /* DSPEffectPresentation.swift */,
 				07F5FC8C81BD5A3CE53323A6 /* DSPPaletteView.swift */,
 				A76327519B864619ABEF9DD6 /* EditorControlsBar.swift */,
 				B15E2041665BE5622151912D /* EditorPromptArea.swift */,
@@ -639,6 +642,7 @@
 				B3CEBFB093C63C4ED5A84A00 /* CommunityBrowserView.swift in Sources */,
 				48C1D4CCBB95609618A4C90A /* CommunityService.swift in Sources */,
 				A8972C66FD839E9B148C733A /* CoverSongCoordinator.swift in Sources */,
+				F3965955A26D543BF964A9EB /* DSPEffectPresentation.swift in Sources */,
 				80E9ECE6088D9C10C861C072 /* DSPPaletteView.swift in Sources */,
 				02E87C9D466A616553A78B5F /* DSPParameters.swift in Sources */,
 				6C58B852AD2E5FF841A34E0B /* DSPProcessor.swift in Sources */,
