@@ -1,98 +1,128 @@
 # PiMP Audio Studio
 
-**AI-powered music generation for macOS**, built natively with Swift, SwiftUI, and [MLX](https://github.com/ml-explore/mlx-swift).
+PiMP Audio Studio is a native macOS music-generation, editing, dataset, and
+adapter-training app built with Swift, SwiftUI, and MLX.
 
-PiMP Audio Studio runs diffusion-based audio models entirely on-device using Apple Silicon GPU acceleration. No cloud, no subscriptions, no internet required after initial model download.
+The default app workflow runs locally on Apple Silicon. Optional remote GPU
+training can be launched on user-approved cloud hardware such as RunPod, but the
+macOS app itself stays Swift/MLX and App Store friendly.
 
----
-
-## Features
+## Current Capabilities
 
 ### Generation
 
-- **Text-to-Music** — Describe what you want, get a full audio clip. Powered by AceStep DiT (flow-matching diffusion transformer)
-- **Sound Effects** — Stable Audio Open pipeline components for short-form SFX generation
-- **Dual Pipeline** — Automatic routing between music and SFX models based on prompt intent
-- **Intelligent Prompting** — IntentRouter classifies prompts; PromptEnhancer expands terse ideas into detailed generation prompts
-- **Lyric Writing** — Local Llama 3.2 3B Instruct and API-based (Claude, OpenAI, Gemini, xAI) lyric generation with structured, duration-aware output
-- **Generation Analyzer** — Live backend trace, saved `.trace.json` sidecars, two-run compare, A/B playback, and edit handoff for judging quality changes
+- Text-to-music generation with ACE-Step music models.
+- ACE-Step v1.5 XL model choices: XL Base, XL SFT, and XL Turbo.
+- ACE-Step LM support for cover/timbre workflows with 0.6B, 1.7B, and 4B model
+  options.
+- Stable Audio Open SFX pipeline for short-form sound effects.
+- Prompt routing and prompt enhancement for music/SFX intent.
+- Local/API lyric writing through the app's intelligence layer.
+- Generation Analyzer with live stage tracing, `.trace.json` sidecars, saved
+  trace review, and A/B trace comparison.
 
-### Audio Editing
+### Editing
 
-- **AI Inpaint/Repaint** — Select a region, describe what should replace it. VAE encode, mask latents, denoise, blend
-- **DSP Processing** — Trim, fade in/out, normalize, 3-band parametric EQ, reverb
-- **Time Stretch** — WSOLA algorithm with LPC formant preservation for natural-sounding tempo changes
-- **Pitch Shift** — Real-time pitch shifting with configurable quality/latency tradeoff
+- Latent inpaint/repaint for selected audio regions.
+- DSP tools: trim, fades, normalize, EQ, reverb, time stretch, and pitch shift.
+- WSOLA/LPC-backed time and pitch processing for higher-quality edits.
+- History playback, trace-backed review, listening notes, preferred takes, and
+  selected-take deletion.
 
-### LoRA Fine-Tuning
+### Datasets
 
-- **On-Device Training** — Flow-matching training loop with AdamW optimizer, cosine LR scheduling, gradient accumulation
-- **Configurable Targets** — Self-attention, cross-attention, MLP injection with per-layer control
-- **Checkpoint/Resume** — Save and restore training state mid-session
-- **Training Dataset Packages** — Slice local files into package manifests, export remote-ready zips, and import compatible JSON bundles with vocal transcripts
-- **Adapter Management** — Rename, delete, export, merge (weighted interpolation of two adapters)
-- **Community Sharing** — Browse and download community adapters from a curated manifest; import any adapter from HuggingFace
-- **Multi-Adapter Stacking** — Apply up to 3 LoRA adapters simultaneously with real-time strength sliders (Inject-All architecture)
+- Build training datasets from local audio files.
+- Custom dataset names, seeded/evenly-spread sampling, and up to 1,000 clips per
+  local dataset.
+- Dataset review workspace with caption, lyric, BPM, key, language, time
+  signature, notes, approval status, and package validation.
+- Native enrichment with Swift/MLX Demucs stems, Qwen3-ASR vocal transcription,
+  BPM/key analysis, and provenance metadata.
+- ACE-compatible sidecar import/export, including LRC timestamp cleanup.
+- Full-mix, vocal, and instrumental training bundles.
 
-### Model Management
+### Adapter Training
 
-- **First-Launch Setup** — Guided download of base models with SHA-256 verification
-- **Multiple Models** — Add/remove models, switch active model at runtime without restart
-- **Deferred Downloads** — SFX pipeline downloads only when first needed
+- Local Swift/MLX LoRA and LoKR training.
+- Narrow and Wide recipes, dataset-size-aware recommendations, deterministic
+  seeds, validation loss, checkpoints, optimizer-state resume, and metrics logs.
+- LoKR DoRA support.
+- Training completion handoff to fixed-seed adapter audition snapshots.
+- Adapter gain controls for testing subtle or under-scaled adapters.
 
----
+### Adapter Management
 
-## Architecture
+- Import native PiMP adapters, PEFT LoRA folders, compatible LyCORIS/LoKR
+  checkpoints, and Side-Step LoRA/LoKR run folders.
+- Preserve XL Base/SFT/Turbo compatibility metadata where available.
+- Export, rename, delete, select, and audition adapters.
+- Adapter effect diagnostics through verbose audio logs.
+
+### Remote GPU Training
+
+- Create remote job zips from reviewed dataset packages.
+- Store RunPod API keys in macOS Keychain.
+- Refresh RunPod GPU types, pricing/stock details, and official templates.
+- Launch and terminate RunPod Secure Cloud pods after explicit confirmation.
+- Copy upload, SSH, and extract/run commands.
+- Portable `remote-worker/` package for stock CUDA pods.
+- Worker output contract: `remote_artifacts/logs.jsonl`,
+  `metrics.jsonl`, `result.json`, checkpoints, final adapter, and command
+  scripts.
+
+Current remote workflow note: pod launch and worker packaging are present, but
+upload/run/artifact download/import are still partly manual. The next planned
+remote upgrade is first-class Side-Step source jobs for long source audio plus
+Side-Step `.txt` sidecars.
+
+### MCP And Automation
+
+- Localhost-only MCP endpoint for local agents and scripts.
+- SDK-backed Streamable HTTP server with guarded mutating actions.
+- Tools/resources for models, history, traces, compare, editor operations,
+  generation, training inspection/control, remote GPU preflight/status, and
+  workflow prompts.
+- Pollable operation records for long-running generation and editor work.
+
+### Diagnostics
+
+- Verbose audio diagnostics mirror `[AUDIODIAG]` lines to timestamped files in
+  the app's sandboxed Diagnostics folder.
+- Generation, adapter-effect, dataset, training, and remote worker breadcrumbs
+  are designed to make failures inspectable after the run.
+
+## Model Setup
+
+Models are managed in:
 
 ```text
-PiMPAudioStudio (macOS target)
-├── UI/              SwiftUI views (Generate, Editor, Settings, Training)
-├── Services/        GenerationService, TrainingService, CommunityService, etc.
-├── DSP/             WSOLA, LPC, EQ, resampler implementations
-└── Models/          App-level data types
-
-PiMPAudioCore (Swift Package)
-├── Inference/
-│   ├── DiT/         Diffusion Transformer (AceStep)
-│   ├── VAE/         Variational Autoencoder (encode/decode audio latents)
-│   ├── Diffusion/   Sampler, timestep scheduling
-│   ├── Conditioning/ Qwen3 text encoder, lyric/timbre encoders
-│   ├── StableAudio/ Sound FX pipeline components (T5/projection, SFX DiT, SFX VAE)
-│   ├── Pipeline/    MusicPipeline orchestration
-│   ├── Editor/      Inpaint coordinator, mask builder, latent blender
-│   └── Weights/     SafeTensors loading, name mapping, weight conversion
-├── LoRA/            LoRALinear, LoRAInjector, LoRATrainer, CosineScheduler
-├── Community/       CommunityAdapter, AdapterSource, manifest types
-├── LLM/             LLMActor (local Llama inference for prompts/lyrics)
-└── ModelRegistry/   ModelSpec, DownloadClient, registry management
+Settings -> Models
 ```
 
----
+Sandboxed model storage:
 
-## Tech Stack
+```text
+~/Library/Containers/com.pimpstudios.PiMPAudioStudio/Data/Library/Application Support/PiMP Audio Studio/models/
+```
 
-| Layer | Technology |
-|-------|-----------|
-| UI | SwiftUI, Swift Charts |
-| ML Runtime | [MLX Swift](https://github.com/ml-explore/mlx-swift) (Apple Silicon GPU) |
-| Tokenization | [swift-transformers](https://github.com/huggingface/swift-transformers) |
-| Audio I/O | AVFoundation, AVAudioEngine |
-| DSP | Custom WSOLA + LPC (pure Swift) |
-| Networking | URLSession (model downloads, community manifests) |
-| Persistence | FileManager + JSON + SafeTensors |
+Some downloads require a Hugging Face token and accepted model license. Tokens
+are stored in macOS Keychain and are not written into dataset packages, remote
+job zips, traces, or logs.
 
----
+Large/gated model weights should not be bundled into public `.app` builds. The
+app should guide users through downloading them after install.
 
 ## Requirements
 
-- macOS 15.0+ (Sequoia)
-- Apple Silicon (M1 or later) — required for MLX GPU acceleration
-- Xcode 16+ to build
-- ~8 GB RAM minimum (16 GB recommended for generation + training)
+- macOS 15.0 or newer.
+- Apple Silicon Mac for local MLX generation/training.
+- Xcode 16 or newer to build from source.
+- 16 GB RAM recommended for generation; more is strongly preferred for local XL
+  adapter training.
+- Network access for initial model downloads, optional provider CLIs, optional
+  Hugging Face imports, and optional remote GPU workflows.
 
----
-
-## Building
+## Building From Source
 
 ```bash
 git clone https://github.com/PiMPStudios/PiMPAudioStudio.git
@@ -100,65 +130,88 @@ cd PiMPAudioStudio
 open PiMPAudioStudio.xcodeproj
 ```
 
-Build and run with Xcode. The PiMPAudioCore Swift package resolves automatically.
+Build and run the `PiMPAudioStudio` scheme in Xcode.
 
-On first launch, the app guides you through downloading the base model weights (~2-4 GB depending on selected models).
+The app target depends on the local `PiMPAudioCore` Swift package plus external
+Swift packages declared in `project.yml` / the Xcode project.
 
----
+## Documentation
 
-## Project Structure
+User-facing docs live in:
 
 ```text
-PiMPAudioStudio.xcodeproj        Xcode project (macOS app target)
-PiMPAudioCore/                Swift Package (inference engine, LoRA, registry)
-  Package.swift           SPM manifest (mlx-swift, swift-transformers)
-  Sources/PiMPAudioCore/      Library source
-  Tests/PiMPAudioCoreTests/   Unit tests (Metal-dependent tests require GPU)
-PiMPAudioStudio/                 App source
-  PiMPAudioStudioApp.swift       @main entry point, environment object wiring
-  UI/                     SwiftUI views organized by feature
-  Services/               Business logic and orchestration
-  DSP/                    Signal processing implementations
-  Models/                 App-level data types
-Spikes/
-  MCPServerSDKSpike/      Isolated Swift MCP SDK server transport spike
-docs/
-  user/                       User-facing help and troubleshooting docs
-  developer/                  Developer docs for packaging and in-app help
-  training-datasets.md      Local dataset package build/import workflow
-  dataset-annotation-roadmap.md
-                             Future annotation backends and dataset editor ideas
-  mcp-local.md              Local MCP endpoint usage and curl smoke examples
-  mcp-standards-roadmap.md  Standards-first MCP + Swift 6 migration direction
-  superpowers/specs/      Design specifications per phase
-  superpowers/plans/      Implementation plans per phase
-CHANGELOG.md              Detailed changelog with road map
+docs/user/
 ```
 
----
+Start here:
 
-## Road Map
+- `docs/user/model-setup.md`
+- `docs/user/datasets-and-training.md`
+- `docs/user/adapters.md`
+- `docs/user/remote-gpu-training.md`
+- `docs/user/local-cli-access.md`
+- `docs/user/diagnostics-and-logs.md`
+- `docs/user/troubleshooting.md`
+- `docs/user/bug-report-checklist.md`
 
-| Phase | Status | Description |
-|-------|--------|-------------|
-| 1 | ✅ | Foundation — project setup, ModelRegistry, DownloadClient |
-| 2 | ✅ | Core Inference — VAE, DiT, Diffusion Sampler, MusicPipeline |
-| 3 | ✅ | Conditioning — Qwen3 text encoder, lyric/timbre encoders |
-| 4a | ✅ | Generation Flow — full generation UI, WAV output, history |
-| 4b | ✅ | Intelligence — IntentRouter, PromptEnhancer, LyricWriters |
-| 5 | ✅ | Sound FX — Stable Audio Open, dual-pipeline routing |
-| 6 | ✅ | AI Editor — inpaint/repaint via masked latent diffusion |
-| 7 | ✅ | DSP Editor — trim, fade, normalize, EQ, reverb |
-| 8a | ✅ | Time Stretch & Pitch Shift — AVAudioUnit + quality zones |
-| 8b | ✅ | Advanced DSP — WSOLA, LPC formant preservation |
-| 9a | ✅ | Model Management — SHA-256 verification, registry split |
-| 9b | ✅ | Model Management UI — settings, add/remove, lazy swap |
-| 10a | ✅ | LoRA Fine-Tuning — trainer, injector, adapter picker |
-| 10b | ✅ | Advanced LoRA — scheduler, checkpoints, merge, export |
-| 10c | ✅ | Community Sharing + Multi-Adapter Stacking |
-| 11 | In Progress | Local MCP — localhost-only agent control surface for models, history, traces, compare, safe app actions, and standards-first SDK hardening |
+Developer and packaging notes live in:
 
----
+```text
+docs/developer/
+```
+
+The public release plan is to bundle selected user docs into an in-app Help
+window so users do not need repository access.
+
+## Project Layout
+
+```text
+PiMPAudioStudio.xcodeproj     Xcode project
+project.yml                   XcodeGen project source
+PiMPAudioStudio/              macOS app target
+  UI/                         SwiftUI screens and controls
+  Services/                   App orchestration, model/download/training/MCP services
+  DSP/                        Editor DSP helpers
+  Models/                     App-level model types
+PiMPAudioCore/                Swift package for inference, training, registry, DSP
+  Sources/PiMPAudioCore/
+  Tests/PiMPAudioCoreTests/
+remote-worker/                Portable CUDA/Side-Step worker for cloud pods
+Spikes/                       Isolated experiments
+docs/                         User docs, developer docs, plans, roadmaps, debug notes
+CHANGELOG.md                  Project changelog
+```
+
+## Current Roadmap
+
+Near-term work called out by the docs:
+
+1. Finish end-to-end remote GPU lifecycle: upload, run, monitor, download
+   artifacts, and one-click adapter import.
+2. Add Remote Side-Step source jobs for long audio files plus rich Side-Step
+   sidecars, pinned Side-Step execution, tensor-cache reuse, and recipe sweeps.
+3. Bundle user docs into the app and build the in-app Help window.
+4. Add repeatable release packaging: version bump, signed/notarized app, DMG,
+   smoke tests, and sandbox entitlement audit.
+5. Continue MCP polish around long-running task progress, cancellation, and
+   guarded destructive actions.
+6. Continue dataset/training refinements such as saved training presets,
+   checkpoint browsers, gradient sensitivity estimation, and optional remote
+   ACE-Step captioner/transcriber jobs.
+7. Explore larger creative directions such as live adapter auditioning,
+   automation curves, prompt A/B blends, DAW/export workflows, GGUF/C++ runtime
+   evaluation, and the Generative Stem Editor concept.
+
+## Architecture Boundaries
+
+- The macOS app remains native Swift/SwiftUI/MLX.
+- No Python runtime is added to the local app.
+- Remote workers may use Python, PyTorch, CUDA, ACE-Step, Side-Step, PEFT, and
+  LyCORIS because they run outside the app on user-approved cloud hardware.
+- API keys and provider tokens stay in Keychain or user-controlled environment
+  variables; they do not belong in job zips.
+- External projects are references for behavior and formats unless their license
+  and the implementation plan explicitly allow code reuse.
 
 ## License
 
@@ -166,4 +219,4 @@ Private repository. All rights reserved.
 
 ---
 
-*Built by [PiMP Studios](https://github.com/PiMPStudios)*
+Built by [PiMP Studios](https://github.com/PiMPStudios).
