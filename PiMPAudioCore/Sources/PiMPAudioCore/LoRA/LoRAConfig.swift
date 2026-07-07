@@ -490,19 +490,21 @@ public extension LoRAAdapter {
         return adapterVariant == activeVariant
     }
 
-    private static func canonicalACEVariant(_ id: String, spec: ModelSpec? = nil) -> String? {
-        let values = [
-            id,
-            spec?.id,
-            spec?.displayName,
-            spec?.huggingFaceRepo,
-            spec?.variantFamily,
-        ]
-        let haystack = values
-            .compactMap { $0?.lowercased() }
-            .joined(separator: " ")
+    /// Returns true when a base model identifier or spec describes an ACE-Step XL DiT.
+    ///
+    /// This intentionally uses token boundaries instead of raw substring matching so
+    /// unrelated names like "flexxl" do not look like XL model variants.
+    static func isACEBaseModelXL(_ id: String, spec: ModelSpec? = nil) -> Bool {
+        let tokens = Self.variantTokens(id, spec: spec)
+        let mentionsACE = tokens.contains("acestep") || (tokens.contains("ace") && tokens.contains("step"))
+        return mentionsACE && tokens.contains("xl")
+    }
 
-        if haystack.contains("xl") || haystack.contains("ace-step-1.5-xl") {
+    private static func canonicalACEVariant(_ id: String, spec: ModelSpec? = nil) -> String? {
+        let tokens = Self.variantTokens(id, spec: spec)
+        let haystack = tokens.joined(separator: " ")
+
+        if isACEBaseModelXL(id, spec: spec) {
             if haystack.contains("turbo") {
                 return "ace-step-dit-xl-turbo"
             }
@@ -524,5 +526,22 @@ public extension LoRAAdapter {
             return "ace-step-dit-base"
         }
         return nil
+    }
+
+    private static func variantTokens(_ id: String, spec: ModelSpec? = nil) -> Set<String> {
+        let values = [
+            id,
+            spec?.id,
+            spec?.displayName,
+            spec?.huggingFaceRepo,
+            spec?.variantFamily,
+        ]
+
+        return Set(values
+            .compactMap { $0?.lowercased() }
+            .flatMap { value in
+                value.split { !$0.isLetter && !$0.isNumber }
+                    .map(String.init)
+            })
     }
 }

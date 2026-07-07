@@ -3,6 +3,7 @@ import SwiftUI
 struct PitchShiftControlView: View {
     @Binding var parameters: PitchShiftParameters
     @State private var isEditingValue = false
+    @State private var isDraggingSlider = false
     @State private var editText = ""
 
     private let snapPoints: [Float] = [-1200, -700, -500, 0, 500, 700, 1200]
@@ -36,9 +37,15 @@ struct PitchShiftControlView: View {
                 }
             }
 
-            Slider(value: $parameters.pitch, in: -2400...2400)
+            Slider(value: $parameters.pitch, in: -2400...2400, onEditingChanged: { isEditing in
+                isDraggingSlider = isEditing
+                if !isEditing {
+                    parameters.pitch = snapped(parameters.pitch)
+                }
+            })
                 .tint(qualityColor)
                 .onChange(of: parameters.pitch) { _, newValue in
+                    guard !isDraggingSlider else { return }
                     parameters.pitch = snapped(newValue)
                 }
 

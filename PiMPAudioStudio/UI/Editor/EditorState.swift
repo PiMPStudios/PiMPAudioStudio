@@ -26,6 +26,7 @@ class EditorState: ObservableObject {
 
     @Published var progress: InpaintProgress?
     @Published var isProcessing = false
+    @Published var operationErrorMessage: String?
 
     @Published var canUndo = false
     @Published var canRedo = false
@@ -51,6 +52,8 @@ class EditorState: ObservableObject {
     @Published var previewCurrentTime: TimeInterval = 0
     private var previewPlayer: AVAudioPlayer?
     private var previewTimer: Timer?
+    private var previewFileURL: URL?
+    private var peakComputationTask: Task<Void, Never>?
 
     // DSP undo/redo — stores raw AudioBuffer snapshots.
     // AI inpainting also pushes here (via saveUndoSnapshot) so both paths
@@ -59,6 +62,14 @@ class EditorState: ObservableObject {
     private var redoStack: [AudioBuffer] = []
     private let maxHistorySnapshots = 10
     private let maxHistoryBytes = 512 * 1024 * 1024
+
+    deinit {
+        previewTimer?.invalidate()
+        peakComputationTask?.cancel()
+        if let previewFileURL {
+            try? FileManager.default.removeItem(at: previewFileURL)
+        }
+    }
 
     var hasSelection: Bool {
         selectionEnd > selectionStart
@@ -136,7 +147,7 @@ class EditorState: ObservableObject {
             invalidatePreviewPlayer()
             audioBuffer = result
             duration = result.duration
-            waveformPeaks = computePeaks(from: result)
+            refreshWaveformPeaks(from: result)
 
             if effect == .trimToSelection || effect == .deleteSelection || effect == .timeStretch {
                 selectionStart = 0
@@ -144,6 +155,7 @@ class EditorState: ObservableObject {
             }
         } catch {
             // Effect failed — buffer unchanged, undo stack not modified.
+            operationErrorMessage = Self.errorMessage(for: error)
         }
     }
 
@@ -167,7 +179,7 @@ class EditorState: ObservableObject {
         invalidatePreviewPlayer()
         audioBuffer = previous
         duration = previous.duration
-        waveformPeaks = computePeaks(from: previous)
+        refreshWaveformPeaks(from: previous)
         canUndo = !undoStack.isEmpty
         canRedo = !redoStack.isEmpty
     }
@@ -180,7 +192,7 @@ class EditorState: ObservableObject {
         invalidatePreviewPlayer()
         audioBuffer = next
         duration = next.duration
-        waveformPeaks = computePeaks(from: next)
+        refreshWaveformPeaks(from: next)
         canUndo = !undoStack.isEmpty
         canRedo = !redoStack.isEmpty
     }
@@ -244,15 +256,21 @@ class EditorState: ObservableObject {
 
     private func ensurePreviewPlayer() {
         guard previewPlayer == nil, let buffer = audioBuffer else { return }
-        let data = makeWAVData(from: buffer)
-        previewPlayer = try? AVAudioPlayer(data: data, fileTypeHint: AVFileType.wav.rawValue)
-        previewPlayer?.prepareToPlay()
+        do {
+            let fileURL = try makePreviewWAVFile(from: buffer)
+            previewFileURL = fileURL
+            previewPlayer = try AVAudioPlayer(contentsOf: fileURL, fileTypeHint: AVFileType.wav.rawValue)
+            previewPlayer?.prepareToPlay()
+        } catch {
+            operationErrorMessage = "Could not prepare preview playback: \(Self.errorMessage(for: error))"
+        }
     }
 
     /// Nil out the player whenever the buffer changes — playPreview reloads lazily.
     private func invalidatePreviewPlayer() {
         previewPlayer?.stop()
         previewPlayer = nil
+        removePreviewFile()
         isPlayingPreview = false
         previewCurrentTime = 0
         playbackProgress = 0
@@ -282,18 +300,55 @@ class EditorState: ObservableObject {
         previewTimer = nil
     }
 
-    /// Build a minimal 44-byte WAV header + Int16 PCM body from an AudioBuffer.
-    /// Used for in-memory playback via AVAudioPlayer(data:).
-    private func makeWAVData(from buffer: AudioBuffer) -> Data {
+    private func removePreviewFile() {
+        if let previewFileURL {
+            try? FileManager.default.removeItem(at: previewFileURL)
+        }
+        previewFileURL = nil
+    }
+
+    /// Write a temporary preview WAV without building a second full-size Data blob.
+    private func makePreviewWAVFile(from buffer: AudioBuffer) throws -> URL {
         let pcm = buffer.data
-        let sr    = UInt32(buffer.sampleRate)
-        let ch    = UInt16(buffer.channels)
+        guard buffer.sampleRate > 0 else { throw PreviewError.invalidBuffer("sample rate is zero") }
+        guard buffer.channels > 0 else { throw PreviewError.invalidBuffer("channel count is zero") }
+        guard pcm.count % (buffer.channels * MemoryLayout<Int16>.size) == 0 else {
+            throw PreviewError.invalidBuffer("PCM data is not aligned to the channel count")
+        }
+        guard pcm.count <= Int(UInt32.max - 36) else {
+            throw PreviewError.invalidBuffer("audio is too large for a standard WAV preview")
+        }
+
+        let fileURL = FileManager.default.temporaryDirectory
+            .appending(path: "pimpaudio-editor-preview-\(UUID().uuidString).wav")
+        let header = Self.makeWAVHeader(
+            dataSize: UInt32(pcm.count),
+            sampleRate: UInt32(buffer.sampleRate),
+            channels: UInt16(buffer.channels)
+        )
+
+        _ = FileManager.default.createFile(atPath: fileURL.path(percentEncoded: false), contents: nil)
+        do {
+            let handle = try FileHandle(forWritingTo: fileURL)
+            defer { try? handle.close() }
+            try handle.write(contentsOf: header)
+            try handle.write(contentsOf: pcm)
+            return fileURL
+        } catch {
+            try? FileManager.default.removeItem(at: fileURL)
+            throw error
+        }
+    }
+
+    private static func makeWAVHeader(dataSize: UInt32, sampleRate: UInt32, channels: UInt16) -> Data {
+        let sr = sampleRate
+        let ch = channels
         let bps   = UInt16(16)
         let rate  = sr * UInt32(ch) * UInt32(bps) / 8
         let align = ch * bps / 8
-        let dataSize = UInt32(pcm.count)
 
         var h = Data()
+        h.reserveCapacity(44)
         func le<T: FixedWidthInteger>(_ v: T) {
             var x = v.littleEndian; withUnsafeBytes(of: &x) { h.append(contentsOf: $0) }
         }
@@ -302,11 +357,24 @@ class EditorState: ObservableObject {
         h.append(contentsOf: "fmt ".utf8); le(UInt32(16))
         le(UInt16(1)); le(ch); le(sr); le(rate); le(align); le(bps)
         h.append(contentsOf: "data".utf8); le(dataSize)
-        h.append(pcm)
         return h
     }
 
-    func computePeaks(from buffer: AudioBuffer) -> [Float] {
+    func refreshWaveformPeaks(from buffer: AudioBuffer, clearExisting: Bool = false) {
+        if clearExisting {
+            waveformPeaks = []
+        }
+        peakComputationTask?.cancel()
+        peakComputationTask = Task { [weak self, buffer] in
+            let peaks = await Task.detached(priority: .userInitiated) {
+                Self.computePeaks(from: buffer)
+            }.value
+            guard !Task.isCancelled else { return }
+            self?.waveformPeaks = peaks
+        }
+    }
+
+    nonisolated static func computePeaks(from buffer: AudioBuffer) -> [Float] {
         let sampleCount = buffer.data.count / MemoryLayout<Int16>.size
         let peakCount = 200
         guard sampleCount > 0 else {
@@ -337,5 +405,24 @@ class EditorState: ObservableObject {
         }
 
         return peaks
+    }
+
+    private static func errorMessage(for error: Error) -> String {
+        if let localizedError = error as? LocalizedError,
+           let description = localizedError.errorDescription {
+            return description
+        }
+        return error.localizedDescription
+    }
+
+    private enum PreviewError: LocalizedError {
+        case invalidBuffer(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .invalidBuffer(let reason):
+                return "The editor buffer is invalid: \(reason)."
+            }
+        }
     }
 }

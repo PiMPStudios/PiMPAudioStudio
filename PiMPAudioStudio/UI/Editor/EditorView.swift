@@ -2,11 +2,20 @@ import SwiftUI
 import AVFoundation
 import PiMPAudioCore
 import OSLog
+import UniformTypeIdentifiers
 
 private let editorExportLogger = Logger(
     subsystem: "com.pimpstudios.PiMPAudioStudio",
     category: "EditorExport"
 )
+
+private let editorSupportedAudioTypes: [UTType] = {
+    var types: [UTType] = [.wav, .mp3, .mpeg4Audio, .aiff]
+    if let flac = UTType(filenameExtension: "flac") {
+        types.append(flac)
+    }
+    return types
+}()
 
 struct EditorView: View {
     @StateObject private var state = EditorState()
@@ -105,6 +114,14 @@ struct EditorView: View {
         } message: {
             Text(exportErrorMessage ?? "")
         }
+        .alert("Editor Error", isPresented: Binding(
+            get: { state.operationErrorMessage != nil },
+            set: { if !$0 { state.operationErrorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) { state.operationErrorMessage = nil }
+        } message: {
+            Text(state.operationErrorMessage ?? "")
+        }
     }
 
     private var waveformSection: some View {
@@ -198,7 +215,7 @@ struct EditorView: View {
 
     private func openFile() {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.wav, .mp3, .audio]
+        panel.allowedContentTypes = editorSupportedAudioTypes
         panel.allowsMultipleSelection = false
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
@@ -208,6 +225,7 @@ struct EditorView: View {
 
     private func loadFromURL(_ url: URL) {
         state.fileName = url.lastPathComponent
+        state.operationErrorMessage = nil
 
         do {
             let audioFile = try AVAudioFile(forReading: url)
@@ -215,6 +233,8 @@ struct EditorView: View {
             let frameCount = AVAudioFrameCount(audioFile.length)
 
             guard let pcmBuffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else {
+                state.isLoaded = false
+                state.operationErrorMessage = "Could not load \(url.lastPathComponent): AVFoundation could not create an audio buffer."
                 return
             }
             try audioFile.read(into: pcmBuffer)
@@ -223,7 +243,7 @@ struct EditorView: View {
             state.audioBuffer = buffer
             state.sampleRate = buffer.sampleRate
             state.duration = buffer.duration
-            state.waveformPeaks = state.computePeaks(from: buffer)
+            state.refreshWaveformPeaks(from: buffer, clearExisting: true)
             state.isLoaded = true
             state.selectionStart = 0
             state.selectionEnd = 0
@@ -242,6 +262,7 @@ struct EditorView: View {
             }
         } catch {
             state.isLoaded = false
+            state.operationErrorMessage = "Could not load \(url.lastPathComponent): \(error.localizedDescription)"
         }
     }
 
@@ -276,7 +297,7 @@ struct EditorView: View {
                 )
                 state.audioBuffer = newBuffer
                 state.duration = newBuffer.duration
-                state.waveformPeaks = state.computePeaks(from: newBuffer)
+                state.refreshWaveformPeaks(from: newBuffer)
             }
         }
     }

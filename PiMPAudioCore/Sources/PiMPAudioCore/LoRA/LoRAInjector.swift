@@ -290,7 +290,7 @@ extension LoRAInjector {
                 continue
             }
 
-            loraLinear.contributions = contributions.filter { $0.path == path }
+            loraLinear.replaceContributions(contributions.filter { $0.path == path })
         }
     }
 
@@ -347,7 +347,7 @@ extension LoRAInjector {
                 scaling: scaling,
                 path: path
             )
-            loraLinear.contributions.append(contribution)
+            loraLinear.appendContribution(contribution)
             matchedPaths += 1
             if !loggedFirstTensors {
                 let adapterTag = diagnosticTagComponent(adapterID)
@@ -372,7 +372,7 @@ extension LoRAInjector {
 
             let layer = model.layers[layerIdx]
             if let loraLinear = resolveLinear(in: layer, path: subPath) as? LoRALinear {
-                loraLinear.contributions = []
+                loraLinear.clearContributions()
             }
         }
     }
@@ -390,11 +390,7 @@ extension LoRAInjector {
 
             let layer = model.layers[layerIdx]
             if let loraLinear = resolveLinear(in: layer, path: subPath) as? LoRALinear {
-                for i in loraLinear.contributions.indices {
-                    if loraLinear.contributions[i].adapterID == adapterID {
-                        loraLinear.contributions[i].strength = strength
-                    }
-                }
+                loraLinear.setContributionStrength(adapterID: adapterID, strength: strength)
             }
         }
     }
@@ -411,7 +407,7 @@ extension LoRAInjector {
 
             let layer = model.layers[layerIdx]
             if let loraLinear = resolveLinear(in: layer, path: subPath) as? LoRALinear {
-                loraLinear.contributions.removeAll { $0.adapterID == adapterID }
+                loraLinear.removeContribution(adapterID: adapterID)
             }
         }
     }

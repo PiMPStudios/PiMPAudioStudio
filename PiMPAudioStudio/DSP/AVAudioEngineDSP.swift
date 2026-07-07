@@ -1,9 +1,18 @@
 import AVFoundation
 
 struct AVAudioEngineDSP {
-    enum EngineError: Error {
+    enum EngineError: LocalizedError {
         case renderFailed(String)
         case bufferCreationFailed
+
+        var errorDescription: String? {
+            switch self {
+            case .renderFailed(let message):
+                return message
+            case .bufferCreationFailed:
+                return "Could not create an audio buffer for the DSP engine."
+            }
+        }
     }
 
     // MARK: - EQ

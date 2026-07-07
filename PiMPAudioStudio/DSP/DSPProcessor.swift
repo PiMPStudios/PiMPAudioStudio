@@ -1,9 +1,18 @@
 import Foundation
 
 struct DSPProcessor {
-    enum ProcessingError: Error {
+    enum ProcessingError: LocalizedError {
         case selectionRequired
         case unknownEffect
+
+        var errorDescription: String? {
+            switch self {
+            case .selectionRequired:
+                return "Select a region before applying this effect."
+            case .unknownEffect:
+                return "The selected DSP effect is not supported."
+            }
+        }
     }
 
     func apply(

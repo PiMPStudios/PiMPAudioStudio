@@ -862,13 +862,8 @@ struct GenerateView: View {
     }
 
     private func isXLAdapter(_ adapter: LoRAAdapter) -> Bool {
-        let haystack = [
-            adapter.baseModelID,
-            adapter.id,
-            adapter.name
-        ].joined(separator: " ").lowercased()
-
-        return haystack.contains("xl")
+        guard adapter.baseModelCategory == .aceStepDiT else { return false }
+        return LoRAAdapter.isACEBaseModelXL(adapter.baseModelID)
     }
 
     // MARK: - Presets

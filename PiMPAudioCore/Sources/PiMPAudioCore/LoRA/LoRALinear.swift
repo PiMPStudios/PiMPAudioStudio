@@ -43,7 +43,7 @@ public class LoRALinear: Linear {
     /// Multiple adapter contributions for inference stacking.
     /// When non-empty, these are used instead of the single loraA/loraB pair.
     /// Each contribution has its own strength multiplier.
-    public var contributions: [LoRAContribution] = []
+    public private(set) var contributions: [LoRAContribution] = []
 
     public init(base: Linear, rank: Int, alpha: Float = 16.0, dropout: Float = 0.0) {
         let inFeatures = base.weight.shape[1]
@@ -134,6 +134,28 @@ public class LoRALinear: Linear {
         guard isMerged else { return }
         weight._updateInternal(baseWeight)
         isMerged = false
+    }
+
+    public func replaceContributions(_ newContributions: [LoRAContribution]) {
+        contributions = newContributions
+    }
+
+    public func appendContribution(_ contribution: LoRAContribution) {
+        contributions.append(contribution)
+    }
+
+    public func clearContributions() {
+        contributions.removeAll()
+    }
+
+    public func setContributionStrength(adapterID: String, strength: Float) {
+        for index in contributions.indices where contributions[index].adapterID == adapterID {
+            contributions[index].strength = strength
+        }
+    }
+
+    public func removeContribution(adapterID: String) {
+        contributions.removeAll { $0.adapterID == adapterID }
     }
 
     /// Mark base parameters as non-trainable, keeping only loraA and loraB trainable.

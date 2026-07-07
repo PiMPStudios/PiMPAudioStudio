@@ -2,9 +2,18 @@ import Foundation
 import Accelerate
 
 struct SimpleDSP {
-    enum DSPError: Error {
+    enum DSPError: LocalizedError {
         case invalidSelection
         case bufferEmpty
+
+        var errorDescription: String? {
+            switch self {
+            case .invalidSelection:
+                return "The selected audio range is not valid."
+            case .bufferEmpty:
+                return "The audio buffer is empty."
+            }
+        }
     }
 
     static func trimToSelection(_ buffer: AudioBuffer, start: TimeInterval, end: TimeInterval) throws -> AudioBuffer {

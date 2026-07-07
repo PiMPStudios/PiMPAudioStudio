@@ -3,9 +3,18 @@ import Accelerate
 import MLX
 
 struct AudioBufferConverter {
-    enum ConversionError: Error {
+    enum ConversionError: LocalizedError {
         case invalidData
         case bufferCreationFailed
+
+        var errorDescription: String? {
+            switch self {
+            case .invalidData:
+                return "The audio data is not in a supported PCM layout."
+            case .bufferCreationFailed:
+                return "Could not create an AVAudioPCMBuffer for this audio."
+            }
+        }
     }
 
     static func toFloats(_ buffer: AudioBuffer) -> [Float] {

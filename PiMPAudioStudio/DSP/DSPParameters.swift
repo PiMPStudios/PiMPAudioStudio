@@ -3,7 +3,7 @@ import UniformTypeIdentifiers
 
 // MARK: - AudioBuffer
 
-struct AudioBuffer: Equatable {
+struct AudioBuffer: Equatable, Sendable {
     var data: Data
     var sampleRate: Int
     var channels: Int

@@ -204,7 +204,7 @@ public enum LoKRInjector {
             }
             let magnitude = weightDict["\(path).lokrMagnitude"]
 
-            lokrLinear.contributions.append(LoKRContribution(
+            lokrLinear.appendContribution(LoKRContribution(
                 adapterID: adapterID,
                 displayName: displayName,
                 source: source,
@@ -242,7 +242,7 @@ public enum LoKRInjector {
 
             let layer = model.layers[layerIdx]
             if let lokrLinear = resolveLinear(in: layer, path: subPath) as? LoKRLinear {
-                lokrLinear.contributions = []
+                lokrLinear.clearContributions()
             }
         }
     }

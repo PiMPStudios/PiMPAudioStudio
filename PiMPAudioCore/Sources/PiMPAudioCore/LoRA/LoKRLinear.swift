@@ -34,7 +34,7 @@ public class LoKRLinear: Linear {
     var isTraining: Bool = false
     private var isMerged: Bool = false
 
-    public var contributions: [LoKRContribution] = []
+    public private(set) var contributions: [LoKRContribution] = []
 
     public init(
         base: Linear,
@@ -202,6 +202,14 @@ public class LoKRLinear: Linear {
         guard isMerged else { return }
         weight._updateInternal(baseWeight)
         isMerged = false
+    }
+
+    public func appendContribution(_ contribution: LoKRContribution) {
+        contributions.append(contribution)
+    }
+
+    public func clearContributions() {
+        contributions.removeAll()
     }
 
     public func freezeBase() {

@@ -1297,6 +1297,14 @@ private extension JSONDecoder {
     #expect(TrainingService.baseModelDisplayName(for: turbo) == "ACE-Step Turbo")
 }
 
+@Test func aceXLBaseModelDetectionUsesMetadataTokens() {
+    #expect(LoRAAdapter.isACEBaseModelXL("ace-step-dit-xl-sft"))
+    #expect(LoRAAdapter.isACEBaseModelXL("ACE-Step/acestep-v15-xl-base"))
+    #expect(!LoRAAdapter.isACEBaseModelXL("ace-step-dit-sft"))
+    #expect(!LoRAAdapter.isACEBaseModelXL("flexxl-style-adapter"))
+    #expect(!LoRAAdapter.isACEBaseModelXL("model-xl-extra"))
+}
+
 @Test func peftBaseModelInferencePreservesXLVariant() {
     #expect(
         PEFTKeyRemapper.resolveBaseModelID(from: "ACE-Step/acestep-v15-xl-turbo")

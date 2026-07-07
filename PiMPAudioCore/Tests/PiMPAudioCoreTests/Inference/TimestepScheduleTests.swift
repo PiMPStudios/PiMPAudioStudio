@@ -59,6 +59,13 @@ struct TimestepScheduleTests {
         #expect(schedule.count == 2)
     }
 
+    @Test("Custom timesteps that collapse empty fall back")
+    func allZeroCustomTimestepsFallback() {
+        let schedule = TimestepSchedule.compute(shift: 3.0, timesteps: [0.0, 0.0])
+        #expect(schedule.count == 8)
+        #expect(schedule[0] == 1.0)
+    }
+
     @Test("Linspace with shift 1.0 matches upstream v1.5 generation")
     func linspaceNoShift() {
         // Mirrors the checked-in ACE-Step v1.5 generation code:

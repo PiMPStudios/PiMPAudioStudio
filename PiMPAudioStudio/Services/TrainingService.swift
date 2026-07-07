@@ -207,11 +207,18 @@ final class TrainingService: ObservableObject {
             effectiveResumeAdapterID = nil
         }
 
-        trainingTask?.cancel()
+        guard trainingTask == nil else {
+            AudioDiagnostics.note(
+                "training/startIgnored",
+                "kind=\(kind.rawValue) reason=trainingTaskAlreadyActive"
+            )
+            return
+        }
         isStopping = false
         shouldSaveCheckpointOnStop = false
         activeAdapterKind = kind
         activeRunLog = nil
+        state = .loadingModels
 
         trainingTask = Task { [weak self] in
             guard let self else { return }

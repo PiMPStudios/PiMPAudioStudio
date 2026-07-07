@@ -33,7 +33,7 @@ public enum TimestepSchedule {
                 ts = Array(ts.prefix(20))
             }
             return ts.map { t in
-                Self.validTimesteps.min(by: { abs($0 - t) < abs($1 - t) })!
+                Self.validTimesteps.min(by: { abs($0 - t) < abs($1 - t) }) ?? t
             }
         }
 
@@ -57,7 +57,10 @@ public enum TimestepSchedule {
     }
 
     private static func computeFallback(shift: Float) -> [Float] {
-        let nearestShift = Self.validShifts.min(by: { abs($0 - shift) < abs($1 - shift) })!
-        return Self.shiftTimesteps[nearestShift]!
+        guard let nearestShift = Self.validShifts.min(by: { abs($0 - shift) < abs($1 - shift) }),
+              let timesteps = Self.shiftTimesteps[nearestShift] else {
+            return Self.validTimesteps
+        }
+        return timesteps
     }
 }

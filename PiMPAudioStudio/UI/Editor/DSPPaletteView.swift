@@ -5,6 +5,7 @@ struct DSPPaletteView: View {
     let onApply: (DSPEffect, DSPParameters) -> Void
 
     @State private var showingConfirmation: DSPEffect?
+    @State private var confirmationTask: Task<Void, Never>?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -37,6 +38,9 @@ struct DSPPaletteView: View {
         }
         .padding(16)
         .animation(.easeInOut(duration: 0.2), value: state.expandedEffect)
+        .onDisappear {
+            confirmationTask?.cancel()
+        }
     }
 
     // MARK: - Effect Grid
@@ -112,14 +116,17 @@ struct DSPPaletteView: View {
     }
 
     private func showConfirmation(_ effect: DSPEffect) {
+        confirmationTask?.cancel()
         withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
             showingConfirmation = effect
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-            if showingConfirmation == effect {
-                withAnimation(.easeOut(duration: 0.25)) {
-                    showingConfirmation = nil
-                }
+        confirmationTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(600))
+            guard !Task.isCancelled, showingConfirmation == effect else {
+                return
+            }
+            withAnimation(.easeOut(duration: 0.25)) {
+                showingConfirmation = nil
             }
         }
     }
