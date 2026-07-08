@@ -38,8 +38,8 @@ public actor InpaintCoordinator {
     public var canRedo: Bool { historyManager.canRedo }
     public var recentEdits: [EditSnapshot] { historyManager.recentEdits }
 
-    public static let aceStepHopSize = 2048
-    public static let sfxHopSize = 2048
+    public static let aceStepHopSize = MusicPipeline.hopLength
+    public static let sfxHopSize = SoundFXPipeline.hopLength
 
     public init(
         vaeActor: VAEActor,

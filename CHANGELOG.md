@@ -36,6 +36,7 @@ All notable changes to PiMP Audio Studio are documented here.
 
 ### Fixed
 
+- **ACE-Step editor inpaint masks now use the correct VAE hop** — editor selection masks for ACE-Step now use the v1.5 1920-sample hop shared by generation and conditioning instead of the stale 2048 value from Stable Audio, and mask conversion covers every latent frame touched by the selected time span.
 - **Editor and training robustness pass** — Generate now applies the XL guidance recipe only from ACE-Step XL base-model metadata instead of adapter name substrings, editor import/DSP/preview failures surface user-facing errors, editor waveform peak analysis runs off the main actor, preview playback uses a temporary WAV file instead of a full in-memory WAV copy, local training ignores duplicate start requests while a task is active, and adapter contribution mutation is encapsulated behind explicit LoRA/LoKR layer methods.
 - **Side-Step LoKR run folders now import with the right ACE-Step variant** — local adapter import can select a Side-Step run root, prefers `best/lokr_weights.safetensors` over `final`, preserves `xl-base` / `xl-sft` / `xl-turbo` from `training_config.json`, and respects Side-Step target metadata such as `target_mlp=false`.
 - **Side-Step LoRA run folders now import cleanly** — local adapter import can select a Side-Step LoRA run root, prefers `best/adapter_model.safetensors` over `final`, preserves XL Base compatibility from PEFT metadata, and folds LoRA++ per-layer alpha/rank patterns into native weights so inference scaling stays faithful.

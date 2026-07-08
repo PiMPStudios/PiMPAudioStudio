@@ -5,7 +5,8 @@ import MLX
 /// Converts a user's time selection (and optional frequency band) into a
 /// latent-space binary mask suitable for inpainting.
 ///
-/// ACE-Step VAE hop size is 2048 samples. At 44100 Hz one latent frame ≈ 0.0464 s.
+/// ACE-Step v1.5 uses a 1920-sample hop at 48 kHz (25 latent frames/sec);
+/// Stable Audio Open uses a 2048-sample hop at 44.1 kHz.
 /// The Nyquist frequency assumed for channel mapping is 22 050 Hz.
 public enum MaskBuilder {
 
@@ -24,7 +25,8 @@ public enum MaskBuilder {
     ///   - sampleRate:     Audio sample rate in Hz (e.g. 44 100).
     ///   - latentFrames:   Number of latent time frames (T dimension).
     ///   - latentDim:      Number of latent channels (D dimension).
-    ///   - hopSize:        VAE hop size in samples (e.g. 2048 for ACE-Step).
+    ///   - hopSize:        VAE hop size in samples (1920 for ACE-Step v1.5,
+    ///                     2048 for Stable Audio Open).
     /// - Returns: MLXArray of shape `[1, latentFrames, 1]` (broadcastable mask)
     ///   or `[1, latentFrames, latentDim]` when a `frequencyBand` is present.
     ///   Values are 1.0 (regenerate) or 0.0 (preserve).
@@ -37,15 +39,13 @@ public enum MaskBuilder {
         hopSize: Int
     ) -> MLXArray {
 
-        // Convert time → latent frame indices
-        let rawStart = Int(selection.startTime * Double(sampleRate)) / hopSize
-        let rawEnd   = Int(selection.endTime   * Double(sampleRate)) / hopSize
-
-        let startFrame = max(0, min(rawStart, latentFrames))
-        let endFrame   = max(0, min(rawEnd,   latentFrames))
-
-        // Degenerate selection: return an all-zero mask
-        guard startFrame < endFrame else {
+        guard let frameRange = frameRange(
+            selection: selection,
+            totalDuration: totalDuration,
+            sampleRate: sampleRate,
+            latentFrames: latentFrames,
+            hopSize: hopSize
+        ) else {
             if selection.frequencyBand != nil {
                 return MLXArray.zeros([1, latentFrames, latentDim])
             } else {
@@ -55,19 +55,45 @@ public enum MaskBuilder {
 
         if let band = selection.frequencyBand {
             return buildFrequencyMask(
-                startFrame: startFrame,
-                endFrame: endFrame,
+                startFrame: frameRange.lowerBound,
+                endFrame: frameRange.upperBound,
                 latentFrames: latentFrames,
                 latentDim: latentDim,
                 band: band
             )
         } else {
             return buildTimeMask(
-                startFrame: startFrame,
-                endFrame: endFrame,
+                startFrame: frameRange.lowerBound,
+                endFrame: frameRange.upperBound,
                 latentFrames: latentFrames
             )
         }
+    }
+
+    static func frameRange(
+        selection: InpaintSelection,
+        totalDuration: Double,
+        sampleRate: Int,
+        latentFrames: Int,
+        hopSize: Int
+    ) -> Range<Int>? {
+        guard sampleRate > 0, hopSize > 0, latentFrames > 0 else { return nil }
+
+        // Convert time → latent frame indices. Use floor for the start and
+        // ceil for the end so the mask includes every latent frame touched by
+        // the selected time span.
+        let duration = max(totalDuration, 0)
+        let secondsPerFrame = Double(hopSize) / Double(sampleRate)
+        let clampedStart = min(max(selection.startTime, 0), duration)
+        let clampedEnd = min(max(selection.endTime, 0), duration)
+        let rawStart = Int((clampedStart / secondsPerFrame).rounded(.down))
+        let rawEnd = Int((clampedEnd / secondsPerFrame).rounded(.up))
+
+        let startFrame = max(0, min(rawStart, latentFrames))
+        let endFrame = max(0, min(rawEnd, latentFrames))
+        guard startFrame < endFrame else { return nil }
+
+        return startFrame..<endFrame
     }
 
     // MARK: - Private helpers

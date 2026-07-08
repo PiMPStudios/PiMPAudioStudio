@@ -26,9 +26,11 @@ struct InpaintCoordinatorTests {
         #expect(InpaintCoordinator.hopSize(for: .stableAudio) == InpaintCoordinator.sfxHopSize)
     }
 
-    @Test("aceStepHopSize and sfxHopSize are both 2048")
+    @Test("hopSize constants match pipeline VAE strides")
     func hopSizeConstants() {
-        #expect(InpaintCoordinator.aceStepHopSize == 2048)
+        #expect(InpaintCoordinator.aceStepHopSize == MusicPipeline.hopLength)
+        #expect(InpaintCoordinator.aceStepHopSize == 1920)
+        #expect(InpaintCoordinator.sfxHopSize == SoundFXPipeline.hopLength)
         #expect(InpaintCoordinator.sfxHopSize == 2048)
     }
 
