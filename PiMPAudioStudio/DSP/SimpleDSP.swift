@@ -105,14 +105,38 @@ struct SimpleDSP {
             var scale = 1.0 / peak
             vDSP_vsmul(floats, 1, &scale, &floats, 1, vDSP_Length(floats.count))
 
-        case .rms:
-            return buffer
+        case .rms(let targetDB):
+            guard targetDB.isFinite else { return buffer }
+
+            let currentRMS = rmsAmplitude(floats)
+            guard currentRMS > 0.000_001 else { return buffer }
+
+            let targetRMS = pow(10.0, targetDB / 20.0)
+            var peak: Float = 0
+            vDSP_maxmgv(floats, 1, &peak, vDSP_Length(floats.count))
+            let unclippedScale = targetRMS / currentRMS
+            var scale = peak > 0 ? min(unclippedScale, 1.0 / peak) : unclippedScale
+            vDSP_vsmul(floats, 1, &scale, &floats, 1, vDSP_Length(floats.count))
         }
 
         return AudioBufferConverter.fromFloats(floats, sampleRate: buffer.sampleRate, channels: buffer.channels)
     }
 
     // MARK: - Helpers
+
+    static func rmsAmplitude(_ samples: [Float]) -> Float {
+        guard !samples.isEmpty else { return 0 }
+
+        var rms: Float = 0
+        samples.withUnsafeBufferPointer { pointer in
+            vDSP_rmsqv(pointer.baseAddress!, 1, &rms, vDSP_Length(samples.count))
+        }
+        return rms
+    }
+
+    static func rmsDBFS(_ samples: [Float]) -> Float {
+        20.0 * log10(max(rmsAmplitude(samples), 1e-10))
+    }
 
     static func sampleIndex(time: TimeInterval, sampleRate: Int, channels: Int) -> Int {
         Int(time * Double(sampleRate)) * channels

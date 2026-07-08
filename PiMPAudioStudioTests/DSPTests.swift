@@ -1,6 +1,28 @@
 import Testing
 @testable import PiMPAudioStudio
 
+@Test func normalizeRMSScalesBufferToTargetDBFS() throws {
+    let sourceSamples: [Float] = [0.10, -0.10, 0.20, -0.20, 0.10, -0.10, 0.20, -0.20]
+    let source = AudioBufferConverter.fromFloats(sourceSamples, sampleRate: 48_000, channels: 1)
+
+    let processed = try SimpleDSP.normalize(source, mode: .rms(targetDB: -12.0))
+    let processedSamples = AudioBufferConverter.toFloats(processed)
+
+    #expect(abs(SimpleDSP.rmsDBFS(processedSamples) - -12.0) < 0.02)
+}
+
+@Test func normalizeRMSCapsUpwardGainBeforeClipping() throws {
+    let sourceSamples: [Float] = [0.90, -0.20, 0.10, -0.10]
+    let source = AudioBufferConverter.fromFloats(sourceSamples, sampleRate: 48_000, channels: 1)
+
+    let processed = try SimpleDSP.normalize(source, mode: .rms(targetDB: -1.0))
+    let processedSamples = AudioBufferConverter.toFloats(processed)
+    let peak = processedSamples.map(abs).max() ?? 0
+
+    #expect(peak <= 1.0)
+    #expect(abs(peak - 1.0) < 0.001)
+}
+
 @Test func wsolaTimeStretchKeepsFinalWindowTailForCompressedOutput() {
     let frameCount = 8_192
     let samples = (0..<frameCount).map { index in
