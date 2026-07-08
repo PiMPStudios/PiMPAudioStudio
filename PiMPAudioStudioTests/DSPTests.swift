@@ -1,6 +1,22 @@
 import Testing
 @testable import PiMPAudioStudio
 
+@Test func wsolaTimeStretchKeepsFinalWindowTailForCompressedOutput() {
+    let frameCount = 8_192
+    let samples = (0..<frameCount).map { index in
+        Float((index % 256) - 128) / 128.0
+    }
+
+    let stretched = WSOLAProcessor.stretch(
+        samples,
+        rate: 2.0,
+        sampleRate: 48_000,
+        channels: 1
+    )
+
+    #expect(stretched.count == 4_096)
+}
+
 @Test func parametricEQQConvertsToAVAudioBandwidthOctaves() {
     let bandwidth = AVAudioEngineDSP.bandwidthOctaves(forQ: 1.0)
 

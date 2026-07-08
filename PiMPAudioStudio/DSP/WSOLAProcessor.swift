@@ -48,6 +48,7 @@ struct WSOLAProcessor {
 
         var analysisPos = 0
         var synthesisPos = 0
+        var writtenEnd = 0
 
         while synthesisPos + windowSize <= outputLength && analysisPos + windowSize <= frameCount {
             let bestPos: Int
@@ -66,13 +67,14 @@ struct WSOLAProcessor {
                 guard srcIdx < frameCount else { break }
                 output[synthesisPos + i] += input[srcIdx] * window[i]
             }
+            writtenEnd = max(writtenEnd, synthesisPos + windowSize)
 
             analysisPos += analysisHop
             synthesisPos += synthesisHop
         }
 
         normalizeOverlap(&output, synthesisHop: synthesisHop, window: window)
-        return Array(output.prefix(max(synthesisPos, 0)))
+        return Array(output.prefix(min(outputLength, max(synthesisPos, writtenEnd))))
     }
 
     private static func findBestMatch(input: [Float], frameCount: Int,
