@@ -67,6 +67,7 @@
 		7B6CFE439B669FBC583FB990 /* GenerationPreset.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47EED7870B5DC4BB1B4785C1 /* GenerationPreset.swift */; };
 		7CAE001CD378550D5C10FFE3 /* MLXNN in Frameworks */ = {isa = PBXBuildFile; productRef = F2617C3869BA9ABCCC55CD83 /* MLXNN */; };
 		7DA9CFAF67A7E0F061366D4C /* SourceSeparationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 394C36D243808316A9A70117 /* SourceSeparationService.swift */; };
+		7F2C8E53D1C24042A9293B1C /* DSPTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C8585CD0F8C459781E3A3B5 /* DSPTests.swift */; };
 		800488AC6B61AE45396C8D6D /* LocalFilesImportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED69726963E9E51F4E929435 /* LocalFilesImportSheet.swift */; };
 		80E9ECE6088D9C10C861C072 /* DSPPaletteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07F5FC8C81BD5A3CE53323A6 /* DSPPaletteView.swift */; };
 		826B37BED332D91C3DAEC15D /* XAILyricWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18C68CE5111CC93295CD7ADF /* XAILyricWriter.swift */; };
@@ -162,6 +163,7 @@
 		1FD4AC7DB697F3ACB20931D7 /* PiMPAudioCommandFacade+Training.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PiMPAudioCommandFacade+Training.swift"; sourceTree = "<group>"; };
 		237C151BAB3460455E69B2E2 /* AVAudioEngineDSP.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AVAudioEngineDSP.swift; sourceTree = "<group>"; };
 		23E3669212635DA76F1F31BB /* ACEStepGenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ACEStepGenerationService.swift; sourceTree = "<group>"; };
+		2C8585CD0F8C459781E3A3B5 /* DSPTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DSPTests.swift; sourceTree = "<group>"; };
 		2C8BC398F0D28BB81BCFE15B /* ReverbControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReverbControlView.swift; sourceTree = "<group>"; };
 		2CED922964E51FCBD115D467 /* CoverSongCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverSongCoordinator.swift; sourceTree = "<group>"; };
 		2D8EB60B0CF7EDDFCCDBDC10 /* PiMPAudioMCPToolCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiMPAudioMCPToolCatalog.swift; sourceTree = "<group>"; };
@@ -516,6 +518,7 @@
 			isa = PBXGroup;
 			children = (
 				41A93059238ED07185F25CF5 /* AppStateTests.swift */,
+				2C8585CD0F8C459781E3A3B5 /* DSPTests.swift */,
 				FC09327803C8A79922A3B4F2 /* HistoryStoreTests.swift */,
 				ED4AC7C94D81749A9705316C /* ProviderAccessStoreTests.swift */,
 				A0C92036F078AF469DFB2533 /* RunPodServiceTests.swift */,
@@ -613,6 +616,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				247E8913C3C2CC1E309EA7A2 /* AppStateTests.swift in Sources */,
+				7F2C8E53D1C24042A9293B1C /* DSPTests.swift in Sources */,
 				2D8016252183EB12AD027E62 /* HistoryStoreTests.swift in Sources */,
 				7A7B53861467729A61453BBC /* ProviderAccessStoreTests.swift in Sources */,
 				F60961C7902C664688989A30 /* RunPodServiceTests.swift in Sources */,

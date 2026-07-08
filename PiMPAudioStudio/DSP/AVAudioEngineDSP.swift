@@ -1,4 +1,5 @@
 import AVFoundation
+import Darwin
 
 struct AVAudioEngineDSP {
     enum EngineError: LocalizedError {
@@ -28,6 +29,12 @@ struct AVAudioEngineDSP {
         }
     }
 
+    static func bandwidthOctaves(forQ q: Float) -> Float {
+        let safeQ = max(Double(q), 0.001)
+        let bandwidth = 2.0 * asinh(1.0 / (2.0 * safeQ)) / log(2.0)
+        return min(max(Float(bandwidth), 0.05), 5.0)
+    }
+
     private static func applyEQToBuffer(_ buffer: AudioBuffer, parameters: EQParameters) throws -> AudioBuffer {
         let pcmBuffer = try AudioBufferConverter.toPCMBuffer(buffer)
         let format = pcmBuffer.format
@@ -40,7 +47,7 @@ struct AVAudioEngineDSP {
             eq.bands[i].filterType = .parametric
             eq.bands[i].frequency = band.frequency
             eq.bands[i].gain = band.gain
-            eq.bands[i].bandwidth = band.q
+            eq.bands[i].bandwidth = bandwidthOctaves(forQ: band.q)
             eq.bands[i].bypass = false
         }
 
