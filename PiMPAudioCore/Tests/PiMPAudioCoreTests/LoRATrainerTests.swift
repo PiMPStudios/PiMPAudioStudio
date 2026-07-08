@@ -9,8 +9,8 @@ import MLXRandom
     let scheduler = CosineScheduler(baseLR: 0.001, warmupFraction: 0.25, totalSteps: 8)
 
     #expect(scheduler.warmupSteps == 2)
-    #expect(scheduler.learningRate(atStep: 0) == 0)
-    #expect(abs(scheduler.learningRate(atStep: 1) - 0.0005) < 0.0000001)
+    #expect(abs(scheduler.learningRate(atStep: 0) - 0.0005) < 0.0000001)
+    #expect(abs(scheduler.learningRate(atStep: 1) - 0.001) < 0.0000001)
     #expect(abs(scheduler.learningRate(atStep: 2) - 0.001) < 0.0000001)
 }
 
@@ -19,7 +19,9 @@ import MLXRandom
 
     #expect(scheduler.warmupFraction == 1)
     #expect(scheduler.warmupSteps == 10)
-    #expect(abs(scheduler.learningRate(atStep: 5) - 0.0005) < 0.0000001)
+    #expect(abs(scheduler.learningRate(atStep: 0) - 0.0001) < 0.0000001)
+    #expect(abs(scheduler.learningRate(atStep: 5) - 0.0006) < 0.0000001)
+    #expect(abs(scheduler.learningRate(atStep: 9) - 0.001) < 0.0000001)
 }
 
 @Test func optimizerStepsPerEpochUsesAccumulationWindows() {

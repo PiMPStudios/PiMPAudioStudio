@@ -2,7 +2,8 @@ import Foundation
 
 /// Cosine annealing learning rate scheduler with linear warmup.
 ///
-/// - During warmup (steps 0..<warmupSteps): LR ramps linearly from 0 to baseLR
+/// - During warmup (steps 0..<warmupSteps): LR ramps linearly from
+///   baseLR / warmupSteps to baseLR
 /// - After warmup (steps warmupSteps..<totalSteps): LR decays via cosine from baseLR to 0
 public struct CosineScheduler: Sendable {
     public let baseLR: Float
@@ -33,8 +34,7 @@ public struct CosineScheduler: Sendable {
         let warmup = warmupSteps
 
         if warmup > 0 && clampedStep < warmup {
-            // Linear warmup: 0 → baseLR
-            return baseLR * Float(clampedStep) / Float(warmup)
+            return baseLR * Float(clampedStep + 1) / Float(warmup)
         }
 
         // Cosine decay: baseLR → 0
