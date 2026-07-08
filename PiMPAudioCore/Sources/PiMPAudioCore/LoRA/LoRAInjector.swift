@@ -296,6 +296,8 @@ extension LoRAInjector {
 
     /// Apply contributions for a single adapter across all LoRALinear layers.
     /// Weights are keyed by path (e.g. "layers.0.selfAttn.qProj.loraA").
+    /// - Returns: Number of paths that received weights.
+    @discardableResult
     public static func addContribution(
         model: DiTDecoder,
         adapterID: String,
@@ -305,7 +307,7 @@ extension LoRAInjector {
         strength: Float,
         scaling: Float,
         paths: [String]
-    ) {
+    ) -> Int {
         let weightDict = Dictionary(weights, uniquingKeysWith: { _, last in last })
         let requestedPaths = Set(paths)
         let availableWeightPaths = Set(weights.compactMap { key, _ -> String? in
@@ -362,6 +364,7 @@ extension LoRAInjector {
             "lora/contribution",
             "adapter=\(adapterID) strength=\(String(format: "%.3f", strength)) paths=\(paths.count) matched=\(matchedPaths) missing=\(missingPaths.count) unusedWeightPaths=\(unusedWeightPaths.count) firstMissing=\(Array(missingPaths.prefix(8))) firstUnused=\(Array(unusedWeightPaths.sorted().prefix(8)))"
         )
+        return matchedPaths
     }
 
     /// Remove all contributions from every LoRALinear layer (revert to base model behavior).

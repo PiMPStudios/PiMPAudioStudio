@@ -47,6 +47,9 @@ enum AppUserDefaultsKeys {
     static let selectedAdapterStrength = AppRuntimeIdentity.defaultsKey("selectedAdapterStrength")
     static let legacySelectedAdapterStrength = "selectedAdapterStrength"
 
+    /// JSON array of `{ "id": String, "strength": Double }` for multi-adapter stacks.
+    static let selectedAdapterStack = AppRuntimeIdentity.defaultsKey("selectedAdapterStack")
+
     static let runPodTemplateID = AppRuntimeIdentity.defaultsKey("runpod.templateID")
     static let runPodImageName = AppRuntimeIdentity.defaultsKey("runpod.imageName")
     static let runPodGPUType = AppRuntimeIdentity.defaultsKey("runpod.gpuType")

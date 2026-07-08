@@ -159,6 +159,8 @@ public enum LoKRInjector {
         }
     }
 
+    /// - Returns: Number of paths that received weights.
+    @discardableResult
     public static func addContribution(
         model: DiTDecoder,
         adapterID: String,
@@ -168,7 +170,7 @@ public enum LoKRInjector {
         strength: Float,
         scaling: Float,
         paths: [String]
-    ) {
+    ) -> Int {
         let weightDict = Dictionary(weights, uniquingKeysWith: { _, last in last })
         let requestedPaths = Set(paths)
         let availableWeightPaths = Set(weights.compactMap { key, _ -> String? in
@@ -233,6 +235,7 @@ public enum LoKRInjector {
             "lokr/contribution",
             "adapter=\(adapterID) strength=\(String(format: "%.3f", strength)) paths=\(paths.count) matched=\(matchedPaths) missing=\(missingPaths.count) unusedWeightPaths=\(unusedWeightPaths.count) firstMissing=\(Array(missingPaths.prefix(8))) firstUnused=\(Array(unusedWeightPaths.sorted().prefix(8)))"
         )
+        return matchedPaths
     }
 
     public static func clearContributions(model: DiTDecoder, paths: [String]) {

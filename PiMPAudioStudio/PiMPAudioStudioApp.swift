@@ -87,6 +87,9 @@ struct PiMPAudioStudioApp: App {
                 .environmentObject(services.trainingService)
                 .task(id: outputManager.directory) {
                     services.configure(outputManager: outputManager)
+                    services.trainingService.attachStackManager(adapterStackManager)
+                    services.generationService.trainingService = services.trainingService
+                    services.trainingService.generationService = services.generationService
                 }
                 .onReceive(modelManager.$llmActor) { llm in
                     intentRouter.updateLLM(llm)
@@ -286,6 +289,8 @@ final class AppServices: ObservableObject {
             editorService: editorSvc,
             traceMonitor: traceMonitor
         )
+        generationService.trainingService = self.trainingService
+        self.trainingService.generationService = generationService
         self.generationService = generationService
         facade.configure(generationService: generationService)
     }
@@ -318,6 +323,8 @@ final class AppServices: ObservableObject {
             editorService: self.editorService,
             traceMonitor: traceMonitor
         )
+        generationService.trainingService = self.trainingService
+        self.trainingService.generationService = generationService
         self.generationService = generationService
         commandFacade.configure(generationService: generationService)
     }

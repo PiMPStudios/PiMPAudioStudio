@@ -242,52 +242,52 @@ actor ACEStepGenerationService {
             let rawWeights = try await weightConverter.loadSafetensors(from: weightPaths)
             let weights = try await weightConverter.convertDiTWeights(stateDict: rawWeights)
             await pipeline.loadDiTWeights(weights, modelID: spec.id)
-            currentlyLoadedDiTModelID = spec.id
-            currentlyLoadedDiTConfig = ditConfig
 
-            // Upgrade stub ConditioningActor to one backed by the real downloaded tokenizer.
-            // tokenizer.json lives in the VAE spec's local directory (shared between DiT variants).
-            // Use path(percentEncoded: false) so paths containing "Application Support" (with
-            // its space) match the actual filesystem layout, not the percent-encoded URL form.
-            if let vaeSpec = await registry.activeSpec(for: .aceStepVAE) {
-                let tokenizerPath = vaeSpec.localPath(for: "tokenizer.json", base: baseDir)
-                let tokenizerFSPath = tokenizerPath.path(percentEncoded: false)
-                if FileManager.default.fileExists(atPath: tokenizerFSPath) {
-                    if let real = try? ConditioningActor.make(tokenizerURL: tokenizerPath) {
-                        conditioning = real
-                        logger.info("Upgraded ConditioningActor with tokenizer at \(tokenizerFSPath)")
-                    } else {
-                        logger.warning("Could not upgrade ConditioningActor from tokenizer at \(tokenizerFSPath) — using stub")
-                    }
-                } else {
-                    logger.info("tokenizer.json not yet downloaded at \(tokenizerFSPath) — keeping stub conditioning actor")
-                }
-
-                // Load conditioning weights:
-                //   - Qwen3 text encoder weights from VAE spec's qwen3_model.safetensors
-                //   - lyric/timbre/text-projector encoder weights from the DiT bundle's
-                //     `encoder.*` subtree (already in `rawWeights` we just loaded)
-                let qwen3Path = vaeSpec.localPath(for: "qwen3_model.safetensors", base: baseDir)
-                let qwen3FSPath = qwen3Path.path(percentEncoded: false)
-                if FileManager.default.fileExists(atPath: qwen3FSPath) {
-                    do {
-                        let qwen3Raw = try await weightConverter.loadSafetensors(from: qwen3Path)
-                        let qwen3Weights = await weightConverter.convertQwen3Weights(from: qwen3Raw)
-                        let condWeights = await weightConverter.convertConditionEncoderWeights(from: rawWeights)
-                        await conditioning.loadWeights(qwen3Weights: qwen3Weights, conditionWeights: condWeights)
-                        logger.info("Loaded conditioning weights: qwen3=\(qwen3Weights.count), condition=\(condWeights.count)")
-                    } catch {
-                        logger.warning("Failed to load conditioning weights — using default-init: \(error.localizedDescription)")
-                    }
-                } else {
-                    logger.info("qwen3_model.safetensors not yet downloaded at \(qwen3FSPath) — text conditioning will use random embeddings")
-                }
+            // Conditioning is required for usable audio. Fail closed rather than
+            // generating with a stub tokenizer or random Qwen embeddings.
+            guard let vaeSpec = await registry.activeSpec(for: .aceStepVAE) else {
+                throw GenerationError.conditioningIncomplete(
+                    "ACE-Step VAE / text-encoder model is not configured."
+                )
             }
 
-            // Load silence_latent.pt (the trained "no source audio" prior).
-            // Lives next to model.safetensors in each DiT checkpoint dir.
-            // Required for proper text2music context_latents construction —
-            // see ConditioningActor.encode for how it's used.
+            let tokenizerPath = vaeSpec.localPath(for: "tokenizer.json", base: baseDir)
+            let tokenizerFSPath = tokenizerPath.path(percentEncoded: false)
+            guard FileManager.default.fileExists(atPath: tokenizerFSPath) else {
+                throw GenerationError.conditioningIncomplete(
+                    "tokenizer.json is missing. Download the ACE-Step VAE/text encoder package."
+                )
+            }
+            do {
+                conditioning = try ConditioningActor.make(tokenizerURL: tokenizerPath)
+                logger.info("Upgraded ConditioningActor with tokenizer at \(tokenizerFSPath)")
+            } catch {
+                throw GenerationError.conditioningIncomplete(
+                    "Could not load tokenizer at \(tokenizerFSPath): \(error.localizedDescription)"
+                )
+            }
+
+            let qwen3Path = vaeSpec.localPath(for: "qwen3_model.safetensors", base: baseDir)
+            let qwen3FSPath = qwen3Path.path(percentEncoded: false)
+            guard FileManager.default.fileExists(atPath: qwen3FSPath) else {
+                throw GenerationError.conditioningIncomplete(
+                    "qwen3_model.safetensors is missing. Download the ACE-Step VAE/text encoder package."
+                )
+            }
+            do {
+                let qwen3Raw = try await weightConverter.loadSafetensors(from: qwen3Path)
+                let qwen3Weights = await weightConverter.convertQwen3Weights(from: qwen3Raw)
+                let condWeights = await weightConverter.convertConditionEncoderWeights(from: rawWeights)
+                await conditioning.loadWeights(qwen3Weights: qwen3Weights, conditionWeights: condWeights)
+                logger.info("Loaded conditioning weights: qwen3=\(qwen3Weights.count), condition=\(condWeights.count)")
+            } catch {
+                throw GenerationError.conditioningIncomplete(
+                    "Failed to load Qwen3/condition encoder weights: \(error.localizedDescription)"
+                )
+            }
+
+            // silence_latent is preferred but not hard-required; zeros are a
+            // degraded text2music prior that still produces structured audio.
             let silencePath = spec.localPath(for: "silence_latent.pt", base: baseDir)
             let silenceFSPath = silencePath.path(percentEncoded: false)
             if FileManager.default.fileExists(atPath: silenceFSPath) {
@@ -304,11 +304,16 @@ actor ACEStepGenerationService {
                 await conditioning.setSilenceLatent(nil)
             }
 
-            // Notify dependents (e.g. TrainingService) that a fully-initialised
-            // ConditioningActor is now available.
+            // Only mark DiT loaded after conditioning succeeds so a partial
+            // load cannot be treated as ready on the next ensureLoaded call.
+            currentlyLoadedDiTModelID = spec.id
+            currentlyLoadedDiTConfig = ditConfig
+
             await onConditioningUpgraded?(conditioning)
 
         } catch {
+            currentlyLoadedDiTModelID = nil
+            currentlyLoadedDiTConfig = nil
             if let previousModelID {
                 try? await registry.setActiveModel(id: previousModelID, for: .aceStepDiT)
             }

@@ -128,6 +128,9 @@ final class GenerationService: ObservableObject {
     /// `LoRACoordinator.ensureStack()` which handles per-adapter strengths.
     var adapterStack: [(id: String, weight: Float)] = []
 
+    /// When set, generation is blocked while training is active (and vice versa).
+    weak var trainingService: TrainingService?
+
     private var generationTask: Task<Void, Never>?
     private var activeGenerationID: UUID?
     private let aceStepService: ACEStepGenerationService
@@ -165,7 +168,20 @@ final class GenerationService: ObservableObject {
         self.traceMonitor = traceMonitor
     }
 
+    /// True while a generation task is actively running (not idle/terminal).
+    var isGenerating: Bool {
+        switch state {
+        case .idle, .complete, .cancelled, .error:
+            return false
+        default:
+            return true
+        }
+    }
+
     var canSubmitGeneration: Bool {
+        if trainingService?.isTrainingActive == true {
+            return false
+        }
         switch state {
         case .idle, .complete, .cancelled, .error:
             return true
@@ -179,6 +195,11 @@ final class GenerationService: ObservableObject {
     }
 
     func generate(request: GenerationRequest) {
+        if trainingService?.isTrainingActive == true {
+            state = .error("Cannot generate while training is running. Stop training first.")
+            return
+        }
+
         let previousTask = generationTask
         previousTask?.cancel()
         let generationID = UUID()
@@ -286,7 +307,7 @@ final class GenerationService: ObservableObject {
                     let coverAdapterStack = self.resolvedAdapterStackForInjection()
                     if !coverAdapterStack.isEmpty {
                         self.traceMonitor.recordStage("Adapters", message: "Applying adapter stack to cover diffusion")
-                        await self.loraCoordinator.ensureStack(stack: coverAdapterStack)
+                        try await self.loraCoordinator.ensureStack(stack: coverAdapterStack)
                     }
                     AudioDiagnostics.memory("generation/cover/afterLoRA")
 
@@ -316,7 +337,7 @@ final class GenerationService: ObservableObject {
                     let aceAdapterStack = self.resolvedAdapterStackForInjection()
                     if !aceAdapterStack.isEmpty {
                         self.traceMonitor.recordStage("Adapters", message: "Applying adapter stack")
-                        await self.loraCoordinator.ensureStack(stack: aceAdapterStack)
+                        try await self.loraCoordinator.ensureStack(stack: aceAdapterStack)
                     }
                     AudioDiagnostics.memory("generation/aceStep/afterLoRA")
                     AudioDiagnostics.memory("generation/aceStep/beforeRun")
@@ -1025,11 +1046,14 @@ final class GenerationService: ObservableObject {
 enum GenerationError: Error, LocalizedError {
     case pipelineNotReady
     case modelNotConfigured(String)
+    case conditioningIncomplete(String)
 
     var errorDescription: String? {
         switch self {
         case .pipelineNotReady: return "Generation pipeline did not return a result"
         case .modelNotConfigured(let name): return "\(name) model is not configured"
+        case .conditioningIncomplete(let detail):
+            return "Text conditioning is incomplete: \(detail)"
         }
     }
 }

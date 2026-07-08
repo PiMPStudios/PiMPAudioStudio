@@ -20,6 +20,10 @@ final class SFXModelManager: ObservableObject {
     /// CLAPTokenizer wiring.
     private(set) var tokenizer: PiMPAudioTokenizer?
 
+    /// Exposed so the editor can wire SAO inpaint (VAE encode + diffusion).
+    private(set) var sfxVAE: SFXVAEActor?
+    private(set) var sfxDiffusion: SFXDiffusionActor?
+
     private let registry: ModelRegistry
     private var loadedModelID: String?
     private var resolvedModelPath: URL?
@@ -155,6 +159,8 @@ final class SFXModelManager: ObservableObject {
         let tokenizerURL = modelPath.appendingPathComponent("tokenizer.json")
         self.tokenizer = try PiMPAudioTokenizer(configURL: tokenizerURL)
 
+        self.sfxVAE = vae
+        self.sfxDiffusion = diffusion
         self.pipeline = SoundFXPipeline(
             t5: t5,
             conditioner: conditioner,
@@ -168,6 +174,8 @@ final class SFXModelManager: ObservableObject {
     func unloadPipeline() {
         pipeline = nil
         tokenizer = nil
+        sfxVAE = nil
+        sfxDiffusion = nil
         loadedModelID = nil
     }
 
@@ -175,6 +183,9 @@ final class SFXModelManager: ObservableObject {
         try? FileManager.default.removeItem(at: modelPath)
         downloadState = .notDownloaded
         pipeline = nil
+        tokenizer = nil
+        sfxVAE = nil
+        sfxDiffusion = nil
         loadedModelID = nil
     }
 

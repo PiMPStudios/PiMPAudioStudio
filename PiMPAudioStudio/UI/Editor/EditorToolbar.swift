@@ -51,12 +51,15 @@ struct EditorToolbar: View {
                 Divider().frame(height: 20)
 
                 Picker("Pipeline", selection: $state.pipeline) {
-                    ForEach(PipelineChoice.allCases, id: \.self) { choice in
-                        Text(choice.displayName).tag(choice)
-                    }
+                    // Auto + ACE-Step always available. Stable Audio only when
+                    // SFX actors are loadable (wired via SFXModelManager).
+                    Text(PipelineChoice.auto.displayName).tag(PipelineChoice.auto)
+                    Text(PipelineChoice.aceStep.displayName).tag(PipelineChoice.aceStep)
+                    Text(PipelineChoice.stableAudio.displayName).tag(PipelineChoice.stableAudio)
                 }
                 .pickerStyle(.menu)
                 .frame(width: 140)
+                .help("Stable Audio requires the SAO model to be downloaded and loaded")
 
                 Divider().frame(height: 20)
 

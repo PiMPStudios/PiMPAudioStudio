@@ -30,7 +30,12 @@ class EditorService: ObservableObject {
                 .sink { [weak self] pipeline in
                     guard let self, let coord = self.coordinator else { return }
                     let tokenizer = sfxMgr.tokenizer
-                    Task { await coord.setSFXPipeline(pipeline, tokenizer: tokenizer) }
+                    let vae = sfxMgr.sfxVAE
+                    let diffusion = sfxMgr.sfxDiffusion
+                    Task {
+                        await coord.setSFXPipeline(pipeline, tokenizer: tokenizer)
+                        await coord.setSFXActors(vae: vae, diffusion: diffusion)
+                    }
                 }
         }
     }

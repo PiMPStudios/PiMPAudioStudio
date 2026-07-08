@@ -161,17 +161,25 @@ extension PiMPAudioCommandFacade {
             throw PiMPAudioCommandFacadeError.generationServiceUnavailable
         }
 
-        let request = try generationRequest(arguments)
+        let (request, requestedDuration) = try generationRequestWithDurationMeta(arguments)
         let dryRun = boolValue(arguments["dryRun"] ?? arguments["validateOnly"]) == true
         if dryRun {
-            return generationSubmissionPayload(request: request, submitted: false, dryRun: true)
+            return generationSubmissionPayload(
+                request: request,
+                submitted: false,
+                dryRun: true,
+                requestedDuration: requestedDuration
+            )
         }
 
         guard generationService.outputDirectoryPath != nil else {
             throw PiMPAudioCommandFacadeError.outputDirectoryUnavailable
         }
         guard generationService.canSubmitGeneration else {
-            throw PiMPAudioCommandFacadeError.generationAlreadyActive(stateName(generationService.state))
+            let reason = generationService.trainingService?.isTrainingActive == true
+                ? "training"
+                : stateName(generationService.state)
+            throw PiMPAudioCommandFacadeError.generationAlreadyActive(reason)
         }
 
         syncGenerationAdapterSelectionFromDefaultsIfNeeded(generationService)
@@ -182,7 +190,8 @@ extension PiMPAudioCommandFacade {
             request: request,
             submitted: true,
             dryRun: false,
-            operationID: operation.id
+            operationID: operation.id,
+            requestedDuration: requestedDuration
         )
     }
 
@@ -295,6 +304,31 @@ extension PiMPAudioCommandFacade {
         guard generationService.adapterStack.isEmpty else { return }
 
         let defaults = UserDefaults.standard
+        let adaptersByID = Dictionary(
+            uniqueKeysWithValues: AdapterRegistry.listAdapters().map { ($0.id, $0) }
+        )
+
+        // Prefer full multi-adapter stack JSON when present.
+        if let data = defaults.data(forKey: AppUserDefaultsKeys.selectedAdapterStack),
+           let decoded = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
+           !decoded.isEmpty {
+            var stack: [(id: String, weight: Float)] = []
+            for entry in decoded {
+                guard let id = stringValue(entry["id"])?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      !id.isEmpty,
+                      adaptersByID[id] != nil else {
+                    continue
+                }
+                let raw = doubleValue(entry["strength"]) ?? 1.0
+                stack.append((id: id, weight: AdapterStrengthLimits.clamped(Float(raw))))
+            }
+            if !stack.isEmpty {
+                generationService.selectedAdapterID = stack.first?.id
+                generationService.adapterStack = stack
+                return
+            }
+        }
+
         let adapterID = defaults.string(forKey: AppUserDefaultsKeys.selectedAdapterID)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !adapterID.isEmpty else {
@@ -303,8 +337,7 @@ extension PiMPAudioCommandFacade {
             return
         }
 
-        let adapters = AdapterRegistry.listAdapters()
-        guard adapters.contains(where: { $0.id == adapterID }) else {
+        guard adaptersByID[adapterID] != nil else {
             generationService.selectedAdapterID = nil
             generationService.adapterStack = []
             return
@@ -351,6 +384,12 @@ extension PiMPAudioCommandFacade {
     }
 
     func generationRequest(_ arguments: [String: Any]) throws -> GenerationRequest {
+        try generationRequestWithDurationMeta(arguments).request
+    }
+
+    func generationRequestWithDurationMeta(
+        _ arguments: [String: Any]
+    ) throws -> (request: GenerationRequest, requestedDuration: Double) {
         let prompt = try requiredString("prompt", aliases: ["text"], in: arguments)
         let lyrics = stringValue(arguments["lyrics"]) ?? ""
         let mode = generationMode(from: arguments["mode"] ?? arguments["generationMode"]) ?? .music
@@ -362,12 +401,12 @@ extension PiMPAudioCommandFacade {
 
         let duration: Double
         if pipeline == .stableAudio || (pipeline == .auto && (mode == .soundFX || mode == .ambient)) {
-            duration = min(requestedDuration, 47.0)
+            duration = min(requestedDuration, SoundFXPipeline.maxDuration)
         } else {
             duration = requestedDuration
         }
 
-        return GenerationRequest(
+        let request = GenerationRequest(
             text: prompt,
             lyrics: lyrics,
             referenceAudioURL: referenceAudioURL(from: arguments["referenceAudioPath"] ?? arguments["referenceAudioURL"]),
@@ -383,6 +422,7 @@ extension PiMPAudioCommandFacade {
             pipelineOverride: pipeline,
             coverStrength: Float(min(max(doubleValue(arguments["coverStrength"]) ?? 0.7, 0.0), 1.0))
         )
+        return (request, requestedDuration)
     }
 
     func referenceAudioURL(from value: Any?) -> URL? {
@@ -459,12 +499,13 @@ extension PiMPAudioCommandFacade {
         request: GenerationRequest,
         submitted: Bool,
         dryRun: Bool,
-        operationID: String? = nil
+        operationID: String? = nil,
+        requestedDuration: Double? = nil
     ) -> [String: Any] {
         [
             "submitted": submitted,
             "dryRun": dryRun,
-            "request": generationRequestPayload(request),
+            "request": generationRequestPayload(request, requestedDuration: requestedDuration),
             "status": generationService.map { generationStatePayload($0.state) } ?? NSNull(),
             "operationID": operationID.map { $0 as Any } ?? NSNull(),
             "operation": operationID
@@ -473,11 +514,15 @@ extension PiMPAudioCommandFacade {
         ]
     }
 
-    func generationRequestPayload(_ request: GenerationRequest) -> [String: Any] {
-        [
+    func generationRequestPayload(
+        _ request: GenerationRequest,
+        requestedDuration: Double? = nil
+    ) -> [String: Any] {
+        var payload: [String: Any] = [
             "prompt": request.text,
             "lyrics": request.lyrics.isEmpty ? NSNull() : request.lyrics,
             "duration": request.duration,
+            "effectiveDuration": request.duration,
             "seed": request.seed.map { $0 as Any } ?? NSNull(),
             "method": request.method.rawValue,
             "guidanceScale": request.guidanceScale,
@@ -491,8 +536,14 @@ extension PiMPAudioCommandFacade {
             "mode": request.resolvedMode.rawValue,
             "pipeline": request.pipelineOverride.rawValue,
             "referenceAudioPath": request.referenceAudioURL?.path(percentEncoded: false) ?? NSNull(),
-            "coverStrength": request.coverStrength
+            "coverStrength": request.coverStrength,
+            "maxSFXDuration": SoundFXPipeline.maxDuration
         ]
+        if let requestedDuration {
+            payload["requestedDuration"] = requestedDuration
+            payload["durationClamped"] = abs(requestedDuration - request.duration) > 0.001
+        }
+        return payload
     }
 
     func generationResultPayload(_ result: GenerationResult) -> [String: Any] {
@@ -559,9 +610,16 @@ extension PiMPAudioCommandFacade {
         if let primary = selection.first {
             defaults.set(primary.adapter.id, forKey: AppUserDefaultsKeys.selectedAdapterID)
             defaults.set(Double(primary.strength), forKey: AppUserDefaultsKeys.selectedAdapterStrength)
+            let stackPayload: [[String: Any]] = selection.map {
+                ["id": $0.adapter.id, "strength": Double($0.strength)]
+            }
+            if let data = try? JSONSerialization.data(withJSONObject: stackPayload) {
+                defaults.set(data, forKey: AppUserDefaultsKeys.selectedAdapterStack)
+            }
         } else {
             defaults.removeObject(forKey: AppUserDefaultsKeys.selectedAdapterID)
             defaults.set(1.0, forKey: AppUserDefaultsKeys.selectedAdapterStrength)
+            defaults.removeObject(forKey: AppUserDefaultsKeys.selectedAdapterStack)
         }
     }
 

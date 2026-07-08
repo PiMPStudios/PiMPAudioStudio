@@ -9,9 +9,9 @@ public struct AudioLoadResult: Sendable {
 
 public actor InpaintCoordinator {
     private let vaeActor: VAEActor
-    private let sfxVAEActor: SFXVAEActor?
+    private var sfxVAEActor: SFXVAEActor?
     private let diffusionActor: DiffusionActor?
-    private let sfxDiffusionActor: SFXDiffusionActor?
+    private var sfxDiffusionActor: SFXDiffusionActor?
     /// Mutable so ACE-Step can replace the launch-time stub with a real
     /// tokenizer-backed actor after weights load (same upgrade path as training).
     private var conditioningActor: ConditioningActor?
@@ -74,6 +74,14 @@ public actor InpaintCoordinator {
     /// Replace the ACE-Step conditioning actor (stub → real after model load).
     public func setConditioningActor(_ actor: ConditioningActor?) {
         conditioningActor = actor
+    }
+
+    /// Wire Stable Audio VAE + diffusion actors when SAO weights become available.
+    public func setSFXActors(vae: SFXVAEActor?, diffusion: SFXDiffusionActor?) {
+        sfxVAEActor = vae
+        sfxDiffusionActor = diffusion
+        sfxCurrentLatents = nil
+        sfxLatentFrames = 0
     }
 
     public static func hopSize(for pipeline: PipelineChoice) -> Int {

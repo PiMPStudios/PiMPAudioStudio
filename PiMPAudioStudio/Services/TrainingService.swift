@@ -121,10 +121,17 @@ final class TrainingService: ObservableObject {
     private var isStopping = false
     private var shouldSaveCheckpointOnStop = false
     private var activeAdapterKind: AdapterKind?
-    private let stackManager: AdapterStackManager?
+    private var stackManager: AdapterStackManager?
     private var savedStack: [(adapter: LoRAAdapter, strength: Float)] = []
+    private var savedPrimary: (adapter: LoRAAdapter, strength: Float)?
     private var lastTrainingProgressLogStep = 0
     private var activeRunLog: TrainingRunLog?
+
+    /// Blocks generation while a training task is in flight.
+    weak var generationService: GenerationService?
+
+    /// True while a local training task is running.
+    var isTrainingActive: Bool { trainingTask != nil }
 
     init(
         pipeline: MusicPipeline,
@@ -138,6 +145,11 @@ final class TrainingService: ObservableObject {
         self.conditioning = conditioning
         self.registry = registry
         self.stackManager = stackManager
+    }
+
+    /// Wire the UI adapter stack so training can clear/restore it safely.
+    func attachStackManager(_ manager: AdapterStackManager) {
+        stackManager = manager
     }
 
     /// Start training with selected history entries and/or imported audio files.
@@ -214,6 +226,10 @@ final class TrainingService: ObservableObject {
             )
             return
         }
+        if generationService?.isGenerating == true {
+            state = .failed("Cannot train while generation is running. Wait for generation to finish or cancel it.")
+            return
+        }
         isStopping = false
         shouldSaveCheckpointOnStop = false
         activeAdapterKind = kind
@@ -225,15 +241,22 @@ final class TrainingService: ObservableObject {
             let adapterID = effectiveResumeAdapterID ?? Self.adapterID(from: adapterName)
             defer {
                 AudioDiagnostics.memory("training/defer/begin")
-                if let sm = self.stackManager, !self.savedStack.isEmpty {
-                    AudioDiagnostics.note(
-                        "training/restoreStack",
-                        "count=\(self.savedStack.count)"
-                    )
-                    for entry in self.savedStack {
-                        sm.addToStack(entry.adapter, strength: entry.strength)
+                if let sm = self.stackManager {
+                    if let primary = self.savedPrimary {
+                        sm.setPrimary(primary.adapter)
+                        sm.setPrimaryStrength(primary.strength)
+                    }
+                    if !self.savedStack.isEmpty {
+                        AudioDiagnostics.note(
+                            "training/restoreStack",
+                            "primary=\(self.savedPrimary?.adapter.id ?? "nil") additional=\(self.savedStack.count)"
+                        )
+                        for entry in self.savedStack {
+                            sm.addToStack(entry.adapter, strength: entry.strength)
+                        }
                     }
                     self.savedStack = []
+                    self.savedPrimary = nil
                 }
                 self.trainingTask = nil
                 self.activeAdapterKind = nil
@@ -290,14 +313,21 @@ final class TrainingService: ObservableObject {
                     adapterName: adapterName
                 )
 
-                // Clear stack during training (restore after)
-                if let sm = self.stackManager, sm.isStacking {
+                // Clear inference adapter stack during training (restore after).
+                if let sm = self.stackManager {
+                    if let primary = sm.primaryAdapter {
+                        self.savedPrimary = (primary, sm.primaryStrength)
+                    } else {
+                        self.savedPrimary = nil
+                    }
                     self.savedStack = sm.additionalAdapters
-                    sm.clearStack()
-                    AudioDiagnostics.note(
-                        "training/clearStack",
-                        "kind=\(kind.rawValue) adapterID=\(adapterID) savedCount=\(self.savedStack.count)"
-                    )
+                    if self.savedPrimary != nil || !self.savedStack.isEmpty {
+                        sm.clearAll()
+                        AudioDiagnostics.note(
+                            "training/clearStack",
+                            "kind=\(kind.rawValue) adapterID=\(adapterID) primary=\(self.savedPrimary?.adapter.id ?? "nil") additional=\(self.savedStack.count)"
+                        )
+                    }
                 }
 
                 var sessionConfig: LoRAConfig

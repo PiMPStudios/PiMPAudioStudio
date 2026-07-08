@@ -235,6 +235,7 @@ public actor DiTActor {
     /// LoRALinear layer.  Call after `injectLoRA` — each call appends one entry
     /// to `loraLinear.contributions`; the forward pass sums all entries with
     /// their individual `strength` multipliers.
+    @discardableResult
     public func addLoRAContribution(
         adapterID: String,
         displayName: String?,
@@ -243,9 +244,9 @@ public actor DiTActor {
         strength: Float,
         scaling: Float,
         paths: [String]? = nil
-    ) {
-        guard let decoder else { return }
-        LoRAInjector.addContribution(
+    ) -> Int {
+        guard let decoder else { return 0 }
+        let matched = LoRAInjector.addContribution(
             model: decoder,
             adapterID: adapterID,
             displayName: displayName,
@@ -256,6 +257,7 @@ public actor DiTActor {
             paths: paths ?? injectedPaths
         )
         eval(decoder.parameters())
+        return matched
     }
 
     /// Remove all `LoRAContribution` entries from every injected LoRALinear layer,
@@ -310,6 +312,7 @@ public actor DiTActor {
         injectedAdapterID = adapterID
     }
 
+    @discardableResult
     public func addLoKRContribution(
         adapterID: String,
         displayName: String?,
@@ -318,9 +321,9 @@ public actor DiTActor {
         strength: Float,
         scaling: Float,
         paths: [String]? = nil
-    ) {
-        guard let decoder else { return }
-        LoKRInjector.addContribution(
+    ) -> Int {
+        guard let decoder else { return 0 }
+        let matched = LoKRInjector.addContribution(
             model: decoder,
             adapterID: adapterID,
             displayName: displayName,
@@ -331,6 +334,7 @@ public actor DiTActor {
             paths: paths ?? injectedPaths
         )
         eval(decoder.parameters())
+        return matched
     }
 
     public func clearLoKRContributions() {

@@ -323,6 +323,7 @@ public actor DiffusionActor {
         try await dit.loadLoRAWeights(weights, adapterID: adapterID, paths: paths)
     }
 
+    @discardableResult
     public func addLoRAContribution(
         adapterID: String,
         displayName: String?,
@@ -331,7 +332,7 @@ public actor DiffusionActor {
         strength: Float,
         scaling: Float,
         paths: [String]? = nil
-    ) async {
+    ) async -> Int {
         await dit.addLoRAContribution(
             adapterID: adapterID,
             displayName: displayName,
@@ -363,6 +364,7 @@ public actor DiffusionActor {
         try await dit.loadLoKRWeights(weights, adapterID: adapterID, paths: paths)
     }
 
+    @discardableResult
     public func addLoKRContribution(
         adapterID: String,
         displayName: String?,
@@ -371,7 +373,7 @@ public actor DiffusionActor {
         strength: Float,
         scaling: Float,
         paths: [String]? = nil
-    ) async {
+    ) async -> Int {
         await dit.addLoKRContribution(
             adapterID: adapterID,
             displayName: displayName,

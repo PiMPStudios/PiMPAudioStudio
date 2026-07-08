@@ -78,6 +78,7 @@ public actor MusicPipeline {
         try await diffusion.loadLoRAWeights(weights, adapterID: adapterID, paths: paths)
     }
 
+    @discardableResult
     public func addLoRAContribution(
         adapterID: String,
         displayName: String?,
@@ -86,7 +87,7 @@ public actor MusicPipeline {
         strength: Float,
         scaling: Float,
         paths: [String]? = nil
-    ) async {
+    ) async -> Int {
         await diffusion.addLoRAContribution(
             adapterID: adapterID,
             displayName: displayName,
@@ -118,6 +119,7 @@ public actor MusicPipeline {
         try await diffusion.loadLoKRWeights(weights, adapterID: adapterID, paths: paths)
     }
 
+    @discardableResult
     public func addLoKRContribution(
         adapterID: String,
         displayName: String?,
@@ -126,7 +128,7 @@ public actor MusicPipeline {
         strength: Float,
         scaling: Float,
         paths: [String]? = nil
-    ) async {
+    ) async -> Int {
         await diffusion.addLoKRContribution(
             adapterID: adapterID,
             displayName: displayName,
