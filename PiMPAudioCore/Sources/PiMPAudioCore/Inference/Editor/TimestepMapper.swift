@@ -3,6 +3,15 @@ import Darwin
 #endif
 
 public enum TimestepMapper {
+    /// Returns the rectified-flow noise level that matches a truncated inpaint schedule.
+    ///
+    /// Inpaint/img2img starts diffusion from the first timestep in the truncated
+    /// schedule.  Noise injection must use that same value so the model is not
+    /// asked to denoise a latent sampled at a different `t`.
+    public static func noiseStrength(for schedule: [Float]) -> Float {
+        schedule.first ?? 0.0
+    }
+
     /// Maps a strength value (0.0–1.0) to the start step index into the diffusion schedule.
     ///
     /// - Parameters:

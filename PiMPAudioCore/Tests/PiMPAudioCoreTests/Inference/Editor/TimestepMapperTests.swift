@@ -4,6 +4,37 @@ import Testing
 @Suite("TimestepMapper")
 struct TimestepMapperTests {
 
+    // MARK: - noiseStrength
+
+    @Test("Empty schedule maps to zero noise strength")
+    func emptyScheduleMapsToZeroNoiseStrength() {
+        #expect(TimestepMapper.noiseStrength(for: []) == 0.0)
+    }
+
+    @Test("ACE shifted midpoint noise strength matches schedule start")
+    func aceShiftedMidpointNoiseStrengthMatchesScheduleStart() {
+        let schedule = TimestepMapper.truncatedSchedule(
+            strength: 0.5,
+            totalSteps: 100,
+            shift: 3.0
+        )
+        let noiseStrength = TimestepMapper.noiseStrength(for: schedule)
+
+        #expect(schedule.first == noiseStrength)
+        #expect(abs(noiseStrength - 0.75) < 1e-6)
+    }
+
+    @Test("Full strength noise starts from pure noise")
+    func fullStrengthNoiseStartsFromPureNoise() {
+        let schedule = TimestepMapper.truncatedSchedule(
+            strength: 1.0,
+            totalSteps: 100,
+            shift: 3.0
+        )
+
+        #expect(TimestepMapper.noiseStrength(for: schedule) == 1.0)
+    }
+
     // MARK: - startStep
 
     @Test("Zero strength returns start step 0")

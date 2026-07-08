@@ -296,7 +296,7 @@ public actor InpaintCoordinator {
         )
         AudioDiagnostics.tensor("editor/edit/workingLatents", workingLatents)
 
-        // ── Mask + noise injection ────────────────────────────────────────────
+        // ── Mask ──────────────────────────────────────────────────────────────
         let mask = MaskBuilder.buildMask(
             selection: request.selection,
             totalDuration: totalDuration,
@@ -306,15 +306,7 @@ public actor InpaintCoordinator {
             hopSize: workingHop
         )
 
-        let noisedLatents = LatentBlender.injectNoise(
-            latents: workingLatents,
-            mask: mask,
-            strength: request.strength,
-            seed: request.seed
-        )
         AudioDiagnostics.tensor("editor/edit/mask", mask)
-        AudioDiagnostics.tensor("editor/edit/noisedLatents", noisedLatents)
-        AudioDiagnostics.memory("editor/edit/afterNoise")
 
         continuation.yield(.encoding)
         try Task.checkCancellation()
@@ -337,6 +329,24 @@ public actor InpaintCoordinator {
                 shift: 3.0
             )
             AudioDiagnostics.floats("editor/aceInpaint/schedule", schedule)
+            let noiseStrength = TimestepMapper.noiseStrength(for: schedule)
+            AudioDiagnostics.note(
+                "editor/aceInpaint/noise",
+                "sliderStrength=\(request.strength) scheduleNoiseStrength=\(noiseStrength) scheduleSteps=\(schedule.count)"
+            )
+            let noisedLatents = LatentBlender.injectNoise(
+                latents: workingLatents,
+                mask: mask,
+                strength: noiseStrength,
+                seed: request.seed
+            )
+            AudioDiagnostics.tensor("editor/edit/noisedLatents", noisedLatents)
+            AudioDiagnostics.memory("editor/edit/afterNoise")
+            guard !schedule.isEmpty else {
+                // strength == 0 → no denoising; preserve the current latents.
+                denoised = noisedLatents
+                break
+            }
 
             let conditioning = try await condActor.encode(
                 text: request.regionPrompt,
@@ -388,6 +398,19 @@ public actor InpaintCoordinator {
                 totalSteps: 100
             )
             AudioDiagnostics.floats("editor/sfxInpaint/schedule", schedule)
+            let noiseStrength = TimestepMapper.noiseStrength(for: schedule)
+            AudioDiagnostics.note(
+                "editor/sfxInpaint/noise",
+                "sliderStrength=\(request.strength) scheduleNoiseStrength=\(noiseStrength) scheduleSteps=\(schedule.count)"
+            )
+            let noisedLatents = LatentBlender.injectNoise(
+                latents: workingLatents,
+                mask: mask,
+                strength: noiseStrength,
+                seed: request.seed
+            )
+            AudioDiagnostics.tensor("editor/edit/noisedLatents", noisedLatents)
+            AudioDiagnostics.memory("editor/edit/afterNoise")
             guard !schedule.isEmpty else {
                 // strength == 0 → nothing to do, return working latents unchanged
                 denoised = noisedLatents
