@@ -20,6 +20,7 @@ private let editorSupportedAudioTypes: [UTType] = {
 struct EditorView: View {
     @StateObject private var state = EditorState()
     @EnvironmentObject private var editorService: EditorService
+    @EnvironmentObject private var sfxModelManager: SFXModelManager
     @State private var exportErrorMessage: String?
 
     var preloadedAudioURL: URL?
@@ -29,6 +30,7 @@ struct EditorView: View {
         VStack(spacing: 0) {
             EditorToolbar(
                 state: state,
+                isStableAudioReady: sfxModelManager.isReady,
                 onOpen: openFile,
                 onExport: { exportFile(format: $0) },
                 onUndo: performUndo,

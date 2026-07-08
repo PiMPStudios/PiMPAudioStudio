@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 struct GenerateView: View {
     @EnvironmentObject private var generationService: GenerationService
+    @EnvironmentObject private var trainingService: TrainingService
     @EnvironmentObject private var playerService: AudioPlayerService
     @EnvironmentObject private var intentRouter: IntentRouter
     @EnvironmentObject private var promptEnhancer: PromptEnhancer
@@ -471,12 +472,19 @@ struct GenerateView: View {
             }
             .buttonStyle(.borderedProminent)
             .disabled(!canGenerate)
+            .help(generateButtonHelp)
 
             if case .generating = generationService.state {
                 Button("Cancel", role: .destructive) {
                     generationService.cancel()
                 }
                 .buttonStyle(.bordered)
+            }
+
+            if trainingService.isTrainingActive {
+                Text("Training in progress…")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Spacer()
@@ -728,14 +736,22 @@ struct GenerateView: View {
     }
 
     private var canGenerate: Bool {
-        let isReady: Bool
-        switch generationService.state {
-        case .idle, .complete, .cancelled, .error:
-            isReady = true
-        default:
-            isReady = false
+        // Honor train↔generate mutual exclusion from GenerationService.
+        generationService.canSubmitGeneration
+            && !promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var generateButtonHelp: String {
+        if trainingService.isTrainingActive {
+            return "Cannot generate while training is running. Stop training first."
         }
-        return isReady && !promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        if !generationService.canSubmitGeneration {
+            return "Wait for the current generation to finish or cancel it."
+        }
+        if promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "Enter a prompt to generate."
+        }
+        return sourceAudioURL != nil ? "Generate a cover from the source audio" : "Generate audio"
     }
 
     private var estimatedTime: TimeInterval? {

@@ -3,6 +3,9 @@ import PiMPAudioCore
 
 struct EditorToolbar: View {
     @ObservedObject var state: EditorState
+    /// When false, Stable Audio is hidden from the pipeline picker and any
+    /// current SAO selection is reset to Auto.
+    var isStableAudioReady: Bool = false
     let onOpen: () -> Void
     let onExport: (ExportFormat) -> Void
     let onUndo: () -> Void
@@ -50,16 +53,22 @@ struct EditorToolbar: View {
 
                 Divider().frame(height: 20)
 
-                Picker("Pipeline", selection: $state.pipeline) {
-                    // Auto + ACE-Step always available. Stable Audio only when
-                    // SFX actors are loadable (wired via SFXModelManager).
-                    Text(PipelineChoice.auto.displayName).tag(PipelineChoice.auto)
-                    Text(PipelineChoice.aceStep.displayName).tag(PipelineChoice.aceStep)
-                    Text(PipelineChoice.stableAudio.displayName).tag(PipelineChoice.stableAudio)
+                VStack(alignment: .trailing, spacing: 2) {
+                    Picker("Pipeline", selection: $state.pipeline) {
+                        ForEach(availablePipelines, id: \.self) { choice in
+                            Text(choice.displayName).tag(choice)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .frame(width: 140)
+                    .help(pipelineHelp)
+
+                    if !isStableAudioReady {
+                        Text("SAO not loaded")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.tertiary)
+                    }
                 }
-                .pickerStyle(.menu)
-                .frame(width: 140)
-                .help("Stable Audio requires the SAO model to be downloaded and loaded")
 
                 Divider().frame(height: 20)
 
@@ -83,6 +92,30 @@ struct EditorToolbar: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .background(.ultraThinMaterial)
+        .onAppear { clampPipelineIfNeeded() }
+        .onChange(of: isStableAudioReady) { _, _ in
+            clampPipelineIfNeeded()
+        }
+    }
+
+    private var availablePipelines: [PipelineChoice] {
+        if isStableAudioReady {
+            return [.auto, .aceStep, .stableAudio]
+        }
+        return [.auto, .aceStep]
+    }
+
+    private var pipelineHelp: String {
+        if isStableAudioReady {
+            return "ACE-Step for music; Stable Audio for SFX inpaint when SAO is loaded"
+        }
+        return "Stable Audio requires the SAO model to be downloaded and loaded in Settings"
+    }
+
+    private func clampPipelineIfNeeded() {
+        if !isStableAudioReady && state.pipeline == .stableAudio {
+            state.pipeline = .auto
+        }
     }
 
     private var formattedDuration: String {

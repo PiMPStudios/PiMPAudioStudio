@@ -354,42 +354,73 @@ actor CoverSongCoordinator {
             let rawWeights = try await weightConverter.loadSafetensors(from: weightPaths)
             let ditWeights = try await weightConverter.convertDiTWeights(stateDict: rawWeights)
             await pipeline.loadDiTWeights(ditWeights, modelID: spec.id)
-            currentlyLoadedDiTModelID = spec.id
-            currentlyLoadedDiTConfig = ditConfig
 
-            // Upgrade ConditioningActor with tokenizer + conditioning weights
-            if let vaeSpec = await registry.activeSpec(for: .aceStepVAE) {
-                let tokenizerPath = vaeSpec.localPath(for: "tokenizer.json", base: baseDir)
-                if FileManager.default.fileExists(atPath: tokenizerPath.path(percentEncoded: false)),
-                   let real = try? ConditioningActor.make(tokenizerURL: tokenizerPath) {
-                    conditioning = real
-                    logger.info("[CoverSongCoordinator] upgraded ConditioningActor with real tokenizer")
-                }
-
-                let qwen3Path = vaeSpec.localPath(for: "qwen3_model.safetensors", base: baseDir)
-                if FileManager.default.fileExists(atPath: qwen3Path.path(percentEncoded: false)) {
-                    let qwen3Raw = try await weightConverter.loadSafetensors(from: qwen3Path)
-                    let qwen3Weights = await weightConverter.convertQwen3Weights(from: qwen3Raw)
-                    let condWeights = await weightConverter.convertConditionEncoderWeights(from: rawWeights)
-                    await conditioning.loadWeights(
-                        qwen3Weights: qwen3Weights,
-                        conditionWeights: condWeights
-                    )
-                    logger.info("[CoverSongCoordinator] loaded conditioning weights")
-                }
+            // Conditioning is required for usable covers — fail closed like ACE text2music.
+            guard let vaeSpec = await registry.activeSpec(for: .aceStepVAE) else {
+                throw GenerationError.conditioningIncomplete(
+                    "ACE-Step VAE / text-encoder model is not configured."
+                )
             }
 
-            // Load silence latent
+            let tokenizerPath = vaeSpec.localPath(for: "tokenizer.json", base: baseDir)
+            let tokenizerFSPath = tokenizerPath.path(percentEncoded: false)
+            guard FileManager.default.fileExists(atPath: tokenizerFSPath) else {
+                throw GenerationError.conditioningIncomplete(
+                    "tokenizer.json is missing. Download the ACE-Step VAE/text encoder package."
+                )
+            }
+            do {
+                conditioning = try ConditioningActor.make(tokenizerURL: tokenizerPath)
+                logger.info("[CoverSongCoordinator] upgraded ConditioningActor with real tokenizer")
+            } catch {
+                throw GenerationError.conditioningIncomplete(
+                    "Could not load tokenizer at \(tokenizerFSPath): \(error.localizedDescription)"
+                )
+            }
+
+            let qwen3Path = vaeSpec.localPath(for: "qwen3_model.safetensors", base: baseDir)
+            let qwen3FSPath = qwen3Path.path(percentEncoded: false)
+            guard FileManager.default.fileExists(atPath: qwen3FSPath) else {
+                throw GenerationError.conditioningIncomplete(
+                    "qwen3_model.safetensors is missing. Download the ACE-Step VAE/text encoder package."
+                )
+            }
+            do {
+                let qwen3Raw = try await weightConverter.loadSafetensors(from: qwen3Path)
+                let qwen3Weights = await weightConverter.convertQwen3Weights(from: qwen3Raw)
+                let condWeights = await weightConverter.convertConditionEncoderWeights(from: rawWeights)
+                await conditioning.loadWeights(
+                    qwen3Weights: qwen3Weights,
+                    conditionWeights: condWeights
+                )
+                logger.info("[CoverSongCoordinator] loaded conditioning weights")
+            } catch {
+                throw GenerationError.conditioningIncomplete(
+                    "Failed to load Qwen3/condition encoder weights: \(error.localizedDescription)"
+                )
+            }
+
+            // silence_latent preferred but not hard-required
             let silencePath = spec.localPath(for: "silence_latent.pt", base: baseDir)
-            if FileManager.default.fileExists(atPath: silencePath.path(percentEncoded: false)),
-               let silence = try? SilenceLatentLoader.load(from: silencePath) {
-                await conditioning.setSilenceLatent(silence)
+            if FileManager.default.fileExists(atPath: silencePath.path(percentEncoded: false)) {
+                do {
+                    let silence = try SilenceLatentLoader.load(from: silencePath)
+                    await conditioning.setSilenceLatent(silence)
+                } catch {
+                    logger.warning("[CoverSongCoordinator] silence_latent load failed — zeros: \(error.localizedDescription)")
+                    await conditioning.setSilenceLatent(nil)
+                }
             } else {
                 await conditioning.setSilenceLatent(nil)
             }
 
             // Load AudioTokenizer (tokenizer.* subtree of the same safetensors)
             let tokWeights = await weightConverter.convertAudioTokenizerWeights(from: rawWeights)
+            guard !tokWeights.isEmpty else {
+                throw GenerationError.conditioningIncomplete(
+                    "AudioTokenizer weights missing from the DiT safetensors bundle."
+                )
+            }
             let tok = AudioTokenizer()
             tok.update(parameters: ModuleParameters.unflattened(tokWeights))
             eval(tok.parameters())
@@ -398,13 +429,26 @@ actor CoverSongCoordinator {
 
             // Load AudioTokenDetokenizer (detokenizer.* subtree)
             let detokWeights = await weightConverter.convertAudioTokenDetokenizerWeights(from: rawWeights)
+            guard !detokWeights.isEmpty else {
+                throw GenerationError.conditioningIncomplete(
+                    "AudioTokenDetokenizer weights missing from the DiT safetensors bundle."
+                )
+            }
             let detok = AudioTokenDetokenizer()
             detok.update(parameters: ModuleParameters.unflattened(detokWeights))
             eval(detok.parameters())
             self.audioDetokenizer = detok
             logger.info("[CoverSongCoordinator] loaded AudioTokenDetokenizer weights=\(detokWeights.count)")
 
+            // Only mark DiT loaded after conditioning + tokenizer stack succeed.
+            currentlyLoadedDiTModelID = spec.id
+            currentlyLoadedDiTConfig = ditConfig
+
         } catch {
+            currentlyLoadedDiTModelID = nil
+            currentlyLoadedDiTConfig = nil
+            audioTokenizer = nil
+            audioDetokenizer = nil
             if let previousModelID {
                 try? await registry.setActiveModel(id: previousModelID, for: .aceStepDiT)
             }
