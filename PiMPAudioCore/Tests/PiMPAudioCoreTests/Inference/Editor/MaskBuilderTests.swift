@@ -73,6 +73,30 @@ struct MaskBuilderTests {
         #expect(range == nil)
     }
 
+    @Test("Frequency channel mapping uses sample-rate Nyquist")
+    func frequencyChannelMappingUsesSampleRateNyquist() {
+        let band = FrequencyBand(lowCutHz: 23_000, highCutHz: 24_000)
+        let weights = MaskBuilder.frequencyChannelWeights(
+            latentDim: latentDim,
+            nyquistHz: Float(sampleRate) / 2.0,
+            band: band
+        )
+
+        #expect(weights == [0, 0, 0, 0, 0, 0, 0, 1])
+    }
+
+    @Test("Frequency channel mapping keeps 44.1 kHz top below 23 kHz")
+    func frequencyChannelMappingKeeps44100TopBelow23k() {
+        let band = FrequencyBand(lowCutHz: 23_000, highCutHz: 24_000)
+        let weights = MaskBuilder.frequencyChannelWeights(
+            latentDim: latentDim,
+            nyquistHz: 22_050,
+            band: band
+        )
+
+        #expect(weights == [0, 0, 0, 0, 0, 0, 0, 0])
+    }
+
     // MARK: 1 — Full mask (entire duration) → all 1s, shape [1, T, 1]
 
     @Test("Full selection produces all-ones mask with shape [1, T, 1]")

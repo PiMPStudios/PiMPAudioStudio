@@ -7,13 +7,9 @@ import MLX
 ///
 /// ACE-Step v1.5 uses a 1920-sample hop at 48 kHz (25 latent frames/sec);
 /// Stable Audio Open uses a 2048-sample hop at 44.1 kHz.
-/// The Nyquist frequency assumed for channel mapping is 22 050 Hz.
+/// Frequency-band channel mapping is a linear latent-channel heuristic scaled
+/// to the active audio sample rate's Nyquist frequency.
 public enum MaskBuilder {
-
-    // MARK: - Constants
-
-    /// Nyquist frequency used for linear Hz → latent-channel mapping.
-    static let nyquistHz: Float = 22_050
 
     // MARK: - Public API
 
@@ -54,11 +50,13 @@ public enum MaskBuilder {
         }
 
         if let band = selection.frequencyBand {
+            let nyquistHz = Float(sampleRate) / 2.0
             return buildFrequencyMask(
                 startFrame: frameRange.lowerBound,
                 endFrame: frameRange.upperBound,
                 latentFrames: latentFrames,
                 latentDim: latentDim,
+                nyquistHz: nyquistHz,
                 band: band
             )
         } else {
@@ -115,24 +113,24 @@ public enum MaskBuilder {
     /// derived from a ``FrequencyBand``.
     ///
     /// Channels are linearly mapped from 0 Hz (channel 0) to `nyquistHz`
-    /// (channel `latentDim - 1`). Channels inside the band are 1.0;
-    /// channels outside are 0.0. Time frames outside the selection stay 0.0.
+    /// (channel `latentDim - 1`). This is a VAE-channel heuristic, not a
+    /// true mel/bin mapping. Channels inside the band are 1.0; channels
+    /// outside are 0.0. Time frames outside the selection stay 0.0.
     private static func buildFrequencyMask(
         startFrame: Int,
         endFrame: Int,
         latentFrames: Int,
         latentDim: Int,
+        nyquistHz: Float,
         band: FrequencyBand
     ) -> MLXArray {
 
         // Compute per-channel weights (0 or 1)
-        var channelWeights = [Float](repeating: 0, count: latentDim)
-        for ch in 0..<latentDim {
-            let chHz = Float(ch) / Float(max(latentDim - 1, 1)) * nyquistHz
-            if chHz >= band.lowCutHz && chHz <= band.highCutHz {
-                channelWeights[ch] = 1.0
-            }
-        }
+        let channelWeights = frequencyChannelWeights(
+            latentDim: latentDim,
+            nyquistHz: nyquistHz,
+            band: band
+        )
 
         // Build flat [latentFrames * latentDim] data
         var data = [Float](repeating: 0, count: latentFrames * latentDim)
@@ -143,5 +141,22 @@ public enum MaskBuilder {
         }
 
         return MLXArray(data, [1, latentFrames, latentDim])
+    }
+
+    static func frequencyChannelWeights(
+        latentDim: Int,
+        nyquistHz: Float,
+        band: FrequencyBand
+    ) -> [Float] {
+        guard latentDim > 0, nyquistHz > 0 else { return [] }
+
+        var channelWeights = [Float](repeating: 0, count: latentDim)
+        for channel in 0..<latentDim {
+            let channelHz = Float(channel) / Float(max(latentDim - 1, 1)) * nyquistHz
+            if channelHz >= band.lowCutHz && channelHz <= band.highCutHz {
+                channelWeights[channel] = 1.0
+            }
+        }
+        return channelWeights
     }
 }
