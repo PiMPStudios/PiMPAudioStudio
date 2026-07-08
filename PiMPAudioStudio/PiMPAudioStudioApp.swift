@@ -283,6 +283,7 @@ final class AppServices: ObservableObject {
             registry: registry,
             llmManager: llmManager,
             trainingService: self.trainingService,
+            editorService: editorSvc,
             traceMonitor: traceMonitor
         )
         self.generationService = generationService
@@ -314,6 +315,7 @@ final class AppServices: ObservableObject {
             registry: registry,
             llmManager: llmManager,
             trainingService: self.trainingService,
+            editorService: self.editorService,
             traceMonitor: traceMonitor
         )
         self.generationService = generationService
@@ -334,17 +336,36 @@ final class AppServices: ObservableObject {
         registry: ModelRegistry,
         llmManager: LLMModelManager,
         trainingService: TrainingService? = nil,
+        editorService: EditorService? = nil,
         traceMonitor: GenerationTraceMonitor
     ) -> GenerationService {
         let pipeline = MusicPipeline(vae: vaeActor, diffusion: diffusionActor)
         let converter = WeightConverter()
 
         // Propagate the upgraded ConditioningActor (real tokenizer + weights) to
-        // TrainingService so it doesn't keep the launch-time stub when training starts.
-        let conditioningUpgradeHandler: (@Sendable (ConditioningActor) async -> Void)? =
-            trainingService.map { ts in
-                { @Sendable newConditioning in await ts.updateConditioning(newConditioning) }
+        // TrainingService, CoverSong, and the editor so they don't keep the
+        // launch-time stub after the first ACE-Step model load.
+        let sfx = SFXGenerationService(sfxModelManager: sfxModelManager)
+        let lora = LoRACoordinator(pipeline: pipeline, registry: registry)
+        let coverSong = CoverSongCoordinator(
+            pipeline: pipeline,
+            conditioning: conditioningActor,
+            weightConverter: converter,
+            registry: registry
+        )
+
+        let conditioningUpgradeHandler: @Sendable (ConditioningActor) async -> Void = { newConditioning in
+            if let trainingService {
+                await trainingService.updateConditioning(newConditioning)
             }
+            await coverSong.updateConditioning(newConditioning)
+            if let editorService {
+                await MainActor.run {
+                    editorService.updateConditioning(newConditioning)
+                }
+            }
+        }
+
         let aceStep = ACEStepGenerationService(
             pipeline: pipeline,
             conditioning: conditioningActor,
@@ -359,14 +380,6 @@ final class AppServices: ObservableObject {
         trainingService?.setTrainingFinishedHandler {
             await llmManager.reload()
         }
-        let sfx = SFXGenerationService(sfxModelManager: sfxModelManager)
-        let lora = LoRACoordinator(pipeline: pipeline, registry: registry)
-        let coverSong = CoverSongCoordinator(
-            pipeline: pipeline,
-            conditioning: conditioningActor,
-            weightConverter: converter,
-            registry: registry
-        )
 
         return GenerationService(
             aceStepService: aceStep,

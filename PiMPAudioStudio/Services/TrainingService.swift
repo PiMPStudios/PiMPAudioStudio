@@ -494,6 +494,18 @@ final class TrainingService: ObservableObject {
                     adapterName: adapterName
                 )
 
+                // Drop any inference-time LoRA/LoKR wrappers left on the DiT from
+                // a previous generate. trainLoRA/trainLoKR inject directly and
+                // skip already-wrapped linears, which silently trains the wrong
+                // surface (or nothing) if generation adapters are still attached.
+                await self.pipeline.clearLoRAContributions()
+                await self.pipeline.clearLoKRContributions()
+                await self.pipeline.removeLoRA()
+                AudioDiagnostics.note(
+                    "training/run/clearedInferenceAdapters",
+                    "kind=\(kind.rawValue) adapterID=\(adapterID)"
+                )
+
                 let progressHandler: @Sendable (TrainingProgress) -> Void = { [weak self] progress in
                     Task { @MainActor in
                         self?.handleTrainingProgress(

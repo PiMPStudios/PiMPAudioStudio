@@ -250,15 +250,28 @@ struct EditorView: View {
             state.resetUndoHistory()
 
             // VAE-encode into the coordinator so inpainting has a starting latent.
-            // Runs off the main thread — fires and forgets from the UI's perspective.
+            // Surface encode failures so AI edit isn't offered on a half-loaded clip.
             Task {
-                guard let coordinator = editorService.coordinator else { return }
+                guard let coordinator = editorService.coordinator else {
+                    await MainActor.run {
+                        state.operationErrorMessage =
+                            "Audio opened for playback, but the editor pipeline is not ready for AI edits."
+                    }
+                    return
+                }
                 let mlxArray = AudioBufferConverter.toMLXArray(buffer)
-                _ = try? await coordinator.loadAudio(
-                    samples: mlxArray,
-                    sampleRate: buffer.sampleRate,
-                    precision: .float32
-                )
+                do {
+                    _ = try await coordinator.loadAudio(
+                        samples: mlxArray,
+                        sampleRate: buffer.sampleRate,
+                        precision: .float32
+                    )
+                } catch {
+                    await MainActor.run {
+                        state.operationErrorMessage =
+                            "Audio opened for playback, but AI edit prep failed: \(error.localizedDescription)"
+                    }
+                }
             }
         } catch {
             state.isLoaded = false
@@ -279,26 +292,30 @@ struct EditorView: View {
         state.progress = .buildingMask
 
         Task { @MainActor in
+            var succeeded = false
             for await progress in await coordinator.edit(request: request) {
                 state.progress = progress
                 switch progress {
-                case .complete, .failed:
+                case .complete:
+                    succeeded = true
+                    state.isProcessing = false
+                case .failed:
                     state.isProcessing = false
                 default:
                     break
                 }
             }
-            // Pull the regenerated audio back from the coordinator and update
-            // the editor buffer so DSP tools and the waveform view stay in sync.
-            if let updatedAudio = await coordinator.getCurrentAudio() {
-                let newBuffer = AudioBufferConverter.fromMLXArray(
-                    updatedAudio,
-                    sampleRate: state.sampleRate
-                )
-                state.audioBuffer = newBuffer
-                state.duration = newBuffer.duration
-                state.refreshWaveformPeaks(from: newBuffer)
-            }
+            // Only refresh the buffer after a successful edit. Pulling audio on
+            // failure rewrote the waveform from stale coordinator state and
+            // made it look like a no-op "edit" had been applied.
+            guard succeeded, let updatedAudio = await coordinator.getCurrentAudio() else { return }
+            let newBuffer = AudioBufferConverter.fromMLXArray(
+                updatedAudio,
+                sampleRate: state.sampleRate
+            )
+            state.audioBuffer = newBuffer
+            state.duration = newBuffer.duration
+            state.refreshWaveformPeaks(from: newBuffer)
         }
     }
 

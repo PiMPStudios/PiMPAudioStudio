@@ -35,6 +35,14 @@ class EditorService: ObservableObject {
         }
     }
 
+    /// Propagate the upgraded ACE-Step ConditioningActor (real tokenizer +
+    /// weights) into the inpaint coordinator so AI edits don't keep using the
+    /// launch-time stub.
+    func updateConditioning(_ actor: ConditioningActor) {
+        guard let coordinator else { return }
+        Task { await coordinator.setConditioningActor(actor) }
+    }
+
     func recordLoadedAudio(_ audio: EditorLoadedAudio) {
         loadedAudio = audio
         lastEdit = nil

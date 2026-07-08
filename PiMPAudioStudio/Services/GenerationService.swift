@@ -281,12 +281,12 @@ final class GenerationService: ObservableObject {
                     AudioDiagnostics.memory("generation/cover/beforeLoRA")
                     AdapterEffectDiagnostics.beginGeneration()
                     await self.loraCoordinator.clearAll()
-                    if !self.adapterStack.isEmpty {
+                    // Always use ensureStack so strength is applied via contributions.
+                    // ensureAdapter ignored strength and used a different load path.
+                    let coverAdapterStack = self.resolvedAdapterStackForInjection()
+                    if !coverAdapterStack.isEmpty {
                         self.traceMonitor.recordStage("Adapters", message: "Applying adapter stack to cover diffusion")
-                        await self.loraCoordinator.ensureStack(stack: self.adapterStack)
-                    } else {
-                        self.traceMonitor.recordStage("Adapters", message: "Applying selected adapter to cover diffusion")
-                        await self.loraCoordinator.ensureAdapter(selectedID: self.selectedAdapterID)
+                        await self.loraCoordinator.ensureStack(stack: coverAdapterStack)
                     }
                     AudioDiagnostics.memory("generation/cover/afterLoRA")
 
@@ -311,12 +311,12 @@ final class GenerationService: ObservableObject {
                     AdapterEffectDiagnostics.beginGeneration()
                     await self.loraCoordinator.clearAll()
 
-                    if !self.adapterStack.isEmpty {
+                    // Always use ensureStack so strength is applied via contributions.
+                    // ensureAdapter ignored strength and used a different load path.
+                    let aceAdapterStack = self.resolvedAdapterStackForInjection()
+                    if !aceAdapterStack.isEmpty {
                         self.traceMonitor.recordStage("Adapters", message: "Applying adapter stack")
-                        await self.loraCoordinator.ensureStack(stack: self.adapterStack)
-                    } else {
-                        self.traceMonitor.recordStage("Adapters", message: "Applying selected adapter")
-                        await self.loraCoordinator.ensureAdapter(selectedID: self.selectedAdapterID)
+                        await self.loraCoordinator.ensureStack(stack: aceAdapterStack)
                     }
                     AudioDiagnostics.memory("generation/aceStep/afterLoRA")
                     AudioDiagnostics.memory("generation/aceStep/beforeRun")
@@ -717,15 +717,21 @@ final class GenerationService: ObservableObject {
         return snapshots
     }
 
-    private func historyAdapterSnapshots() -> [HistoryAdapterSnapshot] {
-        let requestedStack: [(id: String, weight: Float)]
+    /// Resolves the adapter stack for injection. Prefers `adapterStack` (with
+    /// per-entry strength). Falls back to a single selected ID at strength 1.0
+    /// only when the stack was never set (legacy/MCP edge cases).
+    private func resolvedAdapterStackForInjection() -> [(id: String, weight: Float)] {
         if !adapterStack.isEmpty {
-            requestedStack = adapterStack
-        } else if let selectedAdapterID {
-            requestedStack = [(id: selectedAdapterID, weight: 1.0)]
-        } else {
-            requestedStack = []
+            return adapterStack
         }
+        if let selectedAdapterID {
+            return [(id: selectedAdapterID, weight: 1.0)]
+        }
+        return []
+    }
+
+    private func historyAdapterSnapshots() -> [HistoryAdapterSnapshot] {
+        let requestedStack = resolvedAdapterStackForInjection()
 
         guard !requestedStack.isEmpty else { return [] }
 
@@ -825,7 +831,15 @@ final class GenerationService: ObservableObject {
             if sfxModelManager.isPipelineLoadable() {
                 return true
             }
+            // Surface in the live generation trace so Auto→ACE fallback is
+            // visible without digging through console logs.
             memLogger.info("[shouldUseStableAudio] auto detected \(String(describing: request.resolvedMode)), but SFX pipeline not loadable — falling back to ACE-Step")
+            traceMonitor.recordStage(
+                "Routing",
+                message: "SFX/ambient requested but Stable Audio is not loadable — using ACE-Step",
+                detail: "Install/load Stable Audio models, or set pipeline to ACE-Step explicitly",
+                level: .warning
+            )
             return false
         }
     }

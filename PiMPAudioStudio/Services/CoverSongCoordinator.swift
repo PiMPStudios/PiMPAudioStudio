@@ -45,6 +45,12 @@ actor CoverSongCoordinator {
         self.registry = registry
     }
 
+    /// Replace the launch-time stub with the upgraded ACE-Step conditioning actor
+    /// (real tokenizer + Qwen/encoder weights) once generation has loaded models.
+    func updateConditioning(_ actor: ConditioningActor) {
+        conditioning = actor
+    }
+
     func needsModelLoad() async -> Bool {
         guard let activeDiTID = await registry.activeModelID(for: .aceStepDiT),
               let activeVAEID = await registry.activeModelID(for: .aceStepVAE) else {

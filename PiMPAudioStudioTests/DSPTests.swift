@@ -97,3 +97,33 @@ import Testing
     #expect(AVAudioEngineDSP.bandwidthOctaves(forQ: 0.1) == 5.0)
     #expect(AVAudioEngineDSP.bandwidthOctaves(forQ: 10_000) == 0.05)
 }
+
+@Test func stereoFadeInUsesSameGainPerFrame() throws {
+    // Interleaved stereo: L0 R0 L1 R1 ... constant 1.0
+    let channels = 2
+    let sampleRate = 100
+    let frames = 10
+    let samples = [Float](repeating: 1.0, count: frames * channels)
+    let buffer = AudioBufferConverter.fromFloats(samples, sampleRate: sampleRate, channels: channels)
+    let faded = try SimpleDSP.fadeIn(buffer, start: 0, end: 0.1) // full 10 frames
+    let out = AudioBufferConverter.toFloats(faded)
+
+    // Every frame should apply the same gain to L and R
+    for frame in 0..<frames {
+        let l = out[frame * channels]
+        let r = out[frame * channels + 1]
+        #expect(abs(l - r) < 1e-5, "frame \(frame): L=\(l) R=\(r) should match")
+    }
+    // First frame near 0, last frame near 1
+    #expect(out[0] < 0.15)
+    #expect(out[(frames - 1) * channels] > 0.85)
+}
+
+@Test func dspProcessorRejectsMissingEQParameters() throws {
+    let processor = DSPProcessor()
+    let samples = [Float](repeating: 0.1, count: 256)
+    let buffer = AudioBufferConverter.fromFloats(samples, sampleRate: 48_000, channels: 1)
+    #expect(throws: DSPProcessor.ProcessingError.self) {
+        try processor.apply(effect: .eq, to: buffer, target: .wholeTrack, parameters: .none)
+    }
+}

@@ -348,17 +348,19 @@ final class LoRACoordinator {
     /// Removes any injected adapter and resets all coordinator state.
     /// Call on unloadAllWeights() and training start.
     func clearAll() async {
-        AudioDiagnostics.note("lora/clearAll", "current=\(currentlyInjectedAdapterID ?? "nil") lastBase=\(lastKnownBaseModelID ?? "nil")")
-        if currentlyInjectedAdapterID != nil {
-            await pipeline.clearLoRAContributions()
+        AudioDiagnostics.note("lora/clearAll", "current=\(currentlyInjectedAdapterID ?? "nil") lastBase=\(lastKnownBaseModelID ?? "nil") kind=\(currentlyInjectedKind?.rawValue ?? "nil")")
+        // Always clear both contribution lists. removeLoRA restores base linears;
+        // clearing only LoRA contributions left LoKR contribution arrays orphaned
+        // if remove ever failed partway.
+        await pipeline.clearLoRAContributions()
+        await pipeline.clearLoKRContributions()
+        if currentlyInjectedAdapterID != nil || currentlyInjectedKind != nil {
             await pipeline.removeLoRA()
-            currentlyInjectedAdapterID = nil
-            currentlyInjectedKind = nil
-            currentlyInjectedLayerIndices = nil
         }
-        lastKnownBaseModelID = nil
+        currentlyInjectedAdapterID = nil
         currentlyInjectedKind = nil
         currentlyInjectedLayerIndices = nil
+        lastKnownBaseModelID = nil
         AudioDiagnostics.memory("lora/clearAll/end")
     }
 

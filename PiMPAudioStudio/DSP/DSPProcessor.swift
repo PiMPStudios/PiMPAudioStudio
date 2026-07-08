@@ -4,6 +4,7 @@ struct DSPProcessor {
     enum ProcessingError: LocalizedError {
         case selectionRequired
         case unknownEffect
+        case missingParameters(String)
 
         var errorDescription: String? {
             switch self {
@@ -11,6 +12,8 @@ struct DSPProcessor {
                 return "Select a region before applying this effect."
             case .unknownEffect:
                 return "The selected DSP effect is not supported."
+            case .missingParameters(let effect):
+                return "\(effect) is missing required parameters."
             }
         }
     }
@@ -51,19 +54,19 @@ struct DSPProcessor {
 
         case .eq:
             guard case .eq(let eqParams) = parameters else {
-                return buffer
+                throw ProcessingError.missingParameters(effect.displayName)
             }
             return try AVAudioEngineDSP.applyEQ(to: buffer, parameters: eqParams, target: target)
 
         case .reverb:
             guard case .reverb(let reverbParams) = parameters else {
-                return buffer
+                throw ProcessingError.missingParameters(effect.displayName)
             }
             return try AVAudioEngineDSP.applyReverb(to: buffer, parameters: reverbParams, target: target)
 
         case .timeStretch:
             guard case .timeStretch(let params) = parameters else {
-                return buffer
+                throw ProcessingError.missingParameters(effect.displayName)
             }
             return try processRegion(buffer, target: target) { regionBuffer in
                 let floats = AudioBufferConverter.toFloats(regionBuffer)
@@ -77,7 +80,7 @@ struct DSPProcessor {
 
         case .pitchShift:
             guard case .pitchShift(let params) = parameters else {
-                return buffer
+                throw ProcessingError.missingParameters(effect.displayName)
             }
             return try processRegion(buffer, target: target) { regionBuffer in
                 let floats = AudioBufferConverter.toFloats(regionBuffer)

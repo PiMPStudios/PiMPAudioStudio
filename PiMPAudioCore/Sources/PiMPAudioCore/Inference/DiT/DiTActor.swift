@@ -142,6 +142,14 @@ public actor DiTActor {
     }
 
     public func unloadWeights() {
+        // Drop adapter bookkeeping with the decoder. Leaving injectedPaths/kind
+        // populated after unload made subsequent inject/remove paths think
+        // wrappers still existed on a nil decoder.
+        injectedPaths = []
+        injectedKind = nil
+        injectedAdapterID = nil
+        activeLoRATrainer = nil
+        activeLoKRTrainer = nil
         decoder = nil
         loadedModelID = nil
     }

@@ -12,7 +12,9 @@ public actor InpaintCoordinator {
     private let sfxVAEActor: SFXVAEActor?
     private let diffusionActor: DiffusionActor?
     private let sfxDiffusionActor: SFXDiffusionActor?
-    private let conditioningActor: ConditioningActor?
+    /// Mutable so ACE-Step can replace the launch-time stub with a real
+    /// tokenizer-backed actor after weights load (same upgrade path as training).
+    private var conditioningActor: ConditioningActor?
     private let historyManager: EditHistoryManager
 
     // ACE-Step latents (48 kHz, stride 1920)
@@ -67,6 +69,11 @@ public actor InpaintCoordinator {
         // Invalidate cached SAO latents so they're re-encoded on next SAO inpaint
         sfxCurrentLatents = nil
         sfxLatentFrames = 0
+    }
+
+    /// Replace the ACE-Step conditioning actor (stub → real after model load).
+    public func setConditioningActor(_ actor: ConditioningActor?) {
+        conditioningActor = actor
     }
 
     public static func hopSize(for pipeline: PipelineChoice) -> Int {

@@ -53,40 +53,47 @@ struct SimpleDSP {
     }
 
     static func fadeIn(_ buffer: AudioBuffer, start: TimeInterval, end: TimeInterval) throws -> AudioBuffer {
-        var floats = AudioBufferConverter.toFloats(buffer)
-        let startSample = sampleIndex(time: start, sampleRate: buffer.sampleRate, channels: buffer.channels)
-        let endSample = min(sampleIndex(time: end, sampleRate: buffer.sampleRate, channels: buffer.channels), floats.count)
-
-        guard startSample < endSample else { throw DSPError.invalidSelection }
-
-        let length = endSample - startSample
-        var ramp = [Float](repeating: 0, count: length)
-        var start_val: Float = 0.0
-        var end_val: Float = 1.0
-        vDSP_vgen(&start_val, &end_val, &ramp, 1, vDSP_Length(length))
-        floats.withUnsafeMutableBufferPointer { ptr in
-            let base = ptr.baseAddress! + startSample
-            vDSP_vmul(base, 1, ramp, 1, base, 1, vDSP_Length(length))
-        }
-
-        return AudioBufferConverter.fromFloats(floats, sampleRate: buffer.sampleRate, channels: buffer.channels)
+        try applyFade(buffer, start: start, end: end, from: 0.0, to: 1.0)
     }
 
     static func fadeOut(_ buffer: AudioBuffer, start: TimeInterval, end: TimeInterval) throws -> AudioBuffer {
+        try applyFade(buffer, start: start, end: end, from: 1.0, to: 0.0)
+    }
+
+    /// Apply a linear gain ramp over the selected time range.
+    ///
+    /// The ramp is built **per frame** and applied to every channel in that
+    /// frame. The previous implementation generated a ramp over interleaved
+    /// samples, so stereo L/R received adjacent ramp values (skewed fade).
+    private static func applyFade(
+        _ buffer: AudioBuffer,
+        start: TimeInterval,
+        end: TimeInterval,
+        from startGain: Float,
+        to endGain: Float
+    ) throws -> AudioBuffer {
         var floats = AudioBufferConverter.toFloats(buffer)
-        let startSample = sampleIndex(time: start, sampleRate: buffer.sampleRate, channels: buffer.channels)
-        let endSample = min(sampleIndex(time: end, sampleRate: buffer.sampleRate, channels: buffer.channels), floats.count)
+        let channels = max(buffer.channels, 1)
+        let startFrame = Int(start * Double(buffer.sampleRate))
+        let endFrame = min(
+            Int(end * Double(buffer.sampleRate)),
+            floats.count / channels
+        )
 
-        guard startSample < endSample else { throw DSPError.invalidSelection }
+        guard startFrame < endFrame else { throw DSPError.invalidSelection }
 
-        let length = endSample - startSample
-        var ramp = [Float](repeating: 0, count: length)
-        var start_val: Float = 1.0
-        var end_val: Float = 0.0
-        vDSP_vgen(&start_val, &end_val, &ramp, 1, vDSP_Length(length))
-        floats.withUnsafeMutableBufferPointer { ptr in
-            let base = ptr.baseAddress! + startSample
-            vDSP_vmul(base, 1, ramp, 1, base, 1, vDSP_Length(length))
+        let frameCount = endFrame - startFrame
+        var frameRamp = [Float](repeating: 0, count: frameCount)
+        var startVal = startGain
+        var endVal = endGain
+        vDSP_vgen(&startVal, &endVal, &frameRamp, 1, vDSP_Length(frameCount))
+
+        for frame in 0..<frameCount {
+            let gain = frameRamp[frame]
+            let base = (startFrame + frame) * channels
+            for ch in 0..<channels {
+                floats[base + ch] *= gain
+            }
         }
 
         return AudioBufferConverter.fromFloats(floats, sampleRate: buffer.sampleRate, channels: buffer.channels)
