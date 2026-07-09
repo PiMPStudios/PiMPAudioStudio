@@ -300,7 +300,10 @@ extension PiMPAudioCommandFacade {
         source: EditorAudioLoadSource,
         originalPrompt: String?
     ) async {
-        defer { operationTasks[id] = nil }
+        defer {
+            operationTasks[id] = nil
+            releaseEditorOperation(id: id)
+        }
 
         do {
             try Task.checkCancellation()
@@ -370,7 +373,10 @@ extension PiMPAudioCommandFacade {
     }
 
     func runEditorInpaintOperation(id: String, request: InpaintRequest) async {
-        defer { operationTasks[id] = nil }
+        defer {
+            operationTasks[id] = nil
+            releaseEditorOperation(id: id)
+        }
 
         do {
             try Task.checkCancellation()
@@ -442,7 +448,10 @@ extension PiMPAudioCommandFacade {
     }
 
     func runEditorRenderOperation(id: String, request: EditorRenderRequest) async {
-        defer { operationTasks[id] = nil }
+        defer {
+            operationTasks[id] = nil
+            releaseEditorOperation(id: id)
+        }
 
         do {
             try Task.checkCancellation()
@@ -518,7 +527,10 @@ extension PiMPAudioCommandFacade {
     }
 
     func runEditorDSPOperation(id: String, request: EditorDSPRequest) async {
-        defer { operationTasks[id] = nil }
+        defer {
+            operationTasks[id] = nil
+            releaseEditorOperation(id: id)
+        }
 
         do {
             try Task.checkCancellation()
@@ -715,6 +727,18 @@ extension PiMPAudioCommandFacade {
         operationOrder.insert(id, at: 0)
         trimOperationRecords()
         return record
+    }
+
+    func reserveEditorOperation(id: String) throws {
+        guard activeEditorOperationID == nil else {
+            throw PiMPAudioCommandFacadeError.editorOperationAlreadyActive
+        }
+        activeEditorOperationID = id
+    }
+
+    func releaseEditorOperation(id: String) {
+        guard activeEditorOperationID == id else { return }
+        activeEditorOperationID = nil
     }
 
     func updateOperationProgress(id: String, progress: [String: Any]) {

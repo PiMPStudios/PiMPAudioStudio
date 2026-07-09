@@ -287,7 +287,7 @@ private struct MCPHTTPServerError: LocalizedError {
     }
 }
 
-private struct RawHTTPRequest {
+struct RawHTTPRequest {
     let method: String
     let path: String
     let headers: [String: String]
@@ -312,9 +312,13 @@ private struct RawHTTPRequest {
             headers[key] = value
         }
 
-        let contentLength = Int(headers["content-length"] ?? "0") ?? 0
         let bodyStart = headerEnd
-        guard data.count >= bodyStart + contentLength else { return nil }
+        let availableBodyBytes = data.count - bodyStart
+        guard let contentLength = Int(headers["content-length"] ?? "0"),
+              contentLength >= 0,
+              contentLength <= availableBodyBytes else {
+            return nil
+        }
 
         self.method = parts[0]
         self.path = parts[1].split(separator: "?", maxSplits: 1).first.map(String.init) ?? parts[1]

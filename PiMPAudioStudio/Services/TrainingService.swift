@@ -281,6 +281,7 @@ final class TrainingService: ObservableObject {
                 )
                 if let ensureModelsLoaded {
                     try await ensureModelsLoaded()
+                    try Task.checkCancellation()
                     AudioDiagnostics.memory("training/loadingModels/afterEnsureLoaded")
                 }
                 guard self.isConditioningReady else {
@@ -294,6 +295,7 @@ final class TrainingService: ObservableObject {
                 let activeModelID = await self.registry.activeModelID(
                     for: .aceStepDiT
                 ) ?? "unknown"
+                try Task.checkCancellation()
                 AudioDiagnostics.note(
                     "training/baseModel",
                     "kind=\(kind.rawValue) adapterID=\(adapterID) activeModel=\(activeModelID)"
@@ -941,14 +943,26 @@ final class TrainingService: ObservableObject {
 
     /// Stop training. When requested, persists the current adapter weights and checkpoint.
     func stopTraining(saveCheckpoint: Bool = false) {
+        guard trainingTask != nil else { return }
+        let trainerIsRunning: Bool
+        if case .training = state {
+            trainerIsRunning = true
+        } else {
+            trainerIsRunning = false
+        }
+        let willSaveCheckpoint = saveCheckpoint && canSaveOnStop
         isStopping = true
-        shouldSaveCheckpointOnStop = saveCheckpoint
+        shouldSaveCheckpointOnStop = willSaveCheckpoint
         AudioDiagnostics.note(
             "training/stopRequested",
-            "saveCheckpoint=\(saveCheckpoint) activeKind=\(activeAdapterKind?.rawValue ?? "nil")"
+            "saveCheckpoint=\(willSaveCheckpoint) activeKind=\(activeAdapterKind?.rawValue ?? "nil") target=\(trainerIsRunning ? "trainer" : "task")"
         )
-        Task {
-            await pipeline.cancelTraining()
+        if trainerIsRunning {
+            Task {
+                await pipeline.cancelTraining()
+            }
+        } else {
+            trainingTask?.cancel()
         }
     }
 

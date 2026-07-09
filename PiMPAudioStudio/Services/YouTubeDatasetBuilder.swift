@@ -46,27 +46,44 @@ final class YouTubeDatasetBuilder: ObservableObject {
     @Published var resultClips: [(url: URL, caption: String)] = []
 
     private var task: Task<Void, Never>?
+    private var taskRunID: UUID?
+    private var activeRunID: UUID?
 
     func start(channelURL: URL, config: YouTubeDatasetConfig, outputBase: URL, styleTemplate: String = "") {
-        cancel()
+        let previousTask = task
+        previousTask?.cancel()
+        let runID = UUID()
+        taskRunID = runID
+        activeRunID = runID
         resultClips = []
         phase = .fetchingPlaylist
 
-        task = Task { [weak self] in
+        task = Task { [weak self, previousTask] in
+            await previousTask?.value
             guard let self else { return }
+            defer { self.finishRun(runID) }
+            guard self.isCurrentRun(runID), !Task.isCancelled else { return }
             do {
                 let result = try await YouTubeDatasetBuilder.run(
                     channelURL: channelURL,
                     config: config,
                     outputBase: outputBase,
                     styleTemplate: styleTemplate,
-                    onPhase: { [weak self] p in await MainActor.run { self?.phase = p } }
+                    onPhase: { [weak self] phase in
+                        await MainActor.run {
+                            guard self?.isCurrentRun(runID) == true else { return }
+                            self?.phase = phase
+                        }
+                    }
                 )
+                guard self.isCurrentRun(runID) else { return }
                 self.resultClips = result.clips
                 self.phase = .complete(outputDirectory: result.outputDirectory, clipCount: result.clipCount)
             } catch is CancellationError {
+                guard self.isCurrentRun(runID) else { return }
                 self.phase = .idle
             } catch {
+                guard self.isCurrentRun(runID) else { return }
                 self.phase = .failed(error.localizedDescription)
             }
         }
@@ -74,7 +91,22 @@ final class YouTubeDatasetBuilder: ObservableObject {
 
     func cancel() {
         task?.cancel()
-        task = nil
+        activeRunID = nil
+        phase = .idle
+    }
+
+    private func isCurrentRun(_ runID: UUID) -> Bool {
+        activeRunID == runID
+    }
+
+    private func finishRun(_ runID: UUID) {
+        if activeRunID == runID {
+            activeRunID = nil
+        }
+        if taskRunID == runID {
+            taskRunID = nil
+            task = nil
+        }
     }
 
     // MARK: - yt-dlp Discovery

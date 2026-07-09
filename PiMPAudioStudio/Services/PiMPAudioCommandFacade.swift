@@ -23,6 +23,7 @@ final class PiMPAudioCommandFacade {
     var operationOrder: [String] = []
     var operationTasks: [String: Task<Void, Never>] = [:]
     var activeGenerationOperationID: String?
+    var activeEditorOperationID: String?
     let generationProgressPlan: [String: (base: Double, span: Double)] = [
         "queued": (0.00, 0.02),
         "idle": (0.00, 0.02),

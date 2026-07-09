@@ -40,7 +40,13 @@ final class CommunityService: ObservableObject {
 
     // MARK: - Private State
 
-    private var activeTasks: [String: Task<Void, Never>] = [:]
+    private struct ActiveDownload {
+        let runID: UUID
+        let task: Task<Void, Never>
+    }
+
+    private var activeTasks: [String: ActiveDownload] = [:]
+    private var cancellingDownloads: Set<String> = []
     private var pendingDownloads: [String: CommunityAdapter] = [:]
     private var pendingDownloadOrder: [String] = []
     private var cachedManifest: AdapterManifest?
@@ -105,7 +111,12 @@ final class CommunityService: ObservableObject {
 
     /// Download a community adapter (safetensors + metadata) and save locally.
     func download(adapter: CommunityAdapter) {
-        guard activeTasks[adapter.id] == nil else { return }
+        if activeTasks[adapter.id] != nil {
+            if cancellingDownloads.contains(adapter.id) {
+                enqueueDownload(adapter)
+            }
+            return
+        }
 
         if pendingDownloads[adapter.id] != nil {
             downloads[adapter.id] = downloads[adapter.id] ?? .downloading(progress: 0)
@@ -121,13 +132,16 @@ final class CommunityService: ObservableObject {
     }
 
     private func enqueueDownload(_ adapter: CommunityAdapter) {
+        if pendingDownloads[adapter.id] == nil {
+            pendingDownloadOrder.append(adapter.id)
+        }
         pendingDownloads[adapter.id] = adapter
-        pendingDownloadOrder.append(adapter.id)
         downloads[adapter.id] = downloads[adapter.id] ?? .downloading(progress: 0)
     }
 
     private func startDownload(_ adapter: CommunityAdapter) {
         downloads[adapter.id] = .downloading(progress: 0)
+        let runID = UUID()
 
         let task = Task { [weak self] in
             guard let self else { return }
@@ -135,18 +149,30 @@ final class CommunityService: ObservableObject {
                 try await self.performDownload(adapter: adapter, retryCount: 1)
                 if !Task.isCancelled {
                     self.downloads[adapter.id] = .completed
+                } else {
+                    self.removePartialDownload(adapterID: adapter.id)
                 }
             } catch is CancellationError {
-                // Cancellation is user-initiated; cancelDownload already clears UI state.
+                self.removePartialDownload(adapterID: adapter.id)
             } catch {
                 if !Task.isCancelled {
                     self.downloads[adapter.id] = .failed(error.localizedDescription)
                 }
             }
-            self.activeTasks.removeValue(forKey: adapter.id)
-            self.startNextDownloadIfPossible()
+            self.finishDownload(adapterID: adapter.id, runID: runID)
         }
-        activeTasks[adapter.id] = task
+        activeTasks[adapter.id] = ActiveDownload(runID: runID, task: task)
+    }
+
+    private func finishDownload(adapterID: String, runID: UUID) {
+        guard activeTasks[adapterID]?.runID == runID else { return }
+        activeTasks.removeValue(forKey: adapterID)
+        cancellingDownloads.remove(adapterID)
+        startNextDownloadIfPossible()
+    }
+
+    private func removePartialDownload(adapterID: String) {
+        try? FileManager.default.removeItem(at: AdapterRegistry.adapterDirectory(id: adapterID))
     }
 
     private func startNextDownloadIfPossible() {
@@ -160,18 +186,15 @@ final class CommunityService: ObservableObject {
         }
     }
 
-    /// Cancel an in-progress download and clean up partial files.
+    /// Cancel an in-progress download. Its task cleans up partial files before releasing its slot.
     func cancelDownload(adapterID: String) {
-        activeTasks[adapterID]?.cancel()
-        activeTasks.removeValue(forKey: adapterID)
+        if let active = activeTasks[adapterID] {
+            cancellingDownloads.insert(adapterID)
+            active.task.cancel()
+        }
         pendingDownloads.removeValue(forKey: adapterID)
         pendingDownloadOrder.removeAll { $0 == adapterID }
         downloads.removeValue(forKey: adapterID)
-
-        // Clean up any partial files
-        let dir = AdapterRegistry.adapterDirectory(id: adapterID)
-        try? FileManager.default.removeItem(at: dir)
-        startNextDownloadIfPossible()
     }
 
     /// Retry a failed download.

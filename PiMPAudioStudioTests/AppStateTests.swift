@@ -2695,6 +2695,33 @@ private func traceForComparison(
         .contains("Dark Test 1.60x"))
 }
 
+@Test func mcpRawHTTPRequestRejectsNegativeContentLength() {
+    let request = """
+    POST /mcp HTTP/1.1\r
+    Content-Length: -1\r
+    \r
+    """
+
+    #expect(RawHTTPRequest(data: Data(request.utf8)) == nil)
+}
+
+@Test @MainActor func mcpEditorOperationsAreExclusiveUntilReleased() throws {
+    let tempRoot = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+    let facade = makeTestCommandFacade(root: tempRoot)
+    try facade.reserveEditorOperation(id: "editor-first")
+
+    #expect(throws: PiMPAudioCommandFacadeError.self) {
+        try facade.reserveEditorOperation(id: "editor-second")
+    }
+
+    facade.releaseEditorOperation(id: "editor-first")
+    try facade.reserveEditorOperation(id: "editor-second")
+    #expect(facade.activeEditorOperationID == "editor-second")
+}
+
 @Test @MainActor func mcpTrainingResourcesAreAdvertisedAndReadable() async throws {
     let tempRoot = FileManager.default.temporaryDirectory
         .appendingPathComponent(UUID().uuidString, isDirectory: true)

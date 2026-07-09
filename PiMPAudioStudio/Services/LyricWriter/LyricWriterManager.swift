@@ -13,6 +13,7 @@ final class LyricWriterManager: ObservableObject {
 
     private var backends: [String: any LyricWriter] = [:]
     private var writeTask: Task<Void, Never>?
+    private var activeWriteID: UUID?
     private let apiKeyStore: APIKeyStore
     private let providerAccessStore: ProviderAccessStore
 
@@ -155,37 +156,38 @@ final class LyricWriterManager: ObservableObject {
             lastError = LyricWriterManagerError.noAvailableBackend.localizedDescription
             return
         }
-        writeTask?.cancel()
-        isWriting = true
-        lastError = nil
+        let writeID = beginWrite()
         binding.wrappedValue = ""
 
         writeTask = Task { [weak self] in
+            defer { self?.finishWrite(id: writeID) }
             let stream = backend.write(prompt: prompt, style: style, duration: duration)
             var rawLyrics = ""
             do {
                 for try await token in stream {
-                    if Task.isCancelled { break }
+                    guard !Task.isCancelled, self?.isCurrentWrite(writeID) == true else {
+                        throw CancellationError()
+                    }
                     rawLyrics += token
                     binding.wrappedValue = rawLyrics
                 }
-                if !Task.isCancelled {
-                    let sanitized = LyricOutputSanitizer.sanitize(
-                        rawLyrics,
-                        targetDuration: duration
-                    )
-                    let finalLyrics = sanitized.isEmpty
-                        ? rawLyrics.trimmingCharacters(in: .whitespacesAndNewlines)
-                        : sanitized
-                    binding.wrappedValue = finalLyrics
+                guard !Task.isCancelled, self?.isCurrentWrite(writeID) == true else {
+                    throw CancellationError()
                 }
+                let sanitized = LyricOutputSanitizer.sanitize(
+                    rawLyrics,
+                    targetDuration: duration
+                )
+                let finalLyrics = sanitized.isEmpty
+                    ? rawLyrics.trimmingCharacters(in: .whitespacesAndNewlines)
+                    : sanitized
+                binding.wrappedValue = finalLyrics
             } catch is CancellationError {
                 // User cancellation leaves whatever partial text was already streamed.
             } catch {
+                guard self?.isCurrentWrite(writeID) == true else { return }
                 self?.lastError = error.localizedDescription
             }
-            guard let self else { return }
-            self.isWriting = false
         }
     }
 
@@ -198,18 +200,20 @@ final class LyricWriterManager: ObservableObject {
             throw LyricWriterManagerError.noAvailableBackend
         }
 
-        writeTask?.cancel()
-        isWriting = true
-        lastError = nil
-        defer { isWriting = false }
+        let writeID = beginWrite()
+        defer { finishWrite(id: writeID) }
 
         let stream = backend.write(prompt: prompt, style: style, duration: duration)
         var rawLyrics = ""
         for try await token in stream {
-            if Task.isCancelled {
+            guard !Task.isCancelled, isCurrentWrite(writeID) else {
                 throw CancellationError()
             }
             rawLyrics += token
+        }
+
+        guard !Task.isCancelled, isCurrentWrite(writeID) else {
+            throw CancellationError()
         }
 
         let sanitized = LyricOutputSanitizer.sanitize(
@@ -224,6 +228,28 @@ final class LyricWriterManager: ObservableObject {
 
     func cancel() {
         writeTask?.cancel()
+        writeTask = nil
+        activeWriteID = nil
+        isWriting = false
+    }
+
+    private func beginWrite() -> UUID {
+        writeTask?.cancel()
+        let writeID = UUID()
+        activeWriteID = writeID
+        isWriting = true
+        lastError = nil
+        return writeID
+    }
+
+    private func isCurrentWrite(_ writeID: UUID) -> Bool {
+        activeWriteID == writeID
+    }
+
+    private func finishWrite(id: UUID) {
+        guard activeWriteID == id else { return }
+        activeWriteID = nil
+        writeTask = nil
         isWriting = false
     }
 }

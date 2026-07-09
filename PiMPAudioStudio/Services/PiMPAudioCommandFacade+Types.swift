@@ -70,6 +70,7 @@ enum PiMPAudioCommandFacadeError: LocalizedError {
     case editorRenderFileExists(String)
     case editorRenderWriteFailed(String, String)
     case editorDSPChainEmpty
+    case editorOperationAlreadyActive
     case invalidDSPChain
     case invalidDSPEffect(String)
     case invalidDSPTarget(String)
@@ -153,6 +154,8 @@ enum PiMPAudioCommandFacadeError: LocalizedError {
             return "Could not write editor render output to '\(path)': \(reason)"
         case .editorDSPChainEmpty:
             return "Editor DSP effect chain must include at least one effect."
+        case .editorOperationAlreadyActive:
+            return "Another editor operation is still running. Wait for it to finish or cancel it before starting a new one."
         case .invalidDSPChain:
             return "'effects' must be an array of effect names or effect objects."
         case .invalidDSPEffect(let value):

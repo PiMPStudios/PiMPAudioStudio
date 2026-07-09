@@ -104,37 +104,53 @@ final class LocalDatasetEnrichmentService: ObservableObject {
     @Published var phase: LocalDatasetEnrichmentPhase = .idle
 
     private var task: Task<Void, Never>?
+    private var taskRunID: UUID?
+    private var activeRunID: UUID?
 
     func enrich(
         datasetDirectory: URL,
         force: Bool = false,
         prepareMemory: (() async -> Void)? = nil
     ) {
-        cancel()
+        let previousTask = task
+        previousTask?.cancel()
+        let runID = UUID()
+        taskRunID = runID
+        activeRunID = runID
         phase = .running(step: prepareMemory == nil ? .separatingStems : .preparingMemory)
 
-        task = Task { [weak self] in
+        task = Task { [weak self, previousTask] in
+            await previousTask?.value
             guard let self else { return }
+            defer { self.finishRun(runID) }
+            guard self.isCurrentRun(runID), !Task.isCancelled else { return }
             do {
                 if let prepareMemory {
                     await MainActor.run {
+                        guard self.isCurrentRun(runID) else { return }
                         self.phase = .running(step: .preparingMemory)
                     }
                     await prepareMemory()
+                    try Task.checkCancellation()
+                    guard self.isCurrentRun(runID) else { return }
                 }
                 let result = try await Self.run(
                     datasetDirectory: datasetDirectory,
                     force: force,
                     onStep: { [weak self] step in
                         await MainActor.run {
+                            guard self?.isCurrentRun(runID) == true else { return }
                             self?.phase = .running(step: step)
                         }
                     }
                 )
+                guard self.isCurrentRun(runID) else { return }
                 phase = .complete(result)
             } catch is CancellationError {
+                guard self.isCurrentRun(runID) else { return }
                 phase = .idle
             } catch {
+                guard self.isCurrentRun(runID) else { return }
                 phase = .failed(error.localizedDescription)
             }
         }
@@ -142,12 +158,27 @@ final class LocalDatasetEnrichmentService: ObservableObject {
 
     func cancel() {
         task?.cancel()
-        task = nil
+        activeRunID = nil
+        phase = .idle
     }
 
     func reset() {
         cancel()
         phase = .idle
+    }
+
+    private func isCurrentRun(_ runID: UUID) -> Bool {
+        activeRunID == runID
+    }
+
+    private func finishRun(_ runID: UUID) {
+        if activeRunID == runID {
+            activeRunID = nil
+        }
+        if taskRunID == runID {
+            taskRunID = nil
+            task = nil
+        }
     }
 
     nonisolated static func run(

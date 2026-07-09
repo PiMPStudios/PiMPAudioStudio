@@ -55,6 +55,7 @@ extension PiMPAudioCommandFacade {
             request: request,
             progress: editorLoadProgressPayload(stage: "queued", message: "Editor audio load accepted.")
         )
+        try reserveEditorOperation(id: operation.id)
 
         operationTasks[operation.id] = Task { [weak self] in
             await self?.runEditorAudioLoadOperation(
@@ -109,6 +110,7 @@ extension PiMPAudioCommandFacade {
             request: requestPayload,
             progress: editorInpaintProgressPayload(stage: "queued", message: "Editor inpaint accepted.")
         )
+        try reserveEditorOperation(id: operation.id)
 
         operationTasks[operation.id] = Task { [weak self] in
             await self?.runEditorInpaintOperation(id: operation.id, request: request)
@@ -159,6 +161,7 @@ extension PiMPAudioCommandFacade {
             request: requestPayload,
             progress: editorRenderProgressPayload(stage: "queued", message: "Editor render accepted.")
         )
+        try reserveEditorOperation(id: operation.id)
 
         operationTasks[operation.id] = Task { [weak self] in
             await self?.runEditorRenderOperation(id: operation.id, request: request)
@@ -208,6 +211,7 @@ extension PiMPAudioCommandFacade {
             request: requestPayload,
             progress: editorDSPProgressPayload(stage: "queued", message: "Editor DSP chain accepted.")
         )
+        try reserveEditorOperation(id: operation.id)
 
         operationTasks[operation.id] = Task { [weak self] in
             await self?.runEditorDSPOperation(id: operation.id, request: request)

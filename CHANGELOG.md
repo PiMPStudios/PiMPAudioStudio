@@ -36,6 +36,8 @@ All notable changes to PiMP Audio Studio are documented here.
 
 ### Fixed
 
+- **Async workflow ownership is now race-safe** — malformed MCP HTTP requests with negative `Content-Length` are rejected before parsing, community adapter cancellation keeps its active slot until the cancelled task has actually unwound, and local/YouTube dataset builds, dataset enrichment, and lyric writing ignore stale callbacks from superseded runs.
+- **MCP editor mutations and early training stops are now reliable** — MCP load, inpaint, DSP, and render operations are serialized so overlapping work cannot overwrite the editor buffer; stopping during model loading or dataset preparation now cancels the outer training task instead of waiting for a trainer that does not exist yet.
 - **ACE-Step editor inpaint masks now use the correct VAE hop** — editor selection masks for ACE-Step now use the v1.5 1920-sample hop shared by generation and conditioning instead of the stale 2048 value from Stable Audio, and mask conversion covers every latent frame touched by the selected time span.
 - **Editor inpaint noise now matches the truncated diffusion schedule** — ACE-Step and Stable Audio editor inpainting now inject noise at the first timestep of the selected schedule instead of the raw strength slider value, so mid-strength edits no longer ask the model to denoise latents from the wrong rectified-flow time.
 - **Parametric EQ Q now maps correctly to AVAudio bandwidth** — the editor's Q control is converted to AVAudioUnitEQ's octave bandwidth parameter before rendering, so higher Q values now produce narrower filters instead of wider ones.
