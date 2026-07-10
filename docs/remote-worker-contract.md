@@ -125,6 +125,14 @@ The worker should:
 
 Workers may fill or reuse `preprocessed/<bundle>/samples/*.safetensors` and `preprocessed/<bundle>/index.json`. They should refresh `preprocess_cache.json` when cache status changes.
 
+### Path Safety
+
+- `package.package_root` must be `.` and resolves to the directory containing `remote_job.json`.
+- Package, bundle, clip-audio, and output paths must be non-empty relative paths that remain inside that package after symlinks are resolved.
+- Configured logs, metrics, checkpoints, and final-adapter paths must stay below the directory containing `outputs.result_file`.
+- Checkpoint and final-adapter directories must not overlap each other, worker staging directories, or configured output files because the worker replaces those directories after training.
+- Job archives containing absolute paths, parent traversal, or symbolic-link members are rejected before extraction replaces an existing job directory.
+
 ## Result File
 
 `remote_artifacts/result.json` is the stable import point.

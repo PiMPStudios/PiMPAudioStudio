@@ -8,6 +8,7 @@ import os
 import re
 import shlex
 import shutil
+import stat
 import subprocess
 import sys
 import time
@@ -102,11 +103,42 @@ def safe_name(raw: str) -> str:
     return cleaned.strip("-._") or "pimp-remote-job"
 
 
+def resolve_package_path(root: Path, raw: Any, label: str, *, allow_root: bool = False) -> Path:
+    if not isinstance(raw, str) or not raw.strip():
+        raise ValueError(f"{label} must be a non-empty relative path")
+    relative = Path(raw)
+    if relative.is_absolute():
+        raise ValueError(f"{label} must be relative to the package root")
+
+    resolved_root = root.resolve()
+    candidate = (resolved_root / relative).resolve()
+    if not candidate.is_relative_to(resolved_root) or (candidate == resolved_root and not allow_root):
+        raise ValueError(f"{label} escapes the package root: {raw!r}")
+    return candidate
+
+
+def paths_overlap(first: Path, second: Path) -> bool:
+    first = first.resolve()
+    second = second.resolve()
+    return first == second or first.is_relative_to(second) or second.is_relative_to(first)
+
+
 def relative_path(path: Path, root: Path) -> str:
-    try:
-        return path.relative_to(root).as_posix()
-    except ValueError:
-        return path.as_posix()
+    return path.resolve().relative_to(root.resolve()).as_posix()
+
+
+def validate_zip_members(archive: zipfile.ZipFile, destination: Path) -> None:
+    root = destination.resolve()
+    for member in archive.infolist():
+        member_path = Path(member.filename)
+        if member_path.is_absolute():
+            raise ValueError(f"Zip member uses an absolute path: {member.filename!r}")
+        candidate = (root / member_path).resolve()
+        if not candidate.is_relative_to(root):
+            raise ValueError(f"Zip member escapes the extraction directory: {member.filename!r}")
+        mode = member.external_attr >> 16
+        if stat.S_ISLNK(mode):
+            raise ValueError(f"Zip member is a symbolic link: {member.filename!r}")
 
 
 def first_string(*values: Any) -> str | None:
@@ -133,10 +165,11 @@ def find_remote_job(root: Path) -> Path:
         return root.resolve()
     if root.is_file() and root.suffix.lower() == ".zip":
         target = default_jobs_dir() / safe_name(root.stem)
-        if target.exists():
-            shutil.rmtree(target)
-        target.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(root) as archive:
+            validate_zip_members(archive, target)
+            if target.exists():
+                shutil.rmtree(target)
+            target.mkdir(parents=True, exist_ok=True)
             archive.extractall(target)
         return find_remote_job(target)
     if root.is_dir():
@@ -230,12 +263,33 @@ class RemoteWorker:
         self.job = read_json(self.job_path)
         self.package_root = self.resolve_package_root()
         outputs = self.job.get("outputs") if isinstance(self.job.get("outputs"), dict) else {}
-        self.logs_file = self.package_root / outputs.get("logs_file", "remote_artifacts/logs.jsonl")
-        self.metrics_file = self.package_root / outputs.get("metrics_file", "remote_artifacts/metrics.jsonl")
-        self.result_file = self.package_root / outputs.get("result_file", "remote_artifacts/result.json")
-        self.checkpoints_dir = self.package_root / outputs.get("checkpoints_directory", "remote_artifacts/checkpoints")
-        self.final_adapter_dir = self.package_root / outputs.get("final_adapter_directory", "remote_artifacts/final_adapter")
+        self.logs_file = resolve_package_path(
+            self.package_root,
+            outputs.get("logs_file", "remote_artifacts/logs.jsonl"),
+            "outputs.logs_file",
+        )
+        self.metrics_file = resolve_package_path(
+            self.package_root,
+            outputs.get("metrics_file", "remote_artifacts/metrics.jsonl"),
+            "outputs.metrics_file",
+        )
+        self.result_file = resolve_package_path(
+            self.package_root,
+            outputs.get("result_file", "remote_artifacts/result.json"),
+            "outputs.result_file",
+        )
+        self.checkpoints_dir = resolve_package_path(
+            self.package_root,
+            outputs.get("checkpoints_directory", "remote_artifacts/checkpoints"),
+            "outputs.checkpoints_directory",
+        )
+        self.final_adapter_dir = resolve_package_path(
+            self.package_root,
+            outputs.get("final_adapter_directory", "remote_artifacts/final_adapter"),
+            "outputs.final_adapter_directory",
+        )
         self.artifacts_dir = self.result_file.parent
+        self.validate_output_layout()
         self.command_dir = self.artifacts_dir / "command"
         self.tensor_dir = self.artifacts_dir / "tensors"
         self.output_dir = self.artifacts_dir / "side_step_output"
@@ -249,10 +303,52 @@ class RemoteWorker:
     def resolve_package_root(self) -> Path:
         package = self.job.get("package") if isinstance(self.job.get("package"), dict) else {}
         raw_root = package.get("package_root", ".")
-        root = Path(str(raw_root))
-        if not root.is_absolute():
-            root = self.job_path.parent / root
-        return root.resolve()
+        root = resolve_package_path(
+            self.job_path.parent,
+            raw_root,
+            "package.package_root",
+            allow_root=True,
+        )
+        expected_root = self.job_path.parent.resolve()
+        if root != expected_root:
+            raise ValueError("package.package_root must resolve to the directory containing remote_job.json")
+        return root
+
+    def validate_output_layout(self) -> None:
+        if self.artifacts_dir == self.package_root:
+            raise ValueError("outputs.result_file must be inside a dedicated artifacts directory")
+
+        output_paths = {
+            "outputs.logs_file": self.logs_file,
+            "outputs.metrics_file": self.metrics_file,
+            "outputs.result_file": self.result_file,
+            "outputs.checkpoints_directory": self.checkpoints_dir,
+            "outputs.final_adapter_directory": self.final_adapter_dir,
+        }
+        for label, path in output_paths.items():
+            if path == self.artifacts_dir or not path.is_relative_to(self.artifacts_dir):
+                raise ValueError(f"{label} must stay below {self.artifacts_dir}")
+
+        file_paths = [self.logs_file, self.metrics_file, self.result_file]
+        if len(set(file_paths)) != len(file_paths):
+            raise ValueError("Log, metrics, and result files must use distinct paths")
+        if paths_overlap(self.checkpoints_dir, self.final_adapter_dir):
+            raise ValueError("Checkpoint and final-adapter directories must not overlap")
+        for file_path in file_paths:
+            for output_directory in [self.checkpoints_dir, self.final_adapter_dir]:
+                if paths_overlap(file_path, output_directory):
+                    raise ValueError(f"Output file overlaps replaceable directory: {file_path}")
+
+        reserved_staging = [
+            self.artifacts_dir / "command",
+            self.artifacts_dir / "tensors",
+            self.artifacts_dir / "side_step_output",
+            self.artifacts_dir / "preprocess_placeholder",
+            self.artifacts_dir / "preprocess_audio",
+        ]
+        for output_directory in [self.checkpoints_dir, self.final_adapter_dir]:
+            if any(paths_overlap(output_directory, reserved) for reserved in reserved_staging):
+                raise ValueError(f"Output directory overlaps worker staging: {output_directory}")
 
     def log(self, stage: str, message: str, level: str = "info", **fields: Any) -> None:
         event = {
@@ -322,7 +418,7 @@ class RemoteWorker:
         )
         if not raw:
             raise ValueError("remote_job.json package.entry_bundle is missing")
-        return (self.package_root / str(raw)).resolve()
+        return resolve_package_path(self.package_root, raw, "package.entry_bundle")
 
     def selected_include(self) -> list[str]:
         package = self.job.get("package") if isinstance(self.job.get("package"), dict) else {}
@@ -373,7 +469,7 @@ class RemoteWorker:
             if not rel_audio:
                 missing_audio.append(str(clip.get("id", index)))
                 continue
-            audio_path = (self.package_root / rel_audio).resolve()
+            audio_path = resolve_package_path(self.package_root, rel_audio, f"clip[{index}].audio_path")
             if not audio_path.exists():
                 missing_audio.append(rel_audio)
                 continue

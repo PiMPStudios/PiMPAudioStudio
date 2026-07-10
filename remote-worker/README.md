@@ -73,5 +73,6 @@ The Hugging Face token can be supplied through the normal `HF_TOKEN` or `HUGGING
 ## Notes
 
 - The macOS app remains Swift/MLX-only. This worker is an explicit remote boundary for CUDA/Python machines.
+- Job paths must be relative to the directory containing `remote_job.json`; package escapes, symlink escapes, overlapping replaceable outputs, and unsafe zip members are rejected before training starts.
 - A future public PiMP RunPod template can bake this folder into an image, but this copy/install flow keeps the first end-to-end path account-neutral.
 - The worker intentionally writes the exact generated Side-Step commands before running them so failed jobs are easy to inspect.

@@ -26,8 +26,11 @@ struct AdapterRegistry {
         decoder.dateDecodingStrategy = .iso8601
 
         for itemURL in contents {
-            let isDir = (try? itemURL.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
-            guard isDir else { continue }
+            let resourceValues = try? itemURL.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+            guard resourceValues?.isDirectory == true,
+                  resourceValues?.isSymbolicLink != true else {
+                continue
+            }
 
             let metadataURL = itemURL.appending(path: "adapter.json")
             let weightsURL = itemURL.appending(path: "adapter.safetensors")
@@ -38,7 +41,9 @@ struct AdapterRegistry {
             }
 
             guard let data = try? Data(contentsOf: metadataURL),
-                  let adapter = try? decoder.decode(LoRAAdapter.self, from: data) else {
+                  let adapter = try? decoder.decode(LoRAAdapter.self, from: data),
+                  let expectedDirectory = try? adapterDirectory(id: adapter.id),
+                  expectedDirectory.standardizedFileURL == itemURL.standardizedFileURL else {
                 continue
             }
 
@@ -52,12 +57,40 @@ struct AdapterRegistry {
         listAdapters().filter { $0.baseModelCategory == category }
     }
 
-    static func adapterDirectory(id: String) -> URL {
-        adaptersDirectory.appending(path: id)
+    static func adapterDirectory(id: String, baseDirectory: URL? = nil) throws -> URL {
+        let base = (baseDirectory ?? adaptersDirectory).standardizedFileURL
+        guard !id.isEmpty,
+              id != ".",
+              id != "..",
+              !id.contains("/"),
+              !id.contains("\\"),
+              id.rangeOfCharacter(from: .controlCharacters) == nil else {
+            throw AdapterError.invalidIdentifier(id)
+        }
+
+        let candidate = base.appendingPathComponent(id, isDirectory: true).standardizedFileURL
+        guard candidate.deletingLastPathComponent() == base else {
+            throw AdapterError.invalidIdentifier(id)
+        }
+
+        let resolvedBase = base.resolvingSymlinksInPath()
+        let resolvedCandidate = candidate.resolvingSymlinksInPath()
+        guard resolvedCandidate.deletingLastPathComponent() == resolvedBase else {
+            throw AdapterError.invalidIdentifier(id)
+        }
+        return candidate
+    }
+
+    static func normalizedIdentifier(from seed: String) -> String {
+        let normalized = seed
+            .lowercased()
+            .replacingOccurrences(of: "[^a-z0-9\\-]", with: "-", options: .regularExpression)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        return normalized.isEmpty ? "imported-adapter" : normalized
     }
 
     static func save(adapter: LoRAAdapter, weights: [(String, MLXArray)]) throws {
-        let dir = adapterDirectory(id: adapter.id)
+        let dir = try adapterDirectory(id: adapter.id)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
         // Save metadata as JSON
@@ -75,7 +108,7 @@ struct AdapterRegistry {
     }
 
     static func loadWeights(adapterID: String) throws -> [(String, MLXArray)] {
-        let url = adapterDirectory(id: adapterID).appending(path: "adapter.safetensors")
+        let url = try adapterDirectory(id: adapterID).appending(path: "adapter.safetensors")
         let dict = try MLX.loadArrays(url: url)
         return dict.map { ($0.key, $0.value) }
     }
@@ -95,6 +128,7 @@ struct AdapterRegistry {
     enum AdapterError: Error, LocalizedError {
         case nameExists(String)
         case notFound(String)
+        case invalidIdentifier(String)
         case rankMismatch(Int, Int)
         case kindMismatch(AdapterKind, AdapterKind)
         case unsupportedMergeKind(AdapterKind)
@@ -105,6 +139,8 @@ struct AdapterRegistry {
                 return "An adapter named '\(name)' already exists"
             case .notFound(let id):
                 return "Adapter '\(id)' not found"
+            case .invalidIdentifier(let id):
+                return "Adapter identifier '\(id)' is not a safe directory name"
             case .rankMismatch(let a, let b):
                 return "Cannot merge adapters with different ranks (\(a) vs \(b))"
             case .kindMismatch(let a, let b):
@@ -118,19 +154,16 @@ struct AdapterRegistry {
     /// Rename an adapter (updates directory name and metadata).
     static func rename(adapterID: String, to newName: String) throws {
         let fm = FileManager.default
-        let sourceDir = adapterDirectory(id: adapterID)
+        let sourceDir = try adapterDirectory(id: adapterID)
 
         guard fm.fileExists(atPath: sourceDir.path(percentEncoded: false)) else {
             throw AdapterError.notFound(adapterID)
         }
 
         // Generate new ID from new name
-        let newID = newName
-            .lowercased()
-            .replacingOccurrences(of: " ", with: "-")
-            .replacingOccurrences(of: "[^a-z0-9\\-]", with: "", options: .regularExpression)
+        let newID = normalizedIdentifier(from: newName)
 
-        let destDir = adapterDirectory(id: newID)
+        let destDir = try adapterDirectory(id: newID)
 
         // Check collision
         if newID != adapterID && fm.fileExists(atPath: destDir.path(percentEncoded: false)) {
@@ -153,7 +186,7 @@ struct AdapterRegistry {
         }
 
         // Write updated metadata to the (possibly moved) directory
-        let finalMetadataURL = adapterDirectory(id: newID).appending(path: "adapter.json")
+        let finalMetadataURL = try adapterDirectory(id: newID).appending(path: "adapter.json")
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -166,7 +199,7 @@ struct AdapterRegistry {
     /// Delete an adapter and all its files.
     static func delete(adapterID: String) throws {
         let fm = FileManager.default
-        let dir = adapterDirectory(id: adapterID)
+        let dir = try adapterDirectory(id: adapterID)
 
         guard fm.fileExists(atPath: dir.path(percentEncoded: false)) else {
             throw AdapterError.notFound(adapterID)
@@ -180,7 +213,7 @@ struct AdapterRegistry {
     /// Export an adapter (safetensors + metadata) to a destination directory.
     static func export(adapterID: String, to destination: URL) throws {
         let fm = FileManager.default
-        let sourceDir = adapterDirectory(id: adapterID)
+        let sourceDir = try adapterDirectory(id: adapterID)
 
         guard fm.fileExists(atPath: sourceDir.path(percentEncoded: false)) else {
             throw AdapterError.notFound(adapterID)
@@ -210,7 +243,9 @@ struct AdapterRegistry {
     /// Persists a training manifest so the session can be reloaded for retraining.
     /// Silently ignored on failure — the adapter itself is already saved.
     static func saveManifest(_ manifest: TrainingManifest, adapterID: String) {
-        let url = adapterDirectory(id: adapterID).appending(path: "training_manifest.json")
+        guard let url = try? adapterDirectory(id: adapterID).appending(path: "training_manifest.json") else {
+            return
+        }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         guard let data = try? encoder.encode(manifest) else { return }
@@ -219,29 +254,33 @@ struct AdapterRegistry {
 
     /// Returns the saved training manifest for an adapter, or nil if none exists.
     static func loadManifest(adapterID: String) -> TrainingManifest? {
-        let url = adapterDirectory(id: adapterID).appending(path: "training_manifest.json")
+        guard let url = try? adapterDirectory(id: adapterID).appending(path: "training_manifest.json") else {
+            return nil
+        }
         guard let data = try? Data(contentsOf: url) else { return nil }
         return try? JSONDecoder().decode(TrainingManifest.self, from: data)
     }
 
     // MARK: - Training Run Logs
 
-    static func trainingRunLogURL(adapterID: String) -> URL {
-        adapterDirectory(id: adapterID).appending(path: trainingRunLogFileName)
+    static func trainingRunLogURL(adapterID: String) throws -> URL {
+        try adapterDirectory(id: adapterID).appending(path: trainingRunLogFileName)
     }
 
     static func saveTrainingRunLog(_ log: TrainingRunLog, adapterID: String) throws {
-        let dir = adapterDirectory(id: adapterID)
+        let dir = try adapterDirectory(id: adapterID)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data = try encoder.encode(log)
-        try data.write(to: trainingRunLogURL(adapterID: adapterID), options: .atomic)
+        let url = try trainingRunLogURL(adapterID: adapterID)
+        try data.write(to: url, options: .atomic)
     }
 
     static func loadTrainingRunLog(adapterID: String) -> TrainingRunLog? {
-        guard let data = try? Data(contentsOf: trainingRunLogURL(adapterID: adapterID)) else {
+        guard let url = try? trainingRunLogURL(adapterID: adapterID),
+              let data = try? Data(contentsOf: url) else {
             return nil
         }
         let decoder = JSONDecoder()
@@ -251,60 +290,69 @@ struct AdapterRegistry {
 
     // MARK: - Training Checkpoints
 
-    static func checkpointURL(adapterID: String) -> URL {
-        adapterDirectory(id: adapterID).appending(path: "training_checkpoint.json")
+    static func checkpointURL(adapterID: String) throws -> URL {
+        try adapterDirectory(id: adapterID).appending(path: "training_checkpoint.json")
     }
 
-    static func optimizerStateURL(adapterID: String) -> URL {
-        adapterDirectory(id: adapterID).appending(path: "optimizer_state.safetensors")
+    static func optimizerStateURL(adapterID: String) throws -> URL {
+        try adapterDirectory(id: adapterID).appending(path: "optimizer_state.safetensors")
     }
 
-    private static func legacyOptimizerStateURL(adapterID: String) -> URL {
-        adapterDirectory(id: adapterID).appending(path: "optimizer_state.json")
+    private static func legacyOptimizerStateURL(adapterID: String) throws -> URL {
+        try adapterDirectory(id: adapterID).appending(path: "optimizer_state.json")
     }
 
-    static func weightsURL(adapterID: String) -> URL {
-        adapterDirectory(id: adapterID).appending(path: "adapter.safetensors")
+    static func weightsURL(adapterID: String) throws -> URL {
+        try adapterDirectory(id: adapterID).appending(path: "adapter.safetensors")
     }
 
     static func saveOptimizerState(_ state: [(String, MLXArray)], adapterID: String) throws {
         guard !state.isEmpty else { return }
-        let dir = adapterDirectory(id: adapterID)
+        let dir = try adapterDirectory(id: adapterID)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let dict = Dictionary(state, uniquingKeysWith: { _, last in last })
-        try MLX.save(arrays: dict, url: optimizerStateURL(adapterID: adapterID))
+        let url = try optimizerStateURL(adapterID: adapterID)
+        try MLX.save(arrays: dict, url: url)
     }
 
     /// Saves the metadata needed to resume an interrupted training session.
     static func saveCheckpoint(_ checkpoint: TrainingCheckpoint, adapterID: String) throws {
-        let dir = adapterDirectory(id: adapterID)
+        let dir = try adapterDirectory(id: adapterID)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data = try encoder.encode(checkpoint)
-        try data.write(to: checkpointURL(adapterID: adapterID))
+        let url = try checkpointURL(adapterID: adapterID)
+        try data.write(to: url)
     }
 
     /// Returns the saved training checkpoint for a paused adapter, or nil.
     static func loadCheckpoint(adapterID: String) -> TrainingCheckpoint? {
-        guard let data = try? Data(contentsOf: checkpointURL(adapterID: adapterID)) else {
+        guard let url = try? checkpointURL(adapterID: adapterID),
+              let data = try? Data(contentsOf: url) else {
             return nil
         }
         return try? JSONDecoder().decode(TrainingCheckpoint.self, from: data)
     }
 
     static func hasCheckpoint(adapterID: String) -> Bool {
-        FileManager.default.fileExists(atPath: checkpointURL(adapterID: adapterID).path(percentEncoded: false))
+        guard let url = try? checkpointURL(adapterID: adapterID) else { return false }
+        return FileManager.default.fileExists(atPath: url.path(percentEncoded: false))
     }
 
     /// Removes pause/resume metadata after training completes successfully.
     static func deleteCheckpoint(adapterID: String) {
         let fm = FileManager.default
-        try? fm.removeItem(at: checkpointURL(adapterID: adapterID))
-        try? fm.removeItem(at: optimizerStateURL(adapterID: adapterID))
-        try? fm.removeItem(at: legacyOptimizerStateURL(adapterID: adapterID))
+        let urls = [
+            try? checkpointURL(adapterID: adapterID),
+            try? optimizerStateURL(adapterID: adapterID),
+            try? legacyOptimizerStateURL(adapterID: adapterID)
+        ].compactMap { $0 }
+        for url in urls {
+            try? fm.removeItem(at: url)
+        }
     }
 
     /// Merge two adapters with weighted interpolation: alpha * A + (1-alpha) * B.
@@ -328,10 +376,12 @@ struct AdapterRegistry {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
 
-        let metaA = try Data(contentsOf: adapterDirectory(id: adapterA).appending(path: "adapter.json"))
+        let directoryA = try adapterDirectory(id: adapterA)
+        let metaA = try Data(contentsOf: directoryA.appending(path: "adapter.json"))
         let infoA = try decoder.decode(LoRAAdapter.self, from: metaA)
 
-        let metaB = try Data(contentsOf: adapterDirectory(id: adapterB).appending(path: "adapter.json"))
+        let directoryB = try adapterDirectory(id: adapterB)
+        let metaB = try Data(contentsOf: directoryB.appending(path: "adapter.json"))
         let infoB = try decoder.decode(LoRAAdapter.self, from: metaB)
 
         guard infoA.kind == infoB.kind else {
@@ -373,10 +423,7 @@ struct AdapterRegistry {
         }
 
         // Create merged adapter metadata
-        let mergedID = name
-            .lowercased()
-            .replacingOccurrences(of: " ", with: "-")
-            .replacingOccurrences(of: "[^a-z0-9\\-]", with: "", options: .regularExpression)
+        let mergedID = normalizedIdentifier(from: name)
 
         let mergedAdapter = LoRAAdapter(
             id: mergedID,

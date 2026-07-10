@@ -358,8 +358,9 @@ private struct MyAdaptersListView: View {
     }
 
     private func showInFinder(_ adapter: LoRAAdapter) {
+        guard let directory = try? AdapterRegistry.adapterDirectory(id: adapter.id) else { return }
         NSWorkspace.shared.activateFileViewerSelecting([
-            AdapterRegistry.adapterDirectory(id: adapter.id)
+            directory
         ])
     }
 }

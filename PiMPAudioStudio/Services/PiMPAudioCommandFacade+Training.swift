@@ -464,7 +464,8 @@ extension PiMPAudioCommandFacade {
     }
 
     func trainingAdapterSummaryPayload(_ adapter: LoRAAdapter) -> [String: Any] {
-        [
+        let directory = try? AdapterRegistry.adapterDirectory(id: adapter.id)
+        return [
             "id": adapter.id,
             "name": adapter.name,
             "kind": adapter.kind.rawValue,
@@ -476,7 +477,7 @@ extension PiMPAudioCommandFacade {
             "finalLoss": adapter.finalLoss.map { Double($0) } ?? NSNull(),
             "createdAt": dateFormatter.string(from: adapter.createdAt),
             "hasCheckpoint": AdapterRegistry.hasCheckpoint(adapterID: adapter.id),
-            "directory": AdapterRegistry.adapterDirectory(id: adapter.id).path(percentEncoded: false)
+            "directory": directory?.path(percentEncoded: false) ?? NSNull()
         ]
     }
 
@@ -1267,7 +1268,8 @@ extension PiMPAudioCommandFacade {
 
     func trainingRunPayload(adapter: LoRAAdapter, log: TrainingRunLog?) -> [String: Any] {
         var payload = trainingAdapterSummaryPayload(adapter)
-        payload["runLogPath"] = AdapterRegistry.trainingRunLogURL(adapterID: adapter.id).path(percentEncoded: false)
+        payload["runLogPath"] = (try? AdapterRegistry.trainingRunLogURL(adapterID: adapter.id))?
+            .path(percentEncoded: false) ?? NSNull()
         payload["hasRunLog"] = log != nil
         if let log {
             payload["runLog"] = trainingRunLogPayload(log)
@@ -1462,11 +1464,20 @@ extension PiMPAudioCommandFacade {
     }
 
     func trainingRunPathsPayload(_ adapter: LoRAAdapter) -> [String: Any] {
-        let directory = AdapterRegistry.adapterDirectory(id: adapter.id)
-        let logURL = AdapterRegistry.trainingRunLogURL(adapterID: adapter.id)
-        let checkpointURL = AdapterRegistry.checkpointURL(adapterID: adapter.id)
-        let optimizerURL = AdapterRegistry.optimizerStateURL(adapterID: adapter.id)
-        let weightsURL = AdapterRegistry.weightsURL(adapterID: adapter.id)
+        let directory: URL
+        let logURL: URL
+        let checkpointURL: URL
+        let optimizerURL: URL
+        let weightsURL: URL
+        do {
+            directory = try AdapterRegistry.adapterDirectory(id: adapter.id)
+            logURL = try AdapterRegistry.trainingRunLogURL(adapterID: adapter.id)
+            checkpointURL = try AdapterRegistry.checkpointURL(adapterID: adapter.id)
+            optimizerURL = try AdapterRegistry.optimizerStateURL(adapterID: adapter.id)
+            weightsURL = try AdapterRegistry.weightsURL(adapterID: adapter.id)
+        } catch {
+            return ["error": error.localizedDescription]
+        }
         return [
             "directory": directory.path(percentEncoded: false),
             "trainingLog": [

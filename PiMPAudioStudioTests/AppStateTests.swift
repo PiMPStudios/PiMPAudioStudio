@@ -145,6 +145,42 @@ private extension JSONDecoder {
     }
 }
 
+@Test func adapterRegistryRejectsTraversalAndSymlinkEscapes() throws {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let adapters = root.appendingPathComponent("adapters", isDirectory: true)
+    let outside = root.appendingPathComponent("outside", isDirectory: true)
+    try FileManager.default.createDirectory(at: adapters, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let valid = try AdapterRegistry.adapterDirectory(id: "Legacy Adapter_1", baseDirectory: adapters)
+    #expect(valid.deletingLastPathComponent() == adapters.standardizedFileURL)
+
+    for identifier in ["", ".", "..", "../History", "nested/adapter", "nested\\adapter", "bad\nname"] {
+        #expect(throws: AdapterRegistry.AdapterError.self) {
+            _ = try AdapterRegistry.adapterDirectory(id: identifier, baseDirectory: adapters)
+        }
+    }
+
+    let symlink = adapters.appendingPathComponent("linked-adapter", isDirectory: true)
+    try FileManager.default.createSymbolicLink(at: symlink, withDestinationURL: outside)
+    #expect(throws: AdapterRegistry.AdapterError.self) {
+        _ = try AdapterRegistry.adapterDirectory(id: "linked-adapter", baseDirectory: adapters)
+    }
+}
+
+@Test func adapterRegistryNormalizesExternalIdentifiersToSafeSlugs() throws {
+    #expect(AdapterRegistry.normalizedIdentifier(from: "../../History") == "history")
+    #expect(AdapterRegistry.normalizedIdentifier(from: "Cloud Voice V2") == "cloud-voice-v2")
+    #expect(AdapterRegistry.normalizedIdentifier(from: "///") == "imported-adapter")
+
+    let base = FileManager.default.temporaryDirectory
+    let normalized = AdapterRegistry.normalizedIdentifier(from: "../../History")
+    let directory = try AdapterRegistry.adapterDirectory(id: normalized, baseDirectory: base)
+    #expect(directory.deletingLastPathComponent() == base.standardizedFileURL)
+}
+
 @Test @MainActor func appStateDetectsIncompleteSetup() async {
     let tempDir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
     let registry = ModelRegistry(baseDirectory: tempDir)
@@ -1376,7 +1412,11 @@ private extension JSONDecoder {
 
     let service = CommunityService()
     let imported = try await service.importLocalAdapter(directoryURL: sourceDir)
-    defer { try? FileManager.default.removeItem(at: AdapterRegistry.adapterDirectory(id: imported.id)) }
+    defer {
+        if let directory = try? AdapterRegistry.adapterDirectory(id: imported.id) {
+            try? FileManager.default.removeItem(at: directory)
+        }
+    }
 
     #expect(imported.kind == .lokr)
     #expect(imported.source == .imported)
@@ -1433,7 +1473,11 @@ private extension JSONDecoder {
 
     let service = CommunityService()
     let imported = try await service.importLocalAdapter(directoryURL: sourceDir)
-    defer { try? FileManager.default.removeItem(at: AdapterRegistry.adapterDirectory(id: imported.id)) }
+    defer {
+        if let directory = try? AdapterRegistry.adapterDirectory(id: imported.id) {
+            try? FileManager.default.removeItem(at: directory)
+        }
+    }
 
     #expect(imported.kind == .lokr)
     #expect(imported.source == .imported)
@@ -1494,7 +1538,11 @@ private extension JSONDecoder {
 
     let service = CommunityService()
     let imported = try await service.importLocalAdapter(directoryURL: sourceDir)
-    defer { try? FileManager.default.removeItem(at: AdapterRegistry.adapterDirectory(id: imported.id)) }
+    defer {
+        if let directory = try? AdapterRegistry.adapterDirectory(id: imported.id) {
+            try? FileManager.default.removeItem(at: directory)
+        }
+    }
 
     #expect(imported.kind == .lora)
     #expect(imported.source == .imported)
@@ -1520,7 +1568,8 @@ private extension JSONDecoder {
     try FileManager.default.createDirectory(at: sourceDir, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: sourceDir) }
 
-    let adapterID = "native-import-\(UUID().uuidString.lowercased())"
+    let adapterID = "../../Native Import \(UUID().uuidString)"
+    let expectedAdapterID = AdapterRegistry.normalizedIdentifier(from: adapterID)
     let adapter = LoRAAdapter(
         id: adapterID,
         name: "Native Import",
@@ -1555,13 +1604,17 @@ private extension JSONDecoder {
 
     let service = CommunityService()
     let imported = try await service.importLocalAdapter(directoryURL: sourceDir)
-    defer { try? FileManager.default.removeItem(at: AdapterRegistry.adapterDirectory(id: imported.id)) }
+    defer {
+        if let directory = try? AdapterRegistry.adapterDirectory(id: imported.id) {
+            try? FileManager.default.removeItem(at: directory)
+        }
+    }
 
-    #expect(imported.id == adapterID)
+    #expect(imported.id == expectedAdapterID)
     #expect(imported.kind == .lokr)
     #expect(imported.source == .imported)
 
-    let installedDir = AdapterRegistry.adapterDirectory(id: imported.id)
+    let installedDir = try AdapterRegistry.adapterDirectory(id: imported.id)
     #expect(FileManager.default.fileExists(
         atPath: installedDir.appendingPathComponent("adapter.json").path
     ))
@@ -1573,6 +1626,7 @@ private extension JSONDecoder {
     let decoder = JSONDecoder()
     decoder.dateDecodingStrategy = .iso8601
     let installed = try decoder.decode(LoRAAdapter.self, from: installedData)
+    #expect(installed.id == expectedAdapterID)
     #expect(installed.source == .imported)
     #expect(installed.remoteRepoURL == nil)
     #expect(installed.lokrConfig?.weightDecompose == true)

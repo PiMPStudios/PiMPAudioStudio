@@ -172,7 +172,8 @@ final class CommunityService: ObservableObject {
     }
 
     private func removePartialDownload(adapterID: String) {
-        try? FileManager.default.removeItem(at: AdapterRegistry.adapterDirectory(id: adapterID))
+        guard let directory = try? AdapterRegistry.adapterDirectory(id: adapterID) else { return }
+        try? FileManager.default.removeItem(at: directory)
     }
 
     private func startNextDownloadIfPossible() {
@@ -248,6 +249,7 @@ final class CommunityService: ObservableObject {
 
             adapter.source = .huggingface
             adapter.remoteRepoURL = repoURL
+            adapter.id = uniqueAdapterID(from: adapter.id)
 
             let weightsURL = baseURL.appendingPathComponent("adapter.safetensors")
             let (weightsData, weightsResponse) = try await URLSession.shared.data(from: weightsURL)
@@ -256,11 +258,14 @@ final class CommunityService: ObservableObject {
             }
             let expectedSHA256 = adapterSHA256(from: metaData)
 
-            let dir = AdapterRegistry.adapterDirectory(id: adapter.id)
+            let dir = try AdapterRegistry.adapterDirectory(id: adapter.id)
             let weightsDestination = dir.appending(path: "adapter.safetensors")
             do {
                 try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-                try metaData.write(to: dir.appending(path: "adapter.json"))
+                let encoder = JSONEncoder()
+                encoder.dateEncodingStrategy = .iso8601
+                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                try encoder.encode(adapter).write(to: dir.appending(path: "adapter.json"))
                 try weightsData.write(to: weightsDestination)
                 try await verifyAdapterWeights(
                     at: weightsDestination,
@@ -618,12 +623,9 @@ final class CommunityService: ObservableObject {
         adapter.source = .imported
         adapter.remoteRepoURL = nil
 
-        let existingIDs = Set(AdapterRegistry.listAdapters().map(\.id))
-        if existingIDs.contains(adapter.id) {
-            adapter.id = uniqueAdapterID(from: adapter.id)
-        }
+        adapter.id = uniqueAdapterID(from: adapter.id)
 
-        let destination = AdapterRegistry.adapterDirectory(id: adapter.id)
+        let destination = try AdapterRegistry.adapterDirectory(id: adapter.id)
         let weightsDestination = destination.appending(path: "adapter.safetensors")
         let metadataDestination = destination.appending(path: "adapter.json")
 
@@ -861,11 +863,7 @@ final class CommunityService: ObservableObject {
     }
 
     private func uniqueAdapterID(from seed: String) -> String {
-        let baseID = seed
-            .lowercased()
-            .replacingOccurrences(of: "[^a-z0-9\\-]", with: "-", options: .regularExpression)
-            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
-        let normalized = baseID.isEmpty ? "imported-adapter" : baseID
+        let normalized = AdapterRegistry.normalizedIdentifier(from: seed)
         let existing = Set(AdapterRegistry.listAdapters().map(\.id))
         guard existing.contains(normalized) else { return normalized }
 
@@ -999,6 +997,7 @@ final class CommunityService: ObservableObject {
     // MARK: - Private
 
     private func performDownload(adapter: CommunityAdapter, retryCount: Int) async throws {
+        let directory = try AdapterRegistry.adapterDirectory(id: adapter.id)
         do {
             // Download metadata
             let (metaData, _) = try await URLSession.shared.data(from: adapter.metadataURL)
@@ -1014,20 +1013,20 @@ final class CommunityService: ObservableObject {
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
             var localAdapter = try decoder.decode(LoRAAdapter.self, from: metaData)
+            localAdapter.id = adapter.id
             localAdapter.source = .community
             localAdapter.remoteRepoURL = nil
 
             // Save to disk
-            let dir = AdapterRegistry.adapterDirectory(id: adapter.id)
-            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            let weightsDestination = dir.appending(path: "adapter.safetensors")
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let weightsDestination = directory.appending(path: "adapter.safetensors")
 
             // Write updated metadata with source field
             let encoder = JSONEncoder()
             encoder.dateEncodingStrategy = .iso8601
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             let updatedMeta = try encoder.encode(localAdapter)
-            try updatedMeta.write(to: dir.appending(path: "adapter.json"))
+            try updatedMeta.write(to: directory.appending(path: "adapter.json"))
             try weightsData.write(to: weightsDestination)
             downloads[adapter.id] = .downloading(progress: 0.95)
             try await verifyAdapterWeights(
@@ -1038,13 +1037,11 @@ final class CommunityService: ObservableObject {
 
             downloads[adapter.id] = .downloading(progress: 1.0)
         } catch is CancellationError {
-            let dir = AdapterRegistry.adapterDirectory(id: adapter.id)
-            try? FileManager.default.removeItem(at: dir)
+            try? FileManager.default.removeItem(at: directory)
             throw CancellationError()
         } catch {
             if Task.isCancelled {
-                let dir = AdapterRegistry.adapterDirectory(id: adapter.id)
-                try? FileManager.default.removeItem(at: dir)
+                try? FileManager.default.removeItem(at: directory)
                 throw CancellationError()
             }
             if retryCount > 0 {
@@ -1053,8 +1050,7 @@ final class CommunityService: ObservableObject {
                 try await performDownload(adapter: adapter, retryCount: retryCount - 1)
             } else {
                 // Clean up partial files
-                let dir = AdapterRegistry.adapterDirectory(id: adapter.id)
-                try? FileManager.default.removeItem(at: dir)
+                try? FileManager.default.removeItem(at: directory)
                 throw error
             }
         }

@@ -615,7 +615,7 @@ final class TrainingService: ObservableObject {
                             "kind=\(kind.rawValue) adapterID=\(adapterID)"
                         )
                         trainingLogger.info("Training paused and checkpoint saved for '\(adapterName)'")
-                        let checkpoint = self.makeCheckpoint(
+                        let checkpoint = try self.makeCheckpoint(
                             adapterID: adapterID,
                             config: sessionConfig,
                             activeModelID: activeModelID,
@@ -680,9 +680,10 @@ final class TrainingService: ObservableObject {
                     message: "Training completed and adapter was saved."
                 )
                 self.saveActiveRunLog(adapterID: adapterID)
+                let adapterDirectory = try AdapterRegistry.adapterDirectory(id: adapterID)
                 AudioDiagnostics.note(
                     "training/save/end",
-                    "kind=\(kind.rawValue) adapterID=\(adapterID) directory=\(AdapterRegistry.adapterDirectory(id: adapterID).path(percentEncoded: false))"
+                    "kind=\(kind.rawValue) adapterID=\(adapterID) directory=\(adapterDirectory.path(percentEncoded: false))"
                 )
                 AudioDiagnostics.memory("training/save/end")
 
@@ -934,7 +935,7 @@ final class TrainingService: ObservableObject {
     }
 
     private func saveActiveRunLogIfAdapterDirectoryExists(adapterID: String) {
-        let directory = AdapterRegistry.adapterDirectory(id: adapterID)
+        guard let directory = try? AdapterRegistry.adapterDirectory(id: adapterID) else { return }
         guard FileManager.default.fileExists(atPath: directory.path(percentEncoded: false)) else {
             return
         }
@@ -1043,14 +1044,7 @@ final class TrainingService: ObservableObject {
     // MARK: - Private
 
     private static func adapterID(from adapterName: String) -> String {
-        adapterName
-            .lowercased()
-            .replacingOccurrences(of: " ", with: "-")
-            .replacingOccurrences(
-                of: "[^a-z0-9\\-]",
-                with: "",
-                options: .regularExpression
-            )
+        AdapterRegistry.normalizedIdentifier(from: adapterName)
     }
 
     private func makeCheckpoint(
@@ -1060,7 +1054,7 @@ final class TrainingService: ObservableObject {
         sampleCount: Int,
         bestLoss: Float?,
         fallback: TrainingCheckpoint?
-    ) -> TrainingCheckpoint {
+    ) throws -> TrainingCheckpoint {
         let uiState: TrainingUIState?
         if case .training(let current) = state {
             uiState = current
@@ -1082,8 +1076,8 @@ final class TrainingService: ObservableObject {
             bestLoss: bestLoss ?? fallback?.bestLoss ?? validationHistory.map(\.loss).min() ?? lossHistory.min(),
             lossHistory: lossHistory,
             validationHistory: validationHistory,
-            weightsURL: AdapterRegistry.weightsURL(adapterID: adapterID),
-            optimizerStateURL: AdapterRegistry.optimizerStateURL(adapterID: adapterID),
+            weightsURL: try AdapterRegistry.weightsURL(adapterID: adapterID),
+            optimizerStateURL: try AdapterRegistry.optimizerStateURL(adapterID: adapterID),
             config: config,
             baseModelID: activeModelID
         )

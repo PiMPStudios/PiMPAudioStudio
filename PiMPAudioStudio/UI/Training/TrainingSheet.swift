@@ -1100,8 +1100,9 @@ struct TrainingSheet: View {
     }
 
     private func showAdapterInFinder(_ adapter: LoRAAdapter) {
+        guard let directory = try? AdapterRegistry.adapterDirectory(id: adapter.id) else { return }
         NSWorkspace.shared.activateFileViewerSelecting([
-            AdapterRegistry.adapterDirectory(id: adapter.id)
+            directory
         ])
     }
 
