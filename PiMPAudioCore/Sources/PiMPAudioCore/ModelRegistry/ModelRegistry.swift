@@ -384,31 +384,46 @@ public actor ModelRegistry {
         self.client = client
         self.tokenProvider = tokenProvider
         let loadedUserSpecs = Self.loadUserSpecs(from: baseDirectory)
-        self.userSpecs = loadedUserSpecs.specs
-        if loadedUserSpecs.shouldPersist {
-            Self.saveUserSpecs(
-                loadedUserSpecs.specs,
-                to: baseDirectory.appending(path: "user-models.json")
-            )
+        switch loadedUserSpecs {
+        case .missing:
+            self.userSpecs = []
+        case .loaded(let specs, let shouldPersist):
+            self.userSpecs = specs
+            if shouldPersist {
+                Self.saveUserSpecs(
+                    specs,
+                    to: baseDirectory.appending(path: "user-models.json")
+                )
+            }
+        case .corrupt:
+            // Keep an empty in-memory list; the corrupt index was preserved on disk.
+            self.userSpecs = []
         }
         self.activeModels = Self.migratedActiveModelsIfNeeded(
             activeModels: Self.loadActiveModels(from: baseDirectory),
-            userSpecs: loadedUserSpecs.specs,
-            baseDirectory: baseDirectory
+            userSpecs: self.userSpecs,
+            baseDirectory: baseDirectory,
+            allowOrphanCleanup: loadedUserSpecs.allowsDestructiveOrphanCleanup
         )
     }
+
+    /// Per-models-root marker so migration state is isolated per directory.
+    /// (Avoids a global UserDefaults race across app roots and unit tests.)
+    private static let modelMigrationMarkerFileName = ".model-migration-v1-complete"
 
     /// One-shot migration from Phase-1 placeholder spec IDs to Phase-2 real IDs.
     /// Maps legacy `ace-step-dit` active ID to the new Turbo default and sweeps
     /// orphan model directories whose names don't match any current spec ID.
-    /// Gated on `UserDefaults` flag so this runs exactly once.
+    ///
+    /// Destructive orphan cleanup is skipped when the user-model index is
+    /// corrupt so a decode failure cannot wipe every unrecognized model dir.
     private static func migratedActiveModelsIfNeeded(
         activeModels loadedActiveModels: [ModelCategory: String],
         userSpecs: [ModelSpec],
-        baseDirectory: URL
+        baseDirectory: URL,
+        allowOrphanCleanup: Bool
     ) -> [ModelCategory: String] {
-        let migrationKey = "com.pimpstudios.PiMPAudioStudio.modelMigration.v1"
-        guard !UserDefaults.standard.bool(forKey: migrationKey) else {
+        guard !isModelMigrationComplete(baseDirectory: baseDirectory) else {
             return loadedActiveModels
         }
 
@@ -419,15 +434,25 @@ public actor ModelRegistry {
             logger.info("Migrated legacy active DiT 'ace-step-dit' → 'ace-step-dit-turbo'")
         }
 
+        guard allowOrphanCleanup else {
+            logger.error(
+                "Skipping destructive model-directory migration because user-models.json did not load successfully."
+            )
+            // Do not mark migration complete — retry orphan cleanup after the
+            // index is restored or replaced with a readable file.
+            return activeModels
+        }
+
         let validIDs = Set((Self.builtInSpecs + userSpecs).map(\.id))
         if let entries = try? FileManager.default.contentsOfDirectory(
             at: baseDirectory, includingPropertiesForKeys: nil
         ) {
             for entry in entries {
                 let name = entry.lastPathComponent
+                if name == modelMigrationMarkerFileName { continue }
                 var isDir: ObjCBool = false
                 FileManager.default.fileExists(atPath: entry.path(percentEncoded: false), isDirectory: &isDir)
-                guard isDir.boolValue, name != "user-models.json" else { continue }
+                guard isDir.boolValue else { continue }
                 if !validIDs.contains(name) {
                     try? FileManager.default.removeItem(at: entry)
                     logger.info("Removed orphan model directory: \(name)")
@@ -435,8 +460,33 @@ public actor ModelRegistry {
             }
         }
 
-        UserDefaults.standard.set(true, forKey: migrationKey)
+        markModelMigrationComplete(baseDirectory: baseDirectory)
         return activeModels
+    }
+
+    private static func modelMigrationMarkerURL(baseDirectory: URL) -> URL {
+        baseDirectory.appending(path: modelMigrationMarkerFileName)
+    }
+
+    private static func isModelMigrationComplete(baseDirectory: URL) -> Bool {
+        FileManager.default.fileExists(
+            atPath: modelMigrationMarkerURL(baseDirectory: baseDirectory).path(percentEncoded: false)
+        )
+    }
+
+    private static func markModelMigrationComplete(baseDirectory: URL) {
+        let markerURL = modelMigrationMarkerURL(baseDirectory: baseDirectory)
+        do {
+            try FileManager.default.createDirectory(
+                at: baseDirectory,
+                withIntermediateDirectories: true
+            )
+            try Data().write(to: markerURL, options: .atomic)
+        } catch {
+            logger.error(
+                "Failed to write model migration marker: \(error.localizedDescription, privacy: .public)"
+            )
+        }
     }
 
     // MARK: - Status
@@ -663,10 +713,29 @@ public actor ModelRegistry {
 
     // MARK: - Persistence
 
-    private static func loadUserSpecs(from baseDirectory: URL) -> (specs: [ModelSpec], shouldPersist: Bool) {
+    /// Outcome of reading `user-models.json`. Corrupt is distinct from missing so
+    /// migration never treats a decode failure as "no user models."
+    private enum UserSpecsLoadResult: Sendable {
+        case missing
+        case loaded(specs: [ModelSpec], shouldPersist: Bool)
+        case corrupt
+
+        /// Orphan model-directory deletion is only safe when the index is absent
+        /// or fully decoded — never when it failed to parse.
+        var allowsDestructiveOrphanCleanup: Bool {
+            switch self {
+            case .missing, .loaded:
+                return true
+            case .corrupt:
+                return false
+            }
+        }
+    }
+
+    private static func loadUserSpecs(from baseDirectory: URL) -> UserSpecsLoadResult {
         let url = baseDirectory.appending(path: "user-models.json")
         guard FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) else {
-            return ([], false)
+            return .missing
         }
 
         do {
@@ -676,10 +745,31 @@ public actor ModelRegistry {
                 decoded,
                 baseDirectory: baseDirectory
             )
-            return (refreshed.specs, refreshed.changed)
+            return .loaded(specs: refreshed.specs, shouldPersist: refreshed.changed)
         } catch {
-            logger.error("Failed to load user-models.json: \(error.localizedDescription). Starting with empty list.")
-            return ([], false)
+            preserveCorruptUserModelsFile(at: url, cause: error)
+            return .corrupt
+        }
+    }
+
+    private static func preserveCorruptUserModelsFile(at url: URL, cause: Error) {
+        let fm = FileManager.default
+        let directory = url.deletingLastPathComponent()
+        var destination = directory.appending(path: "user-models.json.corrupt")
+        if fm.fileExists(atPath: destination.path(percentEncoded: false)) {
+            let suffix = Int(Date().timeIntervalSince1970)
+            destination = directory.appending(path: "user-models.json.corrupt-\(suffix)")
+        }
+
+        do {
+            try fm.moveItem(at: url, to: destination)
+            logger.error(
+                "user-models.json was unreadable and has been preserved at \(destination.lastPathComponent, privacy: .public): \(cause.localizedDescription, privacy: .public)"
+            )
+        } catch {
+            logger.error(
+                "Failed to preserve unreadable user-models.json: \(error.localizedDescription, privacy: .public); original load error: \(cause.localizedDescription, privacy: .public)"
+            )
         }
     }
 

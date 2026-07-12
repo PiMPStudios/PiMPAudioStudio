@@ -106,3 +106,65 @@ import Foundation
         Issue.record("Expected .failed status for unknown model ID, got \(status)")
     }
 }
+
+@Test func registryPreservesCorruptUserModelIndexAndSkipsOrphanDeletion() async throws {
+    let tempDir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+    try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: tempDir) }
+
+    let corruptData = Data("{ not valid user-models json".utf8)
+    let indexURL = tempDir.appending(path: "user-models.json")
+    try corruptData.write(to: indexURL)
+
+    // Directory that only exists in the user index — would be deleted if
+    // corrupt load were treated as an empty list during migration.
+    let userModelDir = tempDir.appending(path: "my-custom-dit", directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: userModelDir, withIntermediateDirectories: true)
+    try Data("weights".utf8).write(to: userModelDir.appending(path: "model.safetensors"))
+
+    let registry = ModelRegistry(baseDirectory: tempDir)
+    let userSpecs = await registry.userSpecs
+
+    #expect(userSpecs.isEmpty)
+    #expect(!FileManager.default.fileExists(atPath: indexURL.path(percentEncoded: false)))
+
+    let preserved = tempDir.appending(path: "user-models.json.corrupt")
+    #expect(FileManager.default.fileExists(atPath: preserved.path(percentEncoded: false)))
+    #expect(try Data(contentsOf: preserved) == corruptData)
+
+    #expect(FileManager.default.fileExists(atPath: userModelDir.path(percentEncoded: false)))
+    // Migration must not be marked complete while the index was unreadable.
+    let marker = tempDir.appending(path: ".model-migration-v1-complete")
+    #expect(!FileManager.default.fileExists(atPath: marker.path(percentEncoded: false)))
+}
+
+@Test func registryOrphanCleanupRunsWhenUserModelIndexLoads() async throws {
+    let tempDir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+    try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: tempDir) }
+
+    let userSpec = ModelSpec(
+        id: "my-custom-dit",
+        displayName: "Custom DiT",
+        huggingFaceRepo: "example/custom",
+        files: [ModelFileSpec(remotePath: "model.safetensors", sizeBytes: 1)],
+        category: .aceStepDiT
+    )
+    let indexURL = tempDir.appending(path: "user-models.json")
+    try JSONEncoder().encode([userSpec]).write(to: indexURL)
+
+    let keptDir = tempDir.appending(path: "my-custom-dit", directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: keptDir, withIntermediateDirectories: true)
+
+    let orphanDir = tempDir.appending(path: "legacy-orphan-model", directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: orphanDir, withIntermediateDirectories: true)
+
+    let registry = ModelRegistry(baseDirectory: tempDir)
+    let userIDs = await registry.userSpecs.map(\.id)
+
+    #expect(userIDs == ["my-custom-dit"])
+    #expect(FileManager.default.fileExists(atPath: keptDir.path(percentEncoded: false)))
+    #expect(!FileManager.default.fileExists(atPath: orphanDir.path(percentEncoded: false)))
+    let marker = tempDir.appending(path: ".model-migration-v1-complete")
+    #expect(FileManager.default.fileExists(atPath: marker.path(percentEncoded: false)))
+}
