@@ -998,18 +998,39 @@ final class CommunityService: ObservableObject {
 
     private func performDownload(adapter: CommunityAdapter, retryCount: Int) async throws {
         let directory = try AdapterRegistry.adapterDirectory(id: adapter.id)
+        // Stage into a temp directory, then atomically install only after verify.
+        let stagingRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "PiMPCommunityDownload-\(adapter.id)-\(UUID().uuidString)",
+                isDirectory: true
+            )
+
         do {
-            // Download metadata
-            let (metaData, _) = try await URLSession.shared.data(from: adapter.metadataURL)
-            try Task.checkCancellation()
-            downloads[adapter.id] = .downloading(progress: 0.1)
+            try FileManager.default.createDirectory(at: stagingRoot, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: stagingRoot) }
 
-            // Download weights with progress
-            let (weightsData, _) = try await URLSession.shared.data(from: adapter.adapterURL)
+            // Metadata is small JSON — fine to buffer.
+            let (metaData, metaResponse) = try await URLSession.shared.data(from: adapter.metadataURL)
             try Task.checkCancellation()
-            downloads[adapter.id] = .downloading(progress: 0.9)
+            if let http = metaResponse as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+                throw DownloadError.httpError(statusCode: http.statusCode)
+            }
+            downloads[adapter.id] = .downloading(progress: 0.05)
 
-            // Parse metadata to get a LoRAAdapter, update source
+            // Stream weights to disk with real byte progress (no full RAM buffer).
+            let stagedWeights = stagingRoot.appendingPathComponent("adapter.safetensors")
+            let adapterID = adapter.id
+            try await downloadClient.download(from: adapter.adapterURL, to: stagedWeights) { [weak self] fraction in
+                Task { @MainActor in
+                    // Weights occupy ~5%…90% of overall progress.
+                    let overall = 0.05 + max(0, min(1, fraction)) * 0.85
+                    self?.downloads[adapterID] = .downloading(progress: overall)
+                }
+            }
+            try Task.checkCancellation()
+            downloads[adapter.id] = .downloading(progress: 0.92)
+
+            // Parse metadata and rewrite source/id for local install.
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
             var localAdapter = try decoder.decode(LoRAAdapter.self, from: metaData)
@@ -1017,23 +1038,30 @@ final class CommunityService: ObservableObject {
             localAdapter.source = .community
             localAdapter.remoteRepoURL = nil
 
-            // Save to disk
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            let weightsDestination = directory.appending(path: "adapter.safetensors")
-
-            // Write updated metadata with source field
             let encoder = JSONEncoder()
             encoder.dateEncodingStrategy = .iso8601
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             let updatedMeta = try encoder.encode(localAdapter)
-            try updatedMeta.write(to: directory.appending(path: "adapter.json"))
-            try weightsData.write(to: weightsDestination)
-            downloads[adapter.id] = .downloading(progress: 0.95)
+            let stagedMeta = stagingRoot.appendingPathComponent("adapter.json")
+            try updatedMeta.write(to: stagedMeta, options: .atomic)
+
             try await verifyAdapterWeights(
-                at: weightsDestination,
+                at: stagedWeights,
                 expectedSHA256: adapter.sha256,
                 fileName: adapter.adapterURL.lastPathComponent
             )
+            try Task.checkCancellation()
+            downloads[adapter.id] = .downloading(progress: 0.97)
+
+            // Atomic-ish install: only touch the final adapter directory after
+            // the payload has been fully downloaded and verified.
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let finalWeights = directory.appending(path: "adapter.safetensors")
+            let finalMeta = directory.appending(path: "adapter.json")
+            try? FileManager.default.removeItem(at: finalWeights)
+            try? FileManager.default.removeItem(at: finalMeta)
+            try FileManager.default.moveItem(at: stagedWeights, to: finalWeights)
+            try FileManager.default.moveItem(at: stagedMeta, to: finalMeta)
 
             downloads[adapter.id] = .downloading(progress: 1.0)
         } catch is CancellationError {
@@ -1049,7 +1077,7 @@ final class CommunityService: ObservableObject {
                 try await Task.sleep(for: .seconds(1))
                 try await performDownload(adapter: adapter, retryCount: retryCount - 1)
             } else {
-                // Clean up partial files
+                // Clean up partial install directory (staging cleaned by defer).
                 try? FileManager.default.removeItem(at: directory)
                 throw error
             }

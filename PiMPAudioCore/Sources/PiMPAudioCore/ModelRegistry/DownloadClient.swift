@@ -27,7 +27,8 @@ public actor DownloadClient {
         onProgress: @Sendable @escaping (Double) -> Void,
         onRetry: @Sendable @escaping () -> Void
     ) async throws {
-        try await downloadFile(repo: repo, file: file, to: destination, bearerToken: bearerToken, onProgress: onProgress)
+        let source = huggingFaceURL(repo: repo, file: file)
+        try await downloadFile(from: source, to: destination, bearerToken: bearerToken, onProgress: onProgress)
 
         guard let hash = expectedHash, !hash.isEmpty else { return }
 
@@ -38,7 +39,7 @@ public actor DownloadClient {
         try? FileManager.default.removeItem(at: destination)
         onRetry()
 
-        try await downloadFile(repo: repo, file: file, to: destination, bearerToken: bearerToken, onProgress: onProgress)
+        try await downloadFile(from: source, to: destination, bearerToken: bearerToken, onProgress: onProgress)
 
         let retryVerified = await verifySHA256(file: destination, expected: hash)
         if retryVerified { return }
@@ -57,8 +58,25 @@ public actor DownloadClient {
         onProgress: @Sendable @escaping (Double) -> Void
     ) async throws {
         try await downloadFile(
-            repo: repo,
-            file: file,
+            from: huggingFaceURL(repo: repo, file: file),
+            to: destination,
+            bearerToken: bearerToken,
+            onProgress: onProgress
+        )
+    }
+
+    /// Stream a remote URL to `destination` via a download task (disk-backed).
+    ///
+    /// Progress is real byte progress when the server provides Content-Length.
+    /// Does not buffer the entire payload in RAM.
+    public func download(
+        from url: URL,
+        to destination: URL,
+        bearerToken: String? = nil,
+        onProgress: @Sendable @escaping (Double) -> Void
+    ) async throws {
+        try await downloadFile(
+            from: url,
             to: destination,
             bearerToken: bearerToken,
             onProgress: onProgress
@@ -66,13 +84,12 @@ public actor DownloadClient {
     }
 
     private func downloadFile(
-        repo: String,
-        file: String,
+        from url: URL,
         to destination: URL,
         bearerToken: String?,
         onProgress: @Sendable @escaping (Double) -> Void
     ) async throws {
-        var request = URLRequest(url: huggingFaceURL(repo: repo, file: file))
+        var request = URLRequest(url: url)
         if let token = bearerToken, !token.isEmpty {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
