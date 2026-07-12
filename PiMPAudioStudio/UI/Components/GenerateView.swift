@@ -707,6 +707,9 @@ struct GenerateView: View {
         case .decoding:
             ProgressView("Decoding audio...")
                 .progressViewStyle(.linear)
+        case .releasing:
+            ProgressView("Releasing models from memory...")
+                .progressViewStyle(.linear)
         case .error(let message):
             Label(message, systemImage: "exclamationmark.triangle")
                 .foregroundStyle(.red)

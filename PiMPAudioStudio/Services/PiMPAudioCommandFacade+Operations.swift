@@ -220,6 +220,11 @@ extension PiMPAudioCommandFacade {
                 stage: "cancelled",
                 message: "Generation cancelled."
             )
+        case .releasing:
+            return generationOperationProgressPayload(
+                stage: "releasing",
+                message: "Releasing generation models from memory."
+            )
         }
     }
 

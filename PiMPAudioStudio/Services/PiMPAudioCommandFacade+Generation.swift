@@ -586,6 +586,8 @@ extension PiMPAudioCommandFacade {
             return ["name": "error", "message": message]
         case .cancelled:
             return ["name": "cancelled"]
+        case .releasing:
+            return ["name": "releasing"]
         }
     }
 
@@ -602,6 +604,7 @@ extension PiMPAudioCommandFacade {
         case .complete: return "complete"
         case .error: return "error"
         case .cancelled: return "cancelled"
+        case .releasing: return "releasing"
         }
     }
 

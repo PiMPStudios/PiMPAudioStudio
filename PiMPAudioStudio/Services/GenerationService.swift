@@ -118,6 +118,28 @@ enum GenerationBatchError: LocalizedError {
     }
 }
 
+/// Immutable inputs for a single generation submission.
+///
+/// Captured at `generate()` entry so adapter/UI mutations cannot alter a run
+/// after it has been queued — especially across `await` model-load points.
+private struct GenerationSubmissionContext: Sendable {
+    let id: UUID
+    let request: GenerationRequest
+    let adapterStack: [(id: String, weight: Float)]
+    let selectedAdapterID: String?
+
+    /// Prefers the full stack; falls back to a single selected ID at 1.0.
+    var resolvedAdapterStack: [(id: String, weight: Float)] {
+        if !adapterStack.isEmpty {
+            return adapterStack
+        }
+        if let selectedAdapterID {
+            return [(id: selectedAdapterID, weight: 1.0)]
+        }
+        return []
+    }
+}
+
 @MainActor
 final class GenerationService: ObservableObject {
     @Published var state: GenerationState = .idle
@@ -133,6 +155,9 @@ final class GenerationService: ObservableObject {
 
     private var generationTask: Task<Void, Never>?
     private var activeGenerationID: UUID?
+    /// Set while `unloadAllWeights` owns the lifecycle; generation completion
+    /// must not flip state back to a terminal submit-allowed value mid-release.
+    private var activeReleaseID: UUID?
     private let aceStepService: ACEStepGenerationService
     private let sfxService: SFXGenerationService
     private let sfxModelManager: SFXModelManager
@@ -168,11 +193,13 @@ final class GenerationService: ObservableObject {
         self.traceMonitor = traceMonitor
     }
 
-    /// True while a generation task is actively running (not idle/terminal).
+    /// True while a generation task is actively running or models are releasing.
     var isGenerating: Bool {
         switch state {
         case .idle, .complete, .cancelled, .error:
             return false
+        case .releasing:
+            return true
         default:
             return true
         }
@@ -185,6 +212,8 @@ final class GenerationService: ObservableObject {
         switch state {
         case .idle, .complete, .cancelled, .error:
             return true
+        case .releasing:
+            return false
         default:
             return false
         }
@@ -199,11 +228,23 @@ final class GenerationService: ObservableObject {
             state = .error("Cannot generate while training is running. Stop training first.")
             return
         }
+        if case .releasing = state {
+            state = .error("Cannot generate while models are still releasing. Wait a moment and try again.")
+            return
+        }
+
+        // Capture submission inputs immutably at submit time so later UI
+        // mutations (adapter stack, selection) cannot alter this run.
+        let submission = GenerationSubmissionContext(
+            id: UUID(),
+            request: request,
+            adapterStack: adapterStack,
+            selectedAdapterID: selectedAdapterID
+        )
 
         let previousTask = generationTask
         previousTask?.cancel()
-        let generationID = UUID()
-        activeGenerationID = generationID
+        activeGenerationID = submission.id
         state = .conditioning
 
         // [weak self] breaks the retain cycle where generationTask retains self, which retains generationTask.
@@ -212,34 +253,33 @@ final class GenerationService: ObservableObject {
         generationTask = Task { [weak self] in
             await previousTask?.value
             guard let self else { return }
-            guard self.isCurrentGeneration(generationID) else { return }
+            guard self.isCurrentGeneration(submission.id) else { return }
             if Task.isCancelled {
-                self.state = .cancelled
-                self.traceMonitor.cancel()
-                self.finishGenerationTask(generationID, reloadLLM: true)
+                self.markGenerationCancelled(submission.id)
+                self.finishGenerationTask(submission.id, reloadLLM: true)
                 return
             }
 
-            guard !request.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            guard !submission.request.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 self.state = .error("Prompt cannot be empty")
-                self.finishGenerationTask(generationID, reloadLLM: true)
+                self.finishGenerationTask(submission.id, reloadLLM: true)
                 return
             }
 
             guard let outputDir = self.outputDirectoryManager.directory else {
                 self.state = .error("No output directory selected")
-                self.finishGenerationTask(generationID, reloadLLM: true)
+                self.finishGenerationTask(submission.id, reloadLLM: true)
                 return
             }
 
-            let resolvedRequest = self.resolveSeedIfNeeded(for: request)
+            let resolvedRequest = self.resolveSeedIfNeeded(for: submission.request)
             self.traceMonitor.start(request: resolvedRequest)
             AudioDiagnostics.memory("generation/begin")
             AudioDiagnostics.note(
                 "generation/request",
                 Self.diagnosticsRequestSummary(resolvedRequest)
             )
-            if request.seed == nil, let seed = resolvedRequest.seed {
+            if submission.request.seed == nil, let seed = resolvedRequest.seed {
                 self.traceMonitor.recordStage("Seed", message: "Resolved random seed", detail: "\(seed)")
             }
 
@@ -269,9 +309,11 @@ final class GenerationService: ObservableObject {
                     usesStableAudio: usesStableAudio,
                     usesCoverSong: usesCoverSong
                 )
+                // Adapter snapshots from the immutable submission — not live UI state.
+                let injectionStack = submission.resolvedAdapterStack
                 let adapters = usesStableAudio
                     ? []
-                    : self.historyAdapterSnapshots()
+                    : self.historyAdapterSnapshots(for: injectionStack)
                 self.traceMonitor.configure(
                     pipeline: pipelineLabel,
                     primaryModel: mainModel,
@@ -291,7 +333,7 @@ final class GenerationService: ObservableObject {
                     AudioDiagnostics.memory("generation/stableAudio/afterRun")
                 } else if usesCoverSong {
                     if await self.coverSongCoordinator.needsModelLoad() {
-                        self.state = .loadingWeights(progress: 0)
+                        self.setRunningState(.loadingWeights(progress: 0))
                         self.traceMonitor.recordStage("Models", message: "Loading active cover-song models")
                         self.traceMonitor.updateLoadingWeights(progress: 0)
                     }
@@ -304,10 +346,9 @@ final class GenerationService: ObservableObject {
                     await self.loraCoordinator.clearAll()
                     // Always use ensureStack so strength is applied via contributions.
                     // ensureAdapter ignored strength and used a different load path.
-                    let coverAdapterStack = self.resolvedAdapterStackForInjection()
-                    if !coverAdapterStack.isEmpty {
+                    if !injectionStack.isEmpty {
                         self.traceMonitor.recordStage("Adapters", message: "Applying adapter stack to cover diffusion")
-                        try await self.loraCoordinator.ensureStack(stack: coverAdapterStack)
+                        try await self.loraCoordinator.ensureStack(stack: injectionStack)
                     }
                     AudioDiagnostics.memory("generation/cover/afterLoRA")
 
@@ -316,7 +357,7 @@ final class GenerationService: ObservableObject {
                     AudioDiagnostics.memory("generation/cover/afterRun")
                 } else {
                     if await self.aceStepService.needsModelLoad() {
-                        self.state = .loadingWeights(progress: 0)
+                        self.setRunningState(.loadingWeights(progress: 0))
                         self.traceMonitor.recordStage("Models", message: "Loading active ACE-Step models")
                         self.traceMonitor.updateLoadingWeights(progress: 0)
                     }
@@ -334,10 +375,9 @@ final class GenerationService: ObservableObject {
 
                     // Always use ensureStack so strength is applied via contributions.
                     // ensureAdapter ignored strength and used a different load path.
-                    let aceAdapterStack = self.resolvedAdapterStackForInjection()
-                    if !aceAdapterStack.isEmpty {
+                    if !injectionStack.isEmpty {
                         self.traceMonitor.recordStage("Adapters", message: "Applying adapter stack")
-                        try await self.loraCoordinator.ensureStack(stack: aceAdapterStack)
+                        try await self.loraCoordinator.ensureStack(stack: injectionStack)
                     }
                     AudioDiagnostics.memory("generation/aceStep/afterLoRA")
                     AudioDiagnostics.memory("generation/aceStep/beforeRun")
@@ -416,24 +456,23 @@ final class GenerationService: ObservableObject {
                 }
                 self.traceMonitor.finish(trace: trace)
 
-                self.historyStore.add(entry)
-                self.currentResult = GenerationResult(
-                    fileURL: fileURL,
-                    entry: entry,
-                    waveformPeaks: audioSnapshot.waveformPeaks
-                )
-                self.state = .complete
+                if self.isCurrentGeneration(submission.id), self.activeReleaseID == nil {
+                    self.historyStore.add(entry)
+                    self.currentResult = GenerationResult(
+                        fileURL: fileURL,
+                        entry: entry,
+                        waveformPeaks: audioSnapshot.waveformPeaks
+                    )
+                    self.state = .complete
+                }
             } catch is CancellationError {
                 AudioDiagnostics.note("generation/cancelled", Self.diagnosticsRequestSummary(resolvedRequest))
                 AudioDiagnostics.memory("generation/cancelled")
-                if self.isCurrentGeneration(generationID) {
-                    self.state = .cancelled
-                    self.traceMonitor.cancel()
-                }
+                self.markGenerationCancelled(submission.id)
             } catch {
                 AudioDiagnostics.note("generation/error", "\(error.localizedDescription) request=\(Self.diagnosticsRequestSummary(resolvedRequest))")
                 AudioDiagnostics.memory("generation/error")
-                if self.isCurrentGeneration(generationID) {
+                if self.isCurrentGeneration(submission.id), self.activeReleaseID == nil {
                     self.state = .error(error.localizedDescription)
                     self.traceMonitor.fail(error.localizedDescription)
                     self.writeFailureTraceIfPossible(
@@ -446,7 +485,7 @@ final class GenerationService: ObservableObject {
 
             // Recreate the LLMActor (lazy — no weights loaded yet) so prompt
             // enhancement is available again after generation finishes.
-            self.finishGenerationTask(generationID, reloadLLM: true)
+            self.finishGenerationTask(submission.id, reloadLLM: true)
         }
     }
 
@@ -492,6 +531,11 @@ final class GenerationService: ObservableObject {
 
     func cancel() {
         generationTask?.cancel()
+        // During release, unload owns lifecycle state.
+        if activeReleaseID != nil || state == .releasing {
+            traceMonitor.cancel()
+            return
+        }
         state = .cancelled
         traceMonitor.cancel()
     }
@@ -500,13 +544,34 @@ final class GenerationService: ObservableObject {
         activeGenerationID == generationID
     }
 
+    /// Publish a running-generation state only when no release operation owns lifecycle.
+    private func setRunningState(_ newState: GenerationState) {
+        guard activeReleaseID == nil else { return }
+        if case .releasing = state { return }
+        state = newState
+    }
+
+    private func markGenerationCancelled(_ generationID: UUID) {
+        guard isCurrentGeneration(generationID) else { return }
+        // Unload/release owns the lifecycle while models are being torn down.
+        if activeReleaseID != nil || state == .releasing {
+            return
+        }
+        state = .cancelled
+        traceMonitor.cancel()
+    }
+
     private func finishGenerationTask(_ generationID: UUID, reloadLLM: Bool) {
         guard isCurrentGeneration(generationID) else { return }
-        if reloadLLM {
+        if reloadLLM, activeReleaseID == nil {
             llmManager.reload()
             AudioDiagnostics.memory("generation/end")
         }
-        activeGenerationID = nil
+        // Keep the generation ID while a release is in progress so the release
+        // operation can still identify the run it cancelled.
+        if activeReleaseID == nil {
+            activeGenerationID = nil
+        }
     }
 
     private func resolveSeedIfNeeded(for request: GenerationRequest) -> GenerationRequest {
@@ -567,11 +632,36 @@ final class GenerationService: ObservableObject {
     }
 
     func unloadAllWeights() async -> MemoryReleaseSummary {
-        if let generationTask {
-            generationTask.cancel()
-            self.generationTask = nil
-            state = .cancelled
-            await generationTask.value
+        let releaseID = UUID()
+        let cancelledGenerationID = activeGenerationID
+        let taskToAwait = generationTask
+
+        // Claim the lifecycle before awaiting cancel so completion handlers
+        // cannot flip state back to a submit-allowed terminal value, and so
+        // a new generation cannot start mid-unload.
+        activeReleaseID = releaseID
+        state = .releasing
+        taskToAwait?.cancel()
+
+        if let taskToAwait {
+            await taskToAwait.value
+            // Only clear the task slot if no newer generation replaced it
+            // (should not happen while .releasing blocks submit).
+            if activeReleaseID == releaseID {
+                generationTask = nil
+            }
+        }
+
+        // If another release superseded this one, do not unload under its feet.
+        guard activeReleaseID == releaseID else {
+            return MemoryReleaseSummary(
+                beforeActiveMemory: 0,
+                beforeCacheMemory: 0,
+                beforePeakMemory: 0,
+                afterActiveMemory: 0,
+                afterCacheMemory: 0,
+                afterPeakMemory: 0
+            )
         }
 
         // Snapshot MLX GPU memory before/after so the user can see the
@@ -596,6 +686,16 @@ final class GenerationService: ObservableObject {
         let after = MLX.GPU.snapshot()
         memLogger.info("[unloadAllWeights] after  active=\(after.activeMemory) cache=\(after.cacheMemory) peak=\(after.peakMemory)")
         memLogger.info("[unloadAllWeights] delta active=-\(before.activeMemory - after.activeMemory) cache=-\(before.cacheMemory - after.cacheMemory)")
+
+        if activeReleaseID == releaseID {
+            if cancelledGenerationID != nil, activeGenerationID == cancelledGenerationID {
+                activeGenerationID = nil
+            }
+            activeReleaseID = nil
+            state = cancelledGenerationID != nil ? .cancelled : .idle
+            llmManager.reload()
+            AudioDiagnostics.memory("generation/release/end")
+        }
 
         return MemoryReleaseSummary(
             beforeActiveMemory: before.activeMemory,
@@ -738,22 +838,9 @@ final class GenerationService: ObservableObject {
         return snapshots
     }
 
-    /// Resolves the adapter stack for injection. Prefers `adapterStack` (with
-    /// per-entry strength). Falls back to a single selected ID at strength 1.0
-    /// only when the stack was never set (legacy/MCP edge cases).
-    private func resolvedAdapterStackForInjection() -> [(id: String, weight: Float)] {
-        if !adapterStack.isEmpty {
-            return adapterStack
-        }
-        if let selectedAdapterID {
-            return [(id: selectedAdapterID, weight: 1.0)]
-        }
-        return []
-    }
-
-    private func historyAdapterSnapshots() -> [HistoryAdapterSnapshot] {
-        let requestedStack = resolvedAdapterStackForInjection()
-
+    private func historyAdapterSnapshots(
+        for requestedStack: [(id: String, weight: Float)]
+    ) -> [HistoryAdapterSnapshot] {
         guard !requestedStack.isEmpty else { return [] }
 
         let adaptersByID = Dictionary(
@@ -876,22 +963,22 @@ final class GenerationService: ObservableObject {
         for try await event in await coverSongCoordinator.generate(request: request) {
             switch event {
             case .loadingWeights(let progress):
-                self.state = .loadingWeights(progress: progress)
+                self.setRunningState(.loadingWeights(progress: progress))
                 self.traceMonitor.updateLoadingWeights(progress: progress)
             case .conditioning:
-                self.state = .conditioning
+                self.setRunningState(.conditioning)
                 self.traceMonitor.recordStage("Conditioning", message: "Encoding prompt, lyrics, and source audio")
             case .tokenizingSource:
-                self.state = .tokenizingSource
+                self.setRunningState(.tokenizingSource)
                 self.traceMonitor.recordStage("Source Audio", message: "Tokenizing source audio")
             case .lmAudioCodeConditioning:
-                self.state = .lmAudioCodeConditioning
+                self.setRunningState(.lmAudioCodeConditioning)
                 self.traceMonitor.recordStage("Audio Codes", message: "Running 5 Hz LM audio-code conditioning")
             case .generating(let step, let totalSteps, let eta):
-                self.state = .generating(step: step, totalSteps: totalSteps, eta: eta)
+                self.setRunningState(.generating(step: step, totalSteps: totalSteps, eta: eta))
                 self.traceMonitor.updateGenerationStep(step: step, totalSteps: totalSteps, eta: eta)
             case .decoding:
-                self.state = .decoding
+                self.setRunningState(.decoding)
                 self.traceMonitor.recordStage("Decode", message: "Decoding latents to audio")
             case .result(let audioResult):
                 self.traceMonitor.recordStage("Result", message: "Audio returned from cover pipeline", level: .success)
@@ -905,13 +992,13 @@ final class GenerationService: ObservableObject {
         for try await event in sfxService.generate(request: request) {
             switch event {
             case .downloadingModel(let progress):
-                self.state = .downloadingModel(progress: progress)
+                self.setRunningState(.downloadingModel(progress: progress))
                 self.traceMonitor.updateLoadingWeights(progress: progress)
             case .generating(let step, let totalSteps, let eta):
-                self.state = .generating(step: step, totalSteps: totalSteps, eta: eta)
+                self.setRunningState(.generating(step: step, totalSteps: totalSteps, eta: eta))
                 self.traceMonitor.updateGenerationStep(step: step, totalSteps: totalSteps, eta: eta)
             case .decoding:
-                self.state = .decoding
+                self.setRunningState(.decoding)
                 self.traceMonitor.recordStage("Decode", message: "Decoding latents to audio")
             case .result(let audioResult):
                 self.traceMonitor.recordStage("Result", message: "Audio returned from Stable Audio pipeline", level: .success)
@@ -925,10 +1012,10 @@ final class GenerationService: ObservableObject {
         for try await event in await aceStepService.generate(request: request) {
             switch event {
             case .loadingWeights(let progress):
-                self.state = .loadingWeights(progress: progress)
+                self.setRunningState(.loadingWeights(progress: progress))
                 self.traceMonitor.updateLoadingWeights(progress: progress)
             case .conditioning:
-                self.state = .conditioning
+                self.setRunningState(.conditioning)
                 self.traceMonitor.recordStage("Conditioning", message: "Encoding prompt and lyrics")
             case .tokenizingSource:
                 // Cover-song-only stage — not emitted by the standard ACE-Step path.
@@ -937,10 +1024,10 @@ final class GenerationService: ObservableObject {
                 // Cover-song-only stage — not emitted by the standard ACE-Step path.
                 break
             case .generating(let step, let totalSteps, let eta):
-                self.state = .generating(step: step, totalSteps: totalSteps, eta: eta)
+                self.setRunningState(.generating(step: step, totalSteps: totalSteps, eta: eta))
                 self.traceMonitor.updateGenerationStep(step: step, totalSteps: totalSteps, eta: eta)
             case .decoding:
-                self.state = .decoding
+                self.setRunningState(.decoding)
                 self.traceMonitor.recordStage("Decode", message: "Decoding latents to audio")
             case .result(let audioResult):
                 self.traceMonitor.recordStage("Result", message: "Audio returned from ACE-Step pipeline", level: .success)

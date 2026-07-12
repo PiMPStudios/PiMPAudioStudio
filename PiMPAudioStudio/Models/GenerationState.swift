@@ -12,4 +12,8 @@ enum GenerationState: Equatable, Sendable {
     case complete
     case error(String)
     case cancelled
+    /// Models are being unloaded after cancel/release. Blocks new submissions
+    /// until the owning release operation finishes so a new generation cannot
+    /// start while the previous run's weights are still being torn down.
+    case releasing
 }
