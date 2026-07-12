@@ -1274,7 +1274,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
 
         var chroma = [Double](repeating: 0, count: 12)
         var inputReal = [Float](repeating: 0, count: frameSize)
-        var inputImaginary = [Float](repeating: 0, count: frameSize)
+        let inputImaginary = [Float](repeating: 0, count: frameSize)
         var outputReal = [Float](repeating: 0, count: frameSize)
         var outputImaginary = [Float](repeating: 0, count: frameSize)
         var start = 0

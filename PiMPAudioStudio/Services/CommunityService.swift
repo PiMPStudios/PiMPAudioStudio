@@ -964,7 +964,7 @@ final class CommunityService: ObservableObject {
         guard data.count >= 8 else { return [:] }
 
         var headerLengthLE: UInt64 = 0
-        withUnsafeMutableBytes(of: &headerLengthLE) { buffer in
+        _ = withUnsafeMutableBytes(of: &headerLengthLE) { buffer in
             data.copyBytes(to: buffer, from: 0..<8)
         }
 

@@ -512,11 +512,10 @@ enum EditorAudioExporter {
         guard let session = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A) else {
             throw EditorAudioExportError.exportSessionUnavailable
         }
-        session.outputURL = destinationURL
-        session.outputFileType = .m4a
-        await session.export()
-        guard session.status == .completed else {
-            throw EditorAudioExportError.compressedExportFailed(destinationURL, session.error)
+        do {
+            try await session.export(to: destinationURL, as: .m4a)
+        } catch {
+            throw EditorAudioExportError.compressedExportFailed(destinationURL, error)
         }
     }
 

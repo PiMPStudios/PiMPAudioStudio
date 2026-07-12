@@ -1,7 +1,7 @@
 import Foundation
 import MLX
 
-public enum Precision: String, Sendable, CaseIterable {
+public enum Precision: String, Codable, Sendable, CaseIterable {
     case float32
     case float16
 
@@ -13,7 +13,7 @@ public enum Precision: String, Sendable, CaseIterable {
     }
 }
 
-public enum InferMethod: String, Sendable {
+public enum InferMethod: String, Codable, Sendable {
     case ode
     case sde
 }

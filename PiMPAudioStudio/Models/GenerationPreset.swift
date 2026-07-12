@@ -1,12 +1,9 @@
 import Foundation
 import PiMPAudioCore
 
-// MARK: - Codable conformance for raw-representable enums used in presets
+// MARK: - Codable conformance for app-local generation mode
 
 extension GenerationMode: Codable {}
-extension PipelineChoice: Codable {}
-extension InferMethod: Codable {}
-extension Precision: Codable {}
 
 // MARK: - GenerationPreset
 

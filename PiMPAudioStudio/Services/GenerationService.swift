@@ -664,11 +664,11 @@ final class GenerationService: ObservableObject {
             )
         }
 
-        // Snapshot MLX GPU memory before/after so the user can see the
+        // Snapshot MLX memory before/after so the user can see the
         // actual delta in the Xcode console. MLX-Swift maintains an internal
         // allocator pool that is NOT returned to the OS just by setting
-        // model references to nil — `clearCache()` is required.
-        let before = MLX.GPU.snapshot()
+        // model references to nil — `Memory.clearCache()` is required.
+        let before = Memory.snapshot()
         memLogger.info("[unloadAllWeights] before active=\(before.activeMemory) cache=\(before.cacheMemory) peak=\(before.peakMemory)")
 
         await aceStepService.unloadWeights()
@@ -683,7 +683,7 @@ final class GenerationService: ObservableObject {
         // "Release didn't actually free memory."
         await Self.flushMLXGPUAllocator()
 
-        let after = MLX.GPU.snapshot()
+        let after = Memory.snapshot()
         memLogger.info("[unloadAllWeights] after  active=\(after.activeMemory) cache=\(after.cacheMemory) peak=\(after.peakMemory)")
         memLogger.info("[unloadAllWeights] delta active=-\(before.activeMemory - after.activeMemory) cache=-\(before.cacheMemory - after.cacheMemory)")
 
@@ -709,8 +709,8 @@ final class GenerationService: ObservableObject {
 
     private nonisolated static func flushMLXGPUAllocator() async {
         await Task.detached(priority: .utility) {
-            MLX.GPU.clearCache()
-            MLX.GPU.resetPeakMemory()
+            Memory.clearCache()
+            GPU.resetPeakMemory()
         }.value
     }
 

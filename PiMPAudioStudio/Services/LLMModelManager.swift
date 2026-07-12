@@ -184,7 +184,7 @@ final class LLMModelManager: ObservableObject {
     func evict(clearCache: Bool = true) {
         llmActor = nil
         if clearCache {
-            MLX.GPU.clearCache()
+            Memory.clearCache()
         }
     }
 

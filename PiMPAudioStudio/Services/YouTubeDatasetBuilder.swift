@@ -346,11 +346,10 @@ final class YouTubeDatasetBuilder: ObservableObject {
             asset: composition, presetName: AVAssetExportPresetAppleM4A
         ) else { throw YouTubeDatasetError.exportSessionFailed }
 
-        session.outputURL = dest
-        session.outputFileType = .m4a
-        await session.export()
-        guard session.status == .completed else {
-            throw YouTubeDatasetError.exportFailed(session.error?.localizedDescription ?? "unknown")
+        do {
+            try await session.export(to: dest, as: .m4a)
+        } catch {
+            throw YouTubeDatasetError.exportFailed(error.localizedDescription)
         }
     }
 

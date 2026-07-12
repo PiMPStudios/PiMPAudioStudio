@@ -381,11 +381,11 @@ final class AppServices: ObservableObject {
             onConditioningUpgraded: conditioningUpgradeHandler
         )
         trainingService?.setModelLoader {
-            await llmManager.evict()
+            llmManager.evict()
             try await aceStep.ensureLoaded()
         }
         trainingService?.setTrainingFinishedHandler {
-            await llmManager.reload()
+            llmManager.reload()
         }
 
         return GenerationService(

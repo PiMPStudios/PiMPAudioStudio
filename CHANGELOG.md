@@ -37,6 +37,7 @@ All notable changes to PiMP Audio Studio are documented here.
 
 ### Fixed
 
+- **Swift deprecation and Codable hygiene pass** — editor and YouTube M4A export use the modern `AVAssetExportSession.export(to:as:)` API; MLX memory helpers use `Memory.snapshot` / `Memory.clearCache`; `PipelineChoice` / `InferMethod` / `Precision` now declare `Codable` in PiMPAudioCore instead of retroactive app-side extensions; and a few unused-result / needless-`await` warnings are cleaned up.
 - **History filenames can no longer escape the History directory** — History and MCP trace/audio paths reject separators and absolute names, resolve through a single containment check (including symlink parents), and skip delete of escaped names so malformed `history.json` or MCP ids cannot read, rewrite, or remove files outside History.
 - **Corrupt user-model indexes no longer trigger destructive orphan cleanup** — `user-models.json` load distinguishes missing/loaded/corrupt, preserves unreadable indexes as `user-models.json.corrupt`, and skips model-directory sweeps until the index loads successfully; migration completion is tracked per models root.
 - **Editor frequency-band sliders can no longer crash the process** — low/high cut use paired bindings that keep a minimum bandwidth, and `FrequencyBand` construction throws instead of `precondition`-aborting on empty or inverted ranges (MCP maps the same failure to a request error).

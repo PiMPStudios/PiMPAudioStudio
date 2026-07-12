@@ -60,7 +60,7 @@ public struct InpaintSelection: Sendable, Equatable {
 
 // MARK: - PipelineChoice
 
-public enum PipelineChoice: String, Sendable, CaseIterable {
+public enum PipelineChoice: String, Codable, Sendable, CaseIterable {
     case auto
     case aceStep
     case stableAudio
