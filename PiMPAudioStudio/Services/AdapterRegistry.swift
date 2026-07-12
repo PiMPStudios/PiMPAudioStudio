@@ -132,6 +132,7 @@ struct AdapterRegistry {
         case rankMismatch(Int, Int)
         case kindMismatch(AdapterKind, AdapterKind)
         case unsupportedMergeKind(AdapterKind)
+        case mergeFailed(String)
 
         var errorDescription: String? {
             switch self {
@@ -147,6 +148,8 @@ struct AdapterRegistry {
                 return "Cannot merge \(a.rawValue.uppercased()) and \(b.rawValue.uppercased()) adapters"
             case .unsupportedMergeKind(let kind):
                 return "Merging \(kind.rawValue.uppercased()) adapters is not supported yet"
+            case .mergeFailed(let message):
+                return message
             }
         }
     }
@@ -355,16 +358,19 @@ struct AdapterRegistry {
         }
     }
 
-    /// Merge two adapters with weighted interpolation: alpha * A + (1-alpha) * B.
+    /// Merge two LoRA adapters by blending effective deltas:
+    /// `w · s1 · (B1@A1) + (1-w) · s2 · (B2@A2)` via rank concatenation.
     ///
-    /// Both adapters must have the same rank. Creates a new adapter.
+    /// Independent A/B factor interpolation is intentionally **not** used —
+    /// that introduces cross terms and is not a convex combination of the
+    /// adapters' weight deltas.
     ///
     /// - Parameters:
     ///   - adapterA: ID of the first adapter.
     ///   - adapterB: ID of the second adapter.
-    ///   - alpha: Interpolation weight (1.0 = all A, 0.0 = all B).
+    ///   - alpha: Blend weight on A (1.0 = all A, 0.0 = all B).
     ///   - name: Display name for the merged adapter.
-    /// - Returns: The newly created merged adapter.
+    /// - Returns: The newly created merged adapter (rank typically rA+rB).
     @discardableResult
     static func merge(
         adapterA: String,
@@ -372,7 +378,6 @@ struct AdapterRegistry {
         alpha: Float,
         name: String
     ) throws -> LoRAAdapter {
-        // Load both adapters' metadata
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
 
@@ -390,53 +395,73 @@ struct AdapterRegistry {
         guard infoA.kind == .lora else {
             throw AdapterError.unsupportedMergeKind(infoA.kind)
         }
-
-        // Validate same rank
-        guard infoA.config.rank == infoB.config.rank else {
-            throw AdapterError.rankMismatch(infoA.config.rank, infoB.config.rank)
+        guard infoA.baseModelID == infoB.baseModelID else {
+            throw AdapterError.mergeFailed(
+                "Cannot merge adapters for different base models ('\(infoA.baseModelID)' vs '\(infoB.baseModelID)')."
+            )
         }
 
-        // Load weights
         let weightsA = try loadWeights(adapterID: adapterA)
         let weightsB = try loadWeights(adapterID: adapterB)
-
         let dictA = Dictionary(weightsA, uniquingKeysWith: { _, last in last })
         let dictB = Dictionary(weightsB, uniquingKeysWith: { _, last in last })
 
-        // Interpolate: alpha * A + (1-alpha) * B
-        let alphaArray = MLXArray(alpha)
-        let oneMinusAlpha = MLXArray(1.0 - alpha)
+        let scaleA = infoA.config.rank > 0
+            ? infoA.config.alpha / Float(infoA.config.rank)
+            : 1
+        let scaleB = infoB.config.rank > 0
+            ? infoB.config.alpha / Float(infoB.config.rank)
+            : 1
 
-        var mergedWeights: [(String, MLXArray)] = []
-        for (key, valueA) in dictA {
-            if let valueB = dictB[key] {
-                let merged = alphaArray * valueA + oneMinusAlpha * valueB
-                mergedWeights.append((key, merged))
-            } else {
-                // Key only in A — scale by alpha
-                mergedWeights.append((key, alphaArray * valueA))
-            }
-        }
-        // Keys only in B
-        for (key, valueB) in dictB where dictA[key] == nil {
-            mergedWeights.append((key, oneMinusAlpha * valueB))
+        let blended: LoRAWeightMerge.Result
+        do {
+            blended = try LoRAWeightMerge.blendDeltas(
+                weightsA: dictA,
+                weightsB: dictB,
+                weightOnA: alpha,
+                scalingA: scaleA,
+                scalingB: scaleB
+            )
+        } catch let error as LocalizedError {
+            throw AdapterError.mergeFailed(error.errorDescription ?? String(describing: error))
+        } catch {
+            throw AdapterError.mergeFailed(error.localizedDescription)
         }
 
-        // Create merged adapter metadata
+        var config = infoA.config
+        config.rank = blended.rank
+        config.alpha = blended.alpha
+        config.targetLayers = infoA.config.targetLayers.union(infoB.config.targetLayers)
+        let patterns = Set(
+            (infoA.config.exactInjectionPatterns ?? [])
+                + (infoB.config.exactInjectionPatterns ?? [])
+        )
+        if !patterns.isEmpty {
+            config.exactInjectionPatterns = patterns.sorted()
+        }
+
+        let trainedPaths = Set(
+            (infoA.trainedPaths ?? []) + (infoB.trainedPaths ?? [])
+        )
+        let trainedLayerIndices = Set(
+            (infoA.trainedLayerIndices ?? []) + (infoB.trainedLayerIndices ?? [])
+        )
+
         let mergedID = normalizedIdentifier(from: name)
-
         let mergedAdapter = LoRAAdapter(
             id: mergedID,
             name: name,
-            config: infoA.config,
+            config: config,
             baseModelID: infoA.baseModelID,
             baseModelCategory: infoA.baseModelCategory,
             createdAt: Date(),
             sampleCount: infoA.sampleCount + infoB.sampleCount,
-            finalLoss: nil
+            finalLoss: nil,
+            trainedPaths: trainedPaths.isEmpty ? nil : trainedPaths.sorted(),
+            trainedLayerIndices: trainedLayerIndices.isEmpty ? nil : trainedLayerIndices.sorted()
         )
 
-        try save(adapter: mergedAdapter, weights: mergedWeights)
+        try save(adapter: mergedAdapter, weights: blended.weights)
         return mergedAdapter
     }
 

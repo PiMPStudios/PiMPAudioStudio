@@ -19,7 +19,7 @@ struct MergeSheet: View {
             Text("Merge Two Adapters")
                 .font(.headline)
 
-            Text("Creates a new adapter by blending weights: \u{03B1} \u{00D7} A + (1-\u{03B1}) \u{00D7} B")
+            Text("Creates a new adapter by blending LoRA deltas: \u{03B1}\u{00B7}\u{0394}A + (1-\u{03B1})\u{00B7}\u{0394}B (rank concatenation).")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -117,8 +117,9 @@ struct MergeSheet: View {
         guard let a = adapterA else { return [] }
         return adapters.filter { adapter in
             adapter.id != a.id
+                && adapter.kind == .lora
+                && a.kind == .lora
                 && adapter.baseModelID == a.baseModelID
-                && adapter.config.rank == a.config.rank
         }
     }
 
