@@ -74,8 +74,8 @@ struct MaskBuilderTests {
     }
 
     @Test("Frequency channel mapping uses sample-rate Nyquist")
-    func frequencyChannelMappingUsesSampleRateNyquist() {
-        let band = FrequencyBand(lowCutHz: 23_000, highCutHz: 24_000)
+    func frequencyChannelMappingUsesSampleRateNyquist() throws {
+        let band = try FrequencyBand(lowCutHz: 23_000, highCutHz: 24_000)
         let weights = MaskBuilder.frequencyChannelWeights(
             latentDim: latentDim,
             nyquistHz: Float(sampleRate) / 2.0,
@@ -86,8 +86,8 @@ struct MaskBuilderTests {
     }
 
     @Test("Frequency channel mapping keeps 44.1 kHz top below 23 kHz")
-    func frequencyChannelMappingKeeps44100TopBelow23k() {
-        let band = FrequencyBand(lowCutHz: 23_000, highCutHz: 24_000)
+    func frequencyChannelMappingKeeps44100TopBelow23k() throws {
+        let band = try FrequencyBand(lowCutHz: 23_000, highCutHz: 24_000)
         let weights = MaskBuilder.frequencyChannelWeights(
             latentDim: latentDim,
             nyquistHz: 22_050,
@@ -203,10 +203,10 @@ struct MaskBuilderTests {
     // MARK: 5 — Frequency band → shape [1, T, latentDim], sum in [0, T*D]
 
     @Test("Frequency band produces [1, T, latentDim] mask with sum in valid range")
-    func frequencyBandShape() {
+    func frequencyBandShape() throws {
         let totalDuration = 6.0
         let latentFrames  = latentFrames(for: totalDuration)
-        let band = FrequencyBand(lowCutHz: 200, highCutHz: 8_000)
+        let band = try FrequencyBand(lowCutHz: 200, highCutHz: 8_000)
 
         let selection = InpaintSelection(
             startTime: 0.5,

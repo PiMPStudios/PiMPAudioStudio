@@ -178,19 +178,24 @@ struct EditorView: View {
     }
 
     private var frequencySection: some View {
-        DisclosureGroup("Frequency Constraint") {
+        let cutRange = EditorState.frequencyCutRange
+        let minBandwidth = EditorState.minimumFrequencyBandwidthHz
+        let lowSliderRange = cutRange.lowerBound...(cutRange.upperBound - minBandwidth)
+        let highSliderRange = (cutRange.lowerBound + minBandwidth)...cutRange.upperBound
+
+        return DisclosureGroup("Frequency Constraint") {
             VStack(spacing: 8) {
                 Toggle("Enable frequency band", isOn: $state.frequencyBandEnabled)
                 if state.frequencyBandEnabled {
                     HStack {
                         VStack(alignment: .leading) {
                             Text("Low Cut: \(Int(state.lowCutHz)) Hz").font(.caption)
-                            Slider(value: $state.lowCutHz, in: 20...10000)
+                            Slider(value: state.lowCutHzBinding, in: lowSliderRange)
                                 .tint(.orange)
                         }
                         VStack(alignment: .leading) {
                             Text("High Cut: \(Int(state.highCutHz)) Hz").font(.caption)
-                            Slider(value: $state.highCutHz, in: 100...20000)
+                            Slider(value: state.highCutHzBinding, in: highSliderRange)
                                 .tint(.orange)
                         }
                     }
@@ -288,7 +293,15 @@ struct EditorView: View {
         }
         guard !state.isProcessing else { return }
 
-        let request = state.buildRequest()
+        let request: InpaintRequest
+        do {
+            request = try state.buildRequest()
+        } catch {
+            state.operationErrorMessage = error.localizedDescription
+            state.progress = .failed(error.localizedDescription)
+            return
+        }
+
         state.saveUndoSnapshot()   // save pre-inpaint buffer so AI edits are undoable
         state.isProcessing = true
         state.progress = .buildingMask

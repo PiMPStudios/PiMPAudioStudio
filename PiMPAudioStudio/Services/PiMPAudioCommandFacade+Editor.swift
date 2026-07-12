@@ -1157,13 +1157,14 @@ extension PiMPAudioCommandFacade {
 
         guard lowValue != nil || highValue != nil else { return nil }
         guard let low = doubleValue(lowValue),
-              let high = doubleValue(highValue),
-              low >= 0,
-              high > low,
-              high <= 24_000 else {
+              let high = doubleValue(highValue) else {
             throw PiMPAudioCommandFacadeError.invalidFrequencyBand
         }
-        return FrequencyBand(lowCutHz: Float(low), highCutHz: Float(high))
+        do {
+            return try FrequencyBand(lowCutHz: Float(low), highCutHz: Float(high))
+        } catch is FrequencyBandError {
+            throw PiMPAudioCommandFacadeError.invalidFrequencyBand
+        }
     }
 
     func editorFrequencyValue(

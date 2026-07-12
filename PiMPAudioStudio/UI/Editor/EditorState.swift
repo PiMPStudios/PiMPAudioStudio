@@ -16,6 +16,11 @@ class EditorState: ObservableObject {
     @Published var lowCutHz: Float = 200
     @Published var highCutHz: Float = 4000
 
+    /// Shared slider span for frequency-band cuts.
+    static let frequencyCutRange: ClosedRange<Float> = 20...20_000
+    /// Minimum non-empty bandwidth enforced by the paired low/high bindings.
+    static let minimumFrequencyBandwidthHz: Float = 50
+
     @Published var originalPrompt: String = ""
     @Published var regionPrompt: String = ""
 
@@ -99,13 +104,47 @@ class EditorState: ObservableObject {
         }
     }
 
-    func buildRequest() -> InpaintRequest {
+    /// Paired binding: raising low cut never crosses or meets high cut.
+    var lowCutHzBinding: Binding<Float> {
+        Binding(
+            get: { self.lowCutHz },
+            set: { self.setLowCutHz($0) }
+        )
+    }
+
+    /// Paired binding: lowering high cut never crosses or meets low cut.
+    var highCutHzBinding: Binding<Float> {
+        Binding(
+            get: { self.highCutHz },
+            set: { self.setHighCutHz($0) }
+        )
+    }
+
+    func setLowCutHz(_ value: Float) {
+        let maxLow = Self.frequencyCutRange.upperBound - Self.minimumFrequencyBandwidthHz
+        let clamped = min(max(value, Self.frequencyCutRange.lowerBound), maxLow)
+        lowCutHz = clamped
+        if highCutHz <= lowCutHz {
+            highCutHz = min(lowCutHz + Self.minimumFrequencyBandwidthHz, Self.frequencyCutRange.upperBound)
+        }
+    }
+
+    func setHighCutHz(_ value: Float) {
+        let minHigh = Self.frequencyCutRange.lowerBound + Self.minimumFrequencyBandwidthHz
+        let clamped = min(max(value, minHigh), Self.frequencyCutRange.upperBound)
+        highCutHz = clamped
+        if lowCutHz >= highCutHz {
+            lowCutHz = max(highCutHz - Self.minimumFrequencyBandwidthHz, Self.frequencyCutRange.lowerBound)
+        }
+    }
+
+    func buildRequest() throws -> InpaintRequest {
         let selection: InpaintSelection
         if editMode == .repaint {
             selection = InpaintSelection(startTime: 0, endTime: duration)
         } else {
             let band = frequencyBandEnabled
-                ? FrequencyBand(lowCutHz: lowCutHz, highCutHz: highCutHz)
+                ? try FrequencyBand(lowCutHz: lowCutHz, highCutHz: highCutHz)
                 : nil
             selection = InpaintSelection(
                 startTime: selectionStart,

@@ -11,16 +11,31 @@ public enum EditMode: String, Sendable, CaseIterable {
 
 // MARK: - FrequencyBand
 
+public enum FrequencyBandError: Error, Sendable, Equatable, LocalizedError {
+    case invalid(lowCutHz: Float, highCutHz: Float)
+
+    public var errorDescription: String? {
+        switch self {
+        case .invalid(let lowCutHz, let highCutHz):
+            return "Frequency band must provide lowCutHz >= 0, highCutHz > lowCutHz, and highCutHz <= 24000 (got \(lowCutHz)–\(highCutHz) Hz)."
+        }
+    }
+}
+
 public struct FrequencyBand: Sendable, Equatable {
     /// Lower cut-off frequency in Hz (must be >= 0).
     public let lowCutHz: Float
     /// Upper cut-off frequency in Hz (must be > lowCutHz and <= 24000).
     public let highCutHz: Float
 
-    public init(lowCutHz: Float, highCutHz: Float) {
-        precondition(lowCutHz >= 0, "lowCutHz must be >= 0, got \(lowCutHz)")
-        precondition(highCutHz > lowCutHz, "highCutHz must be > lowCutHz, got \(highCutHz) <= \(lowCutHz)")
-        precondition(highCutHz <= 24_000, "highCutHz must be <= 24000, got \(highCutHz)")
+    /// Creates a frequency band, throwing when the range is empty or out of bounds.
+    /// Prefer this over process-fatal validation so UI and MCP paths can recover.
+    public init(lowCutHz: Float, highCutHz: Float) throws {
+        guard lowCutHz >= 0,
+              highCutHz > lowCutHz,
+              highCutHz <= 24_000 else {
+            throw FrequencyBandError.invalid(lowCutHz: lowCutHz, highCutHz: highCutHz)
+        }
         self.lowCutHz = lowCutHz
         self.highCutHz = highCutHz
     }
