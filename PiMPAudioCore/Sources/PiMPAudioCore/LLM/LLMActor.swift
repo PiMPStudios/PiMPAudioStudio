@@ -244,10 +244,18 @@ public actor LLMActor {
         let prompt = Self.formatPrompt(system: systemPrompt, user: userPrompt)
 
         return AsyncStream { continuation in
-            Task { [weak self] in
-                guard let self else { continuation.finish(); return }
+            // Unstructured producer must be retained and cancelled when the
+            // consumer drops the stream (e.g. PromptEnhancer.cancel()), or
+            // inference keeps occupying this actor after the caller moved on.
+            let producer = Task { [weak self] in
+                guard let self else {
+                    continuation.finish()
+                    return
+                }
                 do {
+                    try Task.checkCancellation()
                     try await self.ensureLoaded()
+                    try Task.checkCancellation()
                     guard let tokenizer = await self.tokenizer else {
                         continuation.finish()
                         return
@@ -260,10 +268,18 @@ public actor LLMActor {
                         tokenizer: tokenizer,
                         continuation: continuation
                     )
+                } catch is CancellationError {
+                    continuation.finish()
                 } catch {
-                    continuation.yield("\n[Lyric writer unavailable: \(error.localizedDescription)]")
+                    if !Task.isCancelled {
+                        continuation.yield("\n[Lyric writer unavailable: \(error.localizedDescription)]")
+                    }
                     continuation.finish()
                 }
+            }
+
+            continuation.onTermination = { @Sendable _ in
+                producer.cancel()
             }
         }
     }
@@ -311,11 +327,13 @@ public actor LLMActor {
         continuation: AsyncStream<String>.Continuation
     ) throws {
         let cache = LLMKeyValueCache()
+        defer { cache.reset() }
+
         var nextInputIds = inputIds
         var key = MLXRandom.key(UInt64(Date().timeIntervalSince1970))
 
         for _ in 0..<maxTokens {
-            if Task.isCancelled { break }
+            try Task.checkCancellation()
 
             let logits = try forward(inputIds: nextInputIds, cache: cache)
             let lastIndex = logits.shape[1] - 1
@@ -339,7 +357,6 @@ public actor LLMActor {
             nextInputIds = [nextToken]
             continuation.yield(tokenizer.decode(tokens: [nextToken]))
         }
-        cache.reset()
         continuation.finish()
     }
 

@@ -34,7 +34,6 @@ final class PromptEnhancer: ObservableObject {
 
         enhanceTask?.cancel()
 
-        var result = prompt
         let task = Task {
             isEnhancing = true
             defer { isEnhancing = false }
@@ -48,17 +47,20 @@ final class PromptEnhancer: ObservableObject {
                 maxTokens: 300,
                 temperature: 0.7
             )
+            // Exiting this loop (cancel or finish) terminates the stream and
+            // cancels the LLMActor producer via onTermination.
             for await token in stream {
-                if Task.isCancelled { return prompt }
+                if Task.isCancelled { break }
                 accumulated += token
             }
+            if Task.isCancelled { return prompt }
 
             let enhanced = accumulated.trimmingCharacters(in: .whitespacesAndNewlines)
             return enhanced.isEmpty ? prompt : enhanced
         }
         enhanceTask = task
 
-        return (try? await task.value) ?? prompt
+        return await task.value
     }
 
     func cancel() {
