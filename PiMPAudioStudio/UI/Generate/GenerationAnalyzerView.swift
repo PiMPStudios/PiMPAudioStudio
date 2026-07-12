@@ -682,11 +682,16 @@ struct GenerationAnalyzerView: View {
     }
 
     private func isTraceLoaded(_ trace: GenerationTrace) -> Bool {
-        playerService.loadedURL == historyStore.fileURL(forAudioFileName: trace.audioFileName)
+        guard let url = try? historyStore.fileURL(forAudioFileName: trace.audioFileName) else {
+            return false
+        }
+        return playerService.loadedURL == url
     }
 
     private func toggleTracePlayback(_ trace: GenerationTrace) {
-        let url = historyStore.fileURL(forAudioFileName: trace.audioFileName)
+        guard let url = try? historyStore.fileURL(forAudioFileName: trace.audioFileName) else {
+            return
+        }
 
         if playerService.loadedURL == url {
             if playerService.isPlaying {
@@ -706,12 +711,15 @@ struct GenerationAnalyzerView: View {
     }
 
     private func openTraceInEditor(_ trace: GenerationTrace) {
+        guard let url = try? historyStore.fileURL(forAudioFileName: trace.audioFileName) else {
+            return
+        }
         playerService.pause()
         NotificationCenter.default.post(
             name: .navigateToEditor,
             object: nil,
             userInfo: [
-                "url": historyStore.fileURL(forAudioFileName: trace.audioFileName),
+                "url": url,
                 "prompt": trace.originalPrompt ?? trace.prompt
             ]
         )

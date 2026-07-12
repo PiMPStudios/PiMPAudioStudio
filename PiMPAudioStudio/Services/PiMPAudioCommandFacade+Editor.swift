@@ -1252,7 +1252,7 @@ extension PiMPAudioCommandFacade {
             let entry = try resolveHistoryEntry(id)
             return EditorAudioLoadSource(
                 kind: "history",
-                url: historyStore.fileURL(for: entry),
+                url: try historyStore.fileURL(for: entry),
                 fileName: entry.fileName,
                 historyEntryID: entry.id.uuidString,
                 originalPrompt: entry.prompt

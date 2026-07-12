@@ -57,6 +57,108 @@ import Testing
     #expect(reloadedStore.entries.map(\.id) == [keep.id])
 }
 
+@Test @MainActor func historyStoreRejectsPathTraversalFileNames() throws {
+    let tempDir = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: tempDir) }
+
+    let store = HistoryStore(directory: tempDir)
+
+    let escapedNames = [
+        "../secret.trace.json",
+        "..\\secret.trace.json",
+        "/tmp/secret.trace.json",
+        "subdir/secret.trace.json",
+        "subdir\\secret.trace.json",
+        ".",
+        "..",
+        "",
+        "   ",
+        "foo/../bar.trace.json",
+    ]
+
+    for name in escapedNames {
+        #expect(throws: HistoryStoreError.self) {
+            try store.resolvedURL(forFileName: name)
+        }
+        #expect(throws: HistoryStoreError.self) {
+            try store.loadTrace(traceFileName: name)
+        }
+        #expect(throws: HistoryStoreError.self) {
+            try store.saveTraceReview(traceFileName: name, listeningNote: "x", isPreferred: nil)
+        }
+    }
+}
+
+@Test @MainActor func historyStoreAcceptsSafeSingleComponentFileNames() throws {
+    let tempDir = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: tempDir) }
+
+    let store = HistoryStore(directory: tempDir)
+    let name = "safe-take.trace.json"
+    let url = try store.resolvedURL(forFileName: name)
+
+    #expect(url.lastPathComponent == name)
+    #expect(url.deletingLastPathComponent().standardizedFileURL == tempDir.standardizedFileURL)
+    #expect(url.path(percentEncoded: false).hasPrefix(tempDir.standardizedFileURL.path(percentEncoded: false)))
+}
+
+@Test @MainActor func historyStoreDeleteDoesNotRemoveEscapedFiles() throws {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let historyDir = root.appendingPathComponent("History", isDirectory: true)
+    try FileManager.default.createDirectory(at: historyDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    // File outside History that a naive join of "../outside.wav" would target.
+    let outsideURL = root.appendingPathComponent("outside.wav")
+    try Data("outside-audio".utf8).write(to: outsideURL)
+
+    let escapedEntry = makeHistoryEntry(
+        fileName: "../outside.wav",
+        traceFileName: "../outside.trace.json"
+    )
+    let outsideTrace = root.appendingPathComponent("outside.trace.json")
+    try Data("outside-trace".utf8).write(to: outsideTrace)
+
+    let store = HistoryStore(directory: historyDir)
+    store.add(escapedEntry)
+    store.delete(escapedEntry)
+
+    #expect(store.entries.isEmpty)
+    #expect(FileManager.default.fileExists(atPath: outsideURL.path(percentEncoded: false)))
+    #expect(FileManager.default.fileExists(atPath: outsideTrace.path(percentEncoded: false)))
+}
+
+@Test @MainActor func historyStoreRejectsSymlinkEscapeOnResolve() throws {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let historyDir = root.appendingPathComponent("History", isDirectory: true)
+    try FileManager.default.createDirectory(at: historyDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let outsideTarget = root.appendingPathComponent("secret.trace.json")
+    try Data(#"{"schemaVersion":2}"#.utf8).write(to: outsideTarget)
+
+    let linkName = "escape.trace.json"
+    let linkURL = historyDir.appendingPathComponent(linkName)
+    try FileManager.default.createSymbolicLink(
+        atPath: linkURL.path(percentEncoded: false),
+        withDestinationPath: outsideTarget.path(percentEncoded: false)
+    )
+
+    let store = HistoryStore(directory: historyDir)
+    #expect(throws: HistoryStoreError.self) {
+        try store.resolvedURL(forFileName: linkName)
+    }
+    #expect(throws: HistoryStoreError.self) {
+        try store.loadTrace(traceFileName: linkName)
+    }
+}
+
 private func makeHistoryEntry(
     id: UUID = UUID(),
     fileName: String,

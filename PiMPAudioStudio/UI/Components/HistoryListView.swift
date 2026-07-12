@@ -144,8 +144,8 @@ struct HistoryListView: View {
                 .onTapGesture {
                     if isSelecting {
                         toggleSelection(entry.id)
-                    } else {
-                        playerService.load(url: historyStore.fileURL(for: entry))
+                    } else if let url = try? historyStore.fileURL(for: entry) {
+                        playerService.load(url: url)
                     }
                 }
                 .contextMenu {
@@ -174,10 +174,10 @@ struct HistoryListView: View {
 
     @ViewBuilder
     private func rowContextMenu(for entry: HistoryEntry) -> some View {
-        let url = historyStore.fileURL(for: entry)
-
-        Button("Play") {
-            playerService.load(url: url)
+        if let url = try? historyStore.fileURL(for: entry) {
+            Button("Play") {
+                playerService.load(url: url)
+            }
         }
 
         if canAnalyze(entry) {
@@ -194,25 +194,27 @@ struct HistoryListView: View {
 
         Divider()
 
-        ShareLink(
-            item: url,
-            preview: SharePreview(
-                entry.prompt,
-                icon: Image(systemName: "waveform")
-            )
-        ) {
-            Label("Share…", systemImage: "square.and.arrow.up")
-        }
+        if let url = try? historyStore.fileURL(for: entry) {
+            ShareLink(
+                item: url,
+                preview: SharePreview(
+                    entry.prompt,
+                    icon: Image(systemName: "waveform")
+                )
+            ) {
+                Label("Share…", systemImage: "square.and.arrow.up")
+            }
 
-        Button("Export as WAV…") {
-            exportEntry(entry)
-        }
+            Button("Export as WAV…") {
+                exportEntry(entry)
+            }
 
-        Button("Reveal in Finder") {
-            NSWorkspace.shared.activateFileViewerSelecting([url])
-        }
+            Button("Reveal in Finder") {
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+            }
 
-        Divider()
+            Divider()
+        }
 
         Button("Delete", role: .destructive) {
             historyStore.delete(entry)
@@ -279,7 +281,10 @@ struct HistoryListView: View {
 
     /// Save a single history entry to a user-chosen path via NSSavePanel.
     private func exportEntry(_ entry: HistoryEntry) {
-        let source = historyStore.fileURL(for: entry)
+        guard let source = try? historyStore.fileURL(for: entry) else {
+            traceErrorMessage = HistoryStoreError.invalidFileName(entry.fileName).localizedDescription
+            return
+        }
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.wav]
         panel.nameFieldStringValue = entry.fileName
@@ -293,7 +298,7 @@ struct HistoryListView: View {
     private func exportSelected() {
         let sources = historyStore.entries
             .filter { selectedIDs.contains($0.id) }
-            .map { historyStore.fileURL(for: $0) }
+            .compactMap { try? historyStore.fileURL(for: $0) }
         guard !sources.isEmpty else { return }
 
         let panel = NSOpenPanel()

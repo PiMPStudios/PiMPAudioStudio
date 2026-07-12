@@ -48,22 +48,69 @@ final class HistoryStore: ObservableObject {
         saveToDisk()
     }
 
-    func fileURL(for entry: HistoryEntry) -> URL {
-        directory.appending(path: entry.fileName)
+    /// Resolves a history-relative filename to a URL strictly contained in the History directory.
+    ///
+    /// Rejects empty names, `.` / `..`, path separators, absolute paths, and any candidate
+    /// whose standardized or symlink-resolved parent is not the History directory.
+    func resolvedURL(forFileName fileName: String) throws -> URL {
+        let name = fileName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard isSafeHistoryFileName(name) else {
+            throw HistoryStoreError.invalidFileName(fileName)
+        }
+
+        let base = directory.standardizedFileURL
+        let candidate = base
+            .appendingPathComponent(name, isDirectory: false)
+            .standardizedFileURL
+
+        // Compare path strings (not URL equality): URL == can fail on isDirectory
+        // metadata when the History folder does not yet exist on disk.
+        guard fileSystemPathsEqual(
+            candidate.deletingLastPathComponent().standardizedFileURL,
+            base
+        ) else {
+            throw HistoryStoreError.invalidFileName(fileName)
+        }
+
+        let resolvedBase = base.resolvingSymlinksInPath().standardizedFileURL
+        let resolvedCandidate = candidate.resolvingSymlinksInPath().standardizedFileURL
+        guard fileSystemPathsEqual(
+            resolvedCandidate.deletingLastPathComponent().standardizedFileURL,
+            resolvedBase
+        ) else {
+            throw HistoryStoreError.invalidFileName(fileName)
+        }
+
+        return candidate
     }
 
-    func fileURL(forAudioFileName fileName: String) -> URL {
-        directory.appending(path: fileName)
+    private func fileSystemPathsEqual(_ lhs: URL, _ rhs: URL) -> Bool {
+        normalizedFileSystemPath(lhs) == normalizedFileSystemPath(rhs)
+    }
+
+    private func normalizedFileSystemPath(_ url: URL) -> String {
+        let path = url.path(percentEncoded: false)
+        guard path.count > 1 else { return path }
+        return path.hasSuffix("/") ? String(path.dropLast()) : path
+    }
+
+    func fileURL(for entry: HistoryEntry) throws -> URL {
+        try resolvedURL(forFileName: entry.fileName)
+    }
+
+    func fileURL(forAudioFileName fileName: String) throws -> URL {
+        try resolvedURL(forFileName: fileName)
     }
 
     func traceURL(for entry: HistoryEntry) -> URL? {
         if let traceFileName = entry.traceFileName {
-            return directory.appending(path: traceFileName)
+            return try? resolvedURL(forFileName: traceFileName)
         }
 
-        let inferredURL = directory.appending(
-            path: HistoryEntry.traceFileName(forAudioFileName: entry.fileName)
-        )
+        let inferredName = HistoryEntry.traceFileName(forAudioFileName: entry.fileName)
+        guard let inferredURL = try? resolvedURL(forFileName: inferredName) else {
+            return nil
+        }
         if FileManager.default.fileExists(atPath: inferredURL.path(percentEncoded: false)) {
             return inferredURL
         }
@@ -79,7 +126,7 @@ final class HistoryStore: ObservableObject {
     }
 
     func loadTrace(traceFileName: String) throws -> GenerationTrace {
-        try loadTrace(at: directory.appending(path: traceFileName))
+        try loadTrace(at: resolvedURL(forFileName: traceFileName))
     }
 
     func saveTraceReview(
@@ -87,7 +134,7 @@ final class HistoryStore: ObservableObject {
         listeningNote: String?,
         isPreferred: Bool?
     ) throws -> GenerationTrace {
-        let url = directory.appending(path: traceFileName)
+        let url = try resolvedURL(forFileName: traceFileName)
         let trace = try loadTrace(at: url)
         let updated = trace.withReview(
             listeningNote: normalizedNote(listeningNote),
@@ -103,12 +150,25 @@ final class HistoryStore: ObservableObject {
     }
 
     func saveFailureTrace(_ trace: GenerationFailureTrace) throws {
-        let url = directory.appending(path: trace.traceFileName)
+        let url = try resolvedURL(forFileName: trace.traceFileName)
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data = try encoder.encode(trace)
         try data.write(to: url, options: .atomic)
+    }
+
+    private func isSafeHistoryFileName(_ name: String) -> Bool {
+        guard !name.isEmpty,
+              name != ".",
+              name != "..",
+              !name.hasPrefix("/"),
+              !name.contains("/"),
+              !name.contains("\\"),
+              name.rangeOfCharacter(from: .controlCharacters) == nil else {
+            return false
+        }
+        return true
     }
 
     private func loadTrace(at url: URL) throws -> GenerationTrace {
@@ -127,9 +187,22 @@ final class HistoryStore: ObservableObject {
     }
 
     private func removeFiles(for entry: HistoryEntry) {
-        try? FileManager.default.removeItem(at: directory.appending(path: entry.fileName))
+        if let audioURL = try? resolvedURL(forFileName: entry.fileName) {
+            try? FileManager.default.removeItem(at: audioURL)
+        } else {
+            logger.error(
+                "Skipping delete for escaped or invalid history audio name: \(entry.fileName, privacy: .public)"
+            )
+        }
+
         if let traceFileName = entry.traceFileName {
-            try? FileManager.default.removeItem(at: directory.appending(path: traceFileName))
+            if let traceURL = try? resolvedURL(forFileName: traceFileName) {
+                try? FileManager.default.removeItem(at: traceURL)
+            } else {
+                logger.error(
+                    "Skipping delete for escaped or invalid history trace name: \(traceFileName, privacy: .public)"
+                )
+            }
         }
     }
 
@@ -201,11 +274,14 @@ final class HistoryStore: ObservableObject {
 
 enum HistoryStoreError: LocalizedError {
     case missingTrace
+    case invalidFileName(String)
 
     var errorDescription: String? {
         switch self {
         case .missingTrace:
             return "No trace sidecar was found for this history entry."
+        case .invalidFileName(let name):
+            return "History filename is invalid or escapes the History directory: \(name)."
         }
     }
 }

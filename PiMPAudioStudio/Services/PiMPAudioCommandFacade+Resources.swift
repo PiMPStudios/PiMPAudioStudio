@@ -489,7 +489,7 @@ extension PiMPAudioCommandFacade {
 
     func audioResource(identifier: String) throws -> [String: Any] {
         let entry = try resolveHistoryEntry(identifier)
-        let audioURL = historyStore.fileURL(for: entry)
+        let audioURL = try historyStore.fileURL(for: entry)
         return [
             "id": entry.id.uuidString,
             "fileName": entry.fileName,
@@ -926,7 +926,8 @@ extension PiMPAudioCommandFacade {
     }
 
     func historySummary(_ entry: HistoryEntry) -> [String: Any] {
-        [
+        let audioPath: Any = (try? historyStore.fileURL(for: entry))?.path(percentEncoded: false) ?? NSNull()
+        return [
             "id": entry.id.uuidString,
             "createdAt": dateFormatter.string(from: entry.createdAt),
             "prompt": entry.prompt,
@@ -937,7 +938,7 @@ extension PiMPAudioCommandFacade {
             "guidanceScale": entry.guidanceScale,
             "precision": entry.precision,
             "fileName": entry.fileName,
-            "audioFilePath": historyStore.fileURL(for: entry).path(percentEncoded: false),
+            "audioFilePath": audioPath,
             "traceFileName": entry.traceFileName ?? NSNull(),
             "hasTrace": historyStore.traceURL(for: entry) != nil,
             "pipeline": entry.pipeline ?? NSNull(),
@@ -952,18 +953,22 @@ extension PiMPAudioCommandFacade {
     func tracePayload(_ trace: GenerationTrace) throws -> [String: Any] {
         var payload = try encodedJSONObject(trace)
         payload["adapters"] = trace.adapters.map(historyAdapterPayload)
-        payload["audioFilePath"] = historyStore.fileURL(forAudioFileName: trace.audioFileName).path(percentEncoded: false)
+        payload["audioFilePath"] = try historyStore
+            .fileURL(forAudioFileName: trace.audioFileName)
+            .path(percentEncoded: false)
         return payload
     }
 
     func traceSummary(_ trace: GenerationTrace) -> [String: Any] {
-        [
+        let audioPath: Any = (try? historyStore.fileURL(forAudioFileName: trace.audioFileName))?
+            .path(percentEncoded: false) ?? NSNull()
+        return [
             "historyEntryID": trace.historyEntryID.uuidString,
             "createdAt": dateFormatter.string(from: trace.createdAt),
             "pipeline": trace.pipeline,
             "model": trace.primaryModel?.displayName ?? trace.primaryModel?.id ?? "None",
             "audioFileName": trace.audioFileName,
-            "audioFilePath": historyStore.fileURL(forAudioFileName: trace.audioFileName).path(percentEncoded: false),
+            "audioFilePath": audioPath,
             "traceFileName": trace.traceFileName,
             "seed": trace.request.seed.map(String.init) ?? "Random",
             "guidanceScale": trace.request.guidanceScale,
@@ -977,11 +982,13 @@ extension PiMPAudioCommandFacade {
     }
 
     func reviewPayload(_ trace: GenerationTrace) -> [String: Any] {
-        [
+        let audioPath: Any = (try? historyStore.fileURL(forAudioFileName: trace.audioFileName))?
+            .path(percentEncoded: false) ?? NSNull()
+        return [
             "historyEntryID": trace.historyEntryID.uuidString,
             "traceFileName": trace.traceFileName,
             "audioFileName": trace.audioFileName,
-            "audioFilePath": historyStore.fileURL(forAudioFileName: trace.audioFileName).path(percentEncoded: false),
+            "audioFilePath": audioPath,
             "isPreferred": trace.isPreferred ?? false,
             "listeningNote": trace.listeningNote ?? NSNull()
         ]

@@ -1381,7 +1381,7 @@ struct TrainingSheet: View {
     }
 
     private func startTraining() {
-        let audioURLs = selectedEntries.map { historyStore.fileURL(for: $0) }
+        let audioURLs = selectedEntries.compactMap { try? historyStore.fileURL(for: $0) }
         let exactInjectionPatterns = selectedProjectionCoverage.exactInjectionPatterns(for: selectedTargetLayers)
         let alpha = selectedAlphaScale.alpha(for: selectedRank)
         let trainingSeed = trainingSeedValue ?? LoRAConfig.defaultTrainingSeed
