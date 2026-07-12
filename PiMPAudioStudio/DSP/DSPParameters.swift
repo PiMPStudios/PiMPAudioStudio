@@ -19,7 +19,7 @@ struct AudioBuffer: Equatable, Sendable {
 
 // MARK: - DSPEffect
 
-enum DSPEffect: String, CaseIterable {
+enum DSPEffect: String, CaseIterable, Sendable {
     case trimToSelection
     case deleteSelection
     case fadeIn
@@ -72,14 +72,14 @@ enum DSPEffect: String, CaseIterable {
 
 // MARK: - ApplyTarget
 
-enum ApplyTarget: Equatable {
+enum ApplyTarget: Equatable, Sendable {
     case selection(start: TimeInterval, end: TimeInterval)
     case wholeTrack
 }
 
 // MARK: - DSPParameters
 
-enum DSPParameters: Equatable {
+enum DSPParameters: Equatable, Sendable {
     case none
     case eq(EQParameters)
     case reverb(ReverbParameters)
@@ -89,13 +89,13 @@ enum DSPParameters: Equatable {
 
 // MARK: - EQBand + EQParameters
 
-struct EQBand: Equatable {
+struct EQBand: Equatable, Sendable {
     var frequency: Float
     var gain: Float
     var q: Float
 }
 
-struct EQParameters: Equatable {
+struct EQParameters: Equatable, Sendable {
     var bands: [EQBand]
 
     static let `default` = EQParameters(bands: [
@@ -123,7 +123,7 @@ enum ReverbPreset: String, CaseIterable {
     }
 }
 
-struct ReverbParameters: Equatable {
+struct ReverbParameters: Equatable, Sendable {
     var decayTime: Float
     var wetDryMix: Float
     var preDelay: Float
@@ -137,14 +137,14 @@ struct ReverbParameters: Equatable {
 
 // MARK: - TimeStretchParameters
 
-struct TimeStretchParameters: Equatable {
+struct TimeStretchParameters: Equatable, Sendable {
     var rate: Float          // 0.25-4.0 (1.0 = original speed)
     static let `default` = TimeStretchParameters(rate: 1.0)
 }
 
 // MARK: - PitchShiftParameters
 
-struct PitchShiftParameters: Equatable {
+struct PitchShiftParameters: Equatable, Sendable {
     var pitch: Float         // -2400 to +2400 cents (-24 to +24 semitones)
     static let `default` = PitchShiftParameters(pitch: 0)
 }

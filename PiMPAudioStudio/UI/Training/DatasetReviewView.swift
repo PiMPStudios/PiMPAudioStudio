@@ -721,18 +721,22 @@ struct DatasetReviewView: View {
         guard panel.runModal() == .OK, let destination = panel.url else { return }
 
         isExporting = true
-        defer { isExporting = false }
-
-        do {
-            let archiveURL = try TrainingDatasetPackageWriter.exportPackageArchive(
-                outputDirectory: datasetDirectory,
-                to: destination
-            )
-            notice = "Package exported to \(archiveURL.lastPathComponent)."
-            onPackageUpdated()
-        } catch {
-            notice = nil
-            errorMessage = error.localizedDescription
+        Task {
+            defer { isExporting = false }
+            do {
+                let archiveURL = try await TrainingDatasetPackageWriter.exportPackageArchive(
+                    outputDirectory: datasetDirectory,
+                    to: destination
+                )
+                notice = "Package exported to \(archiveURL.lastPathComponent)."
+                onPackageUpdated()
+            } catch is CancellationError {
+                notice = nil
+                errorMessage = "Package export was cancelled."
+            } catch {
+                notice = nil
+                errorMessage = error.localizedDescription
+            }
         }
     }
 }

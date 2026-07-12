@@ -31,7 +31,11 @@ class EditorState: ObservableObject {
 
     @Published var progress: InpaintProgress?
     @Published var isProcessing = false
+    /// True while a DSP effect is running off the main actor.
+    @Published var isDSPBusy = false
     @Published var operationErrorMessage: String?
+
+    private var dspTask: Task<Void, Never>?
 
     @Published var canUndo = false
     @Published var canRedo = false
@@ -167,34 +171,64 @@ class EditorState: ObservableObject {
 
     // MARK: - DSP Operations
 
+    /// Applies a DSP effect off the main actor so long tracks do not freeze the UI.
     func applyDSPEffect(_ effect: DSPEffect, parameters: DSPParameters = .none) {
         guard let buffer = audioBuffer else { return }
+        guard !isDSPBusy, !isProcessing else { return }
 
         let target: ApplyTarget = hasSelection
             ? .selection(start: selectionStart, end: selectionEnd)
             : .wholeTrack
+        let processor = dspProcessor
 
-        do {
-            let result = try dspProcessor.apply(effect: effect, to: buffer, target: target, parameters: parameters)
+        dspTask?.cancel()
+        isDSPBusy = true
+        operationErrorMessage = nil
 
-            // Commit: save pre-op buffer so it can be restored by undo.
-            pushUndoSnapshot(buffer)
-            redoStack.removeAll()
-            canUndo = true
-            canRedo = false
-
-            invalidatePreviewPlayer()
-            audioBuffer = result
-            duration = result.duration
-            refreshWaveformPeaks(from: result)
-
-            if effect == .trimToSelection || effect == .deleteSelection || effect == .timeStretch {
-                selectionStart = 0
-                selectionEnd = 0
+        dspTask = Task { [weak self] in
+            defer {
+                Task { @MainActor [weak self] in
+                    self?.isDSPBusy = false
+                }
             }
-        } catch {
-            // Effect failed — buffer unchanged, undo stack not modified.
-            operationErrorMessage = Self.errorMessage(for: error)
+
+            do {
+                let result = try await Task.detached(priority: .userInitiated) {
+                    try processor.apply(
+                        effect: effect,
+                        to: buffer,
+                        target: target,
+                        parameters: parameters
+                    )
+                }.value
+
+                guard !Task.isCancelled else { return }
+
+                await MainActor.run { [weak self] in
+                    guard let self else { return }
+                    // Commit: save pre-op buffer so it can be restored by undo.
+                    self.pushUndoSnapshot(buffer)
+                    self.redoStack.removeAll()
+                    self.canUndo = true
+                    self.canRedo = false
+
+                    self.invalidatePreviewPlayer()
+                    self.audioBuffer = result
+                    self.duration = result.duration
+                    self.refreshWaveformPeaks(from: result)
+
+                    if effect == .trimToSelection || effect == .deleteSelection || effect == .timeStretch {
+                        self.selectionStart = 0
+                        self.selectionEnd = 0
+                    }
+                }
+            } catch is CancellationError {
+                return
+            } catch {
+                await MainActor.run { [weak self] in
+                    self?.operationErrorMessage = Self.errorMessage(for: error)
+                }
+            }
         }
     }
 

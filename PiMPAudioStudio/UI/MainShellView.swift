@@ -1178,17 +1178,24 @@ private struct BuildTrainingView: View {
             guard panel.runModal() == .OK, let destination = panel.url else { return }
 
             isExportingRemotePackage = true
-            defer { isExportingRemotePackage = false }
-
-            let archiveURL = try TrainingDatasetPackageWriter.exportPackageArchive(
-                outputDirectory: package.directory,
-                to: destination,
-                extraFiles: extraFiles
-            )
-            rememberRemoteArchive(archiveURL)
-            remotePreparedJobID = job.jobID
-            remoteNotice = "Remote job exported to \(archiveURL.path(percentEncoded: false))."
-            refreshRemotePackages()
+            Task {
+                defer { isExportingRemotePackage = false }
+                do {
+                    let archiveURL = try await TrainingDatasetPackageWriter.exportPackageArchive(
+                        outputDirectory: package.directory,
+                        to: destination,
+                        extraFiles: extraFiles
+                    )
+                    rememberRemoteArchive(archiveURL)
+                    remotePreparedJobID = job.jobID
+                    remoteNotice = "Remote job exported to \(archiveURL.path(percentEncoded: false))."
+                    refreshRemotePackages()
+                } catch is CancellationError {
+                    remoteNotice = "Remote job export was cancelled."
+                } catch {
+                    remoteNotice = error.localizedDescription
+                }
+            }
         } catch {
             remoteNotice = error.localizedDescription
         }

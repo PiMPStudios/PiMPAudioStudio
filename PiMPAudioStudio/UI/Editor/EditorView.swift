@@ -231,34 +231,48 @@ struct EditorView: View {
     }
 
     private func loadFromURL(_ url: URL) {
-        state.fileName = url.lastPathComponent
+        let fileName = url.lastPathComponent
+        state.fileName = fileName
         state.operationErrorMessage = nil
+        state.isLoaded = false
 
-        do {
-            let audioFile = try AVAudioFile(forReading: url)
-            let format = audioFile.processingFormat
-            let frameCount = AVAudioFrameCount(audioFile.length)
+        // Decode the file off the main actor — long WAVs can be multi-GB.
+        Task {
+            let loadResult: Result<AudioBuffer, Error> = await Task.detached(priority: .userInitiated) {
+                Result {
+                    let audioFile = try AVAudioFile(forReading: url)
+                    let format = audioFile.processingFormat
+                    let frameCount = AVAudioFrameCount(audioFile.length)
 
-            guard let pcmBuffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else {
-                state.isLoaded = false
-                state.operationErrorMessage = "Could not load \(url.lastPathComponent): AVFoundation could not create an audio buffer."
-                return
-            }
-            try audioFile.read(into: pcmBuffer)
+                    guard let pcmBuffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else {
+                        throw NSError(
+                            domain: "PiMPAudioStudio.Editor",
+                            code: 1,
+                            userInfo: [
+                                NSLocalizedDescriptionKey:
+                                    "AVFoundation could not create an audio buffer."
+                            ]
+                        )
+                    }
+                    try audioFile.read(into: pcmBuffer)
+                    return AudioBufferConverter.fromPCMBuffer(pcmBuffer)
+                }
+            }.value
 
-            let buffer = AudioBufferConverter.fromPCMBuffer(pcmBuffer)
-            state.audioBuffer = buffer
-            state.sampleRate = buffer.sampleRate
-            state.duration = buffer.duration
-            state.refreshWaveformPeaks(from: buffer, clearExisting: true)
-            state.isLoaded = true
-            state.selectionStart = 0
-            state.selectionEnd = 0
-            state.resetUndoHistory()
+            switch loadResult {
+            case .success(let buffer):
+                await MainActor.run {
+                    state.audioBuffer = buffer
+                    state.sampleRate = buffer.sampleRate
+                    state.duration = buffer.duration
+                    state.refreshWaveformPeaks(from: buffer, clearExisting: true)
+                    state.isLoaded = true
+                    state.selectionStart = 0
+                    state.selectionEnd = 0
+                    state.resetUndoHistory()
+                }
 
-            // VAE-encode into the coordinator so inpainting has a starting latent.
-            // Surface encode failures so AI edit isn't offered on a half-loaded clip.
-            Task {
+                // VAE-encode into the coordinator so inpainting has a starting latent.
                 guard let coordinator = editorService.coordinator else {
                     await MainActor.run {
                         state.operationErrorMessage =
@@ -266,7 +280,9 @@ struct EditorView: View {
                     }
                     return
                 }
-                let mlxArray = AudioBufferConverter.toMLXArray(buffer)
+                let mlxArray = await Task.detached(priority: .userInitiated) {
+                    AudioBufferConverter.toMLXArray(buffer)
+                }.value
                 do {
                     _ = try await coordinator.loadAudio(
                         samples: mlxArray,
@@ -279,10 +295,14 @@ struct EditorView: View {
                             "Audio opened for playback, but AI edit prep failed: \(error.localizedDescription)"
                     }
                 }
+
+            case .failure(let error):
+                await MainActor.run {
+                    state.isLoaded = false
+                    state.operationErrorMessage =
+                        "Could not load \(fileName): \(error.localizedDescription)"
+                }
             }
-        } catch {
-            state.isLoaded = false
-            state.operationErrorMessage = "Could not load \(url.lastPathComponent): \(error.localizedDescription)"
         }
     }
 

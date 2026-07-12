@@ -432,12 +432,32 @@ enum TrainingDatasetPackageWriter {
         try writeJSONObject(manifest, to: outputDirectory.appendingPathComponent(preprocessCacheFileName))
     }
 
+    /// Stages package contents and zips them with `/usr/bin/ditto`.
+    ///
+    /// Always runs off the calling actor so multi-GB remote/job exports cannot
+    /// freeze the UI. The ditto process is terminated if the task is cancelled.
     @discardableResult
     static func exportPackageArchive(
         outputDirectory: URL,
         to destinationURL: URL,
         extraFiles: [String: Data] = [:]
-    ) throws -> URL {
+    ) async throws -> URL {
+        try await Task.detached(priority: .userInitiated) {
+            try await Self.exportPackageArchiveOffMain(
+                outputDirectory: outputDirectory,
+                to: destinationURL,
+                extraFiles: extraFiles
+            )
+        }.value
+    }
+
+    private static func exportPackageArchiveOffMain(
+        outputDirectory: URL,
+        to destinationURL: URL,
+        extraFiles: [String: Data]
+    ) async throws -> URL {
+        try Task.checkCancellation()
+
         let validation = validatePackage(at: outputDirectory)
         guard validation.isValid else {
             throw TrainingDatasetPackageError.invalidPackage(validation.summary)
@@ -456,39 +476,32 @@ enum TrainingDatasetPackageWriter {
         }
 
         for relativePath in exportPackageRelativePaths(outputDirectory: outputDirectory) {
+            try Task.checkCancellation()
             let sourceURL = outputDirectory.appendingPathComponent(relativePath)
             guard FileManager.default.fileExists(atPath: sourceURL.path(percentEncoded: false)) else { continue }
             let destination = stagedPackageDirectory.appendingPathComponent(relativePath)
             try copyArchiveItem(from: sourceURL, to: destination)
         }
         try writeExtraArchiveFiles(extraFiles, to: stagedPackageDirectory)
+        try Task.checkCancellation()
 
-        let process = Process()
-        let stderr = Pipe()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
-        process.arguments = [
-            "-c",
-            "-k",
-            "--keepParent",
-            "--norsrc",
-            "--noextattr",
-            "--noqtn",
-            "--noacl",
-            stagedPackageDirectory.path,
-            destinationURL.path,
-        ]
-        process.standardError = stderr
-        try process.run()
-        process.waitUntilExit()
-
-        guard process.terminationStatus == 0 else {
-            let data = stderr.fileHandleForReading.readDataToEndOfFile()
-            let message = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let detail = message?.isEmpty == false ? message ?? "" : "ditto exited with status \(process.terminationStatus)"
-            throw TrainingDatasetPackageError.exportFailed(detail)
-        }
+        try await runDittoZip(
+            stagedPackageDirectory: stagedPackageDirectory,
+            destinationURL: destinationURL
+        )
 
         return destinationURL
+    }
+
+    private static func runDittoZip(
+        stagedPackageDirectory: URL,
+        destinationURL: URL
+    ) async throws {
+        let runner = DittoZipProcess(
+            sourceDirectory: stagedPackageDirectory,
+            destinationURL: destinationURL
+        )
+        try await runner.run()
     }
 
     private static func writeExtraArchiveFiles(_ files: [String: Data], to stagedPackageDirectory: URL) throws {
@@ -1645,5 +1658,102 @@ enum TrainingDatasetPackageWriter {
             return URL(fileURLWithPath: expanded).standardizedFileURL
         }
         return baseDirectory.appendingPathComponent(expanded).standardizedFileURL
+    }
+}
+
+/// Cancellable `/usr/bin/ditto` zip process for package export.
+private final class DittoZipProcess: @unchecked Sendable {
+    private let process = Process()
+    private let stderr = Pipe()
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Void, Error>?
+    private var didResume = false
+    private var didCancel = false
+
+    init(sourceDirectory: URL, destinationURL: URL) {
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+        process.arguments = [
+            "-c",
+            "-k",
+            "--keepParent",
+            "--norsrc",
+            "--noextattr",
+            "--noqtn",
+            "--noacl",
+            sourceDirectory.path,
+            destinationURL.path,
+        ]
+        process.standardError = stderr
+    }
+
+    func run() async throws {
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                start(continuation: continuation)
+            }
+        } onCancel: {
+            cancel()
+        }
+    }
+
+    private func start(continuation: CheckedContinuation<Void, Error>) {
+        lock.lock()
+        if didCancel {
+            lock.unlock()
+            continuation.resume(throwing: CancellationError())
+            return
+        }
+        self.continuation = continuation
+        process.terminationHandler = { [weak self] process in
+            self?.finish(process: process)
+        }
+        do {
+            try process.run()
+            lock.unlock()
+        } catch {
+            self.continuation = nil
+            lock.unlock()
+            continuation.resume(throwing: error)
+        }
+    }
+
+    private func finish(process: Process) {
+        lock.lock()
+        guard !didResume else {
+            lock.unlock()
+            return
+        }
+        didResume = true
+        let cont = continuation
+        continuation = nil
+        let cancelled = didCancel
+        lock.unlock()
+
+        if cancelled {
+            cont?.resume(throwing: CancellationError())
+            return
+        }
+
+        guard process.terminationStatus == 0 else {
+            let data = stderr.fileHandleForReading.readDataToEndOfFile()
+            let message = String(data: data, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let detail = message?.isEmpty == false
+                ? message!
+                : "ditto exited with status \(process.terminationStatus)"
+            cont?.resume(throwing: TrainingDatasetPackageError.exportFailed(detail))
+            return
+        }
+        cont?.resume(returning: ())
+    }
+
+    private func cancel() {
+        lock.lock()
+        didCancel = true
+        let running = process.isRunning
+        lock.unlock()
+        if running {
+            process.terminate()
+        }
     }
 }

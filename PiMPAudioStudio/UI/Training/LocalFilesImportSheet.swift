@@ -644,16 +644,19 @@ struct LocalFilesImportSheet: View {
         guard panel.runModal() == .OK, let destination = panel.url else { return }
 
         isExportingPackage = true
-        defer { isExportingPackage = false }
-
-        do {
-            let archiveURL = try TrainingDatasetPackageWriter.exportPackageArchive(
-                outputDirectory: dir,
-                to: destination
-            )
-            sourceNotice = "Package exported to \(archiveURL.lastPathComponent)."
-        } catch {
-            sourceNotice = error.localizedDescription
+        Task {
+            defer { isExportingPackage = false }
+            do {
+                let archiveURL = try await TrainingDatasetPackageWriter.exportPackageArchive(
+                    outputDirectory: dir,
+                    to: destination
+                )
+                sourceNotice = "Package exported to \(archiveURL.lastPathComponent)."
+            } catch is CancellationError {
+                sourceNotice = "Package export was cancelled."
+            } catch {
+                sourceNotice = error.localizedDescription
+            }
         }
     }
 

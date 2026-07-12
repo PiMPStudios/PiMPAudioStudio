@@ -1,6 +1,6 @@
 import Foundation
 
-struct DSPProcessor {
+struct DSPProcessor: Sendable {
     enum ProcessingError: LocalizedError {
         case selectionRequired
         case unknownEffect

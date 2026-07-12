@@ -754,7 +754,7 @@ private extension JSONDecoder {
     #expect(rawOutputs?["lyrics"] == "lyrics.txt")
 }
 
-@Test func localDatasetPackageWriterEmitsImportableFullMixBundle() throws {
+@Test func localDatasetPackageWriterEmitsImportableFullMixBundle() async throws {
     let datasetDir = FileManager.default.temporaryDirectory
         .appendingPathComponent(UUID().uuidString, isDirectory: true)
     let clipsDir = datasetDir.appendingPathComponent("clips", isDirectory: true)
@@ -922,7 +922,7 @@ private extension JSONDecoder {
         .appendingPathComponent(UUID().uuidString)
         .appendingPathExtension("zip")
     defer { try? FileManager.default.removeItem(at: archiveURL) }
-    try TrainingDatasetPackageWriter.exportPackageArchive(outputDirectory: datasetDir, to: archiveURL)
+    try await TrainingDatasetPackageWriter.exportPackageArchive(outputDirectory: datasetDir, to: archiveURL)
     let archiveEntries = try zipEntries(in: archiveURL)
     let archiveRoot = "\(datasetDir.lastPathComponent)/"
     #expect(archiveEntries.contains("\(archiveRoot)captions.json"))
@@ -983,7 +983,7 @@ private extension JSONDecoder {
         .appendingPathComponent(UUID().uuidString)
         .appendingPathExtension("zip")
     defer { try? FileManager.default.removeItem(at: jobArchiveURL) }
-    try TrainingDatasetPackageWriter.exportPackageArchive(
+    try await TrainingDatasetPackageWriter.exportPackageArchive(
         outputDirectory: datasetDir,
         to: jobArchiveURL,
         extraFiles: jobExtraFiles
