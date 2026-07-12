@@ -15,12 +15,18 @@ struct GeminiLyricWriter: LyricWriter {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    let urlString = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?alt=sse&key=\(apiKey)"
-                    let url = URL(string: urlString)!
+                    let url = try Self.streamEndpointURL()
                     var request = URLRequest(url: url)
                     request.httpMethod = "POST"
                     request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
                     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                    // Prefer the API-key header over a query parameter so keys with
+                    // reserved URL characters cannot produce a nil force-unwrapped URL.
+                    let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !trimmedKey.isEmpty else {
+                        throw LyricWriterError.requestFailed(displayName, "API key is missing or empty.")
+                    }
+                    request.setValue(trimmedKey, forHTTPHeaderField: "x-goog-api-key")
 
                     let plan = LyricWritingPlan.make(duration: duration)
 
@@ -65,5 +71,23 @@ struct GeminiLyricWriter: LyricWriter {
                 task.cancel()
             }
         }
+    }
+
+    /// Builds the Gemini SSE endpoint without interpolating secrets into the URL.
+    private static func streamEndpointURL() throws -> URL {
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "generativelanguage.googleapis.com"
+        components.path = "/v1beta/models/gemini-2.0-flash:streamGenerateContent"
+        components.queryItems = [
+            URLQueryItem(name: "alt", value: "sse")
+        ]
+        guard let url = components.url else {
+            throw LyricWriterError.requestFailed(
+                "Gemini (Google)",
+                "Could not construct a valid Gemini API endpoint."
+            )
+        }
+        return url
     }
 }
