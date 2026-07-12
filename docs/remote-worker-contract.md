@@ -227,7 +227,7 @@ Worker logs, progress metrics, artifact pullback, and adapter import should stil
 - `remote_job.json` must not contain API keys, bearer tokens, SSH keys, or provider account IDs.
 - Absolute local paths should be redacted before upload.
 - Audio upload must require explicit user approval.
-- Launch UI must show requested GPU class and make billable pod creation an explicit user confirmation. Future upload UI should also show estimated package size, max runtime, and optional max cost before transfer.
+- Launch UI must show requested GPU class and make billable pod creation an explicit user confirmation. Future upload UI should also show estimated package size. Max runtime and max cost must not appear as controls until the worker and RunPod monitor actually enforce them.
 
 ## First Implementation Path
 

@@ -181,5 +181,7 @@ For PiMP packages, Style Quality should prefer
 
 The inspected H200 jobs took roughly four to five hours each. Actual cost should
 be checked against the selected provider at launch time, because cloud GPU
-pricing changes and varies by region/provider. The app should show package size,
-GPU class, max runtime, and optional max spend before the first upload.
+pricing changes and varies by region/provider. The app should show package size
+and GPU class before the first upload. Max runtime and max spend controls should
+only appear after the worker enforces process-group deadlines and the RunPod
+monitor terminates pods when projected cost crosses the limit.

@@ -622,9 +622,7 @@ extension RemoteTrainingJobRequest {
         maxDurationSeconds: Int? = nil,
         lokrLinearDim: Int? = nil,
         lokrLinearAlpha: Double? = nil,
-        lokrWeightDecompose: Bool? = nil,
-        maxRuntimeSeconds: Int? = nil,
-        maxCostUSD: Double? = nil
+        lokrWeightDecompose: Bool? = nil
     ) -> RemoteTrainingJobRequest {
         let selectedBundle = descriptor.bundle(named: selectedBundleName) ?? descriptor.defaultBundleReference
         let training = trainingConfig(
@@ -679,8 +677,10 @@ extension RemoteTrainingJobRequest {
                 gpuClass: descriptor.workerContract?.expectedGPUClass ?? "h100_or_h200",
                 minVRAMGB: nil,
                 precision: "bf16_or_fp16",
-                maxRuntimeSeconds: maxRuntimeSeconds,
-                maxCostUSD: maxCostUSD,
+                // Not enforced by the worker or RunPod monitor yet — omit rather than
+                // publish advisory limits that look like hard guards.
+                maxRuntimeSeconds: nil,
+                maxCostUSD: nil,
                 containerImage: nil,
                 modelCacheVolume: nil
             ),

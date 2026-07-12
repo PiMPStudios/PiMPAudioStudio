@@ -448,8 +448,6 @@ private struct BuildTrainingView: View {
     @State private var remoteEpochs = RemoteJobRecipe.wide.settings(for: .lokr).epochs
     @State private var remoteSaveEvery = RemoteJobRecipe.wide.settings(for: .lokr).saveEvery
     @State private var remoteSeed = 42
-    @State private var remoteMaxRuntimeHours = 18
-    @State private var remoteMaxCostText = ""
     @State private var runPodAPIKey = ""
     @AppStorage(AppUserDefaultsKeys.runPodTemplateID) private var runPodTemplateID = ""
     @AppStorage(AppUserDefaultsKeys.runPodImageName) private var runPodImageName = ""
@@ -902,10 +900,6 @@ private struct BuildTrainingView: View {
                 Stepper(value: $remoteSeed, in: 0...999_999, step: 1) {
                     LabeledContent("Seed", value: "\(remoteSeed)")
                 }
-                Stepper(value: $remoteMaxRuntimeHours, in: 1...72, step: 1) {
-                    LabeledContent("Max Runtime", value: "\(remoteMaxRuntimeHours) h")
-                }
-                TextField("Max Cost USD", text: $remoteMaxCostText)
             }
 
             Section("Recipe Details") {
@@ -1149,9 +1143,6 @@ private struct BuildTrainingView: View {
             let descriptor = try remotePackageDescriptor(for: package)
             let settings = remoteRecipe.settings(for: remoteAdapterKind)
             let adapterName = normalizedRemoteAdapterName()
-            let maxCost = Double(
-                remoteMaxCostText.trimmingCharacters(in: .whitespacesAndNewlines)
-            )
             let job = RemoteTrainingJobRequest.makeTemplate(
                 from: descriptor,
                 task: remoteAdapterKind == .lokr ? .trainLoKR : .trainLoRA,
@@ -1176,9 +1167,7 @@ private struct BuildTrainingView: View {
                 maxDurationSeconds: settings.maxDurationSeconds,
                 lokrLinearDim: remoteAdapterKind == .lokr ? settings.lokrLinearDim : nil,
                 lokrLinearAlpha: remoteAdapterKind == .lokr ? settings.lokrLinearAlpha : nil,
-                lokrWeightDecompose: remoteAdapterKind == .lokr ? settings.lokrWeightDecompose : nil,
-                maxRuntimeSeconds: remoteMaxRuntimeHours * 3_600,
-                maxCostUSD: maxCost
+                lokrWeightDecompose: remoteAdapterKind == .lokr ? settings.lokrWeightDecompose : nil
             )
             let extraFiles = try RemoteTrainingJobCodec.archiveExtraFiles(for: job)
 

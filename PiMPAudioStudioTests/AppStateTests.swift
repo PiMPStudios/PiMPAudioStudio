@@ -878,9 +878,7 @@ private extension JSONDecoder {
     let job = RemoteTrainingJobRequest.makeTemplate(
         from: descriptor,
         jobID: "job-test-1",
-        createdAt: Date(timeIntervalSince1970: 0),
-        maxRuntimeSeconds: 7_200,
-        maxCostUSD: 12.50
+        createdAt: Date(timeIntervalSince1970: 0)
     )
     #expect(job.pimpAudioRemoteJobVersion == "1.0")
     #expect(job.task == .trainLoRA)
@@ -890,8 +888,9 @@ private extension JSONDecoder {
     #expect(job.training?.baseModelID == "ace-step-dit-xl-sft")
     #expect(job.training?.workerModelVariant == "ace-step-xl-sft")
     #expect(job.runtime.gpuClass == "h100_or_h200")
-    #expect(job.runtime.maxRuntimeSeconds == 7_200)
-    #expect(job.runtime.maxCostUSD == 12.50)
+    // Runtime/cost caps are not enforced yet; templates must not emit fake guards.
+    #expect(job.runtime.maxRuntimeSeconds == nil)
+    #expect(job.runtime.maxCostUSD == nil)
     #expect(job.outputs.resultFile == "remote_artifacts/result.json")
     #expect(job.safety.uploadRequiresUserApproval)
     #expect(job.safety.writeProviderSecretsToPackage == false)

@@ -31,8 +31,8 @@ Still manual today:
 
 1. Build or select a reviewed dataset.
 2. Open `Training -> Remote GPU`.
-3. Choose adapter kind, recipe, bundle, base model, epochs, save interval, seed,
-   max runtime, and optional max cost.
+3. Choose adapter kind, recipe, bundle, base model, epochs, save interval, and
+   seed.
 4. Click `Create Remote Job`.
 5. Save the zip.
 6. Add or verify a RunPod API key.
