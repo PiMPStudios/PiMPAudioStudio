@@ -12,7 +12,10 @@ final class MCPHTTPServer {
     private let clientQueue = DispatchQueue(label: "com.pimpstudios.PiMPAudioStudio.mcp.http.client", attributes: .concurrent)
     private let stateLock = NSLock()
     private var listenSocket: Int32 = -1
-    private var clientSockets = Set<Int32>()
+    /// Live client FDs keyed by identity generation. Generation prevents a
+    /// stale async close from shutting down a later connection that reuses the FD.
+    private var clientSockets: [Int32: UInt64] = [:]
+    private var nextClientGeneration: UInt64 = 1
     private var isRunning = false
 
     init(
@@ -65,6 +68,8 @@ final class MCPHTTPServer {
         isRunning = false
         let socketFD = listenSocket
         listenSocket = -1
+        // Take ownership of every live client; later closeClient(generation:)
+        // calls for these identities become no-ops.
         let clients = clientSockets
         clientSockets.removeAll()
         stateLock.unlock()
@@ -73,7 +78,7 @@ final class MCPHTTPServer {
             Darwin.shutdown(socketFD, SHUT_RDWR)
             Darwin.close(socketFD)
         }
-        for client in clients {
+        for (client, _) in clients {
             Darwin.shutdown(client, SHUT_RDWR)
             Darwin.close(client)
         }
@@ -125,9 +130,14 @@ final class MCPHTTPServer {
             }
 
             configureClientSocket(client)
-            addClient(client)
+            guard let generation = registerClient(client) else {
+                // Server stopped between accept and registration.
+                Darwin.shutdown(client, SHUT_RDWR)
+                Darwin.close(client)
+                continue
+            }
             clientQueue.async { [weak self] in
-                self?.receive(on: client, buffer: Data())
+                self?.receive(on: client, generation: generation, buffer: Data())
             }
         }
     }
@@ -148,26 +158,44 @@ final class MCPHTTPServer {
         return running
     }
 
-    private func addClient(_ client: Int32) {
+    /// Registers a client FD and returns its close-generation identity.
+    /// Returns `nil` when the server is no longer running.
+    private func registerClient(_ client: Int32) -> UInt64? {
         stateLock.lock()
-        clientSockets.insert(client)
-        stateLock.unlock()
+        defer { stateLock.unlock() }
+        guard isRunning else { return nil }
+        let generation = nextClientGeneration
+        nextClientGeneration &+= 1
+        clientSockets[client] = generation
+        return generation
     }
 
-    private func closeClient(_ client: Int32) {
+    /// Idempotent close: only the owner of `(fd, generation)` shuts down the socket.
+    /// Safe when `stop()` already closed the client, or when the FD has been reused.
+    private func closeClient(_ client: Int32, generation: UInt64) {
         stateLock.lock()
-        clientSockets.remove(client)
+        guard clientSockets[client] == generation else {
+            stateLock.unlock()
+            return
+        }
+        clientSockets.removeValue(forKey: client)
         stateLock.unlock()
+
         Darwin.shutdown(client, SHUT_RDWR)
         Darwin.close(client)
     }
 
-    private func receive(on client: Int32, buffer: Data) {
+    private func receive(on client: Int32, generation: UInt64, buffer: Data) {
         var buffer = buffer
         var chunk = [UInt8](repeating: 0, count: 64 * 1024)
         let maxRequestBytes = 2 * 1024 * 1024
 
         while buffer.count < maxRequestBytes {
+            // Drop out if stop() already claimed this connection.
+            if !isClientLive(client, generation: generation) {
+                return
+            }
+
             let capacity = chunk.count
             let byteCount = chunk.withUnsafeMutableBytes { bytes in
                 Darwin.recv(client, bytes.baseAddress, capacity, 0)
@@ -178,8 +206,8 @@ final class MCPHTTPServer {
                 if let request = RawHTTPRequest(data: buffer) {
                     Task {
                         let response = await self.respond(to: request)
-                        await self.send(response, on: client)
-                        self.closeClient(client)
+                        await self.send(response, on: client, generation: generation)
+                        self.closeClient(client, generation: generation)
                     }
                     return
                 }
@@ -187,20 +215,27 @@ final class MCPHTTPServer {
             }
 
             if byteCount == 0 {
-                closeClient(client)
+                closeClient(client, generation: generation)
                 return
             }
 
             if errno == EAGAIN || errno == EWOULDBLOCK {
-                sendAndClose(.badRequest(), on: client)
+                sendAndClose(.badRequest(), on: client, generation: generation)
                 return
             }
 
-            closeClient(client)
+            closeClient(client, generation: generation)
             return
         }
 
-        sendAndClose(.badRequest(), on: client)
+        sendAndClose(.badRequest(), on: client, generation: generation)
+    }
+
+    private func isClientLive(_ client: Int32, generation: UInt64) -> Bool {
+        stateLock.lock()
+        let live = clientSockets[client] == generation
+        stateLock.unlock()
+        return live
     }
 
     private func respond(to request: RawHTTPRequest) async -> RawHTTPResponse {
@@ -235,15 +270,20 @@ final class MCPHTTPServer {
         return .sdk(sdkResponse)
     }
 
-    private func send(_ response: RawHTTPResponse, on client: Int32) async {
+    private func send(
+        _ response: RawHTTPResponse,
+        on client: Int32,
+        generation: UInt64
+    ) async {
+        guard isClientLive(client, generation: generation) else { return }
         switch response {
         case .fixed(let data):
-            _ = sendData(data, on: client)
+            _ = sendData(data, on: client, generation: generation)
         case .stream(let header, let stream):
-            guard sendData(header, on: client) else { return }
+            guard sendData(header, on: client, generation: generation) else { return }
             do {
                 for try await chunk in stream {
-                    guard sendData(chunk, on: client) else { return }
+                    guard sendData(chunk, on: client, generation: generation) else { return }
                 }
             } catch {
                 return
@@ -251,19 +291,29 @@ final class MCPHTTPServer {
         }
     }
 
-    private func sendAndClose(_ response: RawHTTPResponse, on client: Int32) {
+    private func sendAndClose(
+        _ response: RawHTTPResponse,
+        on client: Int32,
+        generation: UInt64
+    ) {
         Task {
-            await self.send(response, on: client)
-            self.closeClient(client)
+            await self.send(response, on: client, generation: generation)
+            self.closeClient(client, generation: generation)
         }
     }
 
-    private func sendData(_ data: Data, on client: Int32) -> Bool {
+    private func sendData(
+        _ data: Data,
+        on client: Int32,
+        generation: UInt64
+    ) -> Bool {
+        guard isClientLive(client, generation: generation) else { return false }
         if data.isEmpty { return true }
         return data.withUnsafeBytes { pointer in
             guard var address = pointer.baseAddress, pointer.count > 0 else { return true }
             var remaining = pointer.count
             while remaining > 0 {
+                guard isClientLive(client, generation: generation) else { return false }
                 let sent = Darwin.send(client, address, remaining, 0)
                 guard sent > 0 else { return false }
                 remaining -= sent
