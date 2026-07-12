@@ -42,6 +42,8 @@ struct TrainingUIState: Equatable {
 /// Result returned from the pipeline's training method (added in Task 10).
 struct LoRATrainingResult {
     let weights: [(String, MLXArray)]
+    let currentWeights: [(String, MLXArray)]
+    let bestWeights: [(String, MLXArray)]?
     let finalLoss: Float?
     let trainedPaths: [String]
     let optimizerState: [(String, MLXArray)]
@@ -336,6 +338,7 @@ final class TrainingService: ObservableObject {
                 var sessionLoKRConfig: LoKRConfig?
                 let resumeCheckpoint: TrainingCheckpoint?
                 let initialWeights: [(String, MLXArray)]?
+                let initialBestWeights: [(String, MLXArray)]?
 
                 if let resumeAdapterID = effectiveResumeAdapterID {
                     AudioDiagnostics.note(
@@ -372,10 +375,17 @@ final class TrainingService: ObservableObject {
                     } else {
                         sessionLoKRConfig = nil
                     }
-                    initialWeights = try await AdapterRegistry.loadWeights(adapterID: resumeAdapterID)
+                    // Current weights continue optimization; best is restored separately
+                    // so pause current != best selection snapshot.
+                    initialWeights = try await Task.detached(priority: .userInitiated) {
+                        try AdapterRegistry.loadCurrentWeights(adapterID: resumeAdapterID)
+                    }.value
+                    initialBestWeights = await Task.detached(priority: .userInitiated) {
+                        AdapterRegistry.loadBestWeights(adapterID: resumeAdapterID)
+                    }.value
                     AudioDiagnostics.note(
                         "training/resume/end",
-                        "kind=\(kind.rawValue) adapterID=\(resumeAdapterID) checkpointStep=\(checkpoint.globalStep) checkpointEpoch=\(checkpoint.epoch) initialWeights=\(initialWeights?.count ?? 0) lokrConfig=\(sessionLoKRConfig != nil)"
+                        "kind=\(kind.rawValue) adapterID=\(resumeAdapterID) checkpointStep=\(checkpoint.globalStep) checkpointEpoch=\(checkpoint.epoch) currentWeights=\(initialWeights?.count ?? 0) bestWeights=\(initialBestWeights?.count ?? 0) lokrConfig=\(sessionLoKRConfig != nil)"
                     )
                     try self.validateLocalTrainingMemory(
                         phase: "afterResumeConfig",
@@ -390,6 +400,7 @@ final class TrainingService: ObservableObject {
                     sessionConfig = config
                     sessionLoKRConfig = lokrConfig
                     initialWeights = nil
+                    initialBestWeights = nil
                 }
                 let requestedDropout = sessionLoKRConfig?.dropout ?? sessionConfig.dropout
                 if requestedDropout > 0 {
@@ -556,10 +567,13 @@ final class TrainingService: ObservableObject {
                         config: sessionConfig,
                         resumeFrom: resumeCheckpoint,
                         initialWeights: initialWeights,
+                        initialBestWeights: initialBestWeights,
                         onProgress: progressHandler
                     )
                     result = LoRATrainingResult(
                         weights: trained.weights,
+                        currentWeights: trained.currentWeights,
+                        bestWeights: trained.bestWeights,
                         finalLoss: trained.finalLoss,
                         trainedPaths: trained.trainedPaths,
                         optimizerState: trained.optimizerState,
@@ -575,10 +589,13 @@ final class TrainingService: ObservableObject {
                         config: sessionLoKRConfig,
                         resumeFrom: resumeCheckpoint,
                         initialWeights: initialWeights,
+                        initialBestWeights: initialBestWeights,
                         onProgress: progressHandler
                     )
                     result = LoRATrainingResult(
                         weights: trained.weights,
+                        currentWeights: trained.currentWeights,
+                        bestWeights: trained.bestWeights,
                         finalLoss: trained.finalLoss,
                         trainedPaths: trained.trainedPaths,
                         optimizerState: trained.optimizerState,
@@ -615,15 +632,28 @@ final class TrainingService: ObservableObject {
                             "kind=\(kind.rawValue) adapterID=\(adapterID)"
                         )
                         trainingLogger.info("Training paused and checkpoint saved for '\(adapterName)'")
+                        let currentURL = try AdapterRegistry.currentWeightsURL(adapterID: adapterID)
+                        let bestURL = try AdapterRegistry.bestWeightsURL(adapterID: adapterID)
                         let checkpoint = try self.makeCheckpoint(
                             adapterID: adapterID,
                             config: sessionConfig,
                             activeModelID: activeModelID,
                             sampleCount: samples.count,
                             bestLoss: result.finalLoss,
-                            fallback: resumeCheckpoint
+                            fallback: resumeCheckpoint,
+                            hasBestWeights: result.bestWeights != nil
                         )
-                        try AdapterRegistry.save(adapter: adapter, weights: result.weights)
+                        // Persist current and best separately so resume does not
+                        // treat the live optimizer state as the best snapshot.
+                        try AdapterRegistry.saveWeightSnapshot(result.currentWeights, to: currentURL)
+                        if let bestWeights = result.bestWeights {
+                            try AdapterRegistry.saveWeightSnapshot(bestWeights, to: bestURL)
+                        } else {
+                            try? FileManager.default.removeItem(at: bestURL)
+                        }
+                        // Keep adapter.safetensors as the current resume state so
+                        // the adapter remains listable while paused.
+                        try AdapterRegistry.save(adapter: adapter, weights: result.currentWeights)
                         try AdapterRegistry.saveOptimizerState(result.optimizerState, adapterID: adapterID)
                         AdapterRegistry.saveManifest(manifest, adapterID: adapterID)
                         try AdapterRegistry.saveCheckpoint(checkpoint, adapterID: adapterID)
@@ -1053,7 +1083,8 @@ final class TrainingService: ObservableObject {
         activeModelID: String,
         sampleCount: Int,
         bestLoss: Float?,
-        fallback: TrainingCheckpoint?
+        fallback: TrainingCheckpoint?,
+        hasBestWeights: Bool
     ) throws -> TrainingCheckpoint {
         let uiState: TrainingUIState?
         if case .training(let current) = state {
@@ -1076,7 +1107,8 @@ final class TrainingService: ObservableObject {
             bestLoss: bestLoss ?? fallback?.bestLoss ?? validationHistory.map(\.loss).min() ?? lossHistory.min(),
             lossHistory: lossHistory,
             validationHistory: validationHistory,
-            weightsURL: try AdapterRegistry.weightsURL(adapterID: adapterID),
+            weightsURL: try AdapterRegistry.currentWeightsURL(adapterID: adapterID),
+            bestWeightsURL: hasBestWeights ? try AdapterRegistry.bestWeightsURL(adapterID: adapterID) : nil,
             optimizerStateURL: try AdapterRegistry.optimizerStateURL(adapterID: adapterID),
             config: config,
             baseModelID: activeModelID

@@ -352,6 +352,7 @@ public actor DiTActor {
         config: LoRAConfig,
         resumeFrom checkpoint: TrainingCheckpoint? = nil,
         initialWeights: [(String, MLXArray)]? = nil,
+        initialBestWeights: [(String, MLXArray)]? = nil,
         onProgress: @escaping @Sendable (TrainingProgress) -> Void
     ) async throws -> AdapterTrainingResult {
         guard let decoder else {
@@ -373,7 +374,7 @@ public actor DiTActor {
         let trainableCount = decoder.trainableParameters().flattened().count
         AudioDiagnostics.note(
             "training/dit/inject",
-            "kind=lora paths=\(paths.count) trainableParams=\(trainableCount) layers=\(trainableLayerIndices.sorted()) samples=\(samples.count) initialWeights=\(initialWeights?.count ?? 0)"
+            "kind=lora paths=\(paths.count) trainableParams=\(trainableCount) layers=\(trainableLayerIndices.sorted()) samples=\(samples.count) initialWeights=\(initialWeights?.count ?? 0) initialBestWeights=\(initialBestWeights?.count ?? 0)"
         )
         AudioDiagnostics.memory("training/dit/afterInject")
         if let initialWeights {
@@ -393,7 +394,8 @@ public actor DiTActor {
             injectedPaths: paths,
             datasetSize: samples.count,
             resumeFrom: checkpoint,
-            initialBestWeights: checkpoint?.bestLoss == nil ? nil : initialWeights
+            // Never treat current weights as best — only an explicit best snapshot.
+            initialBestWeights: initialBestWeights
         )
         activeLoRATrainer = trainer
         AudioDiagnostics.note(
@@ -427,6 +429,7 @@ public actor DiTActor {
         config: LoKRConfig,
         resumeFrom checkpoint: TrainingCheckpoint? = nil,
         initialWeights: [(String, MLXArray)]? = nil,
+        initialBestWeights: [(String, MLXArray)]? = nil,
         onProgress: @escaping @Sendable (TrainingProgress) -> Void
     ) async throws -> AdapterTrainingResult {
         guard let decoder else {
@@ -446,7 +449,7 @@ public actor DiTActor {
         let trainableCount = decoder.trainableParameters().flattened().count
         AudioDiagnostics.note(
             "training/dit/inject",
-            "kind=lokr paths=\(paths.count) trainableParams=\(trainableCount) weightDecompose=\(config.weightDecompose) layers=\(trainableLayerIndices.sorted()) samples=\(samples.count) initialWeights=\(initialWeights?.count ?? 0)"
+            "kind=lokr paths=\(paths.count) trainableParams=\(trainableCount) weightDecompose=\(config.weightDecompose) layers=\(trainableLayerIndices.sorted()) samples=\(samples.count) initialWeights=\(initialWeights?.count ?? 0) initialBestWeights=\(initialBestWeights?.count ?? 0)"
         )
         AudioDiagnostics.memory("training/dit/afterInject")
         if let initialWeights {
@@ -466,7 +469,7 @@ public actor DiTActor {
             injectedPaths: paths,
             datasetSize: samples.count,
             resumeFrom: checkpoint,
-            initialBestWeights: checkpoint?.bestLoss == nil ? nil : initialWeights
+            initialBestWeights: initialBestWeights
         )
         activeLoKRTrainer = trainer
         AudioDiagnostics.note(

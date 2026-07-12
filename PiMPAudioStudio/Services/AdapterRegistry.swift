@@ -293,6 +293,9 @@ struct AdapterRegistry {
 
     // MARK: - Training Checkpoints
 
+    static let currentWeightsFileName = "current_weights.safetensors"
+    static let bestWeightsFileName = "best_weights.safetensors"
+
     static func checkpointURL(adapterID: String) throws -> URL {
         try adapterDirectory(id: adapterID).appending(path: "training_checkpoint.json")
     }
@@ -305,8 +308,19 @@ struct AdapterRegistry {
         try adapterDirectory(id: adapterID).appending(path: "optimizer_state.json")
     }
 
+    /// Deployable adapter weights (`adapter.safetensors`).
     static func weightsURL(adapterID: String) throws -> URL {
         try adapterDirectory(id: adapterID).appending(path: "adapter.safetensors")
+    }
+
+    /// In-progress optimizer weights for pause/resume (may differ from best).
+    static func currentWeightsURL(adapterID: String) throws -> URL {
+        try adapterDirectory(id: adapterID).appending(path: currentWeightsFileName)
+    }
+
+    /// Best selection-loss snapshot for pause/resume.
+    static func bestWeightsURL(adapterID: String) throws -> URL {
+        try adapterDirectory(id: adapterID).appending(path: bestWeightsFileName)
     }
 
     static func saveOptimizerState(_ state: [(String, MLXArray)], adapterID: String) throws {
@@ -316,6 +330,38 @@ struct AdapterRegistry {
         let dict = Dictionary(state, uniquingKeysWith: { _, last in last })
         let url = try optimizerStateURL(adapterID: adapterID)
         try MLX.save(arrays: dict, url: url)
+    }
+
+    static func saveWeightSnapshot(_ weights: [(String, MLXArray)], to url: URL) throws {
+        guard !weights.isEmpty else { return }
+        let dir = url.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let dict = Dictionary(weights, uniquingKeysWith: { _, last in last })
+        try MLX.save(arrays: dict, url: url)
+    }
+
+    static func loadWeightSnapshot(from url: URL) throws -> [(String, MLXArray)] {
+        let dict = try MLX.loadArrays(url: url)
+        return dict.map { ($0.key, $0.value) }
+    }
+
+    /// Current resume weights: prefer `current_weights.safetensors`, else deployable adapter file.
+    static func loadCurrentWeights(adapterID: String) throws -> [(String, MLXArray)] {
+        let currentURL = try currentWeightsURL(adapterID: adapterID)
+        if FileManager.default.fileExists(atPath: currentURL.path(percentEncoded: false)) {
+            return try loadWeightSnapshot(from: currentURL)
+        }
+        return try loadWeights(adapterID: adapterID)
+    }
+
+    /// Best snapshot when a pause wrote `best_weights.safetensors`.
+    static func loadBestWeights(adapterID: String) -> [(String, MLXArray)]? {
+        guard let url = try? bestWeightsURL(adapterID: adapterID),
+              FileManager.default.fileExists(atPath: url.path(percentEncoded: false)),
+              let weights = try? loadWeightSnapshot(from: url) else {
+            return nil
+        }
+        return weights
     }
 
     /// Saves the metadata needed to resume an interrupted training session.
@@ -351,7 +397,9 @@ struct AdapterRegistry {
         let urls = [
             try? checkpointURL(adapterID: adapterID),
             try? optimizerStateURL(adapterID: adapterID),
-            try? legacyOptimizerStateURL(adapterID: adapterID)
+            try? legacyOptimizerStateURL(adapterID: adapterID),
+            try? currentWeightsURL(adapterID: adapterID),
+            try? bestWeightsURL(adapterID: adapterID)
         ].compactMap { $0 }
         for url in urls {
             try? fm.removeItem(at: url)

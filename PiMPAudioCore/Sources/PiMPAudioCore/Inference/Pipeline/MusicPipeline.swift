@@ -159,6 +159,7 @@ public actor MusicPipeline {
         config: LoRAConfig,
         resumeFrom checkpoint: TrainingCheckpoint? = nil,
         initialWeights: [(String, MLXArray)]? = nil,
+        initialBestWeights: [(String, MLXArray)]? = nil,
         onProgress: @escaping @Sendable (TrainingProgress) -> Void
     ) async throws -> AdapterTrainingResult {
         try await diffusion.trainLoRA(
@@ -166,6 +167,7 @@ public actor MusicPipeline {
             config: config,
             resumeFrom: checkpoint,
             initialWeights: initialWeights,
+            initialBestWeights: initialBestWeights,
             onProgress: onProgress
         )
     }
@@ -175,6 +177,7 @@ public actor MusicPipeline {
         config: LoKRConfig,
         resumeFrom checkpoint: TrainingCheckpoint? = nil,
         initialWeights: [(String, MLXArray)]? = nil,
+        initialBestWeights: [(String, MLXArray)]? = nil,
         onProgress: @escaping @Sendable (TrainingProgress) -> Void
     ) async throws -> AdapterTrainingResult {
         try await diffusion.trainLoKR(
@@ -182,6 +185,7 @@ public actor MusicPipeline {
             config: config,
             resumeFrom: checkpoint,
             initialWeights: initialWeights,
+            initialBestWeights: initialBestWeights,
             onProgress: onProgress
         )
     }

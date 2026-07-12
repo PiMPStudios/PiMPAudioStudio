@@ -53,10 +53,8 @@ public final class LoKRTrainer {
             self.lossHistory = checkpoint.lossHistory
             self.validationHistory = checkpoint.validationHistory
             self.bestLoss = checkpoint.bestLoss ?? .infinity
-            if checkpoint.bestLoss != nil {
-                self.bestWeights = initialBestWeights
-                    ?? LoKRInjector.extractWeights(model: model, paths: injectedPaths)
-            }
+            // Best snapshot must come from best_weights — never the live model.
+            self.bestWeights = initialBestWeights
         }
     }
 
@@ -178,8 +176,10 @@ public final class LoKRTrainer {
         guard startEpoch <= config.maxEpochs else {
             let currentWeights = LoKRInjector.extractWeights(model: model, paths: injectedPaths)
             return AdapterTrainingResult(
-                weights: currentWeights,
-                finalLoss: bestWeights != nil ? bestLoss : nil,
+                weights: bestWeights ?? currentWeights,
+                currentWeights: currentWeights,
+                bestWeights: bestWeights,
+                finalLoss: recordedBestLoss,
                 trainedPaths: injectedPaths,
                 optimizerState: AdapterOptimizerState.namedState(
                     optimizer: optimizer,
@@ -356,7 +356,7 @@ public final class LoKRTrainer {
                 model: model,
                 samples: dataset,
                 validationIndices: split.validationIndices,
-                seed: AdapterTrainingRandom.mix(runSeed, UInt64(truncatingIfNeeded: epoch))
+                seed: AdapterTrainingRandom.validationSeed(runSeed: runSeed)
             )
             setTrainingMode(true)
             if let validationLoss {
@@ -392,10 +392,12 @@ public final class LoKRTrainer {
         )
         AudioDiagnostics.memory("training/trainer/end")
         let currentWeights = LoKRInjector.extractWeights(model: model, paths: injectedPaths)
-        let selectedWeights = isCancelled ? currentWeights : (bestWeights ?? currentWeights)
+        let exportWeights = isCancelled ? currentWeights : (bestWeights ?? currentWeights)
         return AdapterTrainingResult(
-            weights: selectedWeights,
-            finalLoss: bestWeights != nil ? bestLoss : nil,
+            weights: exportWeights,
+            currentWeights: currentWeights,
+            bestWeights: bestWeights,
+            finalLoss: recordedBestLoss,
             trainedPaths: injectedPaths,
             optimizerState: AdapterOptimizerState.namedState(
                 optimizer: optimizer,
@@ -410,7 +412,11 @@ public final class LoKRTrainer {
     }
 
     public var lowestLoss: Float? {
-        bestWeights != nil ? bestLoss : nil
+        recordedBestLoss
+    }
+
+    private var recordedBestLoss: Float? {
+        bestLoss.isFinite && bestLoss != .infinity ? bestLoss : nil
     }
 
     public func makeCheckpoint(
@@ -422,10 +428,11 @@ public final class LoKRTrainer {
             epoch: currentEpoch,
             globalStep: globalStep,
             totalSteps: totalSteps,
-            bestLoss: bestWeights != nil ? bestLoss : nil,
+            bestLoss: recordedBestLoss,
             lossHistory: lossHistory,
             validationHistory: validationHistory,
             weightsURL: weightsURL,
+            bestWeightsURL: nil,
             optimizerStateURL: optimizerStateURL,
             config: config.loraCompatibleConfig,
             baseModelID: baseModelID

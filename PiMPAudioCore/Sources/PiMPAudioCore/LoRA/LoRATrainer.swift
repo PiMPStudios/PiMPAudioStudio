@@ -116,10 +116,8 @@ public final class LoRATrainer {
             self.lossHistory = checkpoint.lossHistory
             self.validationHistory = checkpoint.validationHistory
             self.bestLoss = checkpoint.bestLoss ?? .infinity
-            if checkpoint.bestLoss != nil {
-                self.bestWeights = initialBestWeights
-                    ?? LoRAInjector.extractWeights(model: model, paths: injectedPaths)
-            }
+            // Best snapshot must come from best_weights — never the live model.
+            self.bestWeights = initialBestWeights
         }
     }
 
@@ -254,8 +252,10 @@ public final class LoRATrainer {
         guard startEpoch <= config.maxEpochs else {
             let currentWeights = LoRAInjector.extractWeights(model: model, paths: injectedPaths)
             return AdapterTrainingResult(
-                weights: currentWeights,
-                finalLoss: bestWeights != nil ? bestLoss : nil,
+                weights: bestWeights ?? currentWeights,
+                currentWeights: currentWeights,
+                bestWeights: bestWeights,
+                finalLoss: recordedBestLoss,
                 trainedPaths: injectedPaths,
                 optimizerState: AdapterOptimizerState.namedState(
                     optimizer: optimizer,
@@ -445,7 +445,7 @@ public final class LoRATrainer {
                 model: model,
                 samples: dataset,
                 validationIndices: split.validationIndices,
-                seed: AdapterTrainingRandom.mix(runSeed, UInt64(truncatingIfNeeded: epoch))
+                seed: AdapterTrainingRandom.validationSeed(runSeed: runSeed)
             )
             setTrainingMode(true)
             if let validationLoss {
@@ -484,10 +484,14 @@ public final class LoRATrainer {
         )
         AudioDiagnostics.memory("training/trainer/end")
         let currentWeights = LoRAInjector.extractWeights(model: model, paths: injectedPaths)
-        let selectedWeights = isCancelled ? currentWeights : (bestWeights ?? currentWeights)
+        // On success export the best selection snapshot; on cancel keep current
+        // for resume while still reporting the true best loss/weights separately.
+        let exportWeights = isCancelled ? currentWeights : (bestWeights ?? currentWeights)
         return AdapterTrainingResult(
-            weights: selectedWeights,
-            finalLoss: bestWeights != nil ? bestLoss : nil,
+            weights: exportWeights,
+            currentWeights: currentWeights,
+            bestWeights: bestWeights,
+            finalLoss: recordedBestLoss,
             trainedPaths: injectedPaths,
             optimizerState: AdapterOptimizerState.namedState(
                 optimizer: optimizer,
@@ -504,12 +508,16 @@ public final class LoRATrainer {
 
     /// Whether at least one complete epoch has finished (enough for a usable checkpoint).
     public var hasUsableCheckpoint: Bool {
-        bestWeights != nil
+        bestWeights != nil || recordedBestLoss != nil
     }
 
     /// Lowest loss seen, or nil if no complete epoch.
     public var lowestLoss: Float? {
-        bestWeights != nil ? bestLoss : nil
+        recordedBestLoss
+    }
+
+    private var recordedBestLoss: Float? {
+        bestLoss.isFinite && bestLoss != .infinity ? bestLoss : nil
     }
 
     /// Create a checkpoint of the current training state.
@@ -522,10 +530,11 @@ public final class LoRATrainer {
             epoch: currentEpoch,
             globalStep: globalStep,
             totalSteps: totalSteps,
-            bestLoss: bestWeights != nil ? bestLoss : nil,
+            bestLoss: recordedBestLoss,
             lossHistory: lossHistory,
             validationHistory: validationHistory,
             weightsURL: weightsURL,
+            bestWeightsURL: nil,
             optimizerStateURL: optimizerStateURL,
             config: config,
             baseModelID: baseModelID

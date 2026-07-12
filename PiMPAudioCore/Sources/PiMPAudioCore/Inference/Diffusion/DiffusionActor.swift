@@ -398,6 +398,7 @@ public actor DiffusionActor {
         config: LoRAConfig,
         resumeFrom checkpoint: TrainingCheckpoint? = nil,
         initialWeights: [(String, MLXArray)]? = nil,
+        initialBestWeights: [(String, MLXArray)]? = nil,
         onProgress: @escaping @Sendable (TrainingProgress) -> Void
     ) async throws -> AdapterTrainingResult {
         try await dit.trainLoRA(
@@ -405,6 +406,7 @@ public actor DiffusionActor {
             config: config,
             resumeFrom: checkpoint,
             initialWeights: initialWeights,
+            initialBestWeights: initialBestWeights,
             onProgress: onProgress
         )
     }
@@ -414,6 +416,7 @@ public actor DiffusionActor {
         config: LoKRConfig,
         resumeFrom checkpoint: TrainingCheckpoint? = nil,
         initialWeights: [(String, MLXArray)]? = nil,
+        initialBestWeights: [(String, MLXArray)]? = nil,
         onProgress: @escaping @Sendable (TrainingProgress) -> Void
     ) async throws -> AdapterTrainingResult {
         try await dit.trainLoKR(
@@ -421,6 +424,7 @@ public actor DiffusionActor {
             config: config,
             resumeFrom: checkpoint,
             initialWeights: initialWeights,
+            initialBestWeights: initialBestWeights,
             onProgress: onProgress
         )
     }

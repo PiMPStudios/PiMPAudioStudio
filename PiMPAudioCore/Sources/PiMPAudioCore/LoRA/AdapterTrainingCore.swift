@@ -17,7 +17,13 @@ public struct TrainingValidationPoint: Codable, Sendable, Equatable, Hashable {
 }
 
 public struct AdapterTrainingResult: @unchecked Sendable {
+    /// Adapter artifact to export on successful completion (best snapshot when available).
     public let weights: [(String, MLXArray)]
+    /// Model weights at the end of `train()` — used to resume optimization.
+    public let currentWeights: [(String, MLXArray)]
+    /// Best selection-loss snapshot across completed epochs, if any.
+    public let bestWeights: [(String, MLXArray)]?
+    /// Best selection loss (validation when present, else train avg). Nil if no epoch finished.
     public let finalLoss: Float?
     public let trainedPaths: [String]
     public let optimizerState: [(String, MLXArray)]
@@ -25,12 +31,16 @@ public struct AdapterTrainingResult: @unchecked Sendable {
 
     public init(
         weights: [(String, MLXArray)],
+        currentWeights: [(String, MLXArray)]? = nil,
+        bestWeights: [(String, MLXArray)]? = nil,
         finalLoss: Float?,
         trainedPaths: [String],
         optimizerState: [(String, MLXArray)],
         wasCancelled: Bool
     ) {
         self.weights = weights
+        self.currentWeights = currentWeights ?? weights
+        self.bestWeights = bestWeights
         self.finalLoss = finalLoss
         self.trainedPaths = trainedPaths
         self.optimizerState = optimizerState
@@ -113,6 +123,14 @@ enum AdapterTrainingRandom {
             UInt64(truncatingIfNeeded: sampleIndex),
             UInt64(truncatingIfNeeded: pathCount)
         )
+    }
+
+    /// Fixed validation-noise seed for a training run.
+    ///
+    /// Must **not** incorporate the epoch index — epoch validation scores are
+    /// only comparable when noise is identical across epochs.
+    static func validationSeed(runSeed: UInt64) -> UInt64 {
+        mix(runSeed, 0xFA11_D47E_F1ED_5EED)
     }
 
     static func validationNoiseKey(seed: UInt64, sampleIndex: Int, timestepIndex: Int) -> MLXArray {
