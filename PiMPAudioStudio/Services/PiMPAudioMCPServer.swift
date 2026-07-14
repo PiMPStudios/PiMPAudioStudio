@@ -926,7 +926,7 @@ private final class PiMPAudioMCPSDKBridge {
         case "generate_song":
             return try await facade.generateSong(arguments: arguments)
         case "generate":
-            return try facade.generate(arguments: arguments)
+            return try await facade.generate(arguments: arguments)
         case "generation_status":
             return try facade.generationStatus()
         case "editor_status":

@@ -141,7 +141,7 @@ extension PiMPAudioCommandFacade {
             adapterPayload = nil
         }
 
-        let submission = try generate(arguments: workingArguments)
+        let submission = try await generate(arguments: workingArguments)
         return [
             "submitted": submission["submitted"] ?? false,
             "dryRun": submission["dryRun"] ?? dryRun,
@@ -156,12 +156,12 @@ extension PiMPAudioCommandFacade {
         ]
     }
 
-    func generate(arguments: [String: Any]) throws -> [String: Any] {
+    func generate(arguments: [String: Any]) async throws -> [String: Any] {
         guard let generationService else {
             throw PiMPAudioCommandFacadeError.generationServiceUnavailable
         }
 
-        let (request, requestedDuration) = try generationRequestWithDurationMeta(arguments)
+        let (request, requestedDuration) = try await generationRequestWithDurationMeta(arguments)
         let dryRun = boolValue(arguments["dryRun"] ?? arguments["validateOnly"]) == true
         if dryRun {
             return generationSubmissionPayload(
@@ -383,13 +383,13 @@ extension PiMPAudioCommandFacade {
         return duration
     }
 
-    func generationRequest(_ arguments: [String: Any]) throws -> GenerationRequest {
-        try generationRequestWithDurationMeta(arguments).request
+    func generationRequest(_ arguments: [String: Any]) async throws -> GenerationRequest {
+        try await generationRequestWithDurationMeta(arguments).request
     }
 
     func generationRequestWithDurationMeta(
         _ arguments: [String: Any]
-    ) throws -> (request: GenerationRequest, requestedDuration: Double) {
+    ) async throws -> (request: GenerationRequest, requestedDuration: Double) {
         let prompt = try requiredString("prompt", aliases: ["text"], in: arguments)
         let lyrics = stringValue(arguments["lyrics"]) ?? ""
         let mode = generationMode(from: arguments["mode"] ?? arguments["generationMode"]) ?? .music
@@ -406,6 +406,15 @@ extension PiMPAudioCommandFacade {
             duration = requestedDuration
         }
 
+        let explicitGuidancePreset = guidancePreset(from: arguments["guidancePreset"] ?? arguments["preset"])
+        let isXLContext = await isXLGenerationContext(
+            pipeline: pipeline,
+            mode: mode,
+            adapterArguments: arguments
+        )
+        let resolvedGuidancePreset = explicitGuidancePreset
+            ?? GuidancePreset.defaultSelection(isXLContext: isXLContext)
+
         let request = GenerationRequest(
             text: prompt,
             lyrics: lyrics,
@@ -414,7 +423,7 @@ extension PiMPAudioCommandFacade {
             seed: try seedValue(arguments["seed"]),
             method: inferMethod(from: arguments["method"]) ?? .ode,
             guidanceScale: Float(doubleValue(arguments["guidanceScale"] ?? arguments["guidance"]) ?? 7.5),
-            guidancePreset: guidancePreset(from: arguments["guidancePreset"] ?? arguments["preset"]) ?? .defaultSelection,
+            guidancePreset: resolvedGuidancePreset,
             precision: precision(from: arguments["precision"]) ?? .float32,
             stepsOverride: try stepsValue(arguments["steps"] ?? arguments["stepsOverride"]),
             shiftOverride: Float(doubleValue(arguments["shift"] ?? arguments["shiftOverride"]) ?? 3.0),
@@ -423,6 +432,43 @@ extension PiMPAudioCommandFacade {
             coverStrength: Float(min(max(doubleValue(arguments["coverStrength"]) ?? 0.7, 0.0), 1.0))
         )
         return (request, requestedDuration)
+    }
+
+    /// XL context for MCP defaults: active ACE-Step DiT is XL, or an XL adapter is selected.
+    func isXLGenerationContext(
+        pipeline: PipelineChoice,
+        mode: GenerationMode,
+        adapterArguments: [String: Any]
+    ) async -> Bool {
+        let usesStableAudio = pipeline == .stableAudio
+            || (pipeline == .auto && (mode == .soundFX || mode == .ambient))
+        if usesStableAudio {
+            return false
+        }
+
+        if let activeID = await registry.activeModelID(for: .aceStepDiT) {
+            let activeSpec = await registry.activeSpec(for: .aceStepDiT)
+            if LoRAAdapter.isACEBaseModelXL(activeID, spec: activeSpec) {
+                return true
+            }
+        }
+
+        if let adapterID = stringValue(
+            adapterArguments["adapter"]
+                ?? adapterArguments["adapterID"]
+                ?? adapterArguments["lora"]
+                ?? adapterArguments["loraID"]
+        )?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !adapterID.isEmpty,
+           let adapter = AdapterRegistry.listAdapters().first(where: {
+               $0.id == adapterID || $0.name.caseInsensitiveCompare(adapterID) == .orderedSame
+           }),
+           adapter.baseModelCategory == .aceStepDiT,
+           LoRAAdapter.isACEBaseModelXL(adapter.baseModelID) {
+            return true
+        }
+
+        return false
     }
 
     func referenceAudioURL(from value: Any?) -> URL? {

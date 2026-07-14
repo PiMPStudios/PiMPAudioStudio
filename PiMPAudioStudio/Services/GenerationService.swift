@@ -282,6 +282,10 @@ final class GenerationService: ObservableObject {
             if submission.request.seed == nil, let seed = resolvedRequest.seed {
                 self.traceMonitor.recordStage("Seed", message: "Resolved random seed", detail: "\(seed)")
             }
+            await self.noteXLSoftLateGuidanceIfNeeded(
+                request: resolvedRequest,
+                adapterStack: submission.resolvedAdapterStack
+            )
 
             // Free the LLM (~2 GB GPU) before loading DiT + VAE (~5+ GB).
             // The $llmActor publisher propagates nil to PromptEnhancer /
@@ -592,6 +596,39 @@ final class GenerationService: ObservableObject {
             resolvedMode: request.resolvedMode,
             pipelineOverride: request.pipelineOverride,
             coverStrength: request.coverStrength
+        )
+    }
+
+    /// Soft Late is a late-only CFG recipe that often degrades XL quality. Leave the
+    /// request alone so deliberate A/Bs still work, but log when the risky combo runs.
+    private func noteXLSoftLateGuidanceIfNeeded(
+        request: GenerationRequest,
+        adapterStack: [(id: String, weight: Float)]
+    ) async {
+        guard request.guidancePreset == .softLate else { return }
+        guard !shouldUseStableAudio(request: request) else { return }
+
+        let activeID = await registry.activeModelID(for: .aceStepDiT)
+        let activeSpec = await registry.activeSpec(for: .aceStepDiT)
+        let isXLModel = activeID.map { LoRAAdapter.isACEBaseModelXL($0, spec: activeSpec) } ?? false
+        let isXLAdapter = adapterStack.contains { entry in
+            guard let adapter = AdapterRegistry.listAdapters().first(where: { $0.id == entry.id }) else {
+                return false
+            }
+            return adapter.baseModelCategory == .aceStepDiT
+                && LoRAAdapter.isACEBaseModelXL(adapter.baseModelID)
+        }
+        guard isXLModel || isXLAdapter else { return }
+
+        AudioDiagnostics.note(
+            "generation/guidance",
+            "Soft Late on XL often degrades quality (late-only CFG + forced scale 6.0). Prefer Constant for full-schedule CFG."
+        )
+        traceMonitor.recordStage(
+            "Guidance",
+            message: "Soft Late on XL",
+            detail: "Late-only CFG can degrade XL quality; Constant is recommended",
+            level: .warning
         )
     }
 

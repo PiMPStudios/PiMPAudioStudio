@@ -7,7 +7,12 @@ enum GuidancePreset: String, CaseIterable, Codable, Identifiable, Sendable, Equa
     case midToLate
     case softLate
 
+    /// Non-XL default. Soft Late won sparse-prompt A/Bs on Turbo/Base/SFT.
     static let defaultSelection: GuidancePreset = .softLate
+
+    /// XL prefers full-schedule CFG (Constant) for closer upstream/PEFT parity
+    /// and to avoid late-only Soft Late kinks on 50-step XL schedules.
+    static let xlDefaultSelection: GuidancePreset = .constant
 
     var id: String { rawValue }
 
@@ -29,7 +34,7 @@ enum GuidancePreset: String, CaseIterable, Codable, Identifiable, Sendable, Equa
         case .midToLate:
             return "CFG only for t <= 0.75"
         case .softLate:
-            return "Guidance 6.0, CFG only for t <= 0.6"
+            return "Forces guidance 6.0; CFG only for t <= 0.6 (late steps)"
         }
     }
 
@@ -55,11 +60,36 @@ enum GuidancePreset: String, CaseIterable, Codable, Identifiable, Sendable, Equa
         }
     }
 
+    /// True when this preset ignores the user guidance-scale field.
+    var overridesGuidanceScale: Bool {
+        guidanceScaleOverride != nil
+    }
+
     func effectiveGuidanceScale(userValue: Float, fallback: Float = 7.5) -> Float {
         if let guidanceScaleOverride {
             return guidanceScaleOverride
         }
         return userValue > 1.0 ? userValue : fallback
+    }
+
+    /// App/MCP default: Soft Late for non-XL, Constant for XL DiT / XL adapters.
+    static func defaultSelection(isXLContext: Bool) -> GuidancePreset {
+        isXLContext ? xlDefaultSelection : defaultSelection
+    }
+
+    /// Nudge Soft Late → Constant in XL contexts. Leaves any other user-chosen
+    /// preset (including a deliberate re-selection of Soft Late after Constant)
+    /// alone only when `current` is already non-Soft-Late; Soft Late is always
+    /// treated as the auto-default for this nudge because it is `defaultSelection`.
+    ///
+    /// Call this when XL becomes active (model or adapter). Do not call it on
+    /// every generation if the user may intentionally pick Soft Late for an XL A/B.
+    static func applyingXLRecipeIfNeeded(
+        current: GuidancePreset,
+        isXLContext: Bool
+    ) -> GuidancePreset {
+        guard isXLContext, current == .softLate else { return current }
+        return .constant
     }
 }
 

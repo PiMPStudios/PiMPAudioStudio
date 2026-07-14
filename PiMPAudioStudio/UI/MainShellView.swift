@@ -144,8 +144,22 @@ struct MainShellView: View {
                         .lineLimit(1)
                 }
                 LabeledContent("Guidance") {
-                    TextField("7.5", value: $generationParameters.guidanceScale, format: .number.precision(.fractionLength(1)))
-                        .multilineTextAlignment(.trailing)
+                    HStack(spacing: 6) {
+                        TextField("7.5", value: $generationParameters.guidanceScale, format: .number.precision(.fractionLength(1)))
+                            .multilineTextAlignment(.trailing)
+                            .disabled(generationParameters.guidancePreset.overridesGuidanceScale)
+                        if let override = generationParameters.guidancePreset.guidanceScaleOverride {
+                            Text("→ \(String(format: "%.1f", override))")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .help(generationParameters.guidancePreset.detail)
+                        }
+                    }
+                }
+                if generationParameters.guidancePreset.overridesGuidanceScale {
+                    Text("\(generationParameters.guidancePreset.displayName) forces guidance \(String(format: "%.1f", generationParameters.guidancePreset.guidanceScaleOverride ?? 0))")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
                 }
             }
             ModelInspectorSection()

@@ -3,6 +3,7 @@ import PiMPAudioCore
 import UniformTypeIdentifiers
 
 struct GenerateView: View {
+    @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var generationService: GenerationService
     @EnvironmentObject private var trainingService: TrainingService
     @EnvironmentObject private var playerService: AudioPlayerService
@@ -28,6 +29,8 @@ struct GenerateView: View {
     @State private var audioDebugLogPath: String?
     @State private var modeSelection: ModeSelection = .auto
     @State private var selectedAdapterID: String?
+    @State private var activeDiTModelID: String?
+    @State private var activeDiTModelSpec: ModelSpec?
     @AppStorage(AppUserDefaultsKeys.selectedAdapterID) private var persistedAdapterID: String = ""
     @AppStorage(AppUserDefaultsKeys.selectedAdapterStrength) private var persistedAdapterStrength: Double = 1.0
 
@@ -60,6 +63,7 @@ struct GenerateView: View {
             AudioDiagnostics.setLogDirectory(AppStorageLocations.diagnosticsDirectory)
             AudioDiagnostics.refreshFileLoggingState()
             updateAudioDebugLogPath()
+            Task { await refreshActiveDiTAndApplyXLGuidanceRecipe() }
         }
         .onChange(of: audioDebugVerbose) { _, newValue in
             AudioDiagnostics.setVerboseLoggingEnabled(newValue)
@@ -75,6 +79,9 @@ struct GenerateView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .adapterSelectionDidChange)) { notification in
             applyAdapterSelection(notification)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .modelRegistryDidChange)) { _ in
+            Task { await refreshActiveDiTAndApplyXLGuidanceRecipe() }
         }
         .alert("Save as Preset", isPresented: $showingSavePreset) {
             TextField("Preset name", text: $presetName)
@@ -526,7 +533,7 @@ struct GenerateView: View {
                 persistedAdapterID = newValue ?? ""
                 generationService.selectedAdapterID = newValue
                 syncPrimaryAdapter(id: newValue)
-                applyXLAdapterRecipeIfNeeded(id: newValue)
+                applyXLGuidanceRecipeIfNeeded()
             }
             .onAppear {
                 restorePersistedAdapterSelection()
@@ -572,9 +579,11 @@ struct GenerateView: View {
                 .font(.caption.monospacedDigit())
                 .frame(width: 48, alignment: .trailing)
 
-            Text("Use Constant guidance for closest XL PEFT parity")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+            if isXLGenerationContext {
+                Text("XL defaults to Constant guidance for full-schedule CFG")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
 
             Spacer()
         }
@@ -619,22 +628,36 @@ struct GenerateView: View {
                 }
 
                 // Guidance schedule
-                HStack {
+                HStack(alignment: .top) {
                     Text("Guidance")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .frame(width: 80, alignment: .leading)
-                    Picker("", selection: $generationParameters.guidancePreset) {
-                        ForEach(GuidancePreset.allCases) { preset in
-                            Text(preset.displayName).tag(preset)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Picker("", selection: $generationParameters.guidancePreset) {
+                            ForEach(GuidancePreset.allCases) { preset in
+                                Text(preset.displayName).tag(preset)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .labelsHidden()
+                        .frame(maxWidth: 180)
+                        Text(generationParameters.guidancePreset.detail)
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                        if generationParameters.guidancePreset.overridesGuidanceScale,
+                           let override = generationParameters.guidancePreset.guidanceScaleOverride {
+                            Text("Ignores sidebar Guidance field; effective scale \(String(format: "%.1f", override))")
+                                .font(.caption2)
+                                .foregroundStyle(.orange)
+                        }
+                        if isXLGenerationContext,
+                           generationParameters.guidancePreset == .softLate {
+                            Text("Soft Late often degrades XL quality; Constant is recommended")
+                                .font(.caption2)
+                                .foregroundStyle(.orange)
                         }
                     }
-                    .pickerStyle(.menu)
-                    .labelsHidden()
-                    .frame(maxWidth: 180)
-                    Text(generationParameters.guidancePreset.detail)
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
                     Spacer()
                 }
 
@@ -792,7 +815,7 @@ struct GenerateView: View {
         selectedAdapterID = adapter.id
         generationService.selectedAdapterID = adapter.id
         syncPrimaryAdapter(id: adapter.id)
-        applyXLAdapterRecipeIfNeeded(id: adapter.id)
+        applyXLGuidanceRecipeIfNeeded()
     }
 
     private func clearPrimaryAdapterSelection() {
@@ -846,6 +869,7 @@ struct GenerateView: View {
         generationService.selectedAdapterID = selectedAdapterID
         generationService.adapterStack = stackManager.allStackedAdapters
             .map { (id: $0.adapter.id, weight: $0.strength) }
+        applyXLGuidanceRecipeIfNeeded()
     }
 
     private func adapterID(from payload: [String: Any]) -> String? {
@@ -869,15 +893,35 @@ struct GenerateView: View {
         return 1.0
     }
 
-    private func applyXLAdapterRecipeIfNeeded(id: String?) {
-        guard let id, !id.isEmpty,
-              generationParameters.guidancePreset == GuidancePreset.defaultSelection,
-              let adapter = AdapterRegistry.listAdapters().first(where: { $0.id == id }),
-              isXLAdapter(adapter) else {
-            return
+    private var isXLGenerationContext: Bool {
+        if let activeDiTModelID,
+           LoRAAdapter.isACEBaseModelXL(activeDiTModelID, spec: activeDiTModelSpec) {
+            return true
         }
+        if let selectedAdapterID,
+           let adapter = AdapterRegistry.listAdapters().first(where: { $0.id == selectedAdapterID }),
+           isXLAdapter(adapter) {
+            return true
+        }
+        return stackManager.allStackedAdapters.contains { isXLAdapter($0.adapter) }
+    }
 
-        generationParameters.guidancePreset = .constant
+    @MainActor
+    private func refreshActiveDiTAndApplyXLGuidanceRecipe() async {
+        let id = await appState.registry.activeModelID(for: .aceStepDiT)
+        let spec = await appState.registry.activeSpec(for: .aceStepDiT)
+        activeDiTModelID = id
+        activeDiTModelSpec = spec
+        applyXLGuidanceRecipeIfNeeded()
+    }
+
+    private func applyXLGuidanceRecipeIfNeeded() {
+        let next = GuidancePreset.applyingXLRecipeIfNeeded(
+            current: generationParameters.guidancePreset,
+            isXLContext: isXLGenerationContext
+        )
+        guard next != generationParameters.guidancePreset else { return }
+        generationParameters.guidancePreset = next
     }
 
     private func isXLAdapter(_ adapter: LoRAAdapter) -> Bool {

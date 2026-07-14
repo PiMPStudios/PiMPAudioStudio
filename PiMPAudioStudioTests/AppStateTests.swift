@@ -1340,6 +1340,32 @@ private extension JSONDecoder {
     #expect(!LoRAAdapter.isACEBaseModelXL("model-xl-extra"))
 }
 
+@Test func guidancePresetSoftLateForcesScaleAndLateCFGWindow() {
+    #expect(GuidancePreset.softLate.cfgInterval.start == 0.0)
+    #expect(GuidancePreset.softLate.cfgInterval.end == 0.6)
+    #expect(GuidancePreset.softLate.guidanceScaleOverride == 6.0)
+    #expect(GuidancePreset.softLate.overridesGuidanceScale)
+    #expect(GuidancePreset.softLate.effectiveGuidanceScale(userValue: 7.5) == 6.0)
+    #expect(GuidancePreset.constant.effectiveGuidanceScale(userValue: 7.5) == 7.5)
+}
+
+@Test func guidancePresetXLRecipePrefersConstant() {
+    #expect(GuidancePreset.defaultSelection(isXLContext: false) == .softLate)
+    #expect(GuidancePreset.defaultSelection(isXLContext: true) == .constant)
+    #expect(
+        GuidancePreset.applyingXLRecipeIfNeeded(current: .softLate, isXLContext: true) == .constant
+    )
+    #expect(
+        GuidancePreset.applyingXLRecipeIfNeeded(current: .softLate, isXLContext: false) == .softLate
+    )
+    #expect(
+        GuidancePreset.applyingXLRecipeIfNeeded(current: .midToLate, isXLContext: true) == .midToLate
+    )
+    #expect(
+        GuidancePreset.applyingXLRecipeIfNeeded(current: .constant, isXLContext: true) == .constant
+    )
+}
+
 @Test func peftBaseModelInferencePreservesXLVariant() {
     #expect(
         PEFTKeyRemapper.resolveBaseModelID(from: "ACE-Step/acestep-v15-xl-turbo")
@@ -2605,8 +2631,8 @@ private func traceForComparison(
             guidanceScale: 6,
             guidancePreset: "softLate",
             guidancePresetName: "Soft Late",
-            cfgIntervalStart: 0.3,
-            cfgIntervalEnd: 1.0,
+            cfgIntervalStart: 0.0,
+            cfgIntervalEnd: 0.6,
             precision: "float32",
             stepsOverride: nil,
             shiftOverride: nil,

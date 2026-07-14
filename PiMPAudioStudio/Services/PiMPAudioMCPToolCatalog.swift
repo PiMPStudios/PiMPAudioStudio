@@ -574,7 +574,7 @@ enum MCPToolCatalog {
                 "guidancePreset": [
                     "type": "string",
                     "enum": ["constant", "lateEmphasis", "midToLate", "softLate"],
-                    "description": "Guidance schedule preset. Defaults to softLate."
+                    "description": "Guidance schedule preset. Defaults to softLate for non-XL ACE-Step models and constant for XL DiT / XL adapters."
                 ],
                 "method": [
                     "type": "string",
@@ -642,7 +642,7 @@ enum MCPToolCatalog {
                 "guidancePreset": [
                     "type": "string",
                     "enum": ["constant", "lateEmphasis", "midToLate", "softLate"],
-                    "description": "Guidance schedule preset. Defaults to softLate."
+                    "description": "Guidance schedule preset. Defaults to softLate for non-XL ACE-Step models and constant for XL DiT / XL adapters."
                 ],
                 "method": [
                     "type": "string",
