@@ -51,8 +51,13 @@ transport:
 
 The local MCP endpoint exposes these tools:
 
+### Read / inspect
+
 - `list_models`
 - `list_adapters`
+- `list_history`
+- `get_trace`
+- `compare_traces`
 - `training_status`
 - `list_training_datasets`
 - `list_training_runs`
@@ -60,23 +65,73 @@ The local MCP endpoint exposes these tools:
 - `inspect_training_run`
 - `compare_training_runs`
 - `tail_training_log`
-- `training_preflight`
-- `start_training`
-- `stop_training`
-- `list_history`
-- `get_trace`
-- `compare_traces`
-- `enhance_prompt`
-- `write_lyrics`
+- `tail_diagnostics_log`
 - `generation_status`
 - `editor_status`
+- `list_operations`
+- `get_operation`
+- `runpod_status`
+- `remote_training_job_status`
+
+### Intelligence
+
+- `enhance_prompt`
+- `write_lyrics`
+
+### Generation
+
+- `apply_adapter`
+- `generate`
+- `generate_song`
+- `mark_preferred_take`
+- `cancel_generation`
+- `run_adapter_audition`
+
+### Editor
+
 - `load_editor_audio`
 - `submit_editor_inpaint`
 - `apply_editor_effect_chain`
 - `render_editor_audio`
-- `list_operations`
-- `get_operation`
+
+### Local training
+
+- `training_preflight`
+- `start_training`
+- `stop_training`
+
+### Datasets
+
+- `build_training_dataset`
+- `enrich_training_dataset`
+- `update_training_dataset_review`
+
+### Adapters / models / library
+
+- `import_adapter`
+- `delete_adapter`
+- `merge_adapters`
+- `download_model`
+- `set_active_model`
+- `delete_history_entries`
+- `save_generation_preset`
+- `delete_generation_preset`
+- `set_verbose_diagnostics`
+
+### Remote GPU
+
+- `refresh_runpod_launch_options`
+- `launch_runpod_pod` (supports optional `region` / `dataCenterIDs`)
+- `stop_runpod_pod`
+- `create_remote_training_job`
+- `upload_remote_training_job`
+- `start_remote_training_job`
+- `pull_remote_training_job`
+
+### Operations / cleanup
+
 - `cancel_operation`
+- `release_memory`
 
 `enhance_prompt` and `write_lyrics` call the same local/API
 intelligence services used by the Generate view. They return text only and do
@@ -235,6 +290,23 @@ memory counters.
 
 Legacy `anvil.` and `anvil_` tool prefixes are no longer part of the public MCP
 surface. Use the plain snake_case tool names listed above.
+
+### Remote GPU lifecycle tools
+
+The managed RunPod job path is also exposed for agents:
+
+1. `create_remote_training_job` — export a reviewed package + `remote_job.json` zip (`dryRun` default).
+2. `launch_runpod_pod` — create Secure Cloud capacity (`dryRun` default; optional `region`).
+3. `upload_remote_training_job` — SCP job zip + portable worker (confirm).
+4. `start_remote_training_job` — start detached setup/training (confirm).
+5. `remote_training_job_status` — poll phase/log tail (read-only).
+6. `pull_remote_training_job` — download `remote_artifacts` and import the adapter (confirm).
+7. `stop_runpod_pod` — terminate/delete the pod (confirm).
+
+SSH private keys and RunPod API keys remain UI/Keychain-managed (not MCP-writable).
+Pass `sshKeyPath` only when the app already has a readable key, or after the user
+configured one in **Build → Training → Remote GPU**.
+
 
 ## Resources
 

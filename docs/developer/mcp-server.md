@@ -75,18 +75,46 @@ scripts/smoke-pimpaudio-mcp.sh
 Supported DSP effect names: `trimToSelection`, `deleteSelection`, `fadeIn`,
 `fadeOut`, `normalize`, `eq`, `reverb`, `timeStretch`, `pitchShift`.
 
-### Training / remote
+### Training / datasets
 
 - `training_preflight`
 - `start_training` (default `dryRun: true`)
 - `stop_training`
+- `build_training_dataset` (default dry-run; operation when submitted)
+- `enrich_training_dataset` (default dry-run; operation when submitted)
+- `update_training_dataset_review` (confirm)
+
+### Adapters / models / library
+
+- `import_adapter`, `delete_adapter`, `merge_adapters`
+- `download_model` (default dry-run; operation when submitted)
+- `set_active_model`
+- `delete_history_entries`
+- `save_generation_preset`, `delete_generation_preset`
+- `set_verbose_diagnostics`, `tail_diagnostics_log`
+- `cancel_generation`, `run_adapter_audition`
+
+### Remote GPU lifecycle
+
 - `refresh_runpod_launch_options`
-- `launch_runpod_pod` (default dry-run; billable when confirmed)
+- `launch_runpod_pod` (default dry-run; optional `region` / `dataCenterIDs`)
 - `stop_runpod_pod` (DELETE pod, not pause)
+- `create_remote_training_job` (default dry-run)
+- `upload_remote_training_job` (confirm; uses app-configured SSH key or `sshKeyPath`)
+- `start_remote_training_job` (confirm)
+- `remote_training_job_status` (read-only monitor)
+- `pull_remote_training_job` (confirm; optional adapter import)
 
 ### Cleanup
 
 - `release_memory`
+
+Implementation files for the expansion:
+
+- `PiMPAudioCommandFacade+RemoteJobs.swift`
+- `PiMPAudioCommandFacade+MCPExtensions.swift`
+- `PiMPAudioMCPToolCatalog.swift`
+- `PiMPAudioMCPServer.swift`
 
 Legacy `anvil.` / `anvil_` prefixes are not part of the public surface.
 

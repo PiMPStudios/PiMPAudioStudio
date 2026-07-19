@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		01A8F4D37E3C42D6B1C9A501 /* remote-worker in Resources */ = {isa = PBXBuildFile; fileRef = 01A8F4D37E3C42D6B1C9A502 /* remote-worker */; };
 		02E720C4E915E4FC5E80E083 /* AdapterStackManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 170EDAB12E02A75BD53997D2 /* AdapterStackManager.swift */; };
 		02E87C9D466A616553A78B5F /* DSPParameters.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AC731FD1A3D2361C508EC75 /* DSPParameters.swift */; };
 		03BFFDD33F2CE2AAD253E055 /* MLX in Frameworks */ = {isa = PBXBuildFile; productRef = D9661A97DE1522B5DE5D2159 /* MLX */; };
@@ -60,6 +59,7 @@
 		64C91B9A1A1482C9CE977974 /* PiMPAudioCommandFacade+Shared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D40B83A3B8493CBC51BC696 /* PiMPAudioCommandFacade+Shared.swift */; };
 		65CFCDFCBE6F8226103415F6 /* AudioBufferConverter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5F6F3673B806F9E1BB30F8D /* AudioBufferConverter.swift */; };
 		68DACFCA368B411E0CB322F5 /* HistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14DF3990C64F292DEA3A1EE5 /* HistoryStore.swift */; };
+		6A145594A7A4945ED4CD19F2 /* DSPTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54540F1B0DDF28D75FB0BF77 /* DSPTests.swift */; };
 		6C58B852AD2E5FF841A34E0B /* DSPProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AD283BC85D582825E3DBDE3 /* DSPProcessor.swift */; };
 		6D493886A691119BFC271CE6 /* TrainingManifest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9764574A837708EFE458372A /* TrainingManifest.swift */; };
 		76641356B5E98E279811359B /* SimpleDSP.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74C37138F6C7BE12E3F7715E /* SimpleDSP.swift */; };
@@ -68,7 +68,6 @@
 		7B6CFE439B669FBC583FB990 /* GenerationPreset.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47EED7870B5DC4BB1B4785C1 /* GenerationPreset.swift */; };
 		7CAE001CD378550D5C10FFE3 /* MLXNN in Frameworks */ = {isa = PBXBuildFile; productRef = F2617C3869BA9ABCCC55CD83 /* MLXNN */; };
 		7DA9CFAF67A7E0F061366D4C /* SourceSeparationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 394C36D243808316A9A70117 /* SourceSeparationService.swift */; };
-		7F2C8E53D1C24042A9293B1C /* DSPTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C8585CD0F8C459781E3A3B5 /* DSPTests.swift */; };
 		800488AC6B61AE45396C8D6D /* LocalFilesImportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED69726963E9E51F4E929435 /* LocalFilesImportSheet.swift */; };
 		80E9ECE6088D9C10C861C072 /* DSPPaletteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07F5FC8C81BD5A3CE53323A6 /* DSPPaletteView.swift */; };
 		826B37BED332D91C3DAEC15D /* XAILyricWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18C68CE5111CC93295CD7ADF /* XAILyricWriter.swift */; };
@@ -77,6 +76,7 @@
 		8378730F5910EC7809F5FB3D /* GenerationRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = A98FE13318125AE341A28854 /* GenerationRequest.swift */; };
 		84A6DC12829EC57B2B79F640 /* MergeSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5188E7D541F36EB4421F2DC5 /* MergeSheet.swift */; };
 		86BBD017EB5D967B8A836829 /* GenerationTraceComparator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E9D5E74344ECD70EDE5DD2F /* GenerationTraceComparator.swift */; };
+		88199EF4E35EDE360F3EB179 /* PiMPAudioCommandFacade+RemoteJobs.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8E45FD26F8223B24DC871EB /* PiMPAudioCommandFacade+RemoteJobs.swift */; };
 		89F4DFFD187D886658A57440 /* PiMPAudioCommandFacade.swift in Sources */ = {isa = PBXBuildFile; fileRef = D86270EFEFBCD098089A4A29 /* PiMPAudioCommandFacade.swift */; };
 		8BD6918D0C3D269DAFF24309 /* LocalDatasetEnrichmentService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2586CD181CDD97D6353D448 /* LocalDatasetEnrichmentService.swift */; };
 		92928B1D3C508CAC75377CAB /* EditorService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA120575D5C225BFB3148920 /* EditorService.swift */; };
@@ -103,6 +103,7 @@
 		C81C2E0DD27E3B4C15A74216 /* WSOLAProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0BAE2D98D7CB4D300D75CCF /* WSOLAProcessor.swift */; };
 		C8D1DDB54EC88445DC914C24 /* PiMPAudioCommandFacade+Operations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C7E7DE0C82D48484AACC381 /* PiMPAudioCommandFacade+Operations.swift */; };
 		CA2D2590A6B840D225550B6E /* PitchShiftControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0258ADFE79C7081A0E21313D /* PitchShiftControlView.swift */; };
+		CE551080CDE22BDFCA7C873C /* PiMPAudioCommandFacade+MCPExtensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62DF9DA9C0DC84D0C3CCAE0F /* PiMPAudioCommandFacade+MCPExtensions.swift */; };
 		D40862C7EEC3480CDEF32BE6 /* MLXNN in Frameworks */ = {isa = PBXBuildFile; productRef = EA965B8EEA2CED94FC7C3D6E /* MLXNN */; };
 		D416F5AFC82DAA00C55334D2 /* AdaptersSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B2F09BDCEDAF886F83A9186 /* AdaptersSettingsView.swift */; };
 		D4B8839DE8DCEC1070FEFACF /* LiveGenerationTrace.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4331AE5019A96224C031C32B /* LiveGenerationTrace.swift */; };
@@ -141,7 +142,6 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		01A8F4D37E3C42D6B1C9A502 /* remote-worker */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "remote-worker"; sourceTree = SOURCE_ROOT; };
 		0112B72B90B6F4C1FD66A04C /* CommunityBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommunityBrowserView.swift; sourceTree = "<group>"; };
 		0258ADFE79C7081A0E21313D /* PitchShiftControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PitchShiftControlView.swift; sourceTree = "<group>"; };
 		0289E58F6A0E77CDC343102A /* AdapterStackView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdapterStackView.swift; sourceTree = "<group>"; };
@@ -165,7 +165,6 @@
 		1FD4AC7DB697F3ACB20931D7 /* PiMPAudioCommandFacade+Training.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PiMPAudioCommandFacade+Training.swift"; sourceTree = "<group>"; };
 		237C151BAB3460455E69B2E2 /* AVAudioEngineDSP.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AVAudioEngineDSP.swift; sourceTree = "<group>"; };
 		23E3669212635DA76F1F31BB /* ACEStepGenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ACEStepGenerationService.swift; sourceTree = "<group>"; };
-		2C8585CD0F8C459781E3A3B5 /* DSPTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DSPTests.swift; sourceTree = "<group>"; };
 		2C8BC398F0D28BB81BCFE15B /* ReverbControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReverbControlView.swift; sourceTree = "<group>"; };
 		2CED922964E51FCBD115D467 /* CoverSongCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverSongCoordinator.swift; sourceTree = "<group>"; };
 		2D8EB60B0CF7EDDFCCDBDC10 /* PiMPAudioMCPToolCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiMPAudioMCPToolCatalog.swift; sourceTree = "<group>"; };
@@ -193,8 +192,10 @@
 		5206016A73213A0A88DFA08A /* PiMPAudioStudio.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PiMPAudioStudio.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		527FF7C333039F09DDAFD004 /* OpenAILyricWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAILyricWriter.swift; sourceTree = "<group>"; };
 		52C8C25A4491970DEAAAFCA4 /* DownloadProgressRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadProgressRow.swift; sourceTree = "<group>"; };
+		54540F1B0DDF28D75FB0BF77 /* DSPTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DSPTests.swift; sourceTree = "<group>"; };
 		571F4E36A931A0AB27761F6E /* YouTubeImportSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouTubeImportSheet.swift; sourceTree = "<group>"; };
 		5837185DAC23502A0971293B /* PiMPAudioCommandFacade+Editor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PiMPAudioCommandFacade+Editor.swift"; sourceTree = "<group>"; };
+		62DF9DA9C0DC84D0C3CCAE0F /* PiMPAudioCommandFacade+MCPExtensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PiMPAudioCommandFacade+MCPExtensions.swift"; sourceTree = "<group>"; };
 		6A600FB041528B3B4F141941 /* GenerationAnalyzerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationAnalyzerView.swift; sourceTree = "<group>"; };
 		6F8CB5A74714F176FCF6989C /* AdapterRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdapterRegistry.swift; sourceTree = "<group>"; };
 		6FB702EAAC8A01AD7E5D790A /* YouTubeDatasetBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouTubeDatasetBuilder.swift; sourceTree = "<group>"; };
@@ -256,6 +257,7 @@
 		ED4AC7C94D81749A9705316C /* ProviderAccessStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderAccessStoreTests.swift; sourceTree = "<group>"; };
 		ED69726963E9E51F4E929435 /* LocalFilesImportSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalFilesImportSheet.swift; sourceTree = "<group>"; };
 		F3FDF1309A57FC7B5D92D13A /* PresetStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetStore.swift; sourceTree = "<group>"; };
+		F8E45FD26F8223B24DC871EB /* PiMPAudioCommandFacade+RemoteJobs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PiMPAudioCommandFacade+RemoteJobs.swift"; sourceTree = "<group>"; };
 		FC09327803C8A79922A3B4F2 /* HistoryStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryStoreTests.swift; sourceTree = "<group>"; };
 		FDAD1DFCE24C8AC8940CB518 /* AudioPlayerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayerService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -349,7 +351,9 @@
 				D86270EFEFBCD098089A4A29 /* PiMPAudioCommandFacade.swift */,
 				5837185DAC23502A0971293B /* PiMPAudioCommandFacade+Editor.swift */,
 				7EFFCF4B91A3FC2C3F0FC103 /* PiMPAudioCommandFacade+Generation.swift */,
+				62DF9DA9C0DC84D0C3CCAE0F /* PiMPAudioCommandFacade+MCPExtensions.swift */,
 				4C7E7DE0C82D48484AACC381 /* PiMPAudioCommandFacade+Operations.swift */,
+				F8E45FD26F8223B24DC871EB /* PiMPAudioCommandFacade+RemoteJobs.swift */,
 				519F17EA3A81614AFA7C1649 /* PiMPAudioCommandFacade+Resources.swift */,
 				7D40B83A3B8493CBC51BC696 /* PiMPAudioCommandFacade+Shared.swift */,
 				1FD4AC7DB697F3ACB20931D7 /* PiMPAudioCommandFacade+Training.swift */,
@@ -379,7 +383,6 @@
 			isa = PBXGroup;
 			children = (
 				D9EBA06FC3F304493C6F64E0 /* Packages */,
-				01A8F4D37E3C42D6B1C9A502 /* remote-worker */,
 				8861DC53940F9F1256ECB019 /* PiMPAudioStudio */,
 				FA8D499C4F09BA3EACC21F8D /* PiMPAudioStudioTests */,
 				80CCF94F4D7410743DE3CDE0 /* Products */,
@@ -521,7 +524,7 @@
 			isa = PBXGroup;
 			children = (
 				41A93059238ED07185F25CF5 /* AppStateTests.swift */,
-				2C8585CD0F8C459781E3A3B5 /* DSPTests.swift */,
+				54540F1B0DDF28D75FB0BF77 /* DSPTests.swift */,
 				FC09327803C8A79922A3B4F2 /* HistoryStoreTests.swift */,
 				ED4AC7C94D81749A9705316C /* ProviderAccessStoreTests.swift */,
 				A0C92036F078AF469DFB2533 /* RunPodServiceTests.swift */,
@@ -538,7 +541,6 @@
 			buildPhases = (
 				4DEF366694A95ACD88B82332 /* Sources */,
 				91E5BD096F55D84951B7CB80 /* Frameworks */,
-				01A8F4D37E3C42D6B1C9A503 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -614,24 +616,13 @@
 		};
 /* End PBXProject section */
 
-/* Begin PBXResourcesBuildPhase section */
-		01A8F4D37E3C42D6B1C9A503 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				01A8F4D37E3C42D6B1C9A501 /* remote-worker in Resources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXResourcesBuildPhase section */
-
 /* Begin PBXSourcesBuildPhase section */
 		2BCFB7F4F4DBBB74BCF2D354 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 				247E8913C3C2CC1E309EA7A2 /* AppStateTests.swift in Sources */,
-				7F2C8E53D1C24042A9293B1C /* DSPTests.swift in Sources */,
+				6A145594A7A4945ED4CD19F2 /* DSPTests.swift in Sources */,
 				2D8016252183EB12AD027E62 /* HistoryStoreTests.swift in Sources */,
 				7A7B53861467729A61453BBC /* ProviderAccessStoreTests.swift in Sources */,
 				F60961C7902C664688989A30 /* RunPodServiceTests.swift in Sources */,
@@ -713,7 +704,9 @@
 				BAB9F41373E0AC3D8082158D /* PEFTKeyRemapper.swift in Sources */,
 				769B29FDD2EAF4D6F2BF421D /* PiMPAudioCommandFacade+Editor.swift in Sources */,
 				FFC8C8D96CC6842FF023CAC6 /* PiMPAudioCommandFacade+Generation.swift in Sources */,
+				CE551080CDE22BDFCA7C873C /* PiMPAudioCommandFacade+MCPExtensions.swift in Sources */,
 				C8D1DDB54EC88445DC914C24 /* PiMPAudioCommandFacade+Operations.swift in Sources */,
+				88199EF4E35EDE360F3EB179 /* PiMPAudioCommandFacade+RemoteJobs.swift in Sources */,
 				EA1E6832453976AD680F7B96 /* PiMPAudioCommandFacade+Resources.swift in Sources */,
 				64C91B9A1A1482C9CE977974 /* PiMPAudioCommandFacade+Shared.swift in Sources */,
 				FC945D0A45F7DAB3A4BB6D5D /* PiMPAudioCommandFacade+Training.swift in Sources */,

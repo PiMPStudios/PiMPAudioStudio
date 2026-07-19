@@ -31,19 +31,22 @@ High-level tool groups:
 
 | Area | Examples |
 | --- | --- |
-| Models & adapters | `list_models`, `list_adapters`, `apply_adapter` |
-| Generation | `generate`, `generate_song`, `generation_status` |
-| History & traces | `list_history`, `get_trace`, `compare_traces`, `mark_preferred_take` |
+| Models & adapters | `list_models`, `list_adapters`, `apply_adapter`, `import_adapter`, `delete_adapter`, `merge_adapters`, `download_model`, `set_active_model` |
+| Generation | `generate`, `generate_song`, `generation_status`, `cancel_generation`, `run_adapter_audition` |
+| History & traces | `list_history`, `get_trace`, `compare_traces`, `mark_preferred_take`, `delete_history_entries` |
 | Intelligence | `enhance_prompt`, `write_lyrics` |
 | Editor | `load_editor_audio`, `submit_editor_inpaint`, `apply_editor_effect_chain`, `render_editor_audio` |
+| Datasets | `build_training_dataset`, `enrich_training_dataset`, `update_training_dataset_review`, inspect tools |
 | Local training | `training_preflight`, `start_training`, `stop_training`, inspect/compare tools |
-| RunPod | `runpod_status`, `launch_runpod_pod`, `stop_runpod_pod` |
+| Remote GPU | `runpod_status`, `launch_runpod_pod`, `create_remote_training_job`, `upload_remote_training_job`, `start_remote_training_job`, `remote_training_job_status`, `pull_remote_training_job`, `stop_runpod_pod` |
+| Library / diagnostics | `save_generation_preset`, `delete_generation_preset`, `set_verbose_diagnostics`, `tail_diagnostics_log` |
 | Operations | `list_operations`, `get_operation`, `cancel_operation` |
 | Cleanup | `release_memory` |
 
 Long-running work returns an `operationID` you can poll. Mutating tools default
 to safe modes (`dryRun: true` where applicable) and require explicit confirmation
-or MCP form elicitation before billable/destructive actions.
+or MCP form elicitation before billable/destructive actions. API keys and SSH
+private keys stay UI/Keychain-managed and are not written through MCP.
 
 ## Safety Model
 

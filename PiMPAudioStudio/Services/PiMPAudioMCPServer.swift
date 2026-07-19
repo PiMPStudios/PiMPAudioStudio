@@ -909,6 +909,46 @@ private final class PiMPAudioMCPSDKBridge {
             return try await facade.launchRunPodPod(arguments: arguments)
         case "stop_runpod_pod":
             return try await facade.stopRunPodPod(arguments: arguments)
+        case "create_remote_training_job":
+            return try await facade.createRemoteTrainingJob(arguments: arguments)
+        case "upload_remote_training_job":
+            return try await facade.uploadRemoteTrainingJob(arguments: arguments)
+        case "start_remote_training_job":
+            return try await facade.startRemoteTrainingJob(arguments: arguments)
+        case "remote_training_job_status":
+            return try await facade.remoteTrainingJobStatus(arguments: arguments)
+        case "pull_remote_training_job":
+            return try await facade.pullRemoteTrainingJob(arguments: arguments)
+        case "build_training_dataset":
+            return try await facade.buildTrainingDataset(arguments: arguments)
+        case "enrich_training_dataset":
+            return try await facade.enrichTrainingDataset(arguments: arguments)
+        case "update_training_dataset_review":
+            return try facade.updateTrainingDatasetReview(arguments: arguments)
+        case "import_adapter":
+            return try await facade.importAdapter(arguments: arguments)
+        case "delete_adapter":
+            return try facade.deleteAdapter(arguments: arguments)
+        case "merge_adapters":
+            return try facade.mergeAdapters(arguments: arguments)
+        case "download_model":
+            return try await facade.downloadModel(arguments: arguments)
+        case "set_active_model":
+            return try await facade.setActiveModel(arguments: arguments)
+        case "delete_history_entries":
+            return try facade.deleteHistoryEntries(arguments: arguments)
+        case "save_generation_preset":
+            return try facade.saveGenerationPreset(arguments: arguments)
+        case "delete_generation_preset":
+            return try facade.deleteGenerationPreset(arguments: arguments)
+        case "set_verbose_diagnostics":
+            return try facade.setVerboseDiagnostics(arguments: arguments)
+        case "tail_diagnostics_log":
+            return try facade.tailDiagnosticsLog(arguments: arguments)
+        case "cancel_generation":
+            return try facade.cancelGeneration(arguments: arguments)
+        case "run_adapter_audition":
+            return try await facade.runAdapterAudition(arguments: arguments)
         case "list_history":
             return facade.listHistory(limit: intValue(arguments["limit"]) ?? 25)
         case "get_trace":
@@ -1014,6 +1054,22 @@ private final class PiMPAudioMCPSDKBridge {
              "stop_training",
              "launch_runpod_pod",
              "stop_runpod_pod",
+             "create_remote_training_job",
+             "upload_remote_training_job",
+             "start_remote_training_job",
+             "pull_remote_training_job",
+             "build_training_dataset",
+             "enrich_training_dataset",
+             "update_training_dataset_review",
+             "import_adapter",
+             "delete_adapter",
+             "merge_adapters",
+             "download_model",
+             "set_active_model",
+             "delete_history_entries",
+             "save_generation_preset",
+             "delete_generation_preset",
+             "run_adapter_audition",
              "release_memory":
             return true
         default:
@@ -1022,12 +1078,15 @@ private final class PiMPAudioMCPSDKBridge {
     }
 
     private func isDryRun(toolName: String, arguments: [String: Any]) -> Bool {
-        if toolName == "start_training",
-           arguments["dryRun"] == nil,
-           arguments["validateOnly"] == nil {
-            return true
-        }
-        if toolName == "launch_runpod_pod",
+        let dryRunDefaultTools: Set<String> = [
+            "start_training",
+            "launch_runpod_pod",
+            "create_remote_training_job",
+            "build_training_dataset",
+            "enrich_training_dataset",
+            "download_model"
+        ]
+        if dryRunDefaultTools.contains(toolName),
            arguments["dryRun"] == nil,
            arguments["validateOnly"] == nil {
             return true
@@ -1085,6 +1144,38 @@ private final class PiMPAudioMCPSDKBridge {
             return "PiMP Audio Studio wants to launch a billable RunPod GPU pod. Approve this action?"
         case "stop_runpod_pod":
             return "PiMP Audio Studio wants to terminate/delete a RunPod GPU pod. Approve this action?"
+        case "create_remote_training_job":
+            return "PiMP Audio Studio wants to export a remote training job zip. Approve this action?"
+        case "upload_remote_training_job":
+            return "PiMP Audio Studio wants to upload a remote job and worker to a RunPod pod. Approve this action?"
+        case "start_remote_training_job":
+            return "PiMP Audio Studio wants to start remote worker setup/training on a RunPod pod. Approve this action?"
+        case "pull_remote_training_job":
+            return "PiMP Audio Studio wants to download remote training artifacts and import the adapter. Approve this action?"
+        case "build_training_dataset":
+            return "PiMP Audio Studio wants to build a local training dataset package. Approve this action?"
+        case "enrich_training_dataset":
+            return "PiMP Audio Studio wants to enrich a training dataset. Approve this action?"
+        case "update_training_dataset_review":
+            return "PiMP Audio Studio wants to update dataset review metadata. Approve this action?"
+        case "import_adapter":
+            return "PiMP Audio Studio wants to import an adapter into the local registry. Approve this action?"
+        case "delete_adapter":
+            return "PiMP Audio Studio wants to delete an installed adapter. Approve this action?"
+        case "merge_adapters":
+            return "PiMP Audio Studio wants to merge two LoRA adapters. Approve this action?"
+        case "download_model":
+            return "PiMP Audio Studio wants to download a model. Approve this action?"
+        case "set_active_model":
+            return "PiMP Audio Studio wants to change the active model. Approve this action?"
+        case "delete_history_entries":
+            return "PiMP Audio Studio wants to delete history entries. Approve this action?"
+        case "save_generation_preset":
+            return "PiMP Audio Studio wants to save a generation preset. Approve this action?"
+        case "delete_generation_preset":
+            return "PiMP Audio Studio wants to delete a generation preset. Approve this action?"
+        case "run_adapter_audition":
+            return "PiMP Audio Studio wants to run fixed-seed adapter audition snapshots. Approve this action?"
         case "release_memory":
             return "PiMP Audio Studio wants to cancel active generation if needed, unload model weights, and flush MLX GPU cache. Approve this action?"
         default:

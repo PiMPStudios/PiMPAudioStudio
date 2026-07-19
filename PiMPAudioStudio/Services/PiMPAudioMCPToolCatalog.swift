@@ -246,6 +246,15 @@ enum MCPToolCatalog {
                     "type": "string",
                     "description": "RunPod GPU type id or display name, for example NVIDIA GeForce RTX 4090."
                 ],
+                "region": [
+                    "type": "string",
+                    "description": "Optional region filter for Secure Cloud launch data centers: any, asia, northAmerica, europe, oceania."
+                ],
+                "dataCenterIDs": [
+                    "type": "array",
+                    "items": ["type": "string"],
+                    "description": "Optional explicit RunPod data center ids. Overrides region when provided."
+                ],
                 "templateID": [
                     "type": "string",
                     "description": "Optional RunPod template id. If omitted with no imageName, PiMP Audio Studio tries the recommended official RunPod PyTorch pod template."
@@ -1273,6 +1282,606 @@ enum MCPToolCatalog {
                 "reason": [
                     "type": "string",
                     "description": "Optional human-readable cancellation reason."
+                ]
+            ]
+        ),
+
+        tool(
+            name: "create_remote_training_job",
+            title: "Create Remote Training Job",
+            description: "Validate or export a remote training job zip from a reviewed dataset package. Defaults to dryRun: true; actual export requires dryRun: false plus confirm: true or MCP form approval.",
+            properties: [
+                "path": [
+                    "type": "string",
+                    "description": "Dataset package path."
+                ],
+                "dataset": [
+                    "type": "string",
+                    "description": "Dataset id, folder name, or partial name."
+                ],
+                "id": [
+                    "type": "string",
+                    "description": "Alias for dataset."
+                ],
+                "kind": [
+                    "type": "string",
+                    "enum": ["lora", "lokr"],
+                    "description": "Adapter kind. Defaults to lora."
+                ],
+                "recipe": [
+                    "type": "string",
+                    "enum": ["narrow", "wide"],
+                    "description": "Remote recipe. Defaults to wide."
+                ],
+                "bundle": [
+                    "type": "string",
+                    "enum": ["full_mix", "vocals", "instrumental"],
+                    "description": "Training bundle. Defaults to full_mix."
+                ],
+                "baseModel": [
+                    "type": "string",
+                    "description": "xlSFT, xlBase, or xlTurbo. Defaults to xlSFT."
+                ],
+                "adapterName": [
+                    "type": "string",
+                    "description": "Friendly adapter name for the remote job."
+                ],
+                "epochs": [
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Training epochs."
+                ],
+                "saveEvery": [
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Checkpoint save interval."
+                ],
+                "seed": [
+                    "type": "integer",
+                    "description": "Training seed. Defaults to 42."
+                ],
+                "destinationPath": [
+                    "type": "string",
+                    "description": "Output zip path or parent directory."
+                ],
+                "dryRun": [
+                    "type": "boolean",
+                    "description": "Defaults to true."
+                ],
+                "confirm": [
+                    "type": "boolean",
+                    "description": "Required for actual export without elicitation."
+                ]
+            ]
+        ),
+        tool(
+            name: "upload_remote_training_job",
+            title: "Upload Remote Training Job",
+            description: "Upload a remote job zip and portable worker to a RunPod pod over SSH. Requires confirm: true or MCP form approval. SSH key must already be configured in the app or passed as sshKeyPath.",
+            required: ["podID"],
+            properties: [
+                "podID": [
+                    "type": "string",
+                    "description": "RunPod pod id."
+                ],
+                "archivePath": [
+                    "type": "string",
+                    "description": "Local remote job zip path. Defaults to last created archive."
+                ],
+                "sshKeyPath": [
+                    "type": "string",
+                    "description": "Optional private key path override."
+                ],
+                "confirm": [
+                    "type": "boolean",
+                    "description": "Required without elicitation."
+                ]
+            ]
+        ),
+        tool(
+            name: "start_remote_training_job",
+            title: "Start Remote Training Job",
+            description: "Start detached remote worker setup/training on a RunPod pod. Requires confirm: true or MCP form approval.",
+            required: ["podID"],
+            properties: [
+                "podID": [
+                    "type": "string",
+                    "description": "RunPod pod id."
+                ],
+                "archivePath": [
+                    "type": "string",
+                    "description": "Local remote job zip path."
+                ],
+                "sshKeyPath": [
+                    "type": "string",
+                    "description": "Optional private key path override."
+                ],
+                "confirm": [
+                    "type": "boolean",
+                    "description": "Required without elicitation."
+                ]
+            ]
+        ),
+        tool(
+            name: "remote_training_job_status",
+            title: "Remote Training Job Status",
+            description: "Return remote worker job phase/logs for a pod and optional archive. Defaults to refreshing/monitoring when podID and archivePath are available.",
+            properties: [
+                "podID": [
+                    "type": "string",
+                    "description": "RunPod pod id."
+                ],
+                "archivePath": [
+                    "type": "string",
+                    "description": "Local remote job zip path."
+                ],
+                "sshKeyPath": [
+                    "type": "string",
+                    "description": "Optional private key path override."
+                ],
+                "refresh": [
+                    "type": "boolean",
+                    "description": "Refresh/monitor remote job. Defaults to true when pod and archive are present."
+                ],
+                "refreshPods": [
+                    "type": "boolean",
+                    "description": "Also refresh pod list."
+                ]
+            ]
+        ),
+        tool(
+            name: "pull_remote_training_job",
+            title: "Pull Remote Training Job",
+            description: "Download remote_artifacts from a pod and optionally import the final adapter. Requires confirm: true or MCP form approval.",
+            required: ["podID"],
+            properties: [
+                "podID": [
+                    "type": "string",
+                    "description": "RunPod pod id."
+                ],
+                "archivePath": [
+                    "type": "string",
+                    "description": "Local remote job zip path."
+                ],
+                "sshKeyPath": [
+                    "type": "string",
+                    "description": "Optional private key path override."
+                ],
+                "destinationDirectory": [
+                    "type": "string",
+                    "description": "Parent directory for pullback. Defaults beside the job zip."
+                ],
+                "importAdapter": [
+                    "type": "boolean",
+                    "description": "Import final_adapter locally. Defaults to true."
+                ],
+                "confirm": [
+                    "type": "boolean",
+                    "description": "Required without elicitation."
+                ]
+            ]
+        ),
+        tool(
+            name: "build_training_dataset",
+            title: "Build Training Dataset",
+            description: "Build a local dataset package from source audio files/directories. Defaults to dryRun: true; actual builds require dryRun: false plus confirm: true and return an operationID.",
+            properties: [
+                "paths": [
+                    "type": "array",
+                    "items": ["type": "string"],
+                    "description": "Source audio file paths."
+                ],
+                "directories": [
+                    "type": "array",
+                    "items": ["type": "string"],
+                    "description": "Source directories to scan."
+                ],
+                "buildMode": [
+                    "type": "string",
+                    "enum": ["whole_tracks", "clip_extraction"],
+                    "description": "Defaults to whole_tracks."
+                ],
+                "datasetName": [
+                    "type": "string",
+                    "description": "Optional dataset name."
+                ],
+                "outputDirectory": [
+                    "type": "string",
+                    "description": "Output base directory."
+                ],
+                "clipLength": [
+                    "type": "number",
+                    "description": "Clip length seconds for extract mode."
+                ],
+                "clipsPerTrack": [
+                    "type": "integer",
+                    "description": "Clips per source in extract mode."
+                ],
+                "maxTotalClips": [
+                    "type": "integer",
+                    "description": "Max total clips."
+                ],
+                "samplingMode": [
+                    "type": "string",
+                    "description": "evenlySpread, sequential, or randomSeeded."
+                ],
+                "samplingSeed": [
+                    "type": "integer",
+                    "description": "Seed for random sampling."
+                ],
+                "dryRun": [
+                    "type": "boolean",
+                    "description": "Defaults to true."
+                ],
+                "confirm": [
+                    "type": "boolean",
+                    "description": "Required for actual build."
+                ]
+            ]
+        ),
+        tool(
+            name: "enrich_training_dataset",
+            title: "Enrich Training Dataset",
+            description: "Run dataset enrichment (captions/lyrics/stems). Defaults to dryRun: true; actual runs require dryRun: false plus confirm: true and return an operationID.",
+            properties: [
+                "path": [
+                    "type": "string",
+                    "description": "Dataset package path."
+                ],
+                "dataset": [
+                    "type": "string",
+                    "description": "Dataset id or name."
+                ],
+                "backend": [
+                    "type": "string",
+                    "enum": ["automatic", "lightweight", "native_ace"],
+                    "description": "Annotation backend."
+                ],
+                "createStems": [
+                    "type": "boolean",
+                    "description": "Create vocal/instrumental stems."
+                ],
+                "force": [
+                    "type": "boolean",
+                    "description": "Re-run even when cached."
+                ],
+                "dryRun": [
+                    "type": "boolean",
+                    "description": "Defaults to true."
+                ],
+                "confirm": [
+                    "type": "boolean",
+                    "description": "Required for actual enrichment."
+                ]
+            ]
+        ),
+        tool(
+            name: "update_training_dataset_review",
+            title: "Update Training Dataset Review",
+            description: "Update captions/lyrics/include/approve fields for a dataset clip or approve all included assets. Requires confirm: true or MCP form approval.",
+            properties: [
+                "path": [
+                    "type": "string",
+                    "description": "Dataset package path."
+                ],
+                "dataset": [
+                    "type": "string",
+                    "description": "Dataset id or name."
+                ],
+                "clipID": [
+                    "type": "string",
+                    "description": "Clip/asset id or filename."
+                ],
+                "caption": [
+                    "type": "string",
+                    "description": "Manual caption."
+                ],
+                "lyrics": [
+                    "type": "string",
+                    "description": "Manual lyrics."
+                ],
+                "includeInTraining": [
+                    "type": "boolean",
+                    "description": "Include clip in training plan."
+                ],
+                "approved": [
+                    "type": "boolean",
+                    "description": "Mark clip approved."
+                ],
+                "notes": [
+                    "type": "string",
+                    "description": "Review notes."
+                ],
+                "approveAllIncluded": [
+                    "type": "boolean",
+                    "description": "Approve every included clip."
+                ],
+                "confirm": [
+                    "type": "boolean",
+                    "description": "Required without elicitation."
+                ]
+            ]
+        ),
+        tool(
+            name: "import_adapter",
+            title: "Import Adapter",
+            description: "Import a local native/PEFT/Side-Step adapter folder into the registry. Requires confirm: true or MCP form approval.",
+            required: ["path"],
+            properties: [
+                "path": [
+                    "type": "string",
+                    "description": "Adapter folder path."
+                ],
+                "name": [
+                    "type": "string",
+                    "description": "Optional preferred adapter name."
+                ],
+                "confirm": [
+                    "type": "boolean",
+                    "description": "Required without elicitation."
+                ]
+            ]
+        ),
+        tool(
+            name: "delete_adapter",
+            title: "Delete Adapter",
+            description: "Delete an installed LoRA/LoKR adapter. Requires confirm: true or MCP form approval.",
+            required: ["id"],
+            properties: [
+                "id": [
+                    "type": "string",
+                    "description": "Adapter id or name."
+                ],
+                "confirm": [
+                    "type": "boolean",
+                    "description": "Required without elicitation."
+                ]
+            ]
+        ),
+        tool(
+            name: "merge_adapters",
+            title: "Merge Adapters",
+            description: "Merge two LoRA adapters into a new adapter. Requires confirm: true or MCP form approval.",
+            required: ["adapterA", "adapterB"],
+            properties: [
+                "adapterA": [
+                    "type": "string",
+                    "description": "First adapter id/name."
+                ],
+                "adapterB": [
+                    "type": "string",
+                    "description": "Second adapter id/name."
+                ],
+                "alpha": [
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "Blend weight on A. Defaults to 0.5."
+                ],
+                "name": [
+                    "type": "string",
+                    "description": "Merged adapter name."
+                ],
+                "confirm": [
+                    "type": "boolean",
+                    "description": "Required without elicitation."
+                ]
+            ]
+        ),
+        tool(
+            name: "download_model",
+            title: "Download Model",
+            description: "Download a registry model. Defaults to dryRun: true; actual download requires dryRun: false plus confirm: true and returns an operationID.",
+            required: ["id"],
+            properties: [
+                "id": [
+                    "type": "string",
+                    "description": "Model id or display name."
+                ],
+                "dryRun": [
+                    "type": "boolean",
+                    "description": "Defaults to true."
+                ],
+                "confirm": [
+                    "type": "boolean",
+                    "description": "Required for actual download."
+                ]
+            ]
+        ),
+        tool(
+            name: "set_active_model",
+            title: "Set Active Model",
+            description: "Activate a ready model for its category. Requires confirm: true or MCP form approval.",
+            required: ["id"],
+            properties: [
+                "id": [
+                    "type": "string",
+                    "description": "Model id or display name."
+                ],
+                "confirm": [
+                    "type": "boolean",
+                    "description": "Required without elicitation."
+                ]
+            ]
+        ),
+        tool(
+            name: "delete_history_entries",
+            title: "Delete History Entries",
+            description: "Delete selected history takes or all history. Requires confirm: true or MCP form approval.",
+            properties: [
+                "ids": [
+                    "type": "array",
+                    "items": ["type": "string"],
+                    "description": "History entry UUIDs or filenames."
+                ],
+                "deleteAll": [
+                    "type": "boolean",
+                    "description": "Delete every history entry."
+                ],
+                "confirm": [
+                    "type": "boolean",
+                    "description": "Required without elicitation."
+                ]
+            ]
+        ),
+        tool(
+            name: "save_generation_preset",
+            title: "Save Generation Preset",
+            description: "Save a named generation preset. Requires confirm: true or MCP form approval.",
+            required: ["name"],
+            properties: [
+                "name": [
+                    "type": "string",
+                    "description": "Preset name."
+                ],
+                "prompt": [
+                    "type": "string",
+                    "description": "Prompt text."
+                ],
+                "lyrics": [
+                    "type": "string",
+                    "description": "Lyrics text."
+                ],
+                "duration": [
+                    "type": "number",
+                    "description": "Duration seconds."
+                ],
+                "seed": [
+                    "type": "string",
+                    "description": "Seed text."
+                ],
+                "guidanceScale": [
+                    "type": "number",
+                    "description": "Guidance scale."
+                ],
+                "guidancePreset": [
+                    "type": "string",
+                    "description": "Guidance preset id."
+                ],
+                "mode": [
+                    "type": "string",
+                    "description": "music, soundFX, or ambient."
+                ],
+                "pipeline": [
+                    "type": "string",
+                    "description": "auto, aceStep, or stableAudio."
+                ],
+                "adapterID": [
+                    "type": "string",
+                    "description": "Optional adapter id."
+                ],
+                "coverStrength": [
+                    "type": "number",
+                    "description": "Cover strength."
+                ],
+                "confirm": [
+                    "type": "boolean",
+                    "description": "Required without elicitation."
+                ]
+            ]
+        ),
+        tool(
+            name: "delete_generation_preset",
+            title: "Delete Generation Preset",
+            description: "Delete a saved generation preset by id or name. Requires confirm: true or MCP form approval.",
+            required: ["id"],
+            properties: [
+                "id": [
+                    "type": "string",
+                    "description": "Preset id or name."
+                ],
+                "confirm": [
+                    "type": "boolean",
+                    "description": "Required without elicitation."
+                ]
+            ]
+        ),
+        tool(
+            name: "set_verbose_diagnostics",
+            title: "Set Verbose Diagnostics",
+            description: "Enable or disable verbose audio diagnostics logging.",
+            required: ["enabled"],
+            properties: [
+                "enabled": [
+                    "type": "boolean",
+                    "description": "true to enable AUDIODIAG file logging."
+                ]
+            ]
+        ),
+        tool(
+            name: "tail_diagnostics_log",
+            title: "Tail Diagnostics Log",
+            description: "Return recent AUDIODIAG lines. Unlike tail_training_log, defaults to unfiltered lines.",
+            properties: [
+                "limit": [
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 500,
+                    "description": "Max lines. Defaults to 120."
+                ],
+                "contains": [
+                    "type": "string",
+                    "description": "Optional case-insensitive filter."
+                ],
+                "fileName": [
+                    "type": "string",
+                    "description": "Optional diagnostics log file name."
+                ],
+                "path": [
+                    "type": "string",
+                    "description": "Optional full diagnostics log path."
+                ]
+            ]
+        ),
+        tool(
+            name: "cancel_generation",
+            title: "Cancel Generation",
+            description: "Cancel the active generation run through the same path as the Generate Cancel button.",
+            properties: [
+                "reason": [
+                    "type": "string",
+                    "description": "Optional cancellation reason."
+                ]
+            ]
+        ),
+        tool(
+            name: "run_adapter_audition",
+            title: "Run Adapter Audition",
+            description: "Render fixed-seed base/gain audition snapshots for an installed adapter. Requires confirm: true or MCP form approval and returns an operationID.",
+            required: ["id"],
+            properties: [
+                "id": [
+                    "type": "string",
+                    "description": "Adapter id or name."
+                ],
+                "seed": [
+                    "type": "integer",
+                    "description": "Fixed seed. Defaults to 42."
+                ],
+                "duration": [
+                    "type": "number",
+                    "description": "Snapshot duration seconds. Defaults to 30."
+                ],
+                "strengths": [
+                    "type": "array",
+                    "items": ["type": "string"],
+                    "description": "Gain ladder. Defaults to 1.0, 1.6, 2.0."
+                ],
+                "includeBase": [
+                    "type": "boolean",
+                    "description": "Include base generation. Defaults to true."
+                ],
+                "prompt": [
+                    "type": "string",
+                    "description": "Optional audition prompt."
+                ],
+                "lyrics": [
+                    "type": "string",
+                    "description": "Optional lyrics."
+                ],
+                "confirm": [
+                    "type": "boolean",
+                    "description": "Required without elicitation."
                 ]
             ]
         ),

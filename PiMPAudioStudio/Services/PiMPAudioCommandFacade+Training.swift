@@ -1696,16 +1696,55 @@ extension PiMPAudioCommandFacade {
             }
         }
 
+        var dataCenterIDs: [String] = []
+        if let explicitCenters = stringArrayValue(
+            arguments["dataCenterIDs"] ?? arguments["dataCenterIds"] ?? arguments["dataCenters"]
+        ), !explicitCenters.isEmpty {
+            dataCenterIDs = explicitCenters
+        } else if let regionRaw = stringValue(arguments["region"])?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+                  !regionRaw.isEmpty {
+            let region = try mcpRunPodRegion(from: regionRaw)
+            if service.gpuTypes.isEmpty || service.dataCenters.isEmpty {
+                await service.refreshLaunchOptions()
+            }
+            dataCenterIDs = service.launchDataCenterIDs(for: gpuType, in: region)
+        }
+
         let configuration = RunPodLaunchConfiguration(
             name: name?.isEmpty == false ? name! : runPodDefaultPodName(),
             templateID: templateID,
             imageName: imageName,
             gpuTypeID: gpuType,
+            dataCenterIDs: dataCenterIDs,
             interruptible: interruptible,
             containerDiskGB: containerDiskGB,
             volumeGB: volumeGB
         )
         return (configuration, recommendedTemplate, usedRecommendedTemplate)
+    }
+
+    private func mcpRunPodRegion(from raw: String) throws -> RunPodRegion {
+        let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        switch normalized {
+        case "any", "all", "global":
+            return .any
+        case "asia", "as":
+            return .asia
+        case "northamerica", "north_america", "north-america", "na", "us", "usa":
+            return .northAmerica
+        case "europe", "eu", "emea":
+            return .europe
+        case "oceania", "australia", "au", "apac":
+            return .oceania
+        default:
+            if let region = RunPodRegion(rawValue: raw) {
+                return region
+            }
+            throw PiMPAudioCommandFacadeError.invalidTrainingConfiguration(
+                "Unsupported region '\(raw)'. Use any, asia, northAmerica, europe, or oceania."
+            )
+        }
     }
 
     func runPodLaunchPayload(
