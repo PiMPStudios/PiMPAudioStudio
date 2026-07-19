@@ -204,14 +204,23 @@ struct DatasetClipReview: Identifiable {
         object["analysis"] = analysis
 
         let persistedReviewStatus = isApproved ? "approved" : (reviewStatus.isEmpty ? "needs_review" : reviewStatus)
-        let rawOutputs = ((object["annotation"] as? [String: Any])?["raw_output_files"] as? [String: Any] ?? [:])
+        let existingAnnotation = object["annotation"] as? [String: Any] ?? [:]
+        let rawOutputs = (existingAnnotation["raw_output_files"] as? [String: Any] ?? [:])
             .compactMapValues { $0 as? String }
+        let generationSettings = (existingAnnotation["generation_settings"] as? [String: Any] ?? [:])
+            .compactMapValues { value -> String? in
+                if let string = value as? String { return string }
+                if let number = value as? NSNumber { return number.stringValue }
+                return nil
+            }
         object["annotation"] = DatasetAnnotationMetadata(
             updatedAt: updatedAt,
             backend: DatasetAnnotationBackendDescriptor(
                 id: annotationBackend.isEmpty ? "manual" : annotationBackend,
                 modelID: annotationModelID,
-                modelRevision: annotationModelRevision
+                modelRevision: annotationModelRevision,
+                promptVersion: existingAnnotation["prompt_version"] as? String ?? "",
+                quantization: existingAnnotation["quantization"] as? String ?? ""
             ),
             captionSource: trimmedCaption.isEmpty ? "none" : (captionSource.isEmpty ? "manual" : captionSource),
             lyricsSource: trimmedLyrics.isEmpty ? "none" : (lyricsSource.isEmpty ? "manual" : lyricsSource),
@@ -219,6 +228,10 @@ struct DatasetClipReview: Identifiable {
             caption: trimmedCaption,
             lyrics: trimmedLyrics,
             reviewStatus: persistedReviewStatus,
+            promptVersion: existingAnnotation["prompt_version"] as? String ?? "",
+            quantization: existingAnnotation["quantization"] as? String ?? "",
+            generationSettings: generationSettings,
+            elapsedSeconds: (existingAnnotation["elapsed_seconds"] as? NSNumber)?.doubleValue,
             rawOutputFiles: rawOutputs,
             rawCaptionOutputFile: rawCaptionOutputFile,
             rawLyricsOutputFile: rawLyricsOutputFile
@@ -238,6 +251,32 @@ struct DatasetClipReview: Identifiable {
         let trimmedLyrics = lyrics.trimmingCharacters(in: .whitespacesAndNewlines)
         let language = language.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        let existingAnnotation = rawObject["annotation"] as? [String: Any] ?? [:]
+        let existingTranscription = rawObject["transcription"] as? [String: Any] ?? [:]
+        let promptVersion = existingAnnotation["prompt_version"] as? String
+        let quantization = existingAnnotation["quantization"] as? String
+        let generationSettings = (existingAnnotation["generation_settings"] as? [String: Any] ?? [:])
+            .compactMapValues { value -> String? in
+                if let string = value as? String { return string }
+                if let number = value as? NSNumber { return number.stringValue }
+                return nil
+            }
+        let elapsedSeconds = (existingAnnotation["elapsed_seconds"] as? NSNumber)?.doubleValue
+        let lyricsPromptVersion = existingTranscription["prompt_version"] as? String
+            ?? promptVersion
+        let lyricsQuantization = existingTranscription["quantization"] as? String
+            ?? quantization
+        let lyricsGenerationSettings = (
+            existingTranscription["generation_settings"] as? [String: Any] ?? [:]
+        )
+        .compactMapValues { value -> String? in
+            if let string = value as? String { return string }
+            if let number = value as? NSNumber { return number.stringValue }
+            return nil
+        }
+        let lyricsElapsedSeconds = (
+            existingTranscription["elapsed_seconds"] as? NSNumber
+        )?.doubleValue ?? elapsedSeconds
         let captionEntry = trimmedCaption.isEmpty ? nil : DatasetTextAnnotationV2(
             text: trimmedCaption,
             source: captionSource.isEmpty ? "manual" : captionSource,
@@ -246,7 +285,11 @@ struct DatasetClipReview: Identifiable {
                 backendID: annotationBackend.isEmpty ? "manual" : annotationBackend,
                 modelID: annotationModelID.isEmpty ? nil : annotationModelID,
                 modelRevision: annotationModelRevision.isEmpty ? nil : annotationModelRevision,
+                promptVersion: promptVersion,
+                quantization: quantization,
                 generatedAt: ISO8601DateFormatter().string(from: updatedAt),
+                generationSettings: generationSettings,
+                elapsedSeconds: elapsedSeconds,
                 rawOutputFiles: rawCaptionOutputFile.isEmpty
                     ? [:]
                     : ["caption": rawCaptionOutputFile]
@@ -257,10 +300,20 @@ struct DatasetClipReview: Identifiable {
             source: lyricsSource.isEmpty ? "manual" : lyricsSource,
             language: language.isEmpty ? nil : language,
             provenance: DatasetAnnotationProvenanceV2(
-                backendID: annotationBackend.isEmpty ? "manual" : annotationBackend,
-                modelID: annotationModelID.isEmpty ? nil : annotationModelID,
-                modelRevision: annotationModelRevision.isEmpty ? nil : annotationModelRevision,
+                backendID: existingTranscription["backend"] as? String
+                    ?? (annotationBackend.isEmpty ? "manual" : annotationBackend),
+                backendVersion: existingTranscription["backend_version"] as? String,
+                modelID: existingTranscription["model"] as? String
+                    ?? (annotationModelID.isEmpty ? nil : annotationModelID),
+                modelRevision: existingTranscription["model_revision"] as? String
+                    ?? (annotationModelRevision.isEmpty ? nil : annotationModelRevision),
+                promptVersion: lyricsPromptVersion,
+                quantization: lyricsQuantization,
                 generatedAt: ISO8601DateFormatter().string(from: updatedAt),
+                generationSettings: lyricsGenerationSettings.isEmpty
+                    ? generationSettings
+                    : lyricsGenerationSettings,
+                elapsedSeconds: lyricsElapsedSeconds,
                 rawOutputFiles: rawLyricsOutputFile.isEmpty
                     ? [:]
                     : ["lyrics": rawLyricsOutputFile]
@@ -818,22 +871,48 @@ enum TrainingDatasetPackageEditor {
             "notes": annotation?.notes ?? "",
         ]
 
-        let provenance = annotation?.caption?.provenance ?? annotation?.lyrics?.provenance
+        let captionProvenance = annotation?.caption?.provenance
+        let lyricsProvenance = annotation?.lyrics?.provenance
+        let provenance = captionProvenance ?? lyricsProvenance
         var rawOutputs = annotation?.caption?.provenance?.rawOutputFiles ?? [:]
         for (key, value) in annotation?.lyrics?.provenance?.rawOutputFiles ?? [:] {
             rawOutputs[key] = value
         }
-        object["annotation"] = [
+        var legacyAnnotation: [String: Any] = [
             "schema_version": TrainingDatasetPackageWriter.annotationSchemaVersion,
             "annotation_backend": provenance?.backendID ?? "manual",
             "annotation_backend_version": provenance?.backendVersion ?? "",
             "model_id": provenance?.modelID ?? "",
             "model_revision": provenance?.modelRevision ?? "",
+            "prompt_version": provenance?.promptVersion ?? "",
+            "quantization": provenance?.quantization ?? "",
+            "generation_settings": provenance?.generationSettings ?? [:],
             "caption_source": annotation?.caption?.source ?? "none",
             "lyrics_source": annotation?.lyrics?.source ?? "none",
             "review_status": annotation?.reviewStatus ?? "needs_review",
             "raw_output_files": rawOutputs,
         ]
+        if let elapsedSeconds = provenance?.elapsedSeconds {
+            legacyAnnotation["elapsed_seconds"] = elapsedSeconds
+        }
+        object["annotation"] = legacyAnnotation
+
+        var transcription: [String: Any] = [
+            "status": lyrics.isEmpty ? "not_run" : "complete",
+            "text": lyrics,
+            "source": annotation?.lyrics?.source ?? "none",
+            "backend": lyricsProvenance?.backendID ?? "manual",
+            "backend_version": lyricsProvenance?.backendVersion ?? "",
+            "model": lyricsProvenance?.modelID ?? "",
+            "model_revision": lyricsProvenance?.modelRevision ?? "",
+            "prompt_version": lyricsProvenance?.promptVersion ?? "",
+            "quantization": lyricsProvenance?.quantization ?? "",
+            "generation_settings": lyricsProvenance?.generationSettings ?? [:],
+        ]
+        if let elapsedSeconds = lyricsProvenance?.elapsedSeconds {
+            transcription["elapsed_seconds"] = elapsedSeconds
+        }
+        object["transcription"] = transcription
         return object
     }
 

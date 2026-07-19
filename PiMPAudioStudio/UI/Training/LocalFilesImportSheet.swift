@@ -10,6 +10,7 @@ struct LocalFilesImportSheet: View {
 
     @StateObject private var builder = LocalFilesDatasetBuilder()
     @StateObject private var enrichment = LocalDatasetEnrichmentService()
+    @State private var enrichmentOptions = LocalDatasetEnrichmentOptions()
 
     @State private var selectedFiles: [URL] = []
     @State private var selectedFolders: [URL] = []
@@ -446,6 +447,28 @@ struct LocalFilesImportSheet: View {
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                     .disabled(isExportingPackage || enrichment.phase.isRunning)
+                    Menu {
+                        Picker(
+                            "Annotation Backend",
+                            selection: $enrichmentOptions.annotationBackend
+                        ) {
+                            ForEach(
+                                LocalDatasetAnnotationBackendChoice.allCases
+                            ) {
+                                Text($0.title).tag($0)
+                            }
+                        }
+                        Toggle(
+                            "Create vocal and instrumental stems",
+                            isOn: $enrichmentOptions.createStems
+                        )
+                    } label: {
+                        Label("Options", systemImage: "slider.horizontal.3")
+                            .font(.caption)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .disabled(enrichment.phase.isRunning || isExportingPackage)
                     Button {
                         startEnrichment(from: dir)
                     } label: {
@@ -650,6 +673,7 @@ struct LocalFilesImportSheet: View {
         guard persistCaptionsIfNeeded() else { return }
         enrichment.enrich(
             datasetDirectory: dir,
+            options: enrichmentOptions,
             prepareMemory: { [generationService] in
                 _ = await generationService.unloadAllWeights()
             }

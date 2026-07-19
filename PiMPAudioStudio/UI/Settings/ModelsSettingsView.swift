@@ -17,12 +17,16 @@ struct ModelsSettingsView: View {
     @State private var errorMessage: String?
     @State private var refreshTask: Task<Void, Never>?
     @State private var isReleasingMemory: Bool = false
+    @State private var nativeAnnotationAvailability:
+        DatasetAnnotationBackendAvailability?
+    @State private var isImportingNativePack = false
 
     var body: some View {
         Form {
             huggingFaceTokenSection
             aceStepSection
             aceStepLMSection
+            nativeAnnotationSection
             stableAudioSection
             memorySection
             AddModelView(
@@ -214,6 +218,97 @@ struct ModelsSettingsView: View {
         }
     }
 
+    private var nativeAnnotationSection: some View {
+        Section("Dataset Annotation (Advanced)") {
+            Text(
+                "Optional four-bit ACE captioner and transcriber packs run "
+                    + "whole-track annotation locally with Swift and MLX. "
+                    + "Automatic enrichment falls back to the lightweight "
+                    + "native backend when these packs are unavailable."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+            if let availability = nativeAnnotationAvailability {
+                HStack {
+                    Label(
+                        hardwareTierTitle(availability.hardwareTier),
+                        systemImage: hardwareTierSystemImage(
+                            availability.hardwareTier
+                        )
+                    )
+                    .foregroundStyle(
+                        availability.hardwareTier == .unsupported
+                            ? .orange
+                            : .secondary
+                    )
+                    Spacer()
+                    Text(memorySummary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                ForEach(availability.models, id: \.task) { model in
+                    HStack {
+                        Label(
+                            model.task == .caption
+                                ? "ACE Captioner 4-bit"
+                                : "ACE Transcriber 4-bit",
+                            systemImage: model.isInstalled
+                                ? "checkmark.circle.fill"
+                                : "arrow.down.circle"
+                        )
+                        .foregroundStyle(
+                            model.isInstalled ? .green : .primary
+                        )
+                        Spacer()
+                        Text(model.isInstalled ? "Installed" : "Not Installed")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        if !model.isInstalled {
+                            Button("Import Pack…") {
+                                importNativeAnnotationPack(task: model.task)
+                            }
+                            .disabled(isImportingNativePack)
+                        }
+                    }
+                    if let reason = model.unavailableReason,
+                       !model.isInstalled {
+                        Text(reason)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                }
+            } else {
+                ProgressView()
+                    .controlSize(.small)
+            }
+
+            HStack {
+                Button("Reveal Model Folder") {
+                    revealNativeAnnotationModelFolder()
+                }
+                .buttonStyle(.bordered)
+                if isImportingNativePack {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Validating and importing…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Text(
+                "Measured policy: 16 GB is unsupported, 24 GB is provisional, "
+                    + "and 32 GB or more is recommended. Both packs use about "
+                    + "9.34 GB of disk."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+    }
+
     private var aceStepLMSection: some View {
         Section {
             VStack(alignment: .leading, spacing: 4) {
@@ -283,6 +378,10 @@ struct ModelsSettingsView: View {
             aceStepSpecs = ditSpecs + vaeSpecs
             aceStepLMSpecs = await registry.specs(for: .aceStepLM)
             stableAudioSpecs = await registry.specs(for: .stableAudio)
+            nativeAnnotationAvailability =
+                await NativeACEDatasetAnnotationBackend(
+                    modelsDirectory: AppStorageLocations.modelsDirectory
+                ).availability()
 
             var newStatuses: [String: ModelStatus] = [:]
             for spec in aceStepSpecs + aceStepLMSpecs + stableAudioSpecs {
@@ -296,6 +395,136 @@ struct ModelsSettingsView: View {
                     activeModels[cat] = id
                 }
             }
+        }
+    }
+
+    private var memorySummary: String {
+        let gibibytes = Double(ProcessInfo.processInfo.physicalMemory)
+            / 1_073_741_824
+        return "\(Int(gibibytes.rounded())) GB unified memory"
+    }
+
+    private func hardwareTierTitle(
+        _ tier: DatasetAnnotationHardwareTier
+    ) -> String {
+        switch tier {
+        case .unsupported:
+            return "Native ACE not recommended"
+        case .provisional:
+            return "Native ACE provisional"
+        case .recommended:
+            return "Native ACE supported"
+        }
+    }
+
+    private func hardwareTierSystemImage(
+        _ tier: DatasetAnnotationHardwareTier
+    ) -> String {
+        switch tier {
+        case .unsupported:
+            return "exclamationmark.triangle"
+        case .provisional:
+            return "memorychip"
+        case .recommended:
+            return "checkmark.circle"
+        }
+    }
+
+    private func revealNativeAnnotationModelFolder() {
+        do {
+            try FileManager.default.createDirectory(
+                at: AppStorageLocations.modelsDirectory,
+                withIntermediateDirectories: true
+            )
+            NSWorkspace.shared.open(AppStorageLocations.modelsDirectory)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func importNativeAnnotationPack(task: DatasetAnnotationTask) {
+        let panel = NSOpenPanel()
+        panel.title = task == .caption
+            ? "Select ACE Captioner Model Pack"
+            : "Select ACE Transcriber Model Pack"
+        panel.prompt = "Import"
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let source = panel.url else { return }
+
+        isImportingNativePack = true
+        Task {
+            do {
+                let destinationName = task == .caption
+                    ? NativeACEDatasetAnnotationBackend.captionerDirectoryName
+                    : NativeACEDatasetAnnotationBackend.transcriberDirectoryName
+                let destination = AppStorageLocations.modelsDirectory
+                    .appendingPathComponent(
+                        destinationName,
+                        isDirectory: true
+                    )
+                try await Task.detached(priority: .userInitiated) {
+                    let temporaryDestination = destination
+                        .deletingLastPathComponent()
+                        .appendingPathComponent(
+                            ".\(destinationName).importing-\(UUID().uuidString)",
+                            isDirectory: true
+                        )
+                    let didAccess = source.startAccessingSecurityScopedResource()
+                    defer {
+                        if didAccess {
+                            source.stopAccessingSecurityScopedResource()
+                        }
+                        try? FileManager.default.removeItem(
+                            at: temporaryDestination
+                        )
+                    }
+                    let manifest =
+                        try NativeModelPackValidator.loadAndValidate(at: source)
+                    let expectedTask: OmniAnnotationTask =
+                        task == .caption ? .caption : .transcribe
+                    guard manifest.task == expectedTask else {
+                        throw NativeACEDatasetAnnotationBackendError
+                            .taskMismatch(
+                                expected: task,
+                                actual: manifest.task == .caption
+                                    ? .caption
+                                    : .transcribe
+                            )
+                    }
+                    guard !FileManager.default.fileExists(
+                        atPath: destination.path(percentEncoded: false)
+                    ) else {
+                        throw CocoaError(
+                            .fileWriteFileExists,
+                            userInfo: [
+                                NSFilePathErrorKey:
+                                    destination.path(percentEncoded: false),
+                            ]
+                        )
+                    }
+                    try FileManager.default.createDirectory(
+                        at: destination.deletingLastPathComponent(),
+                        withIntermediateDirectories: true
+                    )
+                    try FileManager.default.copyItem(
+                        at: source,
+                        to: temporaryDestination
+                    )
+                    _ = try NativeModelPackValidator.loadAndValidate(
+                        at: temporaryDestination
+                    )
+                    try FileManager.default.moveItem(
+                        at: temporaryDestination,
+                        to: destination
+                    )
+                }.value
+                refreshModels()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            isImportingNativePack = false
         }
     }
 

@@ -2,29 +2,6 @@ import AVFoundation
 import Foundation
 import PiMPAudioCore
 
-protocol DatasetAnnotationBackend: Sendable {
-    var annotationDescriptor: DatasetAnnotationBackendDescriptor { get }
-}
-
-struct DatasetAnnotationBackendDescriptor: Equatable, Sendable {
-    var id: String
-    var version: String
-    var modelID: String
-    var modelRevision: String
-
-    init(
-        id: String,
-        version: String = "",
-        modelID: String = "",
-        modelRevision: String = ""
-    ) {
-        self.id = id
-        self.version = version
-        self.modelID = modelID
-        self.modelRevision = modelRevision
-    }
-}
-
 struct DatasetAnnotationMetadata: Equatable, Sendable {
     var schemaVersion: String = TrainingDatasetPackageWriter.annotationSchemaVersion
     var updatedAt: Date
@@ -35,6 +12,10 @@ struct DatasetAnnotationMetadata: Equatable, Sendable {
     var caption: String
     var lyrics: String
     var reviewStatus: String
+    var promptVersion: String
+    var quantization: String
+    var generationSettings: [String: String]
+    var elapsedSeconds: Double?
     var rawOutputFiles: [String: String]
 
     init(
@@ -46,6 +27,10 @@ struct DatasetAnnotationMetadata: Equatable, Sendable {
         caption: String,
         lyrics: String,
         reviewStatus: String,
+        promptVersion: String = "",
+        quantization: String = "",
+        generationSettings: [String: String] = [:],
+        elapsedSeconds: Double? = nil,
         rawOutputFiles: [String: String] = [:],
         rawCaptionOutputFile: String = "",
         rawLyricsOutputFile: String = ""
@@ -58,6 +43,10 @@ struct DatasetAnnotationMetadata: Equatable, Sendable {
         self.caption = caption
         self.lyrics = lyrics
         self.reviewStatus = reviewStatus
+        self.promptVersion = promptVersion
+        self.quantization = quantization
+        self.generationSettings = generationSettings
+        self.elapsedSeconds = elapsedSeconds
 
         var rawOutputFiles = rawOutputFiles
         if !rawCaptionOutputFile.isEmpty {
@@ -70,7 +59,7 @@ struct DatasetAnnotationMetadata: Equatable, Sendable {
     }
 
     var persistedObject: [String: Any] {
-        [
+        var object: [String: Any] = [
             "schema_version": schemaVersion,
             "updated_at": ISO8601DateFormatter().string(from: updatedAt),
             "annotation_backend": backend.id,
@@ -83,8 +72,15 @@ struct DatasetAnnotationMetadata: Equatable, Sendable {
             "caption_present": !caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
             "lyrics_present": !lyrics.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
             "review_status": reviewStatus,
+            "prompt_version": promptVersion,
+            "quantization": quantization,
+            "generation_settings": generationSettings,
             "raw_output_files": rawOutputFiles,
         ]
+        if let elapsedSeconds {
+            object["elapsed_seconds"] = elapsedSeconds
+        }
+        return object
     }
 }
 
@@ -698,7 +694,13 @@ enum TrainingDatasetPackageWriter {
                 backendVersion: stringValue(legacyAnnotation["annotation_backend_version"]),
                 modelID: stringValue(legacyAnnotation["model_id"]),
                 modelRevision: stringValue(legacyAnnotation["model_revision"]),
+                promptVersion: stringValue(legacyAnnotation["prompt_version"]),
+                quantization: stringValue(legacyAnnotation["quantization"]),
                 generatedAt: stringValue(legacyAnnotation["updated_at"]),
+                generationSettings: stringDictionary(
+                    legacyAnnotation["generation_settings"]
+                ),
+                elapsedSeconds: doubleValue(legacyAnnotation["elapsed_seconds"]),
                 rawOutputFiles: rawOutputs.filter { $0.key != "lyrics" }
             )
         )
@@ -714,8 +716,19 @@ enum TrainingDatasetPackageWriter {
                     ?? stringValue(legacyAnnotation["model_id"]),
                 modelRevision: stringValue(transcription["model_revision"])
                     ?? stringValue(legacyAnnotation["model_revision"]),
+                promptVersion: stringValue(transcription["prompt_version"])
+                    ?? stringValue(legacyAnnotation["prompt_version"]),
+                quantization: stringValue(transcription["quantization"])
+                    ?? stringValue(legacyAnnotation["quantization"]),
                 generatedAt: stringValue(transcription["updated_at"])
                     ?? stringValue(legacyAnnotation["updated_at"]),
+                generationSettings: stringDictionary(
+                    transcription["generation_settings"]
+                ).isEmpty
+                    ? stringDictionary(legacyAnnotation["generation_settings"])
+                    : stringDictionary(transcription["generation_settings"]),
+                elapsedSeconds: doubleValue(transcription["elapsed_seconds"])
+                    ?? doubleValue(legacyAnnotation["elapsed_seconds"]),
                 rawOutputFiles: rawOutputs.filter { $0.key != "caption" }
             )
         )
@@ -872,7 +885,9 @@ enum TrainingDatasetPackageWriter {
                 id: backend?.backendID ?? "manual",
                 version: backend?.backendVersion ?? "",
                 modelID: backend?.modelID ?? "",
-                modelRevision: backend?.modelRevision ?? ""
+                modelRevision: backend?.modelRevision ?? "",
+                promptVersion: backend?.promptVersion ?? "",
+                quantization: backend?.quantization ?? ""
             ),
             captionSource: caption?.source ?? "none",
             lyricsSource: lyrics?.source ?? "none",
@@ -880,6 +895,10 @@ enum TrainingDatasetPackageWriter {
             caption: caption?.text ?? "",
             lyrics: lyrics?.text ?? "",
             reviewStatus: annotation?.reviewStatus ?? "needs_review",
+            promptVersion: backend?.promptVersion ?? "",
+            quantization: backend?.quantization ?? "",
+            generationSettings: backend?.generationSettings ?? [:],
+            elapsedSeconds: backend?.elapsedSeconds,
             rawOutputFiles: rawOutputFiles
         ).persistedObject
     }
@@ -2498,6 +2517,24 @@ enum TrainingDatasetPackageWriter {
         case let string as String:
             return ["true", "yes", "1"].contains(string.lowercased())
         default:
+            return nil
+        }
+    }
+
+    private static func stringDictionary(_ value: Any?) -> [String: String] {
+        if let dictionary = value as? [String: String] {
+            return dictionary
+        }
+        guard let dictionary = value as? [String: Any] else {
+            return [:]
+        }
+        return dictionary.compactMapValues { value in
+            if let string = value as? String {
+                return string
+            }
+            if let number = value as? NSNumber {
+                return number.stringValue
+            }
             return nil
         }
     }

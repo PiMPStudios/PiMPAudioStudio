@@ -101,8 +101,51 @@ public struct LyricsTranscriptionResult: Sendable, Equatable {
     }
 }
 
+public struct LyricsAlignmentResult: Sendable, Equatable {
+    public let backend: String
+    public let modelID: String
+    public let text: String
+    public let words: [LyricsTranscriptionWord]
+    public let sampleRate: Int
+    public let trim: LyricsTranscriptionTrim
+    public let elapsedSeconds: Double
+
+    public init(
+        backend: String,
+        modelID: String,
+        text: String,
+        words: [LyricsTranscriptionWord],
+        sampleRate: Int,
+        trim: LyricsTranscriptionTrim,
+        elapsedSeconds: Double
+    ) {
+        self.backend = backend
+        self.modelID = modelID
+        self.text = text
+        self.words = words
+        self.sampleRate = sampleRate
+        self.trim = trim
+        self.elapsedSeconds = elapsedSeconds
+    }
+}
+
+public enum LyricsAlignmentError: LocalizedError {
+    case missingAlignerModel
+    case emptyText
+
+    public var errorDescription: String? {
+        switch self {
+        case .missingAlignerModel:
+            return "A Qwen3 forced-aligner model is required."
+        case .emptyText:
+            return "Lyrics text is required for forced alignment."
+        }
+    }
+}
+
 public actor QwenLyricsTranscriber {
     public static let backendName = "speech-swift/qwen3-asr"
+    public static let alignerBackendName = "speech-swift/qwen3-forced-aligner"
 
     private var asrModel: Qwen3ASRModel?
     private var asrModelID: String?
@@ -167,6 +210,75 @@ public actor QwenLyricsTranscriber {
             alignerModelID: options.alignerModelID,
             text: text,
             words: alignedWords,
+            sampleRate: options.sampleRate,
+            trim: LyricsTranscriptionTrim(
+                leadingSeconds: prepared.leadingSeconds,
+                trailingSeconds: prepared.trailingSeconds
+            ),
+            elapsedSeconds: Date().timeIntervalSince(startedAt)
+        )
+    }
+
+    public func align(
+        audioURL: URL,
+        text: String,
+        options: LyricsTranscriptionOptions = .qualityDataset
+    ) async throws -> LyricsAlignmentResult {
+        let trimmedText = text.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        guard !trimmedText.isEmpty else {
+            throw LyricsAlignmentError.emptyText
+        }
+        guard let alignerModelID = options.alignerModelID,
+              !alignerModelID.trimmingCharacters(
+                in: .whitespacesAndNewlines
+              ).isEmpty
+        else {
+            throw LyricsAlignmentError.missingAlignerModel
+        }
+
+        let rawSamples = try AudioFileLoader.load(
+            url: audioURL,
+            targetSampleRate: options.sampleRate
+        )
+        let prepared = options.trimsSilence
+            ? Self.trimmed(
+                samples: rawSamples,
+                sampleRate: options.sampleRate,
+                threshold: options.silenceThreshold
+            )
+            : PreparedAudio(
+                samples: rawSamples,
+                leadingSeconds: 0,
+                trailingSeconds: 0
+            )
+        try Task.checkCancellation()
+        let startedAt = Date()
+        let aligner = try await loadAligner(
+            modelID: alignerModelID,
+            offlineMode: options.offlineMode
+        )
+        try Task.checkCancellation()
+        let words = aligner.alignLong(
+            audio: prepared.samples,
+            text: trimmedText,
+            sampleRate: options.sampleRate,
+            language: options.alignmentLanguage
+        )
+        .map {
+            LyricsTranscriptionWord(
+                text: $0.text,
+                startTime: Double($0.startTime) + prepared.leadingSeconds,
+                endTime: Double($0.endTime) + prepared.leadingSeconds
+            )
+        }
+        try Task.checkCancellation()
+        return LyricsAlignmentResult(
+            backend: Self.alignerBackendName,
+            modelID: alignerModelID,
+            text: trimmedText,
+            words: words,
             sampleRate: options.sampleRate,
             trim: LyricsTranscriptionTrim(
                 leadingSeconds: prepared.leadingSeconds,

@@ -443,7 +443,11 @@ public actor ModelRegistry {
             return activeModels
         }
 
-        let validIDs = Set((Self.builtInSpecs + userSpecs).map(\.id))
+        var validIDs = Set((Self.builtInSpecs + userSpecs).map(\.id))
+        validIDs.formUnion([
+            NativeACEDatasetAnnotationBackend.captionerDirectoryName,
+            NativeACEDatasetAnnotationBackend.transcriberDirectoryName,
+        ])
         if let entries = try? FileManager.default.contentsOfDirectory(
             at: baseDirectory, includingPropertiesForKeys: nil
         ) {

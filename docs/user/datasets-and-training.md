@@ -12,17 +12,19 @@ Open:
 Build -> Datasets -> From Local Files...
 ```
 
-Choose source audio files, clip length, clips per file, total clip cap, sampling
-mode, and dataset name. The app writes a package under your selected output
-directory:
+Choose source audio files and a dataset name. **Whole Tracks** is the default
+source mode and preserves every complete input. Choose **Extract Clips** only
+when you intentionally want clip length, clips-per-file, total-cap, and sampling
+controls. The app writes a package under your selected output directory:
 
 ```text
 TrainingDatasets/<dataset-name>_local_<timestamp>/
 ```
 
-## Clip Sampling
+## Clip Sampling (Optional)
 
-Sampling controls how source files are sliced into training clips.
+Sampling appears only in Extract Clips mode and controls how source files are
+sliced into derived training clips.
 
 - `Evenly Spread` - default. Samples from across each file so long sources do
   not only train on the opening section.
@@ -49,19 +51,30 @@ ACE-compatible formats.
 
 ## Enrich Dataset
 
-Dataset enrichment can split stems and improve metadata locally:
+Dataset enrichment annotates complete full mixes locally. Use its compact
+**Options** menu to choose:
 
-- Writes `stems/`.
-- Writes vocal and instrumental training bundles.
-- Transcribes vocals with the native Qwen3-ASR path.
+- **Automatic** - use Native ACE when both optional packs are installed and the
+  Mac meets the memory policy; otherwise use the lightweight native path.
+- **Lightweight Native** - use the built-in metadata caption and Qwen3-ASR path.
+- **Native ACE (Advanced)** - require the four-bit ACE captioner and transcriber.
+- **Create vocal and instrumental stems** - separately opt in to Demucs stem
+  separation and stem training bundles.
+
+All modes:
+
+- Caption and transcribe full mixes, or transcribe vocals when the lightweight
+  path is used with stems.
+- Use Qwen3 Forced Aligner for timed ACE lyrics where available.
 - Estimates or preserves BPM/key metadata where available.
-- Rewrites weak filename placeholder captions into deterministic metadata-based
-  captions.
+- Store model revision, quantization, prompt/settings, elapsed time, and raw
+  output paths so review edits do not erase provenance.
 
-The app does not currently use the official ACE-Step captioner or transcriber
-inside the local macOS runtime. Those names can appear in package schemas as
-accepted provenance values, and remote Side-Step source-job support is planned,
-but the shipped local enrichment path is native.
+Install locally supplied Native ACE packs under **Settings -> Models -> Dataset
+Annotation (Advanced)**. The app fully validates and transactionally imports
+each pack. Both packs use about 9.34 GB of disk; 24 GB unified memory is the
+provisional minimum and 32 GB or more is recommended. Hosted downloads are not
+offered until PiMP has a production model-pack catalog.
 
 ## Which Bundle To Train
 

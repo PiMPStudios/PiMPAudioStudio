@@ -162,6 +162,6 @@ Dataset Review reads all v2 assets, not only the compatibility bundle. Review
 saves update annotations and `include_in_training` selections in the canonical
 manifest before regenerating projections.
 
-The next package milestone is native ACE annotation integration against this
-stable whole-track graph, followed by direct package-v2 remote-worker
-consumption.
+Native ACE annotation now runs against this stable whole-track graph. Caption
+and lyrics provenance survive Dataset Review edits, while the next package
+milestone is direct package-v2 remote-worker consumption.

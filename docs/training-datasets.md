@@ -101,17 +101,21 @@ The current cache is sample-level training data. It is the shared handoff for lo
 
 After a local-file package is built, use **Review Dataset** from the build sheet or open it from **Build > Datasets**, then use **Enrich Dataset** in the review workspace to enrich that package in place. PiMP Audio Studio owns this workflow directly; it does not call or require any sibling repo.
 
-The enrichment backend is native Swift/MLX Demucs via `demucs-mlx-swift`, using `htdemucs` in vocals-plus-instrumental mode. PiMP Audio Studio writes `stems/`, `separation.json`, `training_bundle_vocals.json`, `training_bundle_instrumental.json`, refreshed manifest metadata, and package validation itself.
+The Options menu selects **Automatic**, **Lightweight Native**, or **Native ACE (Advanced)** annotation and independently controls **Create vocal and instrumental stems**. Automatic uses the four-bit ACE captioner/transcriber when both packs are installed on a supported Mac, then falls back to the lightweight native path. Native ACE captions and transcribes complete full mixes, records raw and structured artifacts under `annotations/`, and evicts the captioner before loading the transcriber.
 
-Native Demucs model selection can be overridden with `PIMP_AUDIO_DEMUCS_MODEL_NAME`; the optional `PIMP_AUDIO_DEMUCS_MODEL_DIR` points at a local Demucs MLX model directory. The default model remains `htdemucs`.
+Stem creation is opt-in. When selected, the backend is native Swift/MLX Demucs via `demucs-mlx-swift`, using `htdemucs` in vocals-plus-instrumental mode. PiMP Audio Studio writes `stems/`, `separation.json`, `training_bundle_vocals.json`, `training_bundle_instrumental.json`, refreshed manifest metadata, and package validation itself. Demucs model selection can be overridden with `PIMP_AUDIO_DEMUCS_MODEL_NAME`; the optional `PIMP_AUDIO_DEMUCS_MODEL_DIR` points at a local Demucs MLX model directory.
 
 Before enrichment starts from the app UI, PiMP Audio Studio releases idle generation, cover-song, SFX, LoRA, and LLM model weights through the same GPU-memory release path used by Settings. The enrichment loop also compacts the MLX allocator between Demucs separation and Qwen transcription work so dataset builds do not stack avoidable model/cache memory on top of the active generation pipeline.
 
-Enrichment also transcribes each generated `vocals.wav` with native `speech-swift` Qwen3-ASR. The quality path uses `Qwen3-ASR-1.7B` plus `Qwen3-ForcedAligner-0.6B` for word timestamps, then writes `lyrics.txt`, `lyrics.timed.json`, and `lyrics.lrc` next to the stem files. Those transcripts are copied into `captions.json` and `training_bundle_vocals.json`; instrumental bundles keep lyrics empty.
+The lightweight path transcribes each selected full mix, or generated `vocals.wav` when stems are enabled, with native `speech-swift` Qwen3-ASR. Native ACE lyrics are passed to `Qwen3-ForcedAligner-0.6B` for word timestamps after the ACE transcriber is evicted. The alignment path writes `lyrics.txt`, `lyrics.timed.json`, and `lyrics.lrc`; instrumental bundles keep lyrics empty.
 
 Enrichment preserves separation/transcription metadata when captions are edited, promotes local stem tempo estimates into each clip's BPM field, and estimates instrumental key/keyscale with native DSP analysis. It also upgrades local-builder/manual captions into deterministic native metadata captions using the original caption seed plus BPM, key, vocal/transcript presence, and stem role context, then refreshes the full-mix training bundle so **Open in Training** uses the enriched captions. Filename placeholder captions are replaced rather than used as creative seed text. Imported sidecar/CSV/remote captions are preserved instead of being overwritten by this automatic pass.
 
-The native captioner is metadata-based, not a full audio-language model. It gives useful training prompts immediately while keeping the local package workflow zero-Python; heavier ACE-Step captioner integration remains a future optional backend.
+The lightweight captioner remains metadata-based. The advanced ACE captioner is
+the full audio-language model ported to Swift/MLX. Install its four-bit
+captioner and transcriber packs from **Settings > Models > Dataset Annotation
+(Advanced)**. The current UI imports locally supplied, fully validated packs;
+hosted in-app downloads still require a production artifact catalog.
 
 ## Train From JSON
 

@@ -16,6 +16,7 @@ struct DatasetReviewView: View {
     @State private var errorMessage: String?
     @State private var isSaving = false
     @State private var isExporting = false
+    @State private var enrichmentOptions = LocalDatasetEnrichmentOptions()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -153,6 +154,8 @@ struct DatasetReviewView: View {
 
                 Spacer()
 
+                enrichmentOptionsMenu
+
                 Button {
                     startEnrichment()
                 } label: {
@@ -214,6 +217,33 @@ struct DatasetReviewView: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 10)
+    }
+
+    private var enrichmentOptionsMenu: some View {
+        Menu {
+            Picker(
+                "Annotation Backend",
+                selection: $enrichmentOptions.annotationBackend
+            ) {
+                ForEach(LocalDatasetAnnotationBackendChoice.allCases) {
+                    Text($0.title).tag($0)
+                }
+            }
+            Toggle(
+                "Create vocal and instrumental stems",
+                isOn: $enrichmentOptions.createStems
+            )
+        } label: {
+            Label("Options", systemImage: "slider.horizontal.3")
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .disabled(isBusy)
+        .help(
+            enrichmentOptions.createStems
+                ? "Annotate full mixes and also create optional stem assets."
+                : "Annotate full mixes without creating stem assets."
+        )
     }
 
     private func clipList(_ document: DatasetPackageDocument) -> some View {
@@ -767,6 +797,7 @@ struct DatasetReviewView: View {
         guard saveDocument() else { return }
         enrichment.enrich(
             datasetDirectory: datasetDirectory,
+            options: enrichmentOptions,
             prepareMemory: { [generationService] in
                 _ = await generationService.unloadAllWeights()
             }

@@ -1786,6 +1786,10 @@ private extension JSONDecoder {
     let lyricsTranscriber = FakeDatasetLyricsTranscriber()
     let result = try await LocalDatasetEnrichmentService.run(
         datasetDirectory: datasetDir,
+        options: LocalDatasetEnrichmentOptions(
+            createStems: true,
+            annotationBackend: .lightweight
+        ),
         lyricsTranscriber: lyricsTranscriber,
         onStep: { _ in }
     )
@@ -1914,6 +1918,10 @@ private extension JSONDecoder {
 
     let result = try await LocalDatasetEnrichmentService.run(
         datasetDirectory: datasetDir,
+        options: LocalDatasetEnrichmentOptions(
+            createStems: true,
+            annotationBackend: .lightweight
+        ),
         lyricsTranscriber: FakeDatasetLyricsTranscriber(),
         onStep: { _ in }
     )
@@ -1997,6 +2005,10 @@ private extension JSONDecoder {
 
     let result = try await LocalDatasetEnrichmentService.run(
         datasetDirectory: datasetDir,
+        options: LocalDatasetEnrichmentOptions(
+            createStems: true,
+            annotationBackend: .lightweight
+        ),
         lyricsTranscriber: FakeDatasetLyricsTranscriber(),
         onStep: { _ in }
     )
@@ -2018,6 +2030,106 @@ private extension JSONDecoder {
         from: datasetDir.appendingPathComponent(TrainingDatasetPackageWriter.fullMixBundleFileName)
     )
     #expect(imported.first?.description == "slow 90 BPM, A minor, full mix with vocals and instrumental backing")
+}
+
+@Test func localDatasetEnrichmentUsesNativeACEWithoutCreatingStems() async throws {
+    let datasetDir = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let sourcesDir = datasetDir.appendingPathComponent(
+        "sources",
+        isDirectory: true
+    )
+    try FileManager.default.createDirectory(
+        at: sourcesDir,
+        withIntermediateDirectories: true
+    )
+    defer { try? FileManager.default.removeItem(at: datasetDir) }
+
+    let audioURL = sourcesDir.appendingPathComponent("f001_song.wav")
+    try silentWAVData().write(to: audioURL)
+    let captionsJSON = """
+    [
+      {
+        "id": "asset-track-0001-full-mix",
+        "asset_id": "asset-track-0001-full-mix",
+        "asset_role": "full_mix",
+        "file": "sources/f001_song.wav",
+        "caption": "filename placeholder",
+        "caption_source": "filename"
+      }
+    ]
+    """
+    try Data(captionsJSON.utf8).write(
+        to: datasetDir.appendingPathComponent("captions.json")
+    )
+
+    let backend = FakeNativeACEDatasetAnnotationBackend()
+    let lyricsService = FakeDatasetLyricsTranscriber()
+    let result = try await LocalDatasetEnrichmentService.run(
+        datasetDirectory: datasetDir,
+        options: LocalDatasetEnrichmentOptions(
+            createStems: false,
+            annotationBackend: .nativeACE
+        ),
+        lyricsTranscriber: lyricsService,
+        annotationBackend: backend,
+        onStep: { _ in }
+    )
+
+    #expect(result.separatedClipCount == 0)
+    #expect(result.transcribedClipCount == 1)
+    #expect(await backend.requestedTasks == [.caption, .transcribe])
+    #expect(await backend.evictionCount == 1)
+    #expect(
+        !FileManager.default.fileExists(
+            atPath: datasetDir.appendingPathComponent("stems").path
+        )
+    )
+
+    let data = try Data(
+        contentsOf: datasetDir.appendingPathComponent("captions.json")
+    )
+    let captions = try JSONSerialization.jsonObject(with: data)
+        as? [[String: Any]]
+    let record = captions?.first
+    #expect(record?["caption"] as? String == "native full-track caption")
+    #expect(record?["caption_source"] as? String == "ace-step-captioner")
+    #expect(record?["lyrics"] as? String == "[Verse]\nNative lyrics")
+    #expect(record?["lyrics_source"] as? String == "ace-step-transcriber")
+    #expect(record?["language"] as? String == "en")
+
+    let annotation = record?["annotation"] as? [String: Any]
+    #expect(
+        annotation?["annotation_backend"] as? String
+            == "test-native-ace"
+    )
+    #expect(annotation?["model_id"] as? String == "ACE-Step/test-captioner")
+    #expect(annotation?["prompt_version"] as? String == "1")
+    #expect(annotation?["quantization"] as? String == "q4-affine-g64")
+    let rawOutputs = annotation?["raw_output_files"] as? [String: Any]
+    let rawCaptionPath = rawOutputs?["caption"] as? String
+    #expect(rawCaptionPath != nil)
+    if let rawCaptionPath {
+        #expect(
+            FileManager.default.fileExists(
+                atPath: datasetDir.appendingPathComponent(rawCaptionPath).path
+            )
+        )
+    }
+
+    let transcription = record?["transcription"] as? [String: Any]
+    #expect(
+        transcription?["model"] as? String
+            == "ACE-Step/test-transcriber"
+    )
+    #expect(
+        transcription?["aligner_backend"] as? String
+            == QwenLyricsTranscriber.alignerBackendName
+    )
+    #expect(
+        transcription?["timed_lyrics_file"] as? String
+            == "annotations/asset-track-0001-full-mix/native-ace/lyrics.timed.json"
+    )
 }
 
 @Test func localDatasetEnrichmentExportsStemBundlesNatively() throws {
@@ -2337,6 +2449,102 @@ private extension JSONDecoder {
     #expect((selectedBundle?["clips"] as? [[String: Any]])?.count == 2)
 }
 
+@Test func datasetReviewPreservesDistinctNativeAnnotationProvenance() throws {
+    let datasetDir = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(
+        at: datasetDir,
+        withIntermediateDirectories: true
+    )
+    defer { try? FileManager.default.removeItem(at: datasetDir) }
+
+    let sourceURL = datasetDir.appendingPathComponent("source.wav")
+    try silentWAVData().write(to: sourceURL)
+    _ = try TrainingDatasetPackageWriter.writeLocalPackage(
+        outputDirectory: datasetDir,
+        clips: [
+            TrainingImportedFile(
+                url: sourceURL,
+                description: "native caption"
+            ),
+        ],
+        sourceFiles: [sourceURL],
+        config: LocalFilesDatasetConfig(),
+        styleTemplate: "native caption",
+        createdAt: Date(timeIntervalSince1970: 0)
+    )
+
+    var package = try TrainingDatasetPackageEditor.loadPackageV2(at: datasetDir)
+    package.assets[0].annotation = DatasetAssetAnnotationV2(
+        caption: DatasetTextAnnotationV2(
+            text: "native caption",
+            source: "ace-step-captioner",
+            language: "en",
+            provenance: DatasetAnnotationProvenanceV2(
+                backendID: "native-ace-step-annotation",
+                backendVersion: "1",
+                modelID: "ACE-Step/acestep-captioner",
+                modelRevision: "caption-revision",
+                promptVersion: "1",
+                quantization: "q4-affine-g64",
+                generatedAt: "2026-07-18T00:00:00Z",
+                generationSettings: ["max_tokens": "512"],
+                elapsedSeconds: 12.5,
+                rawOutputFiles: [
+                    "caption": "annotations/source/native-ace/caption.txt",
+                ]
+            )
+        ),
+        lyrics: DatasetTextAnnotationV2(
+            text: "[Verse]\nI keep moving",
+            source: "ace-step-transcriber",
+            language: "en",
+            provenance: DatasetAnnotationProvenanceV2(
+                backendID: "native-ace-step-annotation",
+                backendVersion: "1",
+                modelID: "ACE-Step/acestep-transcriber",
+                modelRevision: "lyrics-revision",
+                promptVersion: "1",
+                quantization: "q4-affine-g64",
+                generatedAt: "2026-07-18T00:01:00Z",
+                generationSettings: ["max_tokens": "512"],
+                elapsedSeconds: 21.5,
+                rawOutputFiles: [
+                    "lyrics": "annotations/source/native-ace/lyrics.txt",
+                ]
+            )
+        ),
+        reviewStatus: "needs_review",
+        approved: false
+    )
+    try DatasetPackageV2Codec.encodeValidated(package).write(
+        to: datasetDir.appendingPathComponent(
+            TrainingDatasetPackageWriter.datasetManifestFileName
+        ),
+        options: .atomic
+    )
+
+    var review = try TrainingDatasetPackageEditor.loadPackage(at: datasetDir)
+    review.clips[0].isApproved = true
+    try TrainingDatasetPackageEditor.save(review)
+
+    let saved = try TrainingDatasetPackageEditor.loadPackageV2(at: datasetDir)
+    let caption = try #require(saved.assets[0].annotation?.caption?.provenance)
+    let lyrics = try #require(saved.assets[0].annotation?.lyrics?.provenance)
+    #expect(caption.modelID == "ACE-Step/acestep-captioner")
+    #expect(caption.modelRevision == "caption-revision")
+    #expect(caption.promptVersion == "1")
+    #expect(caption.quantization == "q4-affine-g64")
+    #expect(caption.generationSettings["max_tokens"] == "512")
+    #expect(caption.elapsedSeconds == 12.5)
+    #expect(lyrics.modelID == "ACE-Step/acestep-transcriber")
+    #expect(lyrics.modelRevision == "lyrics-revision")
+    #expect(lyrics.promptVersion == "1")
+    #expect(lyrics.quantization == "q4-affine-g64")
+    #expect(lyrics.generationSettings["max_tokens"] == "512")
+    #expect(lyrics.elapsedSeconds == 21.5)
+}
+
 @Test @MainActor func localFilesDatasetBuilderUsesCustomDatasetName() async throws {
     let tempRoot = FileManager.default.temporaryDirectory
         .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -2574,7 +2782,11 @@ private extension JSONDecoder {
     #expect(!providerIDs.contains("huggingface"))
 }
 
-private actor FakeDatasetLyricsTranscriber: DatasetLyricsTranscribing, DatasetLyricsTranscriptionEvicting {
+private actor FakeDatasetLyricsTranscriber:
+    DatasetLyricsTranscribing,
+    DatasetLyricsTranscriptionEvicting,
+    DatasetLyricsAligning
+{
     private(set) var evictionCount = 0
 
     func evictModels() async {
@@ -2616,6 +2828,141 @@ private actor FakeDatasetLyricsTranscriber: DatasetLyricsTranscribing, DatasetLy
             elapsedSeconds: 0.25
         )
     }
+
+    func align(
+        lyrics: String,
+        audioURL: URL,
+        outputDirectory: URL,
+        force: Bool
+    ) async throws -> DatasetLyricsTranscriptionArtifact {
+        try FileManager.default.createDirectory(
+            at: outputDirectory,
+            withIntermediateDirectories: true
+        )
+        let lyricsURL = outputDirectory.appendingPathComponent("lyrics.txt")
+        let timedLyricsURL = outputDirectory.appendingPathComponent(
+            "lyrics.timed.json"
+        )
+        let lrcURL = outputDirectory.appendingPathComponent("lyrics.lrc")
+        try lyrics.write(
+            to: lyricsURL,
+            atomically: true,
+            encoding: .utf8
+        )
+        try Data(
+            """
+            {
+              "text": "\(lyrics.replacingOccurrences(of: "\n", with: "\\n"))",
+              "words": []
+            }
+            """.utf8
+        ).write(to: timedLyricsURL)
+        try "[00:00.00]\(lyrics)\n".write(
+            to: lrcURL,
+            atomically: true,
+            encoding: .utf8
+        )
+        return DatasetLyricsTranscriptionArtifact(
+            text: lyrics,
+            source: "qwen3-forced-alignment",
+            backend: QwenLyricsTranscriber.alignerBackendName,
+            model: "fake-aligner",
+            alignerModel: "fake-aligner",
+            lyricsURL: lyricsURL,
+            timedLyricsURL: timedLyricsURL,
+            lrcURL: lrcURL,
+            wordCount: lyrics.split(whereSeparator: \.isWhitespace).count,
+            elapsedSeconds: 0.1
+        )
+    }
+}
+
+private actor FakeNativeACEDatasetAnnotationBackend:
+    DatasetAnnotationBackend
+{
+    nonisolated let backendID = "test-native-ace"
+    private(set) var requestedTasks: [DatasetAnnotationTask] = []
+    private(set) var evictionCount = 0
+
+    func availability() async -> DatasetAnnotationBackendAvailability {
+        let directory = FileManager.default.temporaryDirectory
+        return DatasetAnnotationBackendAvailability(
+            backendID: backendID,
+            hardwareTier: .recommended,
+            models: DatasetAnnotationTask.allTestCases.map { task in
+                DatasetAnnotationModelAvailability(
+                    task: task,
+                    directory: directory,
+                    isInstalled: true,
+                    descriptor: descriptor(for: task)
+                )
+            }
+        )
+    }
+
+    func annotate(
+        requests: [DatasetAnnotationRequest],
+        task: DatasetAnnotationTask,
+        options: DatasetAnnotationGenerationOptions,
+        onProgress: @Sendable @escaping (DatasetAnnotationProgress) -> Void
+    ) async throws -> [DatasetAnnotationBackendResult] {
+        requestedTasks.append(task)
+        return requests.enumerated().map { index, request in
+            onProgress(
+                DatasetAnnotationProgress(
+                    task: task,
+                    stage: .annotating,
+                    completedCount: index,
+                    totalCount: requests.count,
+                    currentRequestID: request.id
+                )
+            )
+            let text = task == .caption
+                ? "native full-track caption"
+                : "[Verse]\nNative lyrics"
+            return DatasetAnnotationBackendResult(
+                requestID: request.id,
+                task: task,
+                text: text,
+                rawText: text,
+                language: task == .transcribe ? "en" : nil,
+                descriptor: descriptor(for: task),
+                settings: options.persistedSettings,
+                generatedTokenCount: 12,
+                promptTokenCount: 128,
+                elapsedSeconds: 0.2,
+                diagnostics: OmniOutputDiagnostics(text: text)
+            )
+        }
+    }
+
+    func evict() async {
+        evictionCount += 1
+    }
+
+    private nonisolated func descriptor(
+        for task: DatasetAnnotationTask
+    ) -> DatasetAnnotationBackendDescriptor {
+        DatasetAnnotationBackendDescriptor(
+            id: backendID,
+            version: "1",
+            modelID: task == .caption
+                ? "ACE-Step/test-captioner"
+                : "ACE-Step/test-transcriber",
+            modelRevision: task == .caption
+                ? "caption-revision"
+                : "transcriber-revision",
+            promptVersion: "1",
+            quantization: "q4-affine-g64"
+        )
+    }
+}
+
+private extension DatasetAnnotationTask {
+    static let allTestCases: [DatasetAnnotationTask] = [
+        .caption,
+        .transcribe,
+    ]
 }
 
 @Test @MainActor func lyricWriterManagerRegistersAuthenticatedCLIBackend() {

@@ -286,6 +286,8 @@ public struct DatasetAnnotationProvenanceV2: Codable, Hashable, Sendable {
     public var promptVersion: String?
     public var quantization: String?
     public var generatedAt: String?
+    public var generationSettings: [String: String]
+    public var elapsedSeconds: Double?
     public var rawOutputFiles: [String: String]
 
     public init(
@@ -296,6 +298,8 @@ public struct DatasetAnnotationProvenanceV2: Codable, Hashable, Sendable {
         promptVersion: String? = nil,
         quantization: String? = nil,
         generatedAt: String? = nil,
+        generationSettings: [String: String] = [:],
+        elapsedSeconds: Double? = nil,
         rawOutputFiles: [String: String] = [:]
     ) {
         self.backendID = backendID
@@ -305,6 +309,8 @@ public struct DatasetAnnotationProvenanceV2: Codable, Hashable, Sendable {
         self.promptVersion = promptVersion
         self.quantization = quantization
         self.generatedAt = generatedAt
+        self.generationSettings = generationSettings
+        self.elapsedSeconds = elapsedSeconds
         self.rawOutputFiles = rawOutputFiles
     }
 
@@ -316,6 +322,8 @@ public struct DatasetAnnotationProvenanceV2: Codable, Hashable, Sendable {
         case promptVersion = "prompt_version"
         case quantization
         case generatedAt = "generated_at"
+        case generationSettings = "generation_settings"
+        case elapsedSeconds = "elapsed_seconds"
         case rawOutputFiles = "raw_output_files"
     }
 }

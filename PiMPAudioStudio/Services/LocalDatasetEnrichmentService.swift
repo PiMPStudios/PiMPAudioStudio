@@ -15,6 +15,9 @@ enum LocalDatasetEnrichmentStep: String, Equatable {
     case separatingStems
     case transcribingVocals
     case generatingCaptions
+    case loadingNativeAnnotation
+    case captioningFullMixes
+    case transcribingFullMixes
     case exportingVocalsBundle
     case exportingInstrumentalBundle
     case refreshingMetadata
@@ -29,6 +32,12 @@ enum LocalDatasetEnrichmentStep: String, Equatable {
             return "Transcribing vocals"
         case .generatingCaptions:
             return "Generating metadata captions"
+        case .loadingNativeAnnotation:
+            return "Loading native ACE annotation"
+        case .captioningFullMixes:
+            return "Captioning full mixes"
+        case .transcribingFullMixes:
+            return "Transcribing full mixes"
         case .exportingVocalsBundle:
             return "Exporting vocal bundle"
         case .exportingInstrumentalBundle:
@@ -64,7 +73,11 @@ struct LocalDatasetEnrichmentResult: Equatable {
 
     var summary: String {
         var parts: [String] = []
-        parts.append("Separated \(separatedClipCount) clip\(separatedClipCount == 1 ? "" : "s")")
+        if separatedClipCount > 0 {
+            parts.append(
+                "Separated \(separatedClipCount) clip\(separatedClipCount == 1 ? "" : "s")"
+            )
+        }
         if vocalBundleExists && instrumentalBundleExists {
             parts.append("wrote vocal and instrumental bundles")
         } else if vocalBundleExists {
@@ -85,9 +98,34 @@ struct LocalDatasetEnrichmentResult: Equatable {
     }
 }
 
+enum LocalDatasetAnnotationBackendChoice: String, CaseIterable, Hashable, Identifiable {
+    case automatic
+    case lightweight
+    case nativeACE
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .automatic:
+            return "Automatic"
+        case .lightweight:
+            return "Lightweight Native"
+        case .nativeACE:
+            return "Native ACE (Advanced)"
+        }
+    }
+}
+
+struct LocalDatasetEnrichmentOptions: Equatable {
+    var createStems = false
+    var annotationBackend: LocalDatasetAnnotationBackendChoice = .automatic
+}
+
 enum LocalDatasetEnrichmentError: LocalizedError {
     case invalidCaptions(String)
     case missingClip(String)
+    case nativeACEUnavailable(String)
 
     var errorDescription: String? {
         switch self {
@@ -95,6 +133,8 @@ enum LocalDatasetEnrichmentError: LocalizedError {
             return "Dataset captions are not valid: \(message)"
         case .missingClip(let path):
             return "Dataset clip is missing: \(path)"
+        case .nativeACEUnavailable(let reason):
+            return "Native ACE annotation is unavailable: \(reason)"
         }
     }
 }
@@ -110,6 +150,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
     func enrich(
         datasetDirectory: URL,
         force: Bool = false,
+        options: LocalDatasetEnrichmentOptions = LocalDatasetEnrichmentOptions(),
         prepareMemory: (() async -> Void)? = nil
     ) {
         let previousTask = task
@@ -117,7 +158,17 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         let runID = UUID()
         taskRunID = runID
         activeRunID = runID
-        phase = .running(step: prepareMemory == nil ? .separatingStems : .preparingMemory)
+        let initialStep: LocalDatasetEnrichmentStep
+        if prepareMemory != nil {
+            initialStep = .preparingMemory
+        } else if options.createStems {
+            initialStep = .separatingStems
+        } else if options.annotationBackend == .lightweight {
+            initialStep = .transcribingFullMixes
+        } else {
+            initialStep = .loadingNativeAnnotation
+        }
+        phase = .running(step: initialStep)
 
         task = Task { [weak self, previousTask] in
             await previousTask?.value
@@ -137,10 +188,11 @@ final class LocalDatasetEnrichmentService: ObservableObject {
                 let result = try await Self.run(
                     datasetDirectory: datasetDirectory,
                     force: force,
-                    onStep: { [weak self] step in
+                    options: options,
+                    onStep: { [self] step in
                         await MainActor.run {
-                            guard self?.isCurrentRun(runID) == true else { return }
-                            self?.phase = .running(step: step)
+                            guard self.isCurrentRun(runID) else { return }
+                            self.phase = .running(step: step)
                         }
                     }
                 )
@@ -184,8 +236,10 @@ final class LocalDatasetEnrichmentService: ObservableObject {
     nonisolated static func run(
         datasetDirectory: URL,
         force: Bool = false,
+        options: LocalDatasetEnrichmentOptions = LocalDatasetEnrichmentOptions(),
         lyricsTranscriber: any DatasetLyricsTranscribing = LyricsTranscriptionService(),
-        onStep: @escaping (LocalDatasetEnrichmentStep) async -> Void
+        annotationBackend: (any DatasetAnnotationBackend)? = nil,
+        onStep: @Sendable @escaping (LocalDatasetEnrichmentStep) async -> Void
     ) async throws -> LocalDatasetEnrichmentResult {
         let didStartAccessing = datasetDirectory.startAccessingSecurityScopedResource()
         defer {
@@ -194,56 +248,99 @@ final class LocalDatasetEnrichmentService: ObservableObject {
             }
         }
 
-        let sourceSeparator = SourceSeparationService()
-
         do {
             var records = try loadCaptionRecords(from: datasetDirectory)
 
-            await onStep(.separatingStems)
-            for index in records.indices {
-                try Task.checkCancellation()
-                if !force, hasCachedInstrumentalSeparation(record: records[index].object, datasetDirectory: datasetDirectory) {
-                    continue
+            if options.createStems {
+                let sourceSeparator = SourceSeparationService()
+                await onStep(.separatingStems)
+                for index in records.indices {
+                    try Task.checkCancellation()
+                    if !force, hasCachedInstrumentalSeparation(
+                        record: records[index].object,
+                        datasetDirectory: datasetDirectory
+                    ) {
+                        continue
+                    }
+                    records[index].object = try await separateClip(
+                        record: records[index],
+                        datasetDirectory: datasetDirectory,
+                        sourceSeparator: sourceSeparator,
+                        force: force
+                    )
+                    compactMLXCache(
+                        context: "after separation \(index + 1)/\(records.count)"
+                    )
                 }
-                records[index].object = try await separateClip(
-                    record: records[index],
-                    datasetDirectory: datasetDirectory,
-                    sourceSeparator: sourceSeparator,
-                    force: force
-                )
-                compactMLXCache(context: "after separation \(index + 1)/\(records.count)")
-            }
-            compactMLXCache(context: "before transcription")
-
-            await onStep(.transcribingVocals)
-            for index in records.indices {
-                try Task.checkCancellation()
-                records[index].object = try await transcribeClipVocals(
-                    record: records[index],
-                    datasetDirectory: datasetDirectory,
-                    lyricsTranscriber: lyricsTranscriber,
-                    force: force
-                )
-                compactMLXCache(context: "after transcription \(index + 1)/\(records.count)")
+                compactMLXCache(context: "before annotation")
             }
 
-            for index in records.indices {
-                try Task.checkCancellation()
-                records[index].object = try applyDerivedAudioMetadata(
-                    record: records[index],
+            let nativeBackend = try await nativeAnnotationBackend(
+                preference: options.annotationBackend,
+                suppliedBackend: annotationBackend
+            )
+            let usedNativeAnnotationBackend = nativeBackend != nil
+            if let nativeBackend {
+                records = try await annotateWithNativeACE(
+                    records: records,
                     datasetDirectory: datasetDirectory,
-                    force: force
+                    backend: nativeBackend,
+                    lyricsAligner: lyricsTranscriber
+                        as? any DatasetLyricsAligning,
+                    force: force,
+                    onStep: onStep
                 )
+            } else {
+                await onStep(
+                    options.createStems
+                        ? .transcribingVocals
+                        : .transcribingFullMixes
+                )
+                for index in records.indices {
+                    try Task.checkCancellation()
+                    records[index].object = try await transcribeClipVocals(
+                        record: records[index],
+                        datasetDirectory: datasetDirectory,
+                        lyricsTranscriber: lyricsTranscriber,
+                        preferVocals: options.createStems,
+                        force: force
+                    )
+                    compactMLXCache(
+                        context: "after transcription \(index + 1)/\(records.count)"
+                    )
+                }
+
+                if options.createStems {
+                    for index in records.indices {
+                        try Task.checkCancellation()
+                        records[index].object = try applyDerivedAudioMetadata(
+                            record: records[index],
+                            datasetDirectory: datasetDirectory,
+                            force: force
+                        )
+                    }
+                }
+
+                await onStep(.generatingCaptions)
+                for index in records.indices {
+                    try Task.checkCancellation()
+                    records[index].object = try applyAutomaticCaptionMetadata(
+                        record: records[index],
+                        datasetDirectory: datasetDirectory,
+                        force: force
+                    )
+                }
             }
 
-            await onStep(.generatingCaptions)
-            for index in records.indices {
-                try Task.checkCancellation()
-                records[index].object = try applyAutomaticCaptionMetadata(
-                    record: records[index],
-                    datasetDirectory: datasetDirectory,
-                    force: force
-                )
+            if usedNativeAnnotationBackend, options.createStems {
+                for index in records.indices {
+                    try Task.checkCancellation()
+                    records[index].object = try applyDerivedAudioMetadata(
+                        record: records[index],
+                        datasetDirectory: datasetDirectory,
+                        force: force
+                    )
+                }
             }
 
             try writeJSONObjectArray(
@@ -252,19 +349,21 @@ final class LocalDatasetEnrichmentService: ObservableObject {
             )
             try TrainingDatasetPackageWriter.refreshTrainingBundles(at: datasetDirectory)
 
-            await onStep(.exportingVocalsBundle)
-            _ = try writeStemTrainingBundle(
-                datasetDirectory: datasetDirectory,
-                records: records.map(\.object),
-                role: .vocals
-            )
+            if options.createStems {
+                await onStep(.exportingVocalsBundle)
+                _ = try writeStemTrainingBundle(
+                    datasetDirectory: datasetDirectory,
+                    records: records.map(\.object),
+                    role: .vocals
+                )
 
-            await onStep(.exportingInstrumentalBundle)
-            _ = try writeStemTrainingBundle(
-                datasetDirectory: datasetDirectory,
-                records: records.map(\.object),
-                role: .instrumental
-            )
+                await onStep(.exportingInstrumentalBundle)
+                _ = try writeStemTrainingBundle(
+                    datasetDirectory: datasetDirectory,
+                    records: records.map(\.object),
+                    role: .instrumental
+                )
+            }
 
             try Task.checkCancellation()
             await onStep(.refreshingMetadata)
@@ -321,6 +420,452 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         try TrainingDatasetPackageWriter.refreshTrainingBundles(at: datasetDirectory)
         try TrainingDatasetPackageWriter.refreshPreprocessCacheManifest(at: datasetDirectory)
         return (vocalCount, instrumentalCount)
+    }
+
+    nonisolated private static func nativeAnnotationBackend(
+        preference: LocalDatasetAnnotationBackendChoice,
+        suppliedBackend: (any DatasetAnnotationBackend)?
+    ) async throws -> (any DatasetAnnotationBackend)? {
+        guard preference != .lightweight else { return nil }
+        let backend: any DatasetAnnotationBackend = suppliedBackend
+            ?? NativeACEDatasetAnnotationBackend(
+                modelsDirectory: AppStorageLocations.modelsDirectory
+            )
+        let availability = await backend.availability()
+
+        if availability.hardwareTier == .unsupported {
+            if preference == .nativeACE {
+                throw LocalDatasetEnrichmentError.nativeACEUnavailable(
+                    "this Mac has less than the supported 24 GB unified-memory minimum"
+                )
+            }
+            return nil
+        }
+        guard availability.isFullyInstalled else {
+            if preference == .nativeACE {
+                let reasons = availability.models
+                    .filter { !$0.isInstalled }
+                    .compactMap(\.unavailableReason)
+                    .joined(separator: " ")
+                throw LocalDatasetEnrichmentError.nativeACEUnavailable(
+                    reasons.isEmpty
+                        ? "the captioner and transcriber model packs are not installed"
+                        : reasons
+                )
+            }
+            return nil
+        }
+        return backend
+    }
+
+    nonisolated private static func annotateWithNativeACE(
+        records: [LocalDatasetCaptionRecord],
+        datasetDirectory: URL,
+        backend: any DatasetAnnotationBackend,
+        lyricsAligner: (any DatasetLyricsAligning)?,
+        force: Bool,
+        onStep: @Sendable @escaping (LocalDatasetEnrichmentStep) async -> Void
+    ) async throws -> [LocalDatasetCaptionRecord] {
+        var records = records
+        let indices = annotationRecordIndices(in: records)
+        guard !indices.isEmpty else { return records }
+
+        let captionIndices = indices.filter {
+            force || !hasCompletedNativeAnnotation(
+                task: .caption,
+                record: records[$0].object,
+                datasetDirectory: datasetDirectory
+            )
+        }
+        if !captionIndices.isEmpty {
+            await onStep(.loadingNativeAnnotation)
+            let requests = try annotationRequests(
+                indices: captionIndices,
+                records: records,
+                datasetDirectory: datasetDirectory
+            )
+            let results = try await backend.annotate(
+                requests: requests,
+                task: .caption,
+                options: DatasetAnnotationGenerationOptions(maxTokens: 220),
+                onProgress: { progress in
+                    guard progress.stage == .annotating else { return }
+                    Task {
+                        await onStep(.captioningFullMixes)
+                    }
+                }
+            )
+            let indexByID = Dictionary(
+                uniqueKeysWithValues: captionIndices.map {
+                    (annotationRequestID(for: records[$0], index: $0), $0)
+                }
+            )
+            for result in results {
+                try Task.checkCancellation()
+                guard let index = indexByID[result.requestID] else { continue }
+                records[index].object = try applyNativeAnnotationResult(
+                    result,
+                    to: records[index],
+                    datasetDirectory: datasetDirectory
+                )
+            }
+            compactMLXCache(context: "after native ACE captioning")
+        }
+
+        let transcriptionIndices = indices.filter {
+            force || !hasCompletedNativeAnnotation(
+                task: .transcribe,
+                record: records[$0].object,
+                datasetDirectory: datasetDirectory
+            )
+        }
+        if !transcriptionIndices.isEmpty {
+            await onStep(.loadingNativeAnnotation)
+            let requests = try annotationRequests(
+                indices: transcriptionIndices,
+                records: records,
+                datasetDirectory: datasetDirectory
+            )
+            let results = try await backend.annotate(
+                requests: requests,
+                task: .transcribe,
+                options: DatasetAnnotationGenerationOptions(maxTokens: 1_024),
+                onProgress: { progress in
+                    guard progress.stage == .annotating else { return }
+                    Task {
+                        await onStep(.transcribingFullMixes)
+                    }
+                }
+            )
+            let indexByID = Dictionary(
+                uniqueKeysWithValues: transcriptionIndices.map {
+                    (annotationRequestID(for: records[$0], index: $0), $0)
+                }
+            )
+            for result in results {
+                try Task.checkCancellation()
+                guard let index = indexByID[result.requestID] else { continue }
+                records[index].object = try applyNativeAnnotationResult(
+                    result,
+                    to: records[index],
+                    datasetDirectory: datasetDirectory
+                )
+            }
+            if let lyricsAligner {
+                for index in transcriptionIndices {
+                    try Task.checkCancellation()
+                    records[index].object = try await alignNativeLyrics(
+                        record: records[index],
+                        datasetDirectory: datasetDirectory,
+                        lyricsAligner: lyricsAligner,
+                        force: force
+                    )
+                }
+            }
+            compactMLXCache(context: "after native ACE transcription")
+        }
+
+        await backend.evict()
+        return records
+    }
+
+    nonisolated private static func annotationRecordIndices(
+        in records: [LocalDatasetCaptionRecord]
+    ) -> [Int] {
+        let fullMixes = records.indices.filter {
+            let role = stringValue(records[$0].object["asset_role"])
+                ?? stringValue(records[$0].object["role"])
+            return role == DatasetAssetRoleV2.fullMix.rawValue
+        }
+        return fullMixes.isEmpty ? Array(records.indices) : fullMixes
+    }
+
+    nonisolated private static func annotationRequests(
+        indices: [Int],
+        records: [LocalDatasetCaptionRecord],
+        datasetDirectory: URL
+    ) throws -> [DatasetAnnotationRequest] {
+        try indices.map { index in
+            let record = records[index]
+            let audioURL = resolve(record.file, relativeTo: datasetDirectory)
+            guard FileManager.default.fileExists(
+                atPath: audioURL.path(percentEncoded: false)
+            ) else {
+                throw LocalDatasetEnrichmentError.missingClip(record.file)
+            }
+            return DatasetAnnotationRequest(
+                id: annotationRequestID(for: record, index: index),
+                audioURL: audioURL
+            )
+        }
+    }
+
+    nonisolated private static func annotationRequestID(
+        for record: LocalDatasetCaptionRecord,
+        index: Int
+    ) -> String {
+        stringValue(record.object["asset_id"])
+            ?? stringValue(record.object["id"])
+            ?? "asset-\(index + 1)"
+    }
+
+    nonisolated private static func hasCompletedNativeAnnotation(
+        task: DatasetAnnotationTask,
+        record: [String: Any],
+        datasetDirectory: URL
+    ) -> Bool {
+        let annotation = record["annotation"] as? [String: Any] ?? [:]
+        let rawOutputs = annotation["raw_output_files"] as? [String: Any] ?? [:]
+        let key = task == .caption ? "caption" : "lyrics"
+        guard let rawPath = stringValue(rawOutputs[key]),
+              FileManager.default.fileExists(
+                atPath: resolve(
+                    rawPath,
+                    relativeTo: datasetDirectory
+                ).path(percentEncoded: false)
+              )
+        else {
+            return false
+        }
+        switch task {
+        case .caption:
+            return stringValue(record["caption_source"]) == "ace-step-captioner"
+        case .transcribe:
+            return stringValue(record["lyrics_source"]) == "ace-step-transcriber"
+        }
+    }
+
+    nonisolated private static func applyNativeAnnotationResult(
+        _ result: DatasetAnnotationBackendResult,
+        to record: LocalDatasetCaptionRecord,
+        datasetDirectory: URL
+    ) throws -> [String: Any] {
+        let artifactDirectory = annotationArtifactDirectory(
+            for: record,
+            datasetDirectory: datasetDirectory
+        ).appendingPathComponent("native-ace", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: artifactDirectory,
+            withIntermediateDirectories: true
+        )
+        let taskName = result.task == .caption ? "caption" : "lyrics"
+        let rawURL = artifactDirectory.appendingPathComponent(
+            "\(taskName).raw.txt"
+        )
+        try result.rawText.write(
+            to: rawURL,
+            atomically: true,
+            encoding: .utf8
+        )
+        let resultURL = artifactDirectory.appendingPathComponent(
+            "\(taskName).result.json"
+        )
+        let resultPayload: [String: Any] = [
+            "schema_version": "1.0",
+            "generated_at": ISO8601DateFormatter().string(from: Date()),
+            "task": result.task.rawValue,
+            "backend_id": result.descriptor.id,
+            "backend_version": result.descriptor.version,
+            "model_id": result.descriptor.modelID,
+            "model_revision": result.descriptor.modelRevision,
+            "prompt_version": result.descriptor.promptVersion,
+            "quantization": result.descriptor.quantization,
+            "generation_settings": result.settings,
+            "elapsed_seconds": rounded(result.elapsedSeconds, places: 3),
+            "prompt_token_count": result.promptTokenCount,
+            "generated_token_count": result.generatedTokenCount,
+            "language": result.language ?? "",
+            "text": result.text,
+            "raw_text": result.rawText,
+            "diagnostics": [
+                "is_empty": result.diagnostics.isEmpty,
+                "line_count": result.diagnostics.lineCount,
+                "unique_line_count": result.diagnostics.uniqueLineCount,
+                "maximum_repeated_line_count":
+                    result.diagnostics.maximumRepeatedLineCount,
+                "pathological_repetition":
+                    result.diagnostics.isPathologicalRepetition,
+            ],
+        ]
+        try writeJSONObject(resultPayload, to: resultURL)
+
+        let rawRelative = relativePath(for: rawURL, from: datasetDirectory)
+        let resultRelative = relativePath(
+            for: resultURL,
+            from: datasetDirectory
+        )
+        let updatedAt = ISO8601DateFormatter().string(from: Date())
+        var updated = record.object
+        var annotation = updated["annotation"] as? [String: Any] ?? [:]
+        var rawOutputs = annotation["raw_output_files"] as? [String: Any] ?? [:]
+        rawOutputs[taskName] = rawRelative
+        rawOutputs["\(taskName)_result"] = resultRelative
+        annotation["schema_version"] =
+            TrainingDatasetPackageWriter.annotationSchemaVersion
+        annotation["updated_at"] = updatedAt
+        annotation["review_status"] = "needs_review"
+        annotation["raw_output_files"] = rawOutputs
+
+        switch result.task {
+        case .caption:
+            updated["caption"] = result.text
+            updated["prompt"] = result.text
+            updated["caption_source"] = "ace-step-captioner"
+            annotation["annotation_backend"] = result.descriptor.id
+            annotation["annotation_backend_version"] =
+                result.descriptor.version
+            annotation["caption_source"] = "ace-step-captioner"
+            annotation["caption_present"] = !result.text.isEmpty
+            annotation["model_id"] = result.descriptor.modelID
+            annotation["model_revision"] = result.descriptor.modelRevision
+            annotation["prompt_version"] = result.descriptor.promptVersion
+            annotation["quantization"] = result.descriptor.quantization
+            annotation["generation_settings"] = result.settings
+            annotation["elapsed_seconds"] = rounded(
+                result.elapsedSeconds,
+                places: 3
+            )
+        case .transcribe:
+            updated["lyrics"] = result.text
+            updated["transcript"] = result.text
+            updated["lyrics_source"] = "ace-step-transcriber"
+            updated["language"] = result.language ?? ""
+            annotation["lyrics_source"] = "ace-step-transcriber"
+            annotation["lyrics_present"] = !result.text.isEmpty
+            annotation["language"] = result.language ?? ""
+            updated["transcription"] = [
+                "status": result.text.isEmpty ? "empty" : "complete",
+                "text": result.text,
+                "source": "ace-step-transcriber",
+                "backend": result.descriptor.id,
+                "backend_version": result.descriptor.version,
+                "model": result.descriptor.modelID,
+                "model_revision": result.descriptor.modelRevision,
+                "prompt_version": result.descriptor.promptVersion,
+                "quantization": result.descriptor.quantization,
+                "generation_settings": result.settings,
+                "elapsed_seconds": rounded(
+                    result.elapsedSeconds,
+                    places: 3
+                ),
+                "language": result.language ?? "",
+                "lyrics_file": rawRelative,
+                "raw_result_file": resultRelative,
+            ]
+        }
+        updated["annotation"] = annotation
+
+        let audioURL = resolve(record.file, relativeTo: datasetDirectory)
+        let sidecarURL = audioURL.deletingPathExtension()
+            .appendingPathExtension("json")
+        var sidecar = readJSONObject(from: sidecarURL) ?? [:]
+        sidecar["caption"] = updated["caption"]
+        sidecar["prompt"] = updated["prompt"]
+        sidecar["lyrics"] = updated["lyrics"]
+        sidecar["transcript"] = updated["transcript"]
+        sidecar["caption_source"] = updated["caption_source"]
+        sidecar["lyrics_source"] = updated["lyrics_source"]
+        sidecar["language"] = updated["language"]
+        sidecar["annotation"] = annotation
+        sidecar["transcription"] = updated["transcription"]
+        try writeJSONObject(sidecar, to: sidecarURL)
+        return updated
+    }
+
+    nonisolated private static func annotationArtifactDirectory(
+        for record: LocalDatasetCaptionRecord,
+        datasetDirectory: URL
+    ) -> URL {
+        let identifier = stringValue(record.object["asset_id"])
+            ?? stringValue(record.object["id"])
+            ?? URL(fileURLWithPath: record.file)
+                .deletingPathExtension()
+                .lastPathComponent
+        let safeIdentifier = identifier
+            .lowercased()
+            .map { character -> Character in
+                character.isLetter || character.isNumber ? character : "-"
+            }
+            .reduce(into: "") { value, character in
+                if character != "-" || !value.hasSuffix("-") {
+                    value.append(character)
+                }
+            }
+            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        return datasetDirectory
+            .appendingPathComponent("annotations", isDirectory: true)
+            .appendingPathComponent(
+                safeIdentifier.isEmpty ? "asset" : safeIdentifier,
+                isDirectory: true
+            )
+    }
+
+    nonisolated private static func alignNativeLyrics(
+        record: LocalDatasetCaptionRecord,
+        datasetDirectory: URL,
+        lyricsAligner: any DatasetLyricsAligning,
+        force: Bool
+    ) async throws -> [String: Any] {
+        let lyrics = stringValue(record.object["lyrics"])
+            ?? stringValue(record.object["transcript"])
+            ?? ""
+        guard !lyrics.isEmpty else { return record.object }
+
+        let audioURL = resolve(record.file, relativeTo: datasetDirectory)
+        let outputDirectory = annotationArtifactDirectory(
+            for: record,
+            datasetDirectory: datasetDirectory
+        ).appendingPathComponent("native-ace", isDirectory: true)
+        let alignment = try await lyricsAligner.align(
+            lyrics: lyrics,
+            audioURL: audioURL,
+            outputDirectory: outputDirectory,
+            force: force
+        )
+
+        var updated = record.object
+        var transcription = updated["transcription"] as? [String: Any] ?? [:]
+        transcription["aligner_backend"] = alignment.backend
+        transcription["aligner_model"] = alignment.alignerModel ?? ""
+        transcription["alignment_elapsed_seconds"] = rounded(
+            alignment.elapsedSeconds,
+            places: 3
+        )
+        transcription["lyrics_file"] = relativePath(
+            for: alignment.lyricsURL,
+            from: datasetDirectory
+        )
+        transcription["timed_lyrics_file"] = relativePath(
+            for: alignment.timedLyricsURL,
+            from: datasetDirectory
+        )
+        transcription["lrc_file"] = relativePath(
+            for: alignment.lrcURL,
+            from: datasetDirectory
+        )
+        updated["transcription"] = transcription
+
+        var assets = updated["assets"] as? [String: Any] ?? [:]
+        assets["lyrics"] = transcription["lyrics_file"]
+        assets["timed_lyrics"] = transcription["timed_lyrics_file"]
+        assets["lyrics_lrc"] = transcription["lrc_file"]
+        updated["assets"] = assets
+
+        var annotation = updated["annotation"] as? [String: Any] ?? [:]
+        var rawOutputs = annotation["raw_output_files"] as? [String: Any] ?? [:]
+        rawOutputs["lyrics_text"] = transcription["lyrics_file"]
+        rawOutputs["timed_lyrics"] = transcription["timed_lyrics_file"]
+        rawOutputs["lyrics_lrc"] = transcription["lrc_file"]
+        annotation["raw_output_files"] = rawOutputs
+        updated["annotation"] = annotation
+
+        let sidecarURL = audioURL.deletingPathExtension()
+            .appendingPathExtension("json")
+        var sidecar = readJSONObject(from: sidecarURL) ?? [:]
+        sidecar["transcription"] = transcription
+        sidecar["annotation"] = annotation
+        try writeJSONObject(sidecar, to: sidecarURL)
+        return updated
     }
 
     nonisolated private static func separateClip(
@@ -397,23 +942,30 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         record: LocalDatasetCaptionRecord,
         datasetDirectory: URL,
         lyricsTranscriber: any DatasetLyricsTranscribing,
+        preferVocals: Bool,
         force: Bool
     ) async throws -> [String: Any] {
-        guard let vocalPath = stemPath(for: .vocals, in: record.object) else {
-            return record.object
-        }
+        let audioPath = preferVocals
+            ? stemPath(for: .vocals, in: record.object)
+            : record.file
+        guard let audioPath else { return record.object }
         if !force, hasCompletedTranscription(record.object) {
             return record.object
         }
 
-        let vocalURL = resolve(vocalPath, relativeTo: datasetDirectory)
-        guard FileManager.default.fileExists(atPath: vocalURL.path(percentEncoded: false)) else {
-            throw LocalDatasetEnrichmentError.missingClip(vocalPath)
+        let audioURL = resolve(audioPath, relativeTo: datasetDirectory)
+        guard FileManager.default.fileExists(atPath: audioURL.path(percentEncoded: false)) else {
+            throw LocalDatasetEnrichmentError.missingClip(audioPath)
         }
 
-        let outputDirectory = vocalURL.deletingLastPathComponent()
+        let outputDirectory = preferVocals
+            ? audioURL.deletingLastPathComponent()
+            : annotationArtifactDirectory(
+                for: record,
+                datasetDirectory: datasetDirectory
+            ).appendingPathComponent("lightweight", isDirectory: true)
         let transcription = try await lyricsTranscriber.transcribe(
-            vocalsURL: vocalURL,
+            vocalsURL: audioURL,
             outputDirectory: outputDirectory,
             force: force
         )
@@ -1803,7 +2355,20 @@ protocol DatasetLyricsTranscriptionEvicting: Sendable {
     func evictModels() async
 }
 
-actor LyricsTranscriptionService: DatasetLyricsTranscribing, DatasetLyricsTranscriptionEvicting {
+protocol DatasetLyricsAligning: Sendable {
+    func align(
+        lyrics: String,
+        audioURL: URL,
+        outputDirectory: URL,
+        force: Bool
+    ) async throws -> DatasetLyricsTranscriptionArtifact
+}
+
+actor LyricsTranscriptionService:
+    DatasetLyricsTranscribing,
+    DatasetLyricsTranscriptionEvicting,
+    DatasetLyricsAligning
+{
     private let transcriber: QwenLyricsTranscriber
     private let options: LyricsTranscriptionOptions
 
@@ -1871,6 +2436,97 @@ actor LyricsTranscriptionService: DatasetLyricsTranscribing, DatasetLyricsTransc
             backend: result.backend,
             model: result.modelID,
             alignerModel: result.alignerModelID,
+            lyricsURL: lyricsURL,
+            timedLyricsURL: timedLyricsURL,
+            lrcURL: lrcURL,
+            wordCount: result.words.count,
+            elapsedSeconds: result.elapsedSeconds
+        )
+    }
+
+    func align(
+        lyrics: String,
+        audioURL: URL,
+        outputDirectory: URL,
+        force: Bool
+    ) async throws -> DatasetLyricsTranscriptionArtifact {
+        try FileManager.default.createDirectory(
+            at: outputDirectory,
+            withIntermediateDirectories: true
+        )
+        let lyricsURL = outputDirectory.appendingPathComponent("lyrics.txt")
+        let timedLyricsURL = outputDirectory.appendingPathComponent(
+            "lyrics.timed.json"
+        )
+        let lrcURL = outputDirectory.appendingPathComponent("lyrics.lrc")
+        if !force,
+           FileManager.default.fileExists(
+               atPath: timedLyricsURL.path(percentEncoded: false)
+           ),
+           FileManager.default.fileExists(
+               atPath: lrcURL.path(percentEncoded: false)
+           ) {
+            if !FileManager.default.fileExists(
+                atPath: lyricsURL.path(percentEncoded: false)
+            ) {
+                try lyrics.write(
+                    to: lyricsURL,
+                    atomically: true,
+                    encoding: .utf8
+                )
+            }
+            return DatasetLyricsTranscriptionArtifact(
+                text: lyrics,
+                source: "cached-alignment",
+                backend: QwenLyricsTranscriber.alignerBackendName,
+                model: options.alignerModelID ?? "",
+                alignerModel: options.alignerModelID,
+                lyricsURL: lyricsURL,
+                timedLyricsURL: timedLyricsURL,
+                lrcURL: lrcURL,
+                wordCount: lyrics.split(whereSeparator: \.isWhitespace).count,
+                elapsedSeconds: 0
+            )
+        }
+
+        let result = try await transcriber.align(
+            audioURL: audioURL,
+            text: lyrics,
+            options: options
+        )
+        let compatibleResult = LyricsTranscriptionResult(
+            backend: result.backend,
+            modelID: result.modelID,
+            alignerModelID: result.modelID,
+            text: result.text,
+            words: result.words,
+            sampleRate: result.sampleRate,
+            trim: result.trim,
+            elapsedSeconds: result.elapsedSeconds
+        )
+        try result.text.write(
+            to: lyricsURL,
+            atomically: true,
+            encoding: .utf8
+        )
+        try Self.writeJSONObject(
+            timedLyricsPayload(
+                result: compatibleResult,
+                vocalsURL: audioURL
+            ),
+            to: timedLyricsURL
+        )
+        try Self.lrcText(from: compatibleResult).write(
+            to: lrcURL,
+            atomically: true,
+            encoding: .utf8
+        )
+        return DatasetLyricsTranscriptionArtifact(
+            text: result.text,
+            source: "qwen3-forced-alignment",
+            backend: result.backend,
+            model: result.modelID,
+            alignerModel: result.modelID,
             lyricsURL: lyricsURL,
             timedLyricsURL: timedLyricsURL,
             lrcURL: lrcURL,

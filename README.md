@@ -32,12 +32,13 @@ macOS app itself stays Swift/MLX and App Store friendly.
 ### Datasets
 
 - Build training datasets from local audio files.
-- Custom dataset names, seeded/evenly-spread sampling, and up to 1,000 clips per
-  local dataset.
+- Preserve whole tracks by default, or explicitly extract seeded/evenly-spread
+  clips when a clipped dataset is required.
 - Dataset review workspace with caption, lyric, BPM, key, language, time
   signature, notes, approval status, and package validation.
-- Native enrichment with Swift/MLX Demucs stems, Qwen3-ASR vocal transcription,
-  BPM/key analysis, and provenance metadata.
+- Native enrichment with optional four-bit ACE captioning/transcription,
+  lightweight Qwen fallback, Qwen3 forced alignment, opt-in Swift/MLX Demucs
+  stems, BPM/key analysis, and full provenance metadata.
 - ACE-compatible sidecar import/export, including LRC timestamp cleanup.
 - Full-mix, vocal, and instrumental training bundles.
 

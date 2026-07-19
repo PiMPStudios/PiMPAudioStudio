@@ -11,8 +11,8 @@ let package = Package(
         .executable(name: "MLXDropoutVJPProbe", targets: ["MLXDropoutVJPProbe"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/ml-explore/mlx-swift", from: "0.21.0"),
-        .package(url: "https://github.com/huggingface/swift-transformers", from: "1.1.6"),
+        .package(url: "https://github.com/ml-explore/mlx-swift", exact: "0.31.3"),
+        .package(url: "https://github.com/huggingface/swift-transformers", exact: "1.3.3"),
         .package(url: "https://github.com/soniqo/speech-swift.git", revision: "72a20dbb142d000b73d395b7bc62599fef8387e2"),
         .package(path: "../Vendor/demucs-mlx-swift"),
     ],
