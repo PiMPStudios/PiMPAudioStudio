@@ -1051,7 +1051,8 @@ private struct BuildTrainingView: View {
                 )
                 let importer = CommunityService()
                 let adapter = try await importer.importLocalAdapter(
-                    directoryURL: pullback.finalAdapterURL
+                    directoryURL: pullback.finalAdapterURL,
+                    preferredName: pullback.result.adapterName
                 )
                 runPodService.markRemoteAdapterImported(
                     podID: pod.id,

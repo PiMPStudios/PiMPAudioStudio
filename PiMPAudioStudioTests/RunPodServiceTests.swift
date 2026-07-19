@@ -422,6 +422,7 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
           "job_id": "job-123",
           "task": "train_lora",
           "status": "succeeded",
+          "adapter_name": "Midnight Soul LoRA",
           "started_at": "2026-07-18T00:00:00Z",
           "finished_at": "2026-07-18T00:10:00Z",
           "artifacts": [
@@ -439,6 +440,7 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
     if case .result = snapshot.status {
         #expect(snapshot.result?.jobID == "job-123")
         #expect(snapshot.result?.status == .succeeded)
+        #expect(snapshot.result?.adapterName == "Midnight Soul LoRA")
         #expect(snapshot.result?.artifacts.first?.kind == "final_adapter")
     } else {
         Issue.record("Expected a parsed result snapshot")

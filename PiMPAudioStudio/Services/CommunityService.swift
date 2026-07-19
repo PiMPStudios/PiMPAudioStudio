@@ -455,7 +455,10 @@ final class CommunityService: ObservableObject {
     /// `lokr_weights.safetensors`), raw LyCORIS LoKR folders containing only
     /// `lokr_weights.safetensors`, or Side-Step run folders containing `best`
     /// or `final` PEFT LoRA / LoKR adapter weights.
-    func importLocalAdapter(directoryURL: URL) async throws -> LoRAAdapter {
+    func importLocalAdapter(
+        directoryURL: URL,
+        preferredName: String? = nil
+    ) async throws -> LoRAAdapter {
         let didAccess = directoryURL.startAccessingSecurityScopedResource()
         defer {
             if didAccess {
@@ -470,7 +473,10 @@ final class CommunityService: ObservableObject {
         let hasPEFTWeights = FileManager.default.fileExists(atPath: peftWeightsURL.path(percentEncoded: false))
         let hasLoKRWeights = FileManager.default.fileExists(atPath: lokrWeightsURL.path(percentEncoded: false))
         if hasPEFTConfig && (hasPEFTWeights || hasLoKRWeights) {
-            return try importLocalPEFTAdapterUnlocked(directoryURL: directoryURL)
+            return try importLocalPEFTAdapterUnlocked(
+                directoryURL: directoryURL,
+                preferredName: preferredName
+            )
         }
 
         let nativeMetadataURL = directoryURL.appending(path: "adapter.json")
@@ -480,21 +486,24 @@ final class CommunityService: ObservableObject {
             return try await importLocalNativeAdapterUnlocked(
                 directoryURL: directoryURL,
                 metadataURL: nativeMetadataURL,
-                weightsURL: nativeWeightsURL
+                weightsURL: nativeWeightsURL,
+                preferredName: preferredName
             )
         }
 
         if let sideStepPEFTURL = preferredSideStepPEFTAdapterDirectory(in: directoryURL) {
             return try importLocalPEFTAdapterUnlocked(
                 directoryURL: sideStepPEFTURL,
-                nameSeedURL: directoryURL
+                nameSeedURL: directoryURL,
+                preferredName: preferredName
             )
         }
 
         if hasLoKRWeights {
             return try importLocalLyCORISLoKRAdapterUnlocked(
                 directoryURL: directoryURL,
-                weightsURL: lokrWeightsURL
+                weightsURL: lokrWeightsURL,
+                preferredName: preferredName
             )
         }
 
@@ -502,7 +511,8 @@ final class CommunityService: ObservableObject {
             return try importLocalLyCORISLoKRAdapterUnlocked(
                 directoryURL: sideStepWeightsURL.deletingLastPathComponent(),
                 weightsURL: sideStepWeightsURL,
-                nameSeedURL: directoryURL
+                nameSeedURL: directoryURL,
+                preferredName: preferredName
             )
         }
 
@@ -527,7 +537,8 @@ final class CommunityService: ObservableObject {
 
     private func importLocalPEFTAdapterUnlocked(
         directoryURL: URL,
-        nameSeedURL: URL? = nil
+        nameSeedURL: URL? = nil,
+        preferredName: String? = nil
     ) throws -> LoRAAdapter {
 
         let configURL = directoryURL.appending(path: "adapter_config.json")
@@ -568,7 +579,10 @@ final class CommunityService: ObservableObject {
                 rawArrays: rawArrays,
                 safetensorsMetadata: metadata,
                 peftConfig: peftConfig,
-                nameSeed: localPEFTNameSeed(for: nameSeedURL ?? directoryURL),
+                nameSeed: resolvedImportName(
+                    preferredName,
+                    fallbackURL: nameSeedURL ?? directoryURL
+                ),
                 source: .imported,
                 remoteRepoURL: nil,
                 errorURL: directoryURL
@@ -578,7 +592,10 @@ final class CommunityService: ObservableObject {
         return try savePEFTAdapter(
             rawArrays: rawArrays,
             peftConfig: peftConfig,
-            nameSeed: localPEFTNameSeed(for: nameSeedURL ?? directoryURL),
+            nameSeed: resolvedImportName(
+                preferredName,
+                fallbackURL: nameSeedURL ?? directoryURL
+            ),
             source: .imported,
             remoteRepoURL: nil,
             errorURL: directoryURL
@@ -588,7 +605,8 @@ final class CommunityService: ObservableObject {
     private func importLocalLyCORISLoKRAdapterUnlocked(
         directoryURL: URL,
         weightsURL: URL,
-        nameSeedURL: URL? = nil
+        nameSeedURL: URL? = nil,
+        preferredName: String? = nil
     ) throws -> LoRAAdapter {
         let rawArrays = try MLX.loadArrays(url: weightsURL)
         let metadata = (try? safetensorsMetadata(from: weightsURL)) ?? [:]
@@ -602,7 +620,7 @@ final class CommunityService: ObservableObject {
             rawArrays: rawArrays,
             safetensorsMetadata: metadata,
             peftConfig: nil,
-            nameSeed: localPEFTNameSeed(for: seedURL),
+            nameSeed: resolvedImportName(preferredName, fallbackURL: seedURL),
             baseModelIDOverride: trainingConfig?.resolvedBaseModelID,
             source: .imported,
             remoteRepoURL: nil,
@@ -613,7 +631,8 @@ final class CommunityService: ObservableObject {
     private func importLocalNativeAdapterUnlocked(
         directoryURL: URL,
         metadataURL: URL,
-        weightsURL: URL
+        weightsURL: URL,
+        preferredName: String? = nil
     ) async throws -> LoRAAdapter {
         let metadataData = try Data(contentsOf: metadataURL)
         let decoder = JSONDecoder()
@@ -623,7 +642,12 @@ final class CommunityService: ObservableObject {
         adapter.source = .imported
         adapter.remoteRepoURL = nil
 
-        adapter.id = uniqueAdapterID(from: adapter.id)
+        if let preferredName = normalizedPreferredImportName(preferredName) {
+            adapter.name = preferredName
+            adapter.id = uniqueAdapterID(from: preferredName)
+        } else {
+            adapter.id = uniqueAdapterID(from: adapter.id)
+        }
 
         let destination = try AdapterRegistry.adapterDirectory(id: adapter.id)
         let weightsDestination = destination.appending(path: "adapter.safetensors")
@@ -891,6 +915,20 @@ final class CommunityService: ObservableObject {
         }
 
         return directoryURL.lastPathComponent
+    }
+
+    private func resolvedImportName(
+        _ preferredName: String?,
+        fallbackURL: URL
+    ) -> String {
+        normalizedPreferredImportName(preferredName)
+            ?? localPEFTNameSeed(for: fallbackURL)
+    }
+
+    private func normalizedPreferredImportName(_ preferredName: String?) -> String? {
+        guard let preferredName else { return nil }
+        let trimmed = preferredName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     private func preferredSideStepLoKRWeightsURL(in directoryURL: URL) -> URL? {

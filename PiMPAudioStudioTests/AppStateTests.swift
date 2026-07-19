@@ -1685,7 +1685,10 @@ func localDatasetEnrichmentAnalyzesTempoKeyAndMeterFromAudio(
     )
 
     let service = CommunityService()
-    let imported = try await service.importLocalAdapter(directoryURL: sourceDir)
+    let imported = try await service.importLocalAdapter(
+        directoryURL: sourceDir,
+        preferredName: "Remote Jazz LoRA"
+    )
     defer {
         if let directory = try? AdapterRegistry.adapterDirectory(id: imported.id) {
             try? FileManager.default.removeItem(at: directory)
@@ -1693,6 +1696,8 @@ func localDatasetEnrichmentAnalyzesTempoKeyAndMeterFromAudio(
     }
 
     #expect(imported.kind == .lora)
+    #expect(imported.name == "Remote Jazz LoRA")
+    #expect(imported.id == "remote-jazz-lora")
     #expect(imported.source == .imported)
     #expect(imported.baseModelID == "ace-step-dit-xl-base")
     #expect(imported.config.rank == 4)

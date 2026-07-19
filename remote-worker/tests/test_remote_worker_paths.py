@@ -363,6 +363,9 @@ class RemoteWorkerPathTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             job = write_package_v2_job(root)
+            payload = json.loads(job.read_text(encoding="utf-8"))
+            payload["training"] = {"adapter_name": "Remote Jazz LoRA"}
+            job.write_text(json.dumps(payload), encoding="utf-8")
             remote_worker = worker.RemoteWorker(worker_args(job))
 
             exit_code = remote_worker.train()
@@ -383,6 +386,7 @@ class RemoteWorkerPathTests(unittest.TestCase):
             )
             self.assertEqual(result["pimp_audio_remote_result_version"], "1.0")
             self.assertEqual(result["status"], "succeeded")
+            self.assertEqual(result["adapter_name"], "Remote Jazz LoRA")
             self.assertEqual(result["metrics"]["dry_run"], 1.0)
 
     def test_exported_package_v2_zip_completes_dry_run(self) -> None:

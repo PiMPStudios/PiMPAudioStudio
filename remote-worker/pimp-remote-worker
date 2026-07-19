@@ -407,6 +407,11 @@ class RemoteWorker:
             "artifacts": artifacts,
             "metrics": metrics or {},
         }
+        training = self.job.get("training")
+        if isinstance(training, dict):
+            adapter_name = str(training.get("adapter_name") or "").strip()
+            if adapter_name:
+                result["adapter_name"] = adapter_name
         if error:
             result["error"] = error
         write_json(self.result_file, result)

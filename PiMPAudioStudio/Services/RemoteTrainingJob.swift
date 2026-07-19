@@ -354,6 +354,7 @@ struct RemoteTrainingJobResult: Codable, Hashable, Sendable {
     var jobID: String
     var task: RemoteTrainingTask
     var status: RemoteTrainingJobStatus
+    var adapterName: String?
     var startedAt: String?
     var finishedAt: String?
     var artifacts: [RemoteTrainingJobArtifact]
@@ -365,6 +366,7 @@ struct RemoteTrainingJobResult: Codable, Hashable, Sendable {
         case jobID = "job_id"
         case task
         case status
+        case adapterName = "adapter_name"
         case startedAt = "started_at"
         case finishedAt = "finished_at"
         case artifacts
@@ -381,6 +383,7 @@ struct RemoteTrainingJobResult: Codable, Hashable, Sendable {
         jobID: String,
         task: RemoteTrainingTask,
         status: RemoteTrainingJobStatus,
+        adapterName: String? = nil,
         startedAt: String?,
         finishedAt: String?,
         artifacts: [RemoteTrainingJobArtifact],
@@ -391,6 +394,7 @@ struct RemoteTrainingJobResult: Codable, Hashable, Sendable {
         self.jobID = jobID
         self.task = task
         self.status = status
+        self.adapterName = adapterName
         self.startedAt = startedAt
         self.finishedAt = finishedAt
         self.artifacts = artifacts
@@ -408,6 +412,7 @@ struct RemoteTrainingJobResult: Codable, Hashable, Sendable {
         self.jobID = try container.decode(String.self, forKey: .jobID)
         self.task = try container.decode(RemoteTrainingTask.self, forKey: .task)
         self.status = try container.decode(RemoteTrainingJobStatus.self, forKey: .status)
+        self.adapterName = try container.decodeIfPresent(String.self, forKey: .adapterName)
         self.startedAt = try container.decodeIfPresent(String.self, forKey: .startedAt)
         self.finishedAt = try container.decodeIfPresent(String.self, forKey: .finishedAt)
         self.artifacts = try container.decode([RemoteTrainingJobArtifact].self, forKey: .artifacts)
