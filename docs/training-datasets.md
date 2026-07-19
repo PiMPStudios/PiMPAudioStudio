@@ -2,6 +2,18 @@
 
 PiMP Audio Studio can build and import local LoRA training datasets without a cloud service. The current dataset builder is local-file/full-mix first, with package metadata shaped so a future remote worker can consume the same folder or zip.
 
+## Package Version Status
+
+The shipping builder still writes the clip-based v1 package described below.
+The typed whole-track package-v2 contract, validator, non-destructive v1
+adapter, and compatibility bundle projection are now implemented. See
+[dataset-package-v2.md](dataset-package-v2.md) for the contract and migration
+rules.
+
+The next slice will make the builder preserve complete source tracks and write
+v2 packages by default. Until that UI and writer work lands, this document's
+existing build instructions remain the behavior users see in the app.
+
 ## Build From Local Files
 
 Use **Build > Datasets > From Local Files...** to slice local audio into a package under:

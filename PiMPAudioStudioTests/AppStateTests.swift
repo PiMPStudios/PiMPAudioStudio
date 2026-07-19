@@ -614,6 +614,76 @@ private extension JSONDecoder {
     #expect(adapterModes.contains("lokr"))
 }
 
+@Test func datasetPackageEditorLoadsLegacyPackageAsV2WithoutRewritingIt() throws {
+    let datasetDir = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let clipsDir = datasetDir.appendingPathComponent("clips", isDirectory: true)
+    try FileManager.default.createDirectory(at: clipsDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: datasetDir) }
+
+    let sourceURL = datasetDir.appendingPathComponent("source.wav")
+    let clipURL = clipsDir.appendingPathComponent("f001_clip_001.wav")
+    try silentWAVData().write(to: sourceURL)
+    try silentWAVData().write(to: clipURL)
+    try TrainingDatasetPackageWriter.writeLocalPackage(
+        outputDirectory: datasetDir,
+        clips: [
+            TrainingImportedFile(
+                url: clipURL,
+                description: "legacy dark blues",
+                sourceClip: TrainingSourceClipMetadata(
+                    fileName: "source.wav",
+                    startSeconds: 12,
+                    frameCount: 2_205,
+                    sampleRate: 22_050
+                )
+            ),
+        ],
+        sourceFiles: [sourceURL],
+        config: LocalFilesDatasetConfig(clipLength: 30, clipsPerTrack: 1, maxTotalClips: 1),
+        styleTemplate: "legacy dark blues",
+        createdAt: Date(timeIntervalSince1970: 0)
+    )
+
+    let manifestURL = datasetDir.appendingPathComponent(TrainingDatasetPackageWriter.datasetManifestFileName)
+    let captionsURL = datasetDir.appendingPathComponent(TrainingDatasetPackageWriter.captionsFileName)
+    let originalManifest = try Data(contentsOf: manifestURL)
+    let originalCaptions = try Data(contentsOf: captionsURL)
+
+    let package = try TrainingDatasetPackageEditor.loadPackageV2(at: datasetDir)
+
+    #expect(package.pimpAudioDatasetVersion == "2.0")
+    #expect(package.migration?.sourceVersion == "1.0")
+    #expect(package.sourceTracks.count == 1)
+    #expect(package.assets.count == 1)
+    #expect(package.assets[0].role == .clip)
+    #expect(package.assets[0].sourceRange.startSeconds == 12)
+    #expect(package.trainingPlans[0].selections[0].includeInTraining)
+    #expect(try Data(contentsOf: manifestURL) == originalManifest)
+    #expect(try Data(contentsOf: captionsURL) == originalCaptions)
+}
+
+@Test func datasetPackageEditorRejectsUnknownFuturePackageVersion() throws {
+    let datasetDir = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(at: datasetDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: datasetDir) }
+
+    let manifest = Data("""
+    {
+      "pimp_audio_dataset_version": "3.0",
+      "id": "future-package"
+    }
+    """.utf8)
+    try manifest.write(
+        to: datasetDir.appendingPathComponent(TrainingDatasetPackageWriter.datasetManifestFileName)
+    )
+
+    #expect(throws: TrainingDatasetPackageEditorError.self) {
+        try TrainingDatasetPackageEditor.loadPackageV2(at: datasetDir)
+    }
+}
+
 @Test func trainingManifestDecodesImportedFilesWithoutLyrics() throws {
     let json = """
     {

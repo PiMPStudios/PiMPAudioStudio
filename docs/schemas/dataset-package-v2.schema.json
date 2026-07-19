@@ -1,0 +1,404 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pimpstudios.com/schemas/pimp-audio/dataset-package-v2.schema.json",
+  "title": "PiMP Audio Studio Dataset Package v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "pimp_audio_dataset_version",
+    "id",
+    "name",
+    "created_at",
+    "source_tracks",
+    "assets",
+    "training_plans"
+  ],
+  "properties": {
+    "pimp_audio_dataset_version": {
+      "const": "2.0"
+    },
+    "id": {
+      "$ref": "#/$defs/identifier"
+    },
+    "name": {
+      "$ref": "#/$defs/nonEmptyString"
+    },
+    "created_at": {
+      "$ref": "#/$defs/nonEmptyString"
+    },
+    "source_tracks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/sourceTrack"
+      }
+    },
+    "assets": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/asset"
+      }
+    },
+    "training_plans": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/trainingPlan"
+      }
+    },
+    "migration": {
+      "$ref": "#/$defs/migration"
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9._-]+$"
+    },
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!\\s)(?![/~\\\\])(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*://)(?!.*\\s$).+$"
+    },
+    "timeRange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "start_seconds"
+      ],
+      "properties": {
+        "start_seconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "end_seconds": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
+    },
+    "audioFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/relativePath"
+        },
+        "format": {
+          "type": "string",
+          "minLength": 1
+        },
+        "byte_size": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "duration_seconds": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "sample_rate": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "channels": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[A-Fa-f0-9]{64}$"
+        }
+      }
+    },
+    "sourceTrack": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_track_id",
+        "original_file_name"
+      ],
+      "properties": {
+        "source_track_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "original_file_name": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "duration_seconds": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "source_file": {
+          "$ref": "#/$defs/audioFile"
+        }
+      }
+    },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "asset_id",
+        "source_track_id",
+        "asset_role",
+        "file",
+        "source_range"
+      ],
+      "properties": {
+        "asset_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "source_track_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "asset_role": {
+          "enum": [
+            "full_mix",
+            "vocals",
+            "instrumental",
+            "clip"
+          ]
+        },
+        "file": {
+          "$ref": "#/$defs/audioFile"
+        },
+        "derived_from": {
+          "$ref": "#/$defs/identifier"
+        },
+        "source_range": {
+          "$ref": "#/$defs/timeRange"
+        },
+        "derivation": {
+          "$ref": "#/$defs/derivation"
+        },
+        "annotation": {
+          "$ref": "#/$defs/assetAnnotation"
+        }
+      }
+    },
+    "derivation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "details"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "imported",
+            "clip_extraction",
+            "stem_separation"
+          ]
+        },
+        "backend_id": {
+          "type": "string"
+        },
+        "backend_version": {
+          "type": "string"
+        },
+        "model_id": {
+          "type": "string"
+        },
+        "model_revision": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "details": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "assetAnnotation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "review_status",
+        "approved"
+      ],
+      "properties": {
+        "caption": {
+          "$ref": "#/$defs/textAnnotation"
+        },
+        "lyrics": {
+          "$ref": "#/$defs/textAnnotation"
+        },
+        "review_status": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "approved": {
+          "type": "boolean"
+        },
+        "reviewed_at": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "textAnnotation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "text",
+        "source"
+      ],
+      "properties": {
+        "text": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "source": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "language": {
+          "type": "string"
+        },
+        "provenance": {
+          "$ref": "#/$defs/annotationProvenance"
+        }
+      }
+    },
+    "annotationProvenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "backend_id",
+        "raw_output_files"
+      ],
+      "properties": {
+        "backend_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "backend_version": {
+          "type": "string"
+        },
+        "model_id": {
+          "type": "string"
+        },
+        "model_revision": {
+          "type": "string"
+        },
+        "prompt_version": {
+          "type": "string"
+        },
+        "quantization": {
+          "type": "string"
+        },
+        "generated_at": {
+          "type": "string"
+        },
+        "raw_output_files": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/relativePath"
+          }
+        }
+      }
+    },
+    "trainingPlan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "backend_id",
+        "name",
+        "is_default",
+        "selections"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "backend_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "name": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "is_default": {
+          "type": "boolean"
+        },
+        "selections": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/trainingSelection"
+          }
+        }
+      }
+    },
+    "trainingSelection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "asset_id",
+        "include_in_training",
+        "training_range",
+        "range_policy"
+      ],
+      "properties": {
+        "asset_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "include_in_training": {
+          "type": "boolean"
+        },
+        "training_range": {
+          "$ref": "#/$defs/timeRange"
+        },
+        "range_policy": {
+          "enum": [
+            "full_source",
+            "backend_limit",
+            "manual",
+            "legacy_clip"
+          ]
+        },
+        "sample_window_seconds": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
+    },
+    "migration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_version",
+        "adapter_version",
+        "notes"
+      ],
+      "properties": {
+        "source_version": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "adapter_version": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "migrated_at": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

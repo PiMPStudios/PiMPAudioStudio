@@ -1,0 +1,152 @@
+{
+  "pimp_audio_dataset_version": "2.0",
+  "id": "dark-gentlemen",
+  "name": "Dark Gentlemen",
+  "created_at": "2026-07-18T00:00:00Z",
+  "source_tracks": [
+    {
+      "source_track_id": "track-0001",
+      "original_file_name": "track-one.wav",
+      "duration_seconds": 305,
+      "source_file": {
+        "path": "sources/track-one.wav",
+        "format": "wav",
+        "byte_size": 58560044,
+        "duration_seconds": 305,
+        "sample_rate": 48000,
+        "channels": 2
+      }
+    }
+  ],
+  "assets": [
+    {
+      "asset_id": "asset-track-0001-full-mix",
+      "source_track_id": "track-0001",
+      "asset_role": "full_mix",
+      "file": {
+        "path": "sources/track-one.wav",
+        "format": "wav",
+        "byte_size": 58560044,
+        "duration_seconds": 305,
+        "sample_rate": 48000,
+        "channels": 2
+      },
+      "source_range": {
+        "start_seconds": 0,
+        "end_seconds": 305
+      },
+      "derivation": {
+        "kind": "imported",
+        "details": {}
+      },
+      "annotation": {
+        "caption": {
+          "text": "dark blues, slow tempo, atmospheric guitar",
+          "source": "ace-step-captioner",
+          "language": "en",
+          "provenance": {
+            "backend_id": "ace-captioner-native",
+            "backend_version": "1.0",
+            "model_id": "ACE-Step/acestep-captioner",
+            "model_revision": "7109e9",
+            "prompt_version": "ace-caption-v1",
+            "quantization": "4bit-group64",
+            "generated_at": "2026-07-18T00:00:00Z",
+            "raw_output_files": {
+              "caption": "annotations/track-0001/caption.txt"
+            }
+          }
+        },
+        "lyrics": {
+          "text": "[Verse]\nKeep moving through the night",
+          "source": "ace-step-transcriber",
+          "language": "en",
+          "provenance": {
+            "backend_id": "ace-transcriber-native",
+            "backend_version": "1.0",
+            "model_id": "ACE-Step/acestep-transcriber",
+            "model_revision": "53062c",
+            "prompt_version": "ace-transcribe-v1",
+            "quantization": "4bit-group64",
+            "generated_at": "2026-07-18T00:01:00Z",
+            "raw_output_files": {
+              "lyrics": "annotations/track-0001/lyrics.txt"
+            }
+          }
+        },
+        "review_status": "approved",
+        "approved": true,
+        "reviewed_at": "2026-07-18T00:02:00Z"
+      }
+    },
+    {
+      "asset_id": "asset-track-0001-vocals",
+      "source_track_id": "track-0001",
+      "asset_role": "vocals",
+      "file": {
+        "path": "stems/track-0001/vocals.wav",
+        "format": "wav",
+        "duration_seconds": 305,
+        "sample_rate": 48000,
+        "channels": 2
+      },
+      "derived_from": "asset-track-0001-full-mix",
+      "source_range": {
+        "start_seconds": 0,
+        "end_seconds": 305
+      },
+      "derivation": {
+        "kind": "stem_separation",
+        "backend_id": "demucs-mlx",
+        "model_id": "htdemucs",
+        "details": {}
+      }
+    }
+  ],
+  "training_plans": [
+    {
+      "id": "local-full-mix",
+      "backend_id": "ace-step-local",
+      "name": "Local full mix",
+      "is_default": true,
+      "selections": [
+        {
+          "asset_id": "asset-track-0001-full-mix",
+          "include_in_training": true,
+          "training_range": {
+            "start_seconds": 0,
+            "end_seconds": 305
+          },
+          "range_policy": "full_source"
+        },
+        {
+          "asset_id": "asset-track-0001-vocals",
+          "include_in_training": false,
+          "training_range": {
+            "start_seconds": 0,
+            "end_seconds": 305
+          },
+          "range_policy": "full_source"
+        }
+      ]
+    },
+    {
+      "id": "remote-side-step",
+      "backend_id": "side-step-cuda",
+      "name": "Remote Side-Step",
+      "is_default": false,
+      "selections": [
+        {
+          "asset_id": "asset-track-0001-full-mix",
+          "include_in_training": true,
+          "training_range": {
+            "start_seconds": 0,
+            "end_seconds": 240
+          },
+          "range_policy": "backend_limit",
+          "sample_window_seconds": 60
+        }
+      ]
+    }
+  ]
+}

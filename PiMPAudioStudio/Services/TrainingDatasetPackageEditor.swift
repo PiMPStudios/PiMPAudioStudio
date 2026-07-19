@@ -1,4 +1,5 @@
 import Foundation
+import PiMPAudioCore
 
 struct DatasetPackageSummary: Identifiable, Hashable {
     let directory: URL
@@ -195,6 +196,8 @@ struct DatasetPackageIssue: Identifiable, Hashable {
 enum TrainingDatasetPackageEditorError: LocalizedError {
     case missingCaptions(URL)
     case invalidCaptions(URL)
+    case missingManifest(URL)
+    case invalidManifest(URL)
 
     var errorDescription: String? {
         switch self {
@@ -202,6 +205,10 @@ enum TrainingDatasetPackageEditorError: LocalizedError {
             return "\(url.lastPathComponent) does not contain a captions.json file."
         case .invalidCaptions(let url):
             return "\(url.lastPathComponent)'s captions.json is not a readable clip list."
+        case .missingManifest(let url):
+            return "\(url.lastPathComponent) does not contain a dataset_manifest.json file."
+        case .invalidManifest(let url):
+            return "\(url.lastPathComponent)'s dataset_manifest.json is not a supported dataset package."
         }
     }
 }
@@ -242,6 +249,39 @@ enum TrainingDatasetPackageEditor {
 
     static func packageSummary(at directory: URL) -> DatasetPackageSummary {
         summary(for: directory)
+    }
+
+    /// Loads either a native v2 package or a non-destructive v1 compatibility
+    /// view. This is the schema migration seam; the existing clip review UI
+    /// continues to use `loadPackage(at:)` until its v2 asset views are ready.
+    static func loadPackageV2(at directory: URL) throws -> DatasetPackageV2 {
+        let manifestURL = directory.appendingPathComponent(TrainingDatasetPackageWriter.datasetManifestFileName)
+        guard FileManager.default.fileExists(atPath: manifestURL.path(percentEncoded: false)) else {
+            throw TrainingDatasetPackageEditorError.missingManifest(directory)
+        }
+        let manifestData = try Data(contentsOf: manifestURL)
+        guard let manifest = try JSONSerialization.jsonObject(with: manifestData) as? [String: Any] else {
+            throw TrainingDatasetPackageEditorError.invalidManifest(directory)
+        }
+        let version = stringValue(manifest["pimp_audio_dataset_version"])
+            ?? stringValue(manifest["anvil_dataset_version"])
+            ?? "1.0"
+
+        if version == DatasetPackageV2.currentVersion {
+            return try DatasetPackageV2Codec.decodeValidated(manifestData)
+        }
+        guard version == "1.0" else {
+            throw TrainingDatasetPackageEditorError.invalidManifest(directory)
+        }
+
+        let captionsURL = directory.appendingPathComponent(TrainingDatasetPackageWriter.captionsFileName)
+        guard FileManager.default.fileExists(atPath: captionsURL.path(percentEncoded: false)) else {
+            throw TrainingDatasetPackageEditorError.missingCaptions(directory)
+        }
+        return try DatasetPackageV1Adapter.adapt(
+            manifestData: manifestData,
+            captionsData: Data(contentsOf: captionsURL)
+        )
     }
 
     static func loadPackage(at directory: URL) throws -> DatasetPackageDocument {
