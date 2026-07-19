@@ -1741,6 +1741,7 @@ extension PiMPAudioCommandFacade {
                 ? NSNull()
                 : configuration.imageName,
             "gpuType": configuration.gpuTypeID,
+            "dataCenterIDs": configuration.dataCenterIDs,
             "interruptible": configuration.interruptible,
             "containerDiskGB": configuration.containerDiskGB,
             "volumeGB": configuration.volumeGB,

@@ -13,7 +13,8 @@ Shipped today:
 
 - Create Remote Job zip from a reviewed dataset package.
 - Store RunPod API key in Keychain.
-- Refresh RunPod GPU types and official templates.
+- Refresh RunPod datacenter availability, GPU types, and official templates.
+- Filter live GPU stock by Asia, North America, Europe, Oceania, or any region.
 - Launch and terminate RunPod Secure Cloud pods.
 - Copy upload, SSH, and extract/run commands.
 - Copy the portable `remote-worker/` folder to a stock RunPod PyTorch pod.
@@ -36,8 +37,8 @@ Still manual today:
 4. Click `Create Remote Job`.
 5. Save the zip.
 6. Add or verify a RunPod API key.
-7. Refresh GPU types and templates.
-8. Select a GPU.
+7. Refresh availability and templates.
+8. Select a region, then choose one of the GPU types currently in stock there.
 9. Launch the pod after confirming the billable action.
 10. Use the pod row buttons left to right:
     - copy upload command

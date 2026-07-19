@@ -467,6 +467,7 @@ private struct BuildTrainingView: View {
     @AppStorage(AppUserDefaultsKeys.runPodAutomaticTemplate) private var runPodAutomaticTemplate = true
     @AppStorage(AppUserDefaultsKeys.runPodImageName) private var runPodImageName = ""
     @AppStorage(AppUserDefaultsKeys.runPodGPUType) private var runPodGPUType = "NVIDIA RTX PRO 6000 Blackwell Server Edition"
+    @AppStorage(AppUserDefaultsKeys.runPodRegion) private var runPodRegion: RunPodRegion = .any
     @AppStorage(AppUserDefaultsKeys.runPodInterruptible) private var runPodInterruptible = false
     @AppStorage(AppUserDefaultsKeys.runPodContainerDiskGB) private var runPodContainerDiskGB = 80
     @AppStorage(AppUserDefaultsKeys.runPodVolumeGB) private var runPodVolumeGB = 80
@@ -505,7 +506,9 @@ private struct BuildTrainingView: View {
                 launchRunPodPod()
             }
         } message: {
-            Text("This creates billable RunPod GPU time. Only continue if you are ready to start a remote server.")
+            Text(
+                "This creates billable RunPod GPU time in \(runPodRegion.launchDescription). Only continue if you are ready to start a remote server."
+            )
         }
         .alert("Terminate RunPod Pod?", isPresented: Binding(
             get: { pendingRunPodStop != nil },
@@ -940,6 +943,7 @@ private struct BuildTrainingView: View {
                 autoSelectTemplate: $runPodAutomaticTemplate,
                 imageName: $runPodImageName,
                 gpuType: $runPodGPUType,
+                region: $runPodRegion,
                 interruptible: $runPodInterruptible,
                 containerDiskGB: $runPodContainerDiskGB,
                 volumeGB: $runPodVolumeGB,
@@ -970,6 +974,10 @@ private struct BuildTrainingView: View {
             templateID: runPodTemplateID,
             imageName: runPodImageName,
             gpuTypeID: runPodGPUType,
+            dataCenterIDs: runPodService.launchDataCenterIDs(
+                for: runPodGPUType,
+                in: runPodRegion
+            ),
             interruptible: runPodInterruptible,
             containerDiskGB: runPodContainerDiskGB,
             volumeGB: runPodVolumeGB

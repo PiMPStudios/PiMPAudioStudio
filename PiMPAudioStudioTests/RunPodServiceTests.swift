@@ -621,6 +621,37 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
                 "memoryInGb": 24,
                 "secureCloud": false
               }
+            ],
+            "dataCenters": [
+              {
+                "id": "US-TX-1",
+                "name": "US-TX-1",
+                "location": "United States",
+                "gpuAvailability": [
+                  {
+                    "gpuTypeId": "NVIDIA GeForce RTX 4090",
+                    "displayName": "RTX 4090",
+                    "stockStatus": "Low"
+                  },
+                  {
+                    "gpuTypeId": "NVIDIA H100 PCIe",
+                    "displayName": "H100 PCIe",
+                    "stockStatus": ""
+                  }
+                ]
+              },
+              {
+                "id": "EU-RO-1",
+                "name": "EU-RO-1",
+                "location": "Europe",
+                "gpuAvailability": [
+                  {
+                    "gpuTypeId": "NVIDIA GeForce RTX 4090",
+                    "displayName": "RTX 4090",
+                    "stockStatus": "High"
+                  }
+                ]
+              }
             ]
           }
         }
@@ -632,9 +663,28 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
         transport: transport
     )
 
-    let gpuTypes = try await client.listGPUTypes(token: "rp_test_token")
+    let catalog = try await client.listGPUCatalog(token: "rp_test_token")
+    let gpuTypes = catalog.gpuTypes
 
     #expect(gpuTypes.count == 2)
+    #expect(catalog.dataCenters.map(\.id) == ["EU-RO-1", "US-TX-1"])
+    #expect(catalog.availableGPUTypes(in: .northAmerica).map(\.id) == [
+        "NVIDIA GeForce RTX 4090"
+    ])
+    #expect(catalog.stockStatus(for: "NVIDIA GeForce RTX 4090", in: .northAmerica) == .low)
+    #expect(catalog.stockStatus(for: "NVIDIA GeForce RTX 4090", in: .europe) == .high)
+    #expect(
+        catalog.launchDataCenterIDs(
+            for: "NVIDIA GeForce RTX 4090",
+            in: .northAmerica
+        ) == ["US-TX-1"]
+    )
+    #expect(
+        catalog.launchDataCenterIDs(
+            for: "NVIDIA GeForce RTX 4090",
+            in: .any
+        ).isEmpty
+    )
     #expect(!gpuTypes.contains { $0.id == "community-only-gpu" })
     let rtx4090 = try #require(gpuTypes.first { $0.id == "NVIDIA GeForce RTX 4090" })
     #expect(rtx4090.selectionValue == "NVIDIA GeForce RTX 4090")
@@ -659,9 +709,32 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
     let bodyData = try #require(request.httpBody)
     let body = String(data: bodyData, encoding: .utf8) ?? ""
     #expect(body.contains("gpuTypes"))
+    #expect(body.contains("dataCenters"))
+    #expect(body.contains("gpuAvailability"))
     #expect(body.contains("lowestPrice"))
     #expect(body.contains("stockStatus"))
     #expect(!body.contains("rp_test_token"))
+}
+
+@Test func runPodRegionsCoverRunPodsCurrentDatacenterPrefixes() {
+    func dataCenter(_ id: String) -> RunPodDataCenter {
+        RunPodDataCenter(
+            id: id,
+            name: id,
+            location: "",
+            gpuAvailability: []
+        )
+    }
+
+    #expect(RunPodRegion.asia.includes(dataCenter("AP-JP-1")))
+    #expect(RunPodRegion.asia.includes(dataCenter("SEA-SG-1")))
+    #expect(RunPodRegion.northAmerica.includes(dataCenter("CA-MTL-1")))
+    #expect(RunPodRegion.northAmerica.includes(dataCenter("US-TX-1")))
+    #expect(RunPodRegion.europe.includes(dataCenter("EU-RO-1")))
+    #expect(RunPodRegion.europe.includes(dataCenter("EUR-IS-1")))
+    #expect(RunPodRegion.oceania.includes(dataCenter("OC-AU-1")))
+    #expect(!RunPodRegion.europe.includes(dataCenter("US-TX-1")))
+    #expect(RunPodRegion.any.includes(dataCenter("US-TX-1")))
 }
 
 @Test func runPodClientListOfficialPodTemplatesParsesRunPodTemplates() async throws {
@@ -881,6 +954,7 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
         templateID: "template-123",
         imageName: "",
         gpuTypeID: "NVIDIA GeForce RTX 4090",
+        dataCenterIDs: ["US-TX-3", "US-TX-1", "US-TX-3"],
         interruptible: false,
         containerDiskGB: 80,
         volumeGB: 120
@@ -901,6 +975,8 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
     #expect(body["computeType"] as? String == "GPU")
     #expect(body["cloudType"] as? String == "SECURE")
     #expect(body["gpuTypeIds"] as? [String] == ["NVIDIA GeForce RTX 4090"])
+    #expect(body["dataCenterIds"] as? [String] == ["US-TX-1", "US-TX-3"])
+    #expect(body["dataCenterPriority"] as? String == "availability")
     #expect(body["volumeInGb"] as? Int == 120)
     #expect(!String(data: bodyData, encoding: .utf8)!.contains("secret-token"))
 }
@@ -920,6 +996,8 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
 
     #expect(requestBody.templateId == nil)
     #expect(requestBody.imageName == "runpod/pytorch:custom")
+    #expect(requestBody.dataCenterIds == nil)
+    #expect(requestBody.dataCenterPriority == nil)
 }
 
 @Test func runPodClientDeletePodUsesDeleteEndpoint() async throws {

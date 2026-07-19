@@ -6,6 +6,7 @@ import SwiftUI
 final class RunPodService: ObservableObject {
     @Published private(set) var pods: [RunPodPodSummary] = []
     @Published private(set) var gpuTypes: [RunPodGPUType] = []
+    @Published private(set) var dataCenters: [RunPodDataCenter] = []
     @Published private(set) var podTemplates: [RunPodTemplate] = []
     @Published private(set) var isRefreshing = false
     @Published private(set) var isRefreshingGPUTypes = false
@@ -51,6 +52,7 @@ final class RunPodService: ObservableObject {
         apiKeyStore.removeAPIKey(for: APIKeyStore.runPodProviderID)
         pods = []
         gpuTypes = []
+        dataCenters = []
         podTemplates = []
         note("apiKeyRemoved", "source=none")
         lastMessage = "RunPod API key removed."
@@ -92,10 +94,12 @@ final class RunPodService: ObservableObject {
 
         do {
             note("gpuTypes/refreshBegin", "source=\(keySourceDiagnosticsLabel)")
-            gpuTypes = try await client.listGPUTypes(token: token)
+            let catalog = try await client.listGPUCatalog(token: token)
+            gpuTypes = catalog.gpuTypes
+            dataCenters = catalog.dataCenters
             note(
                 "gpuTypes/refreshEnd",
-                "count=\(gpuTypes.count) preview=\(gpuTypes.map(\.selectionValue).prefix(8).joined(separator: " | "))"
+                "count=\(gpuTypes.count) dataCenters=\(dataCenters.count) preview=\(gpuTypes.map(\.selectionValue).prefix(8).joined(separator: " | "))"
             )
             lastMessage = "Loaded \(gpuTypes.count) RunPod GPU type\(gpuTypes.count == 1 ? "" : "s")."
             lastError = nil
@@ -116,19 +120,20 @@ final class RunPodService: ObservableObject {
 
         do {
             note("launchOptions/refreshBegin", "source=\(keySourceDiagnosticsLabel)")
-            let loadedGPUTypes = try await client.listGPUTypes(token: token)
+            let catalog = try await client.listGPUCatalog(token: token)
             let loadedTemplates = try await client.listOfficialPodTemplates(token: token)
-            gpuTypes = loadedGPUTypes
+            gpuTypes = catalog.gpuTypes
+            dataCenters = catalog.dataCenters
             podTemplates = loadedTemplates
             let recommended = RunPodTemplate.recommendedTrainingTemplate(
-                for: loadedGPUTypes.first?.selectionValue ?? "",
+                for: catalog.gpuTypes.first?.selectionValue ?? "",
                 from: loadedTemplates
             )
             note(
                 "launchOptions/refreshEnd",
-                "gpuCount=\(loadedGPUTypes.count) templateCount=\(loadedTemplates.count) firstGPU=\(loadedGPUTypes.first?.selectionValue ?? "none") recommendedTemplate=\(recommended?.id ?? "none")"
+                "gpuCount=\(catalog.gpuTypes.count) dataCenters=\(catalog.dataCenters.count) templateCount=\(loadedTemplates.count) firstGPU=\(catalog.gpuTypes.first?.selectionValue ?? "none") recommendedTemplate=\(recommended?.id ?? "none")"
             )
-            lastMessage = "Loaded \(loadedGPUTypes.count) GPU type\(loadedGPUTypes.count == 1 ? "" : "s") and \(loadedTemplates.count) official RunPod template\(loadedTemplates.count == 1 ? "" : "s")."
+            lastMessage = "Loaded \(catalog.gpuTypes.count) GPU type\(catalog.gpuTypes.count == 1 ? "" : "s") across \(catalog.dataCenters.count) RunPod datacenter\(catalog.dataCenters.count == 1 ? "" : "s"), plus \(loadedTemplates.count) official template\(loadedTemplates.count == 1 ? "" : "s")."
             lastError = nil
         } catch {
             note("launchOptions/refreshError", "error=\(RunPodError.userFacingMessage(for: error))")
@@ -141,6 +146,22 @@ final class RunPodService: ObservableObject {
             for: gpuTypeValue,
             from: podTemplates
         )
+    }
+
+    func availableGPUTypes(in region: RunPodRegion) -> [RunPodGPUType] {
+        currentGPUCatalog.availableGPUTypes(in: region)
+    }
+
+    func stockStatus(for gpuTypeID: String, in region: RunPodRegion) -> RunPodStockStatus {
+        currentGPUCatalog.stockStatus(for: gpuTypeID, in: region)
+    }
+
+    func launchDataCenterIDs(for gpuTypeID: String, in region: RunPodRegion) -> [String] {
+        currentGPUCatalog.launchDataCenterIDs(for: gpuTypeID, in: region)
+    }
+
+    private var currentGPUCatalog: RunPodGPUCatalog {
+        RunPodGPUCatalog(gpuTypes: gpuTypes, dataCenters: dataCenters)
     }
 
     @discardableResult
@@ -1421,6 +1442,7 @@ struct RunPodLaunchConfiguration: Equatable, Sendable {
     var templateID: String
     var imageName: String
     var gpuTypeID: String
+    var dataCenterIDs: [String] = []
     var interruptible: Bool
     var containerDiskGB: Int
     var volumeGB: Int
@@ -1432,6 +1454,13 @@ struct RunPodLaunchConfiguration: Equatable, Sendable {
         let trimmedTemplateID = templateID.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedImageName = imageName.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedGPUType = gpuTypeID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedDataCenterIDs = Array(
+            Set(
+                dataCenterIDs
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+            )
+        ).sorted()
 
         guard !trimmedTemplateID.isEmpty || !trimmedImageName.isEmpty else {
             throw RunPodError.invalidConfiguration("Enter a RunPod template ID or container image.")
@@ -1453,6 +1482,8 @@ struct RunPodLaunchConfiguration: Equatable, Sendable {
             cloudType: "SECURE",
             computeType: "GPU",
             containerDiskInGb: containerDiskGB,
+            dataCenterIds: trimmedDataCenterIDs.isEmpty ? nil : trimmedDataCenterIDs,
+            dataCenterPriority: trimmedDataCenterIDs.isEmpty ? nil : "availability",
             gpuCount: 1,
             gpuTypeIds: [trimmedGPUType],
             gpuTypePriority: "availability",
@@ -1474,6 +1505,7 @@ struct RunPodLaunchConfiguration: Equatable, Sendable {
             "templateID=\(templateID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "none" : templateID)",
             "image=\(imageName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "none" : imageName)",
             "gpu=\(gpuTypeID)",
+            "dataCenters=\(dataCenterIDs.isEmpty ? "any" : dataCenterIDs.joined(separator: ","))",
             "interruptible=\(interruptible)",
             "containerDiskGB=\(containerDiskGB)",
             "volumeGB=\(volumeGB)"
@@ -1662,6 +1694,196 @@ struct RunPodGPU: Decodable, Equatable, Sendable {
     var secureSpotPrice: RunPodFlexibleDouble?
 }
 
+enum RunPodRegion: String, CaseIterable, Identifiable, Sendable {
+    case any
+    case asia
+    case northAmerica
+    case europe
+    case oceania
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .any:
+            return "Any region"
+        case .asia:
+            return "Asia"
+        case .northAmerica:
+            return "North America"
+        case .europe:
+            return "Europe"
+        case .oceania:
+            return "Oceania"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .any:
+            return "globe"
+        case .asia:
+            return "globe.asia.australia"
+        case .northAmerica:
+            return "globe.americas"
+        case .europe:
+            return "globe.europe.africa"
+        case .oceania:
+            return "globe.asia.australia"
+        }
+    }
+
+    var launchDescription: String {
+        self == .any ? "any available region" : displayName
+    }
+
+    func includes(_ dataCenter: RunPodDataCenter) -> Bool {
+        guard self != .any else { return true }
+
+        let normalizedID = dataCenter.id.uppercased()
+        switch self {
+        case .any:
+            return true
+        case .asia:
+            return normalizedID.hasPrefix("AP-") || normalizedID.hasPrefix("SEA-")
+        case .northAmerica:
+            return normalizedID.hasPrefix("CA-") || normalizedID.hasPrefix("US-")
+        case .europe:
+            return normalizedID.hasPrefix("EU-") || normalizedID.hasPrefix("EUR-")
+        case .oceania:
+            return normalizedID.hasPrefix("OC-")
+        }
+    }
+}
+
+enum RunPodStockStatus: String, Equatable, Sendable {
+    case none
+    case low
+    case medium
+    case high
+
+    var rank: Int {
+        switch self {
+        case .none: return 0
+        case .low: return 1
+        case .medium: return 2
+        case .high: return 3
+        }
+    }
+
+    var displayName: String {
+        switch self {
+        case .none: return "Unavailable"
+        case .low: return "Low stock"
+        case .medium: return "Medium stock"
+        case .high: return "High stock"
+        }
+    }
+}
+
+struct RunPodDataCenter: Identifiable, Decodable, Equatable, Sendable {
+    var id: String
+    var name: String
+    var location: String
+    var gpuAvailability: [RunPodGPUAvailability]
+
+    func hasStock(of gpuTypeID: String) -> Bool {
+        gpuAvailability.contains {
+            $0.hasStock &&
+                $0.gpuTypeID.caseInsensitiveCompare(gpuTypeID) == .orderedSame
+        }
+    }
+}
+
+struct RunPodGPUAvailability: Decodable, Equatable, Sendable {
+    var gpuTypeID: String
+    var displayName: String
+    var stockStatus: String
+
+    private enum CodingKeys: String, CodingKey {
+        case gpuTypeID = "gpuTypeId"
+        case gpuID = "gpuId"
+        case displayName
+        case stockStatus
+    }
+
+    init(gpuTypeID: String, displayName: String, stockStatus: String) {
+        self.gpuTypeID = gpuTypeID
+        self.displayName = displayName
+        self.stockStatus = stockStatus
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        gpuTypeID =
+            try container.decodeIfPresent(String.self, forKey: .gpuTypeID) ??
+            container.decode(String.self, forKey: .gpuID)
+        displayName = try container.decodeIfPresent(String.self, forKey: .displayName) ?? gpuTypeID
+        stockStatus = try container.decodeIfPresent(String.self, forKey: .stockStatus) ?? ""
+    }
+
+    var stockStatusValue: RunPodStockStatus {
+        switch stockStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "high":
+            return .high
+        case "medium":
+            return .medium
+        case "low":
+            return .low
+        default:
+            return .none
+        }
+    }
+
+    var hasStock: Bool {
+        stockStatusValue != .none
+    }
+}
+
+struct RunPodGPUCatalog: Equatable, Sendable {
+    var gpuTypes: [RunPodGPUType]
+    var dataCenters: [RunPodDataCenter]
+
+    func availableGPUTypes(in region: RunPodRegion) -> [RunPodGPUType] {
+        let availableIDs = Set(
+            dataCenters
+                .filter { region.includes($0) }
+                .flatMap(\.gpuAvailability)
+                .filter(\.hasStock)
+                .map { $0.gpuTypeID.lowercased() }
+        )
+
+        return gpuTypes
+            .filter { availableIDs.contains($0.id.lowercased()) }
+            .sorted { lhs, rhs in
+                let lhsRank = stockStatus(for: lhs.id, in: region).rank
+                let rhsRank = stockStatus(for: rhs.id, in: region).rank
+                if lhsRank != rhsRank {
+                    return lhsRank > rhsRank
+                }
+                return lhs.displayNameValue.localizedStandardCompare(rhs.displayNameValue)
+                    == .orderedAscending
+            }
+    }
+
+    func stockStatus(for gpuTypeID: String, in region: RunPodRegion) -> RunPodStockStatus {
+        dataCenters
+            .filter { region.includes($0) }
+            .flatMap(\.gpuAvailability)
+            .filter { $0.gpuTypeID.caseInsensitiveCompare(gpuTypeID) == .orderedSame }
+            .map(\.stockStatusValue)
+            .max(by: { $0.rank < $1.rank }) ?? .none
+    }
+
+    func launchDataCenterIDs(for gpuTypeID: String, in region: RunPodRegion) -> [String] {
+        guard region != .any else { return [] }
+        return dataCenters
+            .filter { region.includes($0) && $0.hasStock(of: gpuTypeID) }
+            .map(\.id)
+            .sorted()
+    }
+}
+
 struct RunPodGPUType: Identifiable, Decodable, Equatable, Sendable {
     var id: String
     var displayName: String?
@@ -1688,11 +1910,17 @@ struct RunPodGPUType: Identifiable, Decodable, Equatable, Sendable {
     }
 
     var menuTitle: String {
+        menuTitle(stockStatus: nil)
+    }
+
+    func menuTitle(stockStatus: RunPodStockStatus?) -> String {
         var details: [String] = []
         if let memoryInGb {
             details.append("\(memoryInGb) GB")
         }
-        if let liveStockLabel {
+        if let stockStatus, stockStatus != .none {
+            details.append(stockStatus.displayName)
+        } else if let liveStockLabel {
             details.append(liveStockLabel)
         }
         if let lowestHourlyPriceLabel {
@@ -1704,13 +1932,20 @@ struct RunPodGPUType: Identifiable, Decodable, Equatable, Sendable {
         return "\(displayNameValue) (\(details.joined(separator: ", ")))"
     }
 
-    func detailLabel(interruptible: Bool) -> String {
+    func detailLabel(
+        interruptible: Bool,
+        stockStatus: RunPodStockStatus? = nil
+    ) -> String {
         var details: [String] = []
         if let memoryInGb {
             details.append("\(memoryInGb) GB VRAM")
         }
         details.append(availabilityLabel)
-        details.append(stockLabel())
+        if let stockStatus, stockStatus != .none {
+            details.append(stockStatus.displayName)
+        } else {
+            details.append(stockLabel())
+        }
         if let launchPriceLabel = launchPriceLabel(interruptible: interruptible) {
             details.append("\(interruptible ? "Spot" : "On-demand") \(launchPriceLabel)")
         }
@@ -2129,6 +2364,8 @@ struct RunPodCreatePodRequest: Encodable, Equatable, Sendable {
     var cloudType: String
     var computeType: String
     var containerDiskInGb: Int
+    var dataCenterIds: [String]?
+    var dataCenterPriority: String?
     var gpuCount: Int
     var gpuTypeIds: [String]
     var gpuTypePriority: String
@@ -2158,6 +2395,7 @@ private struct RunPodGraphQLError: Decodable, Equatable {
 
 private struct RunPodGPUTypesPayload: Decodable {
     var gpuTypes: [RunPodGPUType]
+    var dataCenters: [RunPodDataCenter]?
 }
 
 protocol RunPodTransport: Sendable {
@@ -2199,7 +2437,11 @@ struct RunPodAPIClient {
     }
 
     func listGPUTypes(token: String) async throws -> [RunPodGPUType] {
-        let body = try JSONEncoder().encode(RunPodGraphQLRequest(query: Self.gpuTypesQuery))
+        try await listGPUCatalog(token: token).gpuTypes
+    }
+
+    func listGPUCatalog(token: String) async throws -> RunPodGPUCatalog {
+        let body = try JSONEncoder().encode(RunPodGraphQLRequest(query: Self.gpuCatalogQuery))
         let request = try makeGraphQLRequest(token: token, body: body)
         let (data, response) = try await transport.data(for: request)
         try validate(response: response, data: data)
@@ -2212,11 +2454,17 @@ struct RunPodAPIClient {
             throw RunPodError.invalidResponse
         }
 
-        return data.gpuTypes
+        let gpuTypes = data.gpuTypes
             .filter { $0.secureCloud != false }
             .sorted {
                 $0.displayNameValue.localizedStandardCompare($1.displayNameValue) == .orderedAscending
             }
+        return RunPodGPUCatalog(
+            gpuTypes: gpuTypes,
+            dataCenters: (data.dataCenters ?? []).sorted {
+                $0.id.localizedStandardCompare($1.id) == .orderedAscending
+            }
+        )
     }
 
     func listOfficialPodTemplates(token: String) async throws -> [RunPodTemplate] {
@@ -2308,8 +2556,8 @@ struct RunPodAPIClient {
         }
     }
 
-    private static let gpuTypesQuery = """
-    query PiMPAudioRunPodGPUTypes {
+    private static let gpuCatalogQuery = """
+    query PiMPAudioRunPodGPUCatalog {
       gpuTypes {
         id
         displayName
@@ -2323,6 +2571,16 @@ struct RunPodAPIClient {
         secureSpotPrice
         maxGpuCount
         maxGpuCountSecureCloud
+      }
+      dataCenters {
+        id
+        name
+        location
+        gpuAvailability {
+          gpuTypeId
+          displayName
+          stockStatus
+        }
       }
     }
 

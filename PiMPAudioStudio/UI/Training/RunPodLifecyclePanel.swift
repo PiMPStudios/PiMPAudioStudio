@@ -12,6 +12,7 @@ struct RunPodLifecyclePanel: View {
     @Binding var autoSelectTemplate: Bool
     @Binding var imageName: String
     @Binding var gpuType: String
+    @Binding var region: RunPodRegion
     @Binding var interruptible: Bool
     @Binding var containerDiskGB: Int
     @Binding var volumeGB: Int
@@ -37,6 +38,12 @@ struct RunPodLifecyclePanel: View {
         }
         .onChange(of: gpuType) { _, _ in
             applyRecommendedTemplateIfNeeded()
+        }
+        .onChange(of: region) { _, _ in
+            reconcileGPUSelectionWithRegion()
+        }
+        .onChange(of: runPodService.dataCenters) { _, _ in
+            reconcileGPUSelectionWithRegion()
         }
         .onChange(of: autoSelectTemplate) { _, isAutomatic in
             if isAutomatic {
@@ -173,34 +180,54 @@ struct RunPodLifecyclePanel: View {
             runPodLaunchSourceSummary
 
             HStack {
+                Picker("Region", selection: $region) {
+                    ForEach(RunPodRegion.allCases) { region in
+                        Label(region.displayName, systemImage: region.systemImage)
+                            .tag(region)
+                    }
+                }
+                .pickerStyle(.menu)
+
+                Spacer()
+
+                if !runPodService.dataCenters.isEmpty {
+                    Text(
+                        "\(availableRunPodGPUTypes.count) GPU type\(availableRunPodGPUTypes.count == 1 ? "" : "s") available"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+            }
+
+            HStack {
                 TextField("GPU Type", text: $gpuType)
-                Menu(runPodService.gpuTypes.isEmpty ? "Common" : "GPU Types") {
-                    if !runPodService.gpuTypes.isEmpty {
-                        Section("RunPod") {
-                            ForEach(runPodService.gpuTypes) { gpuType in
-                                Button(gpuType.menuTitle) {
+                Menu(availableRunPodGPUTypes.isEmpty ? "No GPUs Available" : "GPU Types") {
+                    if availableRunPodGPUTypes.isEmpty {
+                        Text("No GPUs currently available in \(region.displayName)")
+                    } else {
+                        Section(region.displayName) {
+                            ForEach(availableRunPodGPUTypes) { gpuType in
+                                Button(
+                                    gpuType.menuTitle(
+                                        stockStatus: runPodService.stockStatus(
+                                            for: gpuType.id,
+                                            in: region
+                                        )
+                                    )
+                                ) {
                                     selectGPUType(gpuType.selectionValue)
                                 }
-                            }
-                        }
-
-                        Divider()
-                    }
-
-                    Section(runPodService.gpuTypes.isEmpty ? "Common" : "Fallback") {
-                        ForEach(commonRunPodGPUTypes, id: \.self) { gpuType in
-                            Button(gpuType) {
-                                selectGPUType(gpuType)
                             }
                         }
                     }
                 }
                 .menuStyle(.borderlessButton)
+                .disabled(availableRunPodGPUTypes.isEmpty)
 
                 Button {
                     Task { await runPodService.refreshLaunchOptions() }
                 } label: {
-                    Label("Refresh GPU + Templates", systemImage: "arrow.clockwise")
+                    Label("Refresh Availability + Templates", systemImage: "arrow.clockwise")
                 }
                 .disabled(!runPodService.hasAPIKey || runPodService.isRefreshingGPUTypes)
             }
@@ -216,14 +243,22 @@ struct RunPodLifecyclePanel: View {
             }
 
             if let selectedRunPodGPUType {
-                Text(selectedRunPodGPUType.detailLabel(interruptible: interruptible))
+                Text(
+                    selectedRunPodGPUType.detailLabel(
+                        interruptible: interruptible,
+                        stockStatus: runPodService.stockStatus(
+                            for: selectedRunPodGPUType.id,
+                            in: region
+                        )
+                    )
+                )
                     .font(.caption)
                     .foregroundStyle(.secondary)
-            } else if !runPodService.gpuTypes.isEmpty,
+            } else if !runPodService.dataCenters.isEmpty,
                       !gpuType.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                Text("Selected GPU type is not in the refreshed RunPod list. Manual values are still allowed.")
+                Text("Selected GPU type is not currently available in \(region.displayName).")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.orange)
             }
 
             DisclosureGroup("Template Selection / Image", isExpanded: $showingAdvancedLaunchSource) {
@@ -443,6 +478,9 @@ struct RunPodLifecyclePanel: View {
               !gpuType.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return false
         }
+        if !runPodService.dataCenters.isEmpty, selectedRunPodGPUType == nil {
+            return false
+        }
         if autoSelectTemplate {
             guard let recommendedRunPodTemplate else { return false }
             return templateID == recommendedRunPodTemplate.id
@@ -452,21 +490,12 @@ struct RunPodLifecyclePanel: View {
             !imageName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    private var commonRunPodGPUTypes: [String] {
-        [
-            "NVIDIA RTX PRO 6000 Blackwell Server Edition",
-            "NVIDIA RTX PRO 4500 Blackwell",
-            "NVIDIA RTX 6000 Ada Generation",
-            "NVIDIA GeForce RTX 5090",
-            "NVIDIA GeForce RTX 4090",
-            "NVIDIA L40S",
-            "NVIDIA A100-SXM4-80GB",
-            "NVIDIA H100 80GB HBM3",
-        ]
+    private var availableRunPodGPUTypes: [RunPodGPUType] {
+        runPodService.availableGPUTypes(in: region)
     }
 
     private var selectedRunPodGPUType: RunPodGPUType? {
-        runPodService.gpuTypes.first { $0.matches(gpuType) }
+        availableRunPodGPUTypes.first { $0.matches(gpuType) }
     }
 
     private var selectedRunPodTemplate: RunPodTemplate? {
@@ -498,10 +527,22 @@ struct RunPodLifecyclePanel: View {
         applyRecommendedTemplateIfNeeded()
     }
 
+    private func reconcileGPUSelectionWithRegion() {
+        guard !runPodService.dataCenters.isEmpty else { return }
+        let trimmedGPUType = gpuType.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedGPUType.isEmpty,
+              !availableRunPodGPUTypes.contains(where: { $0.matches(trimmedGPUType) }) else {
+            return
+        }
+        gpuType = ""
+    }
+
     private func refreshInitialLaunchOptionsIfNeeded() async {
         guard !hasRequestedInitialLaunchOptions,
               runPodService.hasAPIKey,
-              runPodService.gpuTypes.isEmpty || runPodService.podTemplates.isEmpty,
+              runPodService.gpuTypes.isEmpty ||
+                runPodService.dataCenters.isEmpty ||
+                runPodService.podTemplates.isEmpty,
               !runPodService.isRefreshingGPUTypes else {
             return
         }

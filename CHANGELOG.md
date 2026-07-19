@@ -22,6 +22,7 @@ All notable changes to PiMP Audio Studio are documented here.
 
 ### Changed
 
+- **Remote GPU selection can be limited by region and live stock** — the RunPod launcher can filter currently available GPU types to Asia, North America, Europe, Oceania, or any region; regional launches carry the matching live datacenter IDs into pod creation, and the old hardcoded fallback GPU section has been removed.
 - **XL generation now defaults to Constant guidance instead of Soft Late** — Soft Late stays the non-XL default (late-only CFG + forced scale 6.0), but active ACE-Step XL DiT models and XL adapters auto-nudge Soft Late to Constant for full-schedule CFG closer to upstream/PEFT parity. MCP generate defaults follow the same XL-aware rule when `guidancePreset` is omitted. Soft Late still remains selectable for deliberate A/Bs, with UI warnings and generation diagnostics when that risky combo is used.
 - **Soft Late now makes its guidance override obvious** — the inspector Guidance field disables and shows the forced 6.0 scale under Soft Late, and Advanced guidance copy spells out the late CFG window plus the scale override.
 - **Remote GPU Max Runtime / Max Cost controls were removed** — those fields looked like hard guards but were never enforced by the worker or RunPod monitor, so they are gone until real process deadlines and projected-cost pod termination ship.
