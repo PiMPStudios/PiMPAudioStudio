@@ -178,15 +178,25 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
     )
     defer { try? FileManager.default.removeItem(at: root) }
     let archiveURL = root.appendingPathComponent("Whole Track Job.zip")
+    let sshDirectory = root.appendingPathComponent(
+        "managed/.ssh",
+        isDirectory: true
+    )
+    let sshKeyURL = sshDirectory.appendingPathComponent("id_ed25519")
+    try FileManager.default.createDirectory(
+        at: sshDirectory,
+        withIntermediateDirectories: true
+    )
     try Data("zip".utf8).write(to: archiveURL)
     try Data("#!/bin/bash".utf8).write(
         to: workerDirectory.appendingPathComponent("install.sh")
     )
+    try Data("test key".utf8).write(to: sshKeyURL)
 
     let plan = try RunPodRemoteJobPlan(
         pod: runPodTestPod(),
         archiveURL: archiveURL,
-        sshKeyPath: "",
+        sshKeyPath: sshKeyURL.path,
         workerDirectoryURL: workerDirectory
     )
 
@@ -244,6 +254,23 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
             .contains("remote_artifacts/result.json") == true
     )
     #expect(
+        plan.preparePullbackCommand.arguments.last?
+            .contains("-path \"$ROOT/pullback\" -prune") == true
+    )
+    #expect(
+        plan.preparePullbackCommand.arguments.last?
+            .contains("\"$ROOT/pullback.next/remote_artifacts\"") == true
+    )
+    #expect(
+        plan.statusCommand.arguments.last?
+            .contains("-path \"$ROOT/pullback\" -prune") == true
+    )
+    #expect(
+        plan.statusCommand.arguments.contains(
+            "UserKnownHostsFile=\(sshDirectory.appendingPathComponent("known_hosts-pod-test-123").path)"
+        )
+    )
+    #expect(
         !plan.startCommand.arguments
             .joined(separator: " ")
             .localizedCaseInsensitiveContains("api_key")
@@ -256,6 +283,11 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
     #expect(
         try bashSyntaxStatus(
             for: #require(plan.statusCommand.arguments.last)
+        ) == 0
+    )
+    #expect(
+        try bashSyntaxStatus(
+            for: #require(plan.preparePullbackCommand.arguments.last)
         ) == 0
     )
 }

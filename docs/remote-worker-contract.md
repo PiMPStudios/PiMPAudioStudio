@@ -237,7 +237,9 @@ The first RunPod integration is intentionally app-local provider control, not a 
   directory inside a destination folder explicitly chosen by the user, keeping
   the macOS sandbox write grant active through download and import. Its
   `final_adapter` is imported through the same adapter importer used for local
-  Side-Step runs.
+  Side-Step runs. Retried downloads exclude prior temporary pullback copies
+  from result discovery and replace remote staging only after the real artifact
+  tree has been copied successfully.
 - After an app relaunch clears transient job state, Monitor can reconnect a
   remembered local job archive to its existing remote pod and reconstruct the
   current phase without uploading or restarting the job.
@@ -249,6 +251,9 @@ Worker logs, progress metrics, artifact pullback, and adapter import should stil
 ## Security And Privacy
 
 - Provider API tokens must be stored in Keychain.
+- Automated SSH uses a per-pod known-hosts file beside the sandbox-managed
+  private-key copy so host verification remains enabled without writing outside
+  the app container.
 - `remote_job.json` must not contain API keys, bearer tokens, SSH keys, or provider account IDs.
 - Absolute local paths should be redacted before upload.
 - Audio upload must require explicit user approval.

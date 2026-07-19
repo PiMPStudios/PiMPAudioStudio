@@ -827,6 +827,7 @@ struct RunPodRemoteJobPlan: Sendable {
     let host: String
     let port: Int
     let sshKeyPath: String?
+    let knownHostsPath: String
     let remoteJobKey: String
 
     init(
@@ -884,6 +885,13 @@ struct RunPodRemoteJobPlan: Sendable {
         self.host = publicIP
         self.port = sshPort
         self.sshKeyPath = expandedKey
+        let knownHostsDirectory = expandedKey.map {
+            URL(fileURLWithPath: $0).deletingLastPathComponent()
+        } ?? FileManager.default.temporaryDirectory
+        self.knownHostsPath = knownHostsDirectory.appendingPathComponent(
+            "known_hosts-\(Self.safeRemoteJobKey(pod.id))",
+            isDirectory: false
+        ).path(percentEncoded: false)
         self.remoteJobKey = Self.safeRemoteJobKey(
             archiveURL.deletingPathExtension().lastPathComponent
         )
@@ -986,8 +994,8 @@ struct RunPodRemoteJobPlan: Sendable {
             """
             set -euo pipefail
             ROOT=\(shellQuoted(root))
-            RESULT="$(find "$ROOT" -maxdepth 8 -path '*/remote_artifacts/result.json' -type f -print -quit)"
-            LOGS="$(find "$ROOT" -maxdepth 8 -path '*/remote_artifacts/logs.jsonl' -type f -print -quit)"
+            RESULT="$(find "$ROOT" -maxdepth 8 -path "$ROOT/pullback" -prune -o -path "$ROOT/pullback.next" -prune -o -path '*/remote_artifacts/result.json' -type f -print -quit)"
+            LOGS="$(find "$ROOT" -maxdepth 8 -path "$ROOT/pullback" -prune -o -path "$ROOT/pullback.next" -prune -o -path '*/remote_artifacts/logs.jsonl' -type f -print -quit)"
             CONSOLE="$ROOT/console.log"
             PID_FILE="$ROOT/worker.pid"
             INSTALL_LOG="$ROOT/install.log"
@@ -1058,13 +1066,22 @@ struct RunPodRemoteJobPlan: Sendable {
             """
             set -euo pipefail
             ROOT=\(shellQuoted(root))
-            RESULT="$(find "$ROOT" -maxdepth 8 -path '*/remote_artifacts/result.json' -type f -print -quit)"
+            RESULT="$(find "$ROOT" -maxdepth 8 -path "$ROOT/pullback" -prune -o -path "$ROOT/pullback.next" -prune -o -path '*/remote_artifacts/result.json' -type f -print -quit)"
             test -n "$RESULT"
             PACKAGE_ROOT="$(dirname "$(dirname "$RESULT")")"
-            case "$PACKAGE_ROOT" in "$ROOT"/*) ;; *) echo "Unsafe package root." >&2; exit 4 ;; esac
+            case "$PACKAGE_ROOT" in
+              "$ROOT/pullback"|"$ROOT/pullback/"*|"$ROOT/pullback.next"|"$ROOT/pullback.next/"*)
+                echo "Refusing to stage artifacts from a temporary pullback directory." >&2
+                exit 4
+                ;;
+              "$ROOT"/*) ;;
+              *) echo "Unsafe package root." >&2; exit 4 ;;
+            esac
+            rm -rf "$ROOT/pullback.next"
+            mkdir -p "$ROOT/pullback.next"
+            cp -R "$PACKAGE_ROOT/remote_artifacts" "$ROOT/pullback.next/remote_artifacts"
             rm -rf "$ROOT/pullback"
-            mkdir -p "$ROOT/pullback"
-            cp -R "$PACKAGE_ROOT/remote_artifacts" "$ROOT/pullback/remote_artifacts"
+            mv "$ROOT/pullback.next" "$ROOT/pullback"
             """,
             displayName: "Prepare remote artifact pullback"
         )
@@ -1144,6 +1161,7 @@ struct RunPodRemoteJobPlan: Sendable {
         var arguments = [
             "-o", "BatchMode=yes",
             "-o", "StrictHostKeyChecking=accept-new",
+            "-o", "UserKnownHostsFile=\(knownHostsPath)",
             "-o", "ConnectTimeout=20",
         ]
         if let sshKeyPath {
