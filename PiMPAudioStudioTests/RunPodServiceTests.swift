@@ -517,6 +517,77 @@ private func runPodTestPod() throws -> RunPodPodSummary {
     #expect(amdRecommended == nil)
 }
 
+@Test func runPodTemplateRecommendationRequiresBlackwellCompatibleRuntime() {
+    let legacyTemplate = RunPodTemplate(
+        id: "runpod-torch-v240",
+        name: "Runpod Pytorch 2.4.0",
+        imageName: "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04",
+        category: "NVIDIA",
+        isRunpod: true,
+        isPublic: true,
+        isServerless: false,
+        containerDiskInGb: 20,
+        volumeInGb: 20,
+        volumeMountPath: "/workspace",
+        ports: ["8888/http", "22/tcp"]
+    )
+    let blackwellTemplate = RunPodTemplate(
+        id: "runpod-torch-v280",
+        name: "Runpod Pytorch 2.8.0",
+        imageName: "runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404",
+        category: "NVIDIA",
+        isRunpod: true,
+        isPublic: true,
+        isServerless: false,
+        containerDiskInGb: 30,
+        volumeInGb: 50,
+        volumeMountPath: "/workspace",
+        ports: ["8888/http", "22/tcp"]
+    )
+    let clusterTemplate = RunPodTemplate(
+        id: "runpod-torch-v291-cluster",
+        name: "Runpod Pytorch 2.9.1 for clusters",
+        imageName: "runpod/pytorch:1.0.7-cu1300-torch291-ubuntu2404-cluster",
+        category: "NVIDIA",
+        isRunpod: true,
+        isPublic: true,
+        isServerless: false,
+        containerDiskInGb: 50,
+        volumeInGb: 30,
+        volumeMountPath: "/workspace",
+        ports: ["8888/http", "22/tcp"]
+    )
+
+    let templates = [legacyTemplate, clusterTemplate, blackwellTemplate]
+    let recommended = RunPodTemplate.recommendedTrainingTemplate(
+        for: "NVIDIA RTX PRO 4500 Blackwell",
+        from: templates
+    )
+    #expect(recommended?.id == "runpod-torch-v280")
+
+    let rtx5090Recommended = RunPodTemplate.recommendedTrainingTemplate(
+        for: "NVIDIA GeForce RTX 5090",
+        from: templates
+    )
+    #expect(rtx5090Recommended?.id == "runpod-torch-v280")
+
+    let legacyOnly = RunPodTemplate.recommendedTrainingTemplate(
+        for: "NVIDIA RTX PRO 4500 Blackwell",
+        from: [legacyTemplate]
+    )
+    #expect(legacyOnly == nil)
+    #expect(
+        legacyTemplate.incompatibilityReason(
+            for: "NVIDIA RTX PRO 4500 Blackwell"
+        )?.contains("CUDA 12.8") == true
+    )
+    #expect(
+        clusterTemplate.incompatibilityReason(
+            for: "NVIDIA RTX PRO 4500 Blackwell"
+        )?.contains("Cluster") == true
+    )
+}
+
 @Test func mcpToolCatalogExposesRunPodLifecycleTools() throws {
     let tools = MCPToolCatalog.tools
     let names = Set(tools.compactMap { $0["name"] as? String })

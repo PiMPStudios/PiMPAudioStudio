@@ -1580,14 +1580,50 @@ struct RunPodTemplate: Identifiable, Decodable, Equatable, Sendable {
 
         return templates
             .filter { $0.isOfficialPodTemplate }
-            .filter { $0.trainingTemplateScore > 0 }
-            .sorted { lhs, rhs in
-                if lhs.trainingTemplateScore != rhs.trainingTemplateScore {
-                    return lhs.trainingTemplateScore > rhs.trainingTemplateScore
+            .compactMap { template -> (template: RunPodTemplate, score: Int)? in
+                guard let score = template.trainingTemplateScore(for: gpuTypeValue) else {
+                    return nil
                 }
-                return lhs.displayNameValue.localizedStandardCompare(rhs.displayNameValue) == .orderedAscending
+                return (template, score)
             }
-            .first
+            .sorted { lhs, rhs in
+                if lhs.score != rhs.score {
+                    return lhs.score > rhs.score
+                }
+                return lhs.template.displayNameValue.localizedStandardCompare(
+                    rhs.template.displayNameValue
+                ) == .orderedAscending
+            }
+            .first?
+            .template
+    }
+
+    func incompatibilityReason(for gpuTypeValue: String) -> String? {
+        let searchable = runtimeSearchableText
+        guard isOfficialPodTemplate else {
+            return "This is not an official RunPod pod template."
+        }
+        guard searchable.contains("pytorch") else {
+            return "ACE-Step remote training requires a PyTorch template."
+        }
+        guard !searchable.contains("cluster") else {
+            return "Cluster templates are not intended for this single-GPU worker."
+        }
+
+        guard Self.isBlackwellGPU(gpuTypeValue) else {
+            return nil
+        }
+        guard let cudaVersion else {
+            return "This template does not identify a CUDA version; Blackwell requires CUDA 12.8 or newer."
+        }
+        guard cudaVersion >= RunPodRuntimeVersion(major: 12, minor: 8) else {
+            return "Blackwell requires CUDA 12.8 or newer; this template uses CUDA \(cudaVersion.label)."
+        }
+        if let pytorchVersion,
+           pytorchVersion < RunPodRuntimeVersion(major: 2, minor: 7) {
+            return "Blackwell requires PyTorch 2.7 or newer; this template uses PyTorch \(pytorchVersion.label)."
+        }
+        return nil
     }
 
     private static func supportsNVIDIATrainingTemplate(_ gpuTypeValue: String) -> Bool {
@@ -1606,22 +1642,153 @@ struct RunPodTemplate: Identifiable, Decodable, Equatable, Sendable {
             || normalized.contains("tesla")
     }
 
-    private var trainingTemplateScore: Int {
-        let searchable = "\(displayNameValue) \(imageNameValue ?? "")".lowercased()
-        guard searchable.contains("pytorch") else { return 0 }
+    private static func isBlackwellGPU(_ gpuTypeValue: String) -> Bool {
+        let normalized = gpuTypeValue.lowercased()
+        return normalized.contains("blackwell")
+            || normalized.contains("geforce rtx 50")
+    }
 
+    private func trainingTemplateScore(for gpuTypeValue: String) -> Int? {
+        guard incompatibilityReason(for: gpuTypeValue) == nil else { return nil }
+
+        let searchable = runtimeSearchableText
         var score = 1_000
         if searchable.contains("runpod/pytorch") { score += 500 }
         if searchable.contains("runpod pytorch") { score += 500 }
-        if searchable.contains("cuda") { score += 250 }
-        if searchable.contains("cuda12") { score += 250 }
-        if searchable.contains("cuda12.4") { score += 400 }
-        if searchable.contains("devel") { score += 150 }
+        if let pytorchVersion {
+            score += pytorchVersion.major * 1_000
+            score += pytorchVersion.minor * 100
+            score += min(pytorchVersion.patch, 99)
+        }
+        if let cudaVersion {
+            score += cudaVersion.major * 100
+            score += cudaVersion.minor * 10
+            score += min(cudaVersion.patch, 9)
+        }
+        if searchable.contains("devel") { score += 100 }
         if searchable.contains("py3.11") { score += 100 }
-        if searchable.contains("ubuntu22.04") { score += 100 }
-        if searchable.contains("2.4.0") { score += 500 }
-        if searchable.contains("serverless") { score -= 1_000 }
+        if searchable.contains("ubuntu24.04") || searchable.contains("ubuntu2404") {
+            score += 100
+        } else if searchable.contains("ubuntu22.04") || searchable.contains("ubuntu2204") {
+            score += 75
+        }
         return score
+    }
+
+    private var runtimeSearchableText: String {
+        "\(displayNameValue) \(imageNameValue ?? "")".lowercased()
+    }
+
+    private var pytorchVersion: RunPodRuntimeVersion? {
+        let name = displayNameValue.lowercased()
+        if let version = Self.dottedVersion(after: "pytorch ", in: name) {
+            return version
+        }
+        return Self.compactPyTorchVersion(in: runtimeSearchableText)
+    }
+
+    private var cudaVersion: RunPodRuntimeVersion? {
+        if let version = Self.dottedVersion(after: "cuda", in: runtimeSearchableText) {
+            return version
+        }
+        return Self.compactCUDAVersion(in: runtimeSearchableText)
+    }
+
+    private static func dottedVersion(
+        after marker: String,
+        in value: String
+    ) -> RunPodRuntimeVersion? {
+        var searchStart = value.startIndex
+        while searchStart < value.endIndex,
+              let markerRange = value.range(
+                of: marker,
+                range: searchStart..<value.endIndex
+              ) {
+            let suffix = value[markerRange.upperBound...]
+            let token = suffix.prefix { $0.isNumber || $0 == "." }
+            let components = token
+                .split(separator: ".")
+                .compactMap { Int($0) }
+            if components.count >= 2 {
+                return RunPodRuntimeVersion(
+                    major: components[0],
+                    minor: components[1],
+                    patch: components.count > 2 ? components[2] : 0
+                )
+            }
+            searchStart = markerRange.upperBound
+        }
+        return nil
+    }
+
+    private static func compactPyTorchVersion(
+        in value: String
+    ) -> RunPodRuntimeVersion? {
+        var searchStart = value.startIndex
+        while searchStart < value.endIndex,
+              let markerRange = value.range(
+                of: "torch",
+                range: searchStart..<value.endIndex
+              ) {
+            let digits = value[markerRange.upperBound...].prefix { $0.isNumber }
+            if digits.count == 3,
+               let major = Int(digits.prefix(1)),
+               let minor = Int(digits.dropFirst().prefix(1)),
+               let patch = Int(digits.suffix(1)) {
+                return RunPodRuntimeVersion(
+                    major: major,
+                    minor: minor,
+                    patch: patch
+                )
+            }
+            searchStart = markerRange.upperBound
+        }
+        return nil
+    }
+
+    private static func compactCUDAVersion(
+        in value: String
+    ) -> RunPodRuntimeVersion? {
+        var searchStart = value.startIndex
+        while searchStart < value.endIndex,
+              let markerRange = value.range(
+                of: "cu",
+                range: searchStart..<value.endIndex
+              ) {
+            let digits = value[markerRange.upperBound...].prefix { $0.isNumber }
+            if digits.count >= 3,
+               let major = Int(digits.prefix(2)),
+               let minor = Int(digits.dropFirst(2).prefix(1)) {
+                let patchDigits = digits.dropFirst(3)
+                return RunPodRuntimeVersion(
+                    major: major,
+                    minor: minor,
+                    patch: Int(patchDigits) ?? 0
+                )
+            }
+            searchStart = markerRange.upperBound
+        }
+        return nil
+    }
+}
+
+private struct RunPodRuntimeVersion: Comparable {
+    var major: Int
+    var minor: Int
+    var patch: Int = 0
+
+    var label: String {
+        "\(major).\(minor).\(patch)"
+    }
+
+    static func < (lhs: RunPodRuntimeVersion, rhs: RunPodRuntimeVersion) -> Bool {
+        if lhs.major != rhs.major {
+            return lhs.major < rhs.major
+        }
+        if lhs.minor != rhs.minor {
+            return lhs.minor < rhs.minor
+        }
+        return lhs.patch < rhs.patch
     }
 }
 

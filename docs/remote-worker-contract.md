@@ -46,6 +46,13 @@ Before launch, PiMP Audio Studio creates a provider-neutral `remote_job.json`. T
 
 The Training workspace's **Remote GPU -> Create Remote Job** export writes `remote_job.json`, `README_REMOTE_GPU.md`, and `run_remote_training.sh` into the package root. The shell script is a thin handoff for an installed `pimp-remote-worker` command or official provider template; provider credentials still stay outside the archive. The first portable worker lives in `remote-worker/` and can be copied onto a stock RunPod PyTorch pod, installed once, and run against the exported zip or package root.
 
+RunPod launch settings default to automatic template selection. PiMP ranks the
+official single-pod PyTorch templates against the selected GPU and updates the
+template when the GPU changes. Blackwell GPUs require a template that identifies
+CUDA 12.8 or newer and, when the PyTorch version is identifiable, PyTorch 2.7 or
+newer. Advanced launch settings can disable automatic selection and choose any
+fetched official template, enter a template ID, or provide a custom image.
+
 Minimal shape:
 
 ```json

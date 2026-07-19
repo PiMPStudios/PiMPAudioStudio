@@ -9,6 +9,7 @@ struct RunPodLifecyclePanel: View {
     let preparedArchiveURL: URL?
     @Binding var apiKey: String
     @Binding var templateID: String
+    @Binding var autoSelectTemplate: Bool
     @Binding var imageName: String
     @Binding var gpuType: String
     @Binding var interruptible: Bool
@@ -25,7 +26,6 @@ struct RunPodLifecyclePanel: View {
     let onNotice: (String) -> Void
 
     @State private var showingAdvancedLaunchSource = false
-    @State private var autoSelectedTemplateID: String?
     @State private var hasRequestedInitialLaunchOptions = false
 
     var body: some View {
@@ -38,11 +38,17 @@ struct RunPodLifecyclePanel: View {
         .onChange(of: gpuType) { _, _ in
             applyRecommendedTemplateIfNeeded()
         }
+        .onChange(of: autoSelectTemplate) { _, isAutomatic in
+            if isAutomatic {
+                applyRecommendedTemplateIfNeeded()
+            }
+        }
         .onChange(of: runPodService.podTemplates) { _, _ in
             applyRecommendedTemplateIfNeeded()
         }
         .task {
             await refreshInitialLaunchOptionsIfNeeded()
+            applyRecommendedTemplateIfNeeded()
         }
     }
 
@@ -184,13 +190,35 @@ struct RunPodLifecyclePanel: View {
                     .foregroundStyle(.secondary)
             }
 
-            DisclosureGroup("Advanced Template / Image", isExpanded: $showingAdvancedLaunchSource) {
-                TextField("Template ID", text: $templateID)
-                TextField("Image", text: $imageName)
+            DisclosureGroup("Template Selection / Image", isExpanded: $showingAdvancedLaunchSource) {
+                Toggle("Choose Best Template Automatically", isOn: $autoSelectTemplate)
 
-                Text("Leave Image blank when using a template. A custom Image overrides Template ID at launch time.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if autoSelectTemplate {
+                    Text("PiMP selects the highest-ranked compatible official PyTorch template for the chosen GPU.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Picker("Official Template", selection: manualTemplateSelection) {
+                        Text("Custom Template ID").tag("")
+                        ForEach(runPodService.podTemplates) { template in
+                            Text(templatePickerLabel(template)).tag(template.id)
+                        }
+                    }
+
+                    TextField("Template ID", text: $templateID)
+                    TextField("Image", text: $imageName)
+
+                    Text("Choose an official template above, enter any template ID, or provide a custom image. A custom image overrides the template ID.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    if let selectedRunPodTemplate,
+                       let reason = selectedRunPodTemplate.incompatibilityReason(for: gpuType) {
+                        Label(reason, systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
+                }
             }
 
             Toggle("Interruptible", isOn: $interruptible)
@@ -234,16 +262,36 @@ struct RunPodLifecyclePanel: View {
                     .font(.caption)
                     .fontWeight(.semibold)
                 Spacer()
-                if let recommendedRunPodTemplate,
-                   selectedRunPodTemplate?.id != recommendedRunPodTemplate.id {
-                    Button("Use Recommended") {
-                        applyTemplate(recommendedRunPodTemplate, force: true)
+                if !autoSelectTemplate, recommendedRunPodTemplate != nil {
+                    Button("Use Automatic") {
+                        autoSelectTemplate = true
+                        applyRecommendedTemplateIfNeeded()
                     }
                     .controlSize(.small)
                 }
             }
 
-            if !imageName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if autoSelectTemplate, let selectedRunPodTemplate {
+                Label("Automatic: \(selectedRunPodTemplate.summaryLabel)", systemImage: "sparkles")
+                    .font(.caption)
+                    .foregroundStyle(.green)
+                if !selectedRunPodTemplate.detailLabel.isEmpty {
+                    Text(selectedRunPodTemplate.detailLabel)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            } else if autoSelectTemplate, runPodService.podTemplates.isEmpty {
+                Text("Refresh GPU + Templates to choose a compatible official PyTorch template.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if autoSelectTemplate {
+                Label(
+                    "No compatible official PyTorch template was found for \(gpuType).",
+                    systemImage: "exclamationmark.triangle.fill"
+                )
+                .font(.caption)
+                .foregroundStyle(.orange)
+            } else if !imageName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Label("Custom image \(imageName)", systemImage: "shippingbox")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -260,15 +308,8 @@ struct RunPodLifecyclePanel: View {
                 Label("Custom template \(templateID)", systemImage: "slider.horizontal.3")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-            } else if let recommendedRunPodTemplate {
-                Label("Recommended: \(recommendedRunPodTemplate.summaryLabel)", systemImage: "sparkles")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text("Select a GPU or click Use Recommended to fill this automatically.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
             } else if runPodService.hasAPIKey {
-                Text("Refresh GPU + Templates to load the official RunPod PyTorch pod template.")
+                Text("Choose an official template or enter a custom template ID.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
@@ -342,6 +383,11 @@ struct RunPodLifecyclePanel: View {
               !gpuType.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return false
         }
+        if autoSelectTemplate {
+            guard let recommendedRunPodTemplate else { return false }
+            return templateID == recommendedRunPodTemplate.id
+                && imageName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
         return !templateID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
             !imageName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -349,6 +395,7 @@ struct RunPodLifecyclePanel: View {
     private var commonRunPodGPUTypes: [String] {
         [
             "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+            "NVIDIA RTX PRO 4500 Blackwell",
             "NVIDIA RTX 6000 Ada Generation",
             "NVIDIA GeForce RTX 5090",
             "NVIDIA GeForce RTX 4090",
@@ -370,6 +417,22 @@ struct RunPodLifecyclePanel: View {
         runPodService.recommendedTrainingTemplate(for: gpuType)
     }
 
+    private var manualTemplateSelection: Binding<String> {
+        Binding(
+            get: { selectedRunPodTemplate?.id ?? "" },
+            set: { selectedID in
+                guard let template = runPodService.podTemplates.first(where: {
+                    $0.id == selectedID
+                }) else {
+                    templateID = ""
+                    imageName = ""
+                    return
+                }
+                applyTemplate(template)
+            }
+        )
+    }
+
     private func selectGPUType(_ value: String) {
         gpuType = value
         applyRecommendedTemplateIfNeeded()
@@ -387,21 +450,18 @@ struct RunPodLifecyclePanel: View {
     }
 
     private func applyRecommendedTemplateIfNeeded() {
-        guard let recommendedRunPodTemplate else { return }
-        applyTemplate(recommendedRunPodTemplate, force: false)
+        guard autoSelectTemplate else { return }
+        guard let recommendedRunPodTemplate else {
+            templateID = ""
+            imageName = ""
+            return
+        }
+        applyTemplate(recommendedRunPodTemplate)
     }
 
-    private func applyTemplate(_ template: RunPodTemplate, force: Bool) {
-        let trimmedTemplateID = templateID.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedImageName = imageName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let canReplaceExisting = trimmedTemplateID.isEmpty && trimmedImageName.isEmpty
-            || (trimmedImageName.isEmpty && trimmedTemplateID == autoSelectedTemplateID)
-
-        guard force || canReplaceExisting else { return }
-
+    private func applyTemplate(_ template: RunPodTemplate) {
         templateID = template.id
         imageName = ""
-        autoSelectedTemplateID = template.id
 
         if let templateContainerDiskGB = template.containerDiskInGb,
            templateContainerDiskGB > containerDiskGB {
@@ -411,6 +471,16 @@ struct RunPodLifecyclePanel: View {
            templateVolumeGB > volumeGB {
             volumeGB = templateVolumeGB
         }
+    }
+
+    private func templatePickerLabel(_ template: RunPodTemplate) -> String {
+        let compatibilitySuffix = template.incompatibilityReason(for: gpuType) == nil
+            ? ""
+            : " — incompatible"
+        if let imageName = template.imageNameValue {
+            return "\(template.displayNameValue) · \(imageName)\(compatibilitySuffix)"
+        }
+        return "\(template.displayNameValue)\(compatibilitySuffix)"
     }
 
     private func runPodPodRow(_ pod: RunPodPodSummary) -> some View {

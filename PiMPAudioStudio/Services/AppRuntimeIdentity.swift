@@ -51,6 +51,7 @@ enum AppUserDefaultsKeys {
     static let selectedAdapterStack = AppRuntimeIdentity.defaultsKey("selectedAdapterStack")
 
     static let runPodTemplateID = AppRuntimeIdentity.defaultsKey("runpod.templateID")
+    static let runPodAutomaticTemplate = AppRuntimeIdentity.defaultsKey("runpod.automaticTemplate")
     static let runPodImageName = AppRuntimeIdentity.defaultsKey("runpod.imageName")
     static let runPodGPUType = AppRuntimeIdentity.defaultsKey("runpod.gpuType")
     static let runPodInterruptible = AppRuntimeIdentity.defaultsKey("runpod.interruptible")

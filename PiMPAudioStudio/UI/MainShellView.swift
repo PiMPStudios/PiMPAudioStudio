@@ -464,6 +464,7 @@ private struct BuildTrainingView: View {
     @State private var remoteSeed = 42
     @State private var runPodAPIKey = ""
     @AppStorage(AppUserDefaultsKeys.runPodTemplateID) private var runPodTemplateID = ""
+    @AppStorage(AppUserDefaultsKeys.runPodAutomaticTemplate) private var runPodAutomaticTemplate = true
     @AppStorage(AppUserDefaultsKeys.runPodImageName) private var runPodImageName = ""
     @AppStorage(AppUserDefaultsKeys.runPodGPUType) private var runPodGPUType = "NVIDIA RTX PRO 6000 Blackwell Server Edition"
     @AppStorage(AppUserDefaultsKeys.runPodInterruptible) private var runPodInterruptible = false
@@ -936,6 +937,7 @@ private struct BuildTrainingView: View {
                 preparedArchiveURL: effectiveRemotePreparedArchiveURL,
                 apiKey: $runPodAPIKey,
                 templateID: $runPodTemplateID,
+                autoSelectTemplate: $runPodAutomaticTemplate,
                 imageName: $runPodImageName,
                 gpuType: $runPodGPUType,
                 interruptible: $runPodInterruptible,
