@@ -1027,12 +1027,27 @@ private struct BuildTrainingView: View {
             remoteNotice = "Choose the completed remote job zip before pulling artifacts."
             return
         }
+        guard let destinationParentURL = chooseRemoteResultsDirectory(
+            suggestedBy: archiveURL
+        ) else {
+            return
+        }
+        let didStartAccessing = destinationParentURL
+            .startAccessingSecurityScopedResource()
+
         Task {
+            defer {
+                if didStartAccessing {
+                    destinationParentURL.stopAccessingSecurityScopedResource()
+                }
+            }
+
             do {
                 let pullback = try await runPodService.downloadRemoteJobArtifacts(
                     from: pod,
                     archiveURL: archiveURL,
-                    sshKeyPath: runPodSSHKeyPath
+                    sshKeyPath: runPodSSHKeyPath,
+                    destinationParentURL: destinationParentURL
                 )
                 let importer = CommunityService()
                 let adapter = try await importer.importLocalAdapter(
@@ -1049,6 +1064,20 @@ private struct BuildTrainingView: View {
                 remoteNotice = error.localizedDescription
             }
         }
+    }
+
+    private func chooseRemoteResultsDirectory(suggestedBy archiveURL: URL) -> URL? {
+        let panel = NSOpenPanel()
+        panel.title = "Choose Remote Training Results Location"
+        panel.message = "Choose where PiMP Audio Studio should create its Remote Training Results folder."
+        panel.prompt = "Download Here"
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = archiveURL.deletingLastPathComponent()
+
+        return panel.runModal() == .OK ? panel.url : nil
     }
 
     private func runPodLaunchName() -> String {

@@ -654,10 +654,17 @@ struct RunPodLifecyclePanel: View {
                     onMonitorRequested(pod)
                 }
                 .disabled(
-                    state?.phase != .starting
-                        && state?.phase != .running
-                        && state?.phase != .succeeded
-                        && state?.phase != .failed
+                    !RunPodRemoteJobControlAvailability.canMonitor(
+                        phase: state?.phase,
+                        hasArchive: preparedArchiveURL != nil,
+                        hasSSHKey: hasConfiguredSSHKey,
+                        hasSSHEndpoint: pod.sshPort != nil
+                    )
+                )
+                .help(
+                    state == nil
+                        ? "Reconnect to the remote job and restore its status"
+                        : "Refresh the remote job status"
                 )
 
                 Button("Pull & Import") {
@@ -693,7 +700,7 @@ struct RunPodLifecyclePanel: View {
                         .textSelection(.enabled)
                 }
             } else {
-                Text("Upload the selected zip to begin the managed remote-worker flow.")
+                Text("No local status is loaded. Monitor reconnects to the selected job already on this pod; Upload replaces it.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }

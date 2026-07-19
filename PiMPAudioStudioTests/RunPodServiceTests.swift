@@ -300,6 +300,65 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
     #expect((directoryAttributes[.posixPermissions] as? NSNumber)?.intValue == 0o700)
 }
 
+@Test func runPodPullbackDirectoryUsesExplicitlyGrantedParent() throws {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let archiveDirectory = root.appendingPathComponent(
+        "archives",
+        isDirectory: true
+    )
+    let destinationParent = root.appendingPathComponent(
+        "chosen destination",
+        isDirectory: true
+    )
+    let workerDirectory = root.appendingPathComponent(
+        "remote-worker",
+        isDirectory: true
+    )
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    try FileManager.default.createDirectory(
+        at: archiveDirectory,
+        withIntermediateDirectories: true
+    )
+    try FileManager.default.createDirectory(
+        at: destinationParent,
+        withIntermediateDirectories: true
+    )
+    try FileManager.default.createDirectory(
+        at: workerDirectory,
+        withIntermediateDirectories: true
+    )
+    let archiveURL = archiveDirectory.appendingPathComponent("job.zip")
+    try Data("zip".utf8).write(to: archiveURL)
+    try Data("#!/bin/bash".utf8).write(
+        to: workerDirectory.appendingPathComponent("install.sh")
+    )
+    let plan = try RunPodRemoteJobPlan(
+        pod: runPodTestPod(),
+        archiveURL: archiveURL,
+        sshKeyPath: "",
+        workerDirectoryURL: workerDirectory
+    )
+
+    let pullbackDirectory = try plan.makeLocalPullbackDirectory(
+        in: destinationParent
+    )
+
+    #expect(
+        pullbackDirectory.deletingLastPathComponent()
+            == destinationParent.appendingPathComponent(
+                "Remote Training Results",
+                isDirectory: true
+            )
+    )
+    #expect(
+        FileManager.default.fileExists(
+            atPath: pullbackDirectory.path(percentEncoded: false)
+        )
+    )
+}
+
 @Test func runPodSSHKeyStoreRejectsPublicKey() throws {
     let root = FileManager.default.temporaryDirectory
         .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -387,6 +446,41 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
     } else {
         Issue.record("Expected a pending remote setup snapshot")
     }
+}
+
+@Test func runPodRemoteMonitorCanReconnectWithoutLocalState() {
+    #expect(
+        RunPodRemoteJobControlAvailability.canMonitor(
+            phase: nil,
+            hasArchive: true,
+            hasSSHKey: true,
+            hasSSHEndpoint: true
+        )
+    )
+    #expect(
+        !RunPodRemoteJobControlAvailability.canMonitor(
+            phase: nil,
+            hasArchive: false,
+            hasSSHKey: true,
+            hasSSHEndpoint: true
+        )
+    )
+    #expect(
+        !RunPodRemoteJobControlAvailability.canMonitor(
+            phase: nil,
+            hasArchive: true,
+            hasSSHKey: false,
+            hasSSHEndpoint: true
+        )
+    )
+    #expect(
+        !RunPodRemoteJobControlAvailability.canMonitor(
+            phase: .uploaded,
+            hasArchive: true,
+            hasSSHKey: true,
+            hasSSHEndpoint: true
+        )
+    )
 }
 
 @MainActor

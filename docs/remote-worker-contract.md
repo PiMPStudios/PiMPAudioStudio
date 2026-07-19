@@ -234,8 +234,13 @@ The first RunPod integration is intentionally app-local provider control, not a 
   `ssh`/`scp` processes, installs it, starts training detached, and polls the
   provider-neutral result/log files.
 - A successful result can be pulled into a local `Remote Training Results`
-  directory and its `final_adapter` imported through the same adapter importer
-  used for local Side-Step runs.
+  directory inside a destination folder explicitly chosen by the user, keeping
+  the macOS sandbox write grant active through download and import. Its
+  `final_adapter` is imported through the same adapter importer used for local
+  Side-Step runs.
+- After an app relaunch clears transient job state, Monitor can reconnect a
+  remembered local job archive to its existing remote pod and reconstruct the
+  current phase without uploading or restarting the job.
 - After import, PiMP presents the existing destructive termination
   confirmation; it never silently deletes the pod.
 

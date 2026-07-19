@@ -319,7 +319,8 @@ final class RunPodService: ObservableObject {
     func downloadRemoteJobArtifacts(
         from pod: RunPodPodSummary,
         archiveURL: URL,
-        sshKeyPath: String
+        sshKeyPath: String,
+        destinationParentURL: URL
     ) async throws -> RunPodRemoteJobPullback {
         let plan = try RunPodRemoteJobPlan(
             pod: pod,
@@ -334,7 +335,9 @@ final class RunPodService: ObservableObject {
         )
         do {
             try await runRemoteCommand(plan.preparePullbackCommand)
-            let destination = try plan.makeLocalPullbackDirectory()
+            let destination = try plan.makeLocalPullbackDirectory(
+                in: destinationParentURL
+            )
             let pullCommand = plan.pullArtifactsCommand(destinationURL: destination)
             try await runRemoteCommand(pullCommand, timeoutSeconds: 1_800)
 
@@ -391,7 +394,11 @@ final class RunPodService: ObservableObject {
             lastError = nil
             return pullback
         } catch {
-            failRemoteJob(podID: pod.id, archiveURL: archiveURL, error: error)
+            failRemoteArtifactDownload(
+                podID: pod.id,
+                archiveURL: archiveURL,
+                error: error
+            )
             throw error
         }
     }
@@ -539,6 +546,21 @@ final class RunPodService: ObservableObject {
         lastError = message
     }
 
+    private func failRemoteArtifactDownload(
+        podID: String,
+        archiveURL: URL,
+        error: Error
+    ) {
+        let message = RunPodRemoteJobError.userFacingMessage(for: error)
+        updateRemoteJobState(
+            podID: podID,
+            archiveURL: archiveURL,
+            phase: .succeeded,
+            message: "Remote training succeeded, but artifacts could not be downloaded: \(message)"
+        )
+        lastError = message
+    }
+
     private func runPodToken() -> String? {
         apiKeyStore.runPodToken()
     }
@@ -592,6 +614,28 @@ enum RunPodRemoteJobPhase: String, Equatable, Sendable {
         case .succeeded, .failed, .downloaded, .imported:
             return true
         default:
+            return false
+        }
+    }
+}
+
+enum RunPodRemoteJobControlAvailability {
+    static func canMonitor(
+        phase: RunPodRemoteJobPhase?,
+        hasArchive: Bool,
+        hasSSHKey: Bool,
+        hasSSHEndpoint: Bool
+    ) -> Bool {
+        guard hasArchive, hasSSHKey, hasSSHEndpoint else {
+            return false
+        }
+        guard let phase else {
+            return true
+        }
+        switch phase {
+        case .starting, .running, .succeeded, .failed:
+            return true
+        case .uploading, .uploaded, .downloading, .downloaded, .imported:
             return false
         }
     }
@@ -1035,8 +1079,8 @@ struct RunPodRemoteJobPlan: Sendable {
         )
     }
 
-    func makeLocalPullbackDirectory() throws -> URL {
-        let parent = archiveURL.deletingLastPathComponent()
+    func makeLocalPullbackDirectory(in destinationParentURL: URL) throws -> URL {
+        let parent = destinationParentURL
             .appendingPathComponent("Remote Training Results", isDirectory: true)
         try FileManager.default.createDirectory(
             at: parent,
