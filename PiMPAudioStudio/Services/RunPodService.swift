@@ -265,23 +265,24 @@ final class RunPodService: ObservableObject {
                 podID: pod.id,
                 archiveURL: archiveURL,
                 phase: .starting,
-                message: "Installing the worker and starting remote training."
+                message: "Preparing the remote worker. First setup typically takes 20\u{2013}45 minutes; progress refreshes automatically."
             )
+            beginMonitoring(plan: plan)
             let response = try await runRemoteCommand(
                 plan.startCommand,
-                timeoutSeconds: 1_800
+                timeoutSeconds: 120
             )
             let detail = response.stdout
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             updateRemoteJobState(
                 podID: pod.id,
                 archiveURL: archiveURL,
-                phase: .running,
+                phase: .starting,
                 message: detail.isEmpty
-                    ? "Remote worker started."
+                    ? "Remote setup started. Progress refreshes automatically."
                     : String(detail.suffix(1_000))
             )
-            lastMessage = "Remote worker started on \(pod.displayName)."
+            lastMessage = "Remote setup started on \(pod.displayName)."
             lastError = nil
             beginMonitoring(plan: plan)
         } catch is CancellationError {
@@ -451,7 +452,10 @@ final class RunPodService: ObservableObject {
                 state.message = "Remote worker is running. Status refreshes automatically."
             case .pending:
                 state.phase = .starting
-                state.message = "The remote worker has not written its PID yet."
+                state.message = snapshot.logTail.isEmpty
+                    ? "Preparing the remote worker. First setup typically takes 20\u{2013}45 minutes."
+                    : String(snapshot.logTail.prefix(1_000))
+                state.logTail = ""
             case .failed:
                 state.phase = .failed
                 state.message = snapshot.logTail.isEmpty
@@ -524,6 +528,7 @@ final class RunPodService: ObservableObject {
         archiveURL: URL,
         error: Error
     ) {
+        remoteMonitorTasks.removeValue(forKey: podID)?.cancel()
         let message = RunPodRemoteJobError.userFacingMessage(for: error)
         updateRemoteJobState(
             podID: podID,
@@ -657,6 +662,120 @@ protocol RunPodRemoteCommandExecuting: Sendable {
     ) async throws -> RunPodRemoteCommandResult
 }
 
+enum RunPodSSHKeyStoreError: LocalizedError {
+    case invalidPrivateKey
+    case keyTooLarge
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidPrivateKey:
+            return "Choose an SSH private key, not a public key or another file."
+        case .keyTooLarge:
+            return "The selected SSH private key is unexpectedly large."
+        }
+    }
+}
+
+struct RunPodSSHKeyStore {
+    private static let maximumPrivateKeySize = 128 * 1_024
+    private static let supportedPrivateKeyHeaders = [
+        "-----BEGIN OPENSSH PRIVATE KEY-----",
+        "-----BEGIN PRIVATE KEY-----",
+        "-----BEGIN RSA PRIVATE KEY-----",
+        "-----BEGIN EC PRIVATE KEY-----",
+        "-----BEGIN DSA PRIVATE KEY-----",
+    ]
+
+    let managedDirectoryURL: URL
+
+    init(
+        managedDirectoryURL: URL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".ssh", isDirectory: true)
+    ) {
+        self.managedDirectoryURL = managedDirectoryURL
+    }
+
+    var managedPrivateKeyURL: URL {
+        managedDirectoryURL.appendingPathComponent(
+            "id_ed25519",
+            isDirectory: false
+        )
+    }
+
+    var hasManagedPrivateKey: Bool {
+        guard let attributes = try? FileManager.default.attributesOfItem(
+            atPath: managedPrivateKeyURL.path(percentEncoded: false)
+        ) else {
+            return false
+        }
+        return attributes[.type] as? FileAttributeType == .typeRegular
+    }
+
+    @discardableResult
+    func importPrivateKey(from sourceURL: URL) throws -> URL {
+        let didStartAccessing = sourceURL.startAccessingSecurityScopedResource()
+        defer {
+            if didStartAccessing {
+                sourceURL.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        let resourceValues = try sourceURL.resourceValues(
+            forKeys: [.fileSizeKey, .isRegularFileKey]
+        )
+        guard resourceValues.isRegularFile == true else {
+            throw RunPodSSHKeyStoreError.invalidPrivateKey
+        }
+        guard (resourceValues.fileSize ?? 0) <= Self.maximumPrivateKeySize else {
+            throw RunPodSSHKeyStoreError.keyTooLarge
+        }
+
+        let privateKey = try Data(contentsOf: sourceURL)
+        guard !privateKey.isEmpty,
+              let privateKeyText = String(data: privateKey, encoding: .utf8),
+              Self.supportedPrivateKeyHeaders.contains(where: {
+                  privateKeyText.contains($0)
+              }) else {
+            throw RunPodSSHKeyStoreError.invalidPrivateKey
+        }
+
+        try FileManager.default.createDirectory(
+            at: managedDirectoryURL,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o700],
+            ofItemAtPath: managedDirectoryURL.path(percentEncoded: false)
+        )
+        try privateKey.write(to: managedPrivateKeyURL, options: .atomic)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o600],
+            ofItemAtPath: managedPrivateKeyURL.path(percentEncoded: false)
+        )
+        return managedPrivateKeyURL
+    }
+
+    func removeManagedPrivateKey() throws {
+        guard hasManagedPrivateKey else { return }
+        try FileManager.default.removeItem(at: managedPrivateKeyURL)
+    }
+
+    static func configuredPrivateKeyURL(for path: String) -> URL? {
+        let trimmedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedPath.isEmpty else { return nil }
+        return URL(
+            fileURLWithPath: NSString(string: trimmedPath).expandingTildeInPath,
+            isDirectory: false
+        )
+    }
+
+    static var suggestedSourceDirectoryURL: URL {
+        AppStorageLocations.realUserHomeDirectory()
+            .appendingPathComponent(".ssh", isDirectory: true)
+    }
+}
+
 struct RunPodRemoteJobPlan: Sendable {
     let podID: String
     let archiveURL: URL
@@ -705,16 +824,13 @@ struct RunPodRemoteJobPlan: Sendable {
             )
         }
 
-        let trimmedKey = sshKeyPath.trimmingCharacters(
-            in: .whitespacesAndNewlines
-        )
-        let expandedKey = trimmedKey.isEmpty
-            ? nil
-            : NSString(string: trimmedKey).expandingTildeInPath
+        let expandedKey = RunPodSSHKeyStore
+            .configuredPrivateKeyURL(for: sshKeyPath)?
+            .path(percentEncoded: false)
         if let expandedKey,
            !FileManager.default.fileExists(atPath: expandedKey) {
             throw RunPodRemoteJobError.invalidConfiguration(
-                "SSH key not found at \(expandedKey)"
+                "SSH key not found at \(expandedKey). Choose the private key in the RunPod section."
             )
         }
 
@@ -768,6 +884,27 @@ struct RunPodRemoteJobPlan: Sendable {
             ARCHIVE=\(shellQuoted(archive))
             rm -rf "$ROOT"
             mkdir -p "$ROOT"
+            date +%s > "$ROOT/setup.started"
+            if [ -f /workspace/pimp-remote-worker/env.sh ]; then
+              echo "refresh" > "$ROOT/setup.kind"
+            else
+              echo "initial" > "$ROOT/setup.kind"
+            fi
+            touch "$ROOT/setup.in-progress"
+            rm -f "$ROOT/launcher.failed"
+            cat > "$ROOT/launch.sh" <<'PIMP_LAUNCHER'
+            #!/usr/bin/env bash
+            set -euo pipefail
+            ROOT="${PIMP_LAUNCH_ROOT:?}"
+            ARCHIVE="${PIMP_LAUNCH_ARCHIVE:?}"
+            finish() {
+              STATUS=$?
+              rm -f "$ROOT/setup.in-progress"
+              if [ "$STATUS" -ne 0 ]; then
+                printf '%s\n' "$STATUS" > "$ROOT/launcher.failed"
+              fi
+            }
+            trap finish EXIT
             if [ -f /workspace/pimp-remote-worker-src/install.sh ]; then
               bash /workspace/pimp-remote-worker-src/install.sh > "$ROOT/install.log" 2>&1
             fi
@@ -781,9 +918,19 @@ struct RunPodRemoteJobPlan: Sendable {
             export PIMP_REMOTE_JOB_DIR="$ROOT"
             nohup pimp-remote-worker train "$ARCHIVE" \
               > "$ROOT/console.log" 2>&1 < /dev/null &
-            PID=$!
-            printf '%s\n' "$PID" > "$ROOT/worker.pid"
-            echo "Started PiMP remote worker (PID $PID)."
+            WORKER_PID=$!
+            printf '%s\n' "$WORKER_PID" > "$ROOT/worker.pid"
+            echo "Started PiMP remote worker (PID $WORKER_PID)."
+            PIMP_LAUNCHER
+            chmod 0755 "$ROOT/launch.sh"
+            nohup env \
+              PIMP_LAUNCH_ROOT="$ROOT" \
+              PIMP_LAUNCH_ARCHIVE="$ARCHIVE" \
+              bash "$ROOT/launch.sh" \
+              > "$ROOT/launcher.log" 2>&1 < /dev/null &
+            LAUNCHER_PID=$!
+            printf '%s\n' "$LAUNCHER_PID" > "$ROOT/launcher.pid"
+            echo "Remote setup started (PID $LAUNCHER_PID). First setup usually takes 20\u{2013}45 minutes."
             """,
             displayName: "Start remote worker"
         )
@@ -799,6 +946,13 @@ struct RunPodRemoteJobPlan: Sendable {
             LOGS="$(find "$ROOT" -maxdepth 8 -path '*/remote_artifacts/logs.jsonl' -type f -print -quit)"
             CONSOLE="$ROOT/console.log"
             PID_FILE="$ROOT/worker.pid"
+            INSTALL_LOG="$ROOT/install.log"
+            SETUP_STARTED="$ROOT/setup.started"
+            SETUP_KIND="$ROOT/setup.kind"
+            SETUP_ACTIVE="$ROOT/setup.in-progress"
+            LAUNCHER_PID_FILE="$ROOT/launcher.pid"
+            LAUNCHER_FAILED="$ROOT/launcher.failed"
+            LAUNCHER_LOG="$ROOT/launcher.log"
             if [ -n "$RESULT" ]; then
               echo "PIMP_STATUS:RESULT"
               cat "$RESULT"
@@ -808,8 +962,46 @@ struct RunPodRemoteJobPlan: Sendable {
             elif [ -f "$PID_FILE" ]; then
               echo "PIMP_STATUS:FAILED"
               if [ -n "$LOGS" ]; then tail -n 30 "$LOGS"; elif [ -f "$CONSOLE" ]; then tail -n 30 "$CONSOLE"; fi
+            elif [ -f "$LAUNCHER_FAILED" ]; then
+              echo "PIMP_STATUS:FAILED"
+              echo "Remote setup failed with status $(cat "$LAUNCHER_FAILED")."
+              if [ -f "$INSTALL_LOG" ]; then tail -n 30 "$INSTALL_LOG"; elif [ -f "$LAUNCHER_LOG" ]; then tail -n 30 "$LAUNCHER_LOG"; fi
+            elif [ -f "$LAUNCHER_PID_FILE" ] \
+              && ! kill -0 "$(cat "$LAUNCHER_PID_FILE")" 2>/dev/null \
+              && [ -f "$SETUP_ACTIVE" ]; then
+              echo "PIMP_STATUS:FAILED"
+              echo "The remote setup process stopped before starting the worker."
+              if [ -f "$INSTALL_LOG" ]; then tail -n 30 "$INSTALL_LOG"; elif [ -f "$LAUNCHER_LOG" ]; then tail -n 30 "$LAUNCHER_LOG"; fi
             else
               echo "PIMP_STATUS:PENDING"
+              if [ -f "$SETUP_ACTIVE" ]; then
+                NOW="$(date +%s)"
+                STARTED="$(cat "$SETUP_STARTED" 2>/dev/null || echo "$NOW")"
+                ELAPSED_SECONDS=$((NOW - STARTED))
+                if [ "$ELAPSED_SECONDS" -lt 0 ]; then ELAPSED_SECONDS=0; fi
+                ELAPSED_MINUTES=$((ELAPSED_SECONDS / 60))
+                STAGE="Preparing the remote environment"
+                if [ -f "$INSTALL_LOG" ]; then
+                  if grep -q "\\[PiMP\\] installing training dependencies" "$INSTALL_LOG"; then
+                    STAGE="Installing PyTorch, CUDA, and training dependencies"
+                  elif grep -q "\\[PiMP\\] creating Python environment" "$INSTALL_LOG"; then
+                    STAGE="Creating the Python environment"
+                  elif grep -q "\\[PiMP\\] cloning ACE-Step" "$INSTALL_LOG"; then
+                    STAGE="Downloading the ACE-Step training code"
+                  elif grep -q "\\[PiMP\\] installing system packages" "$INSTALL_LOG"; then
+                    STAGE="Installing system packages"
+                  fi
+                fi
+                if [ "$(cat "$SETUP_KIND" 2>/dev/null || echo initial)" = "refresh" ]; then
+                  echo "$STAGE. Elapsed: $ELAPSED_MINUTES min; estimated setup time: 2\u{2013}8 min."
+                else
+                  echo "$STAGE. Elapsed: $ELAPSED_MINUTES min; estimated first setup time: 20\u{2013}45 min. Network-backed storage can take longer."
+                fi
+              elif [ -f "$INSTALL_LOG" ]; then
+                echo "Remote setup stopped before the worker started. Check the Start result and install log."
+              else
+                echo "Remote launch is initializing. Estimated first setup time: 20\u{2013}45 min."
+              fi
             fi
             """,
             displayName: "Refresh remote worker status"

@@ -89,6 +89,19 @@ private func runPodTestPod() throws -> RunPodPodSummary {
     )
 }
 
+private func bashSyntaxStatus(for script: String) throws -> Int32 {
+    let process = Process()
+    let input = Pipe()
+    process.executableURL = URL(fileURLWithPath: "/bin/bash")
+    process.arguments = ["-n"]
+    process.standardInput = input
+    try process.run()
+    input.fileHandleForWriting.write(Data(script.utf8))
+    try input.fileHandleForWriting.close()
+    process.waitUntilExit()
+    return process.terminationStatus
+}
+
 @Test func apiKeyStoreKeepsRunPodOutOfLyricProviderList() {
     #expect(APIKeyStore.apiKeyProviders.contains { $0.id == APIKeyStore.runPodProviderID })
     #expect(!APIKeyStore.providers.contains { $0.id == APIKeyStore.runPodProviderID })
@@ -203,6 +216,30 @@ private func runPodTestPod() throws -> RunPodPodSummary {
             .contains("PIMP_REMOTE_JOB_DIR") == true
     )
     #expect(
+        plan.startCommand.arguments.last?
+            .contains("setup.in-progress") == true
+    )
+    #expect(
+        plan.startCommand.arguments.last?
+            .contains("setup.started") == true
+    )
+    #expect(
+        plan.startCommand.arguments.last?
+            .contains("nohup env") == true
+    )
+    #expect(
+        plan.startCommand.arguments.last?
+            .contains("launcher.pid") == true
+    )
+    #expect(
+        plan.statusCommand.arguments.last?
+            .contains("launcher.failed") == true
+    )
+    #expect(
+        plan.statusCommand.arguments.last?
+            .contains("estimated first setup time: 20\u{2013}45 min") == true
+    )
+    #expect(
         plan.preparePullbackCommand.arguments.last?
             .contains("remote_artifacts/result.json") == true
     )
@@ -211,6 +248,78 @@ private func runPodTestPod() throws -> RunPodPodSummary {
             .joined(separator: " ")
             .localizedCaseInsensitiveContains("api_key")
     )
+    #expect(
+        try bashSyntaxStatus(
+            for: #require(plan.startCommand.arguments.last)
+        ) == 0
+    )
+    #expect(
+        try bashSyntaxStatus(
+            for: #require(plan.statusCommand.arguments.last)
+        ) == 0
+    )
+}
+
+@Test func runPodSSHKeyStoreImportsPrivateKeyWithRestrictedPermissions() throws {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let sourceURL = root.appendingPathComponent("source-key")
+    let managedDirectoryURL = root.appendingPathComponent(
+        "managed/.ssh",
+        isDirectory: true
+    )
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    try FileManager.default.createDirectory(
+        at: root,
+        withIntermediateDirectories: true
+    )
+    let privateKey = """
+    -----BEGIN OPENSSH PRIVATE KEY-----
+    test-private-key
+    -----END OPENSSH PRIVATE KEY-----
+    """
+    try Data(privateKey.utf8).write(to: sourceURL)
+
+    let store = RunPodSSHKeyStore(
+        managedDirectoryURL: managedDirectoryURL
+    )
+    let importedURL = try store.importPrivateKey(from: sourceURL)
+
+    #expect(importedURL == managedDirectoryURL.appendingPathComponent("id_ed25519"))
+    #expect(try String(contentsOf: importedURL, encoding: .utf8) == privateKey)
+    #expect(store.hasManagedPrivateKey)
+
+    let keyAttributes = try FileManager.default.attributesOfItem(
+        atPath: importedURL.path
+    )
+    let directoryAttributes = try FileManager.default.attributesOfItem(
+        atPath: managedDirectoryURL.path
+    )
+    #expect((keyAttributes[.posixPermissions] as? NSNumber)?.intValue == 0o600)
+    #expect((directoryAttributes[.posixPermissions] as? NSNumber)?.intValue == 0o700)
+}
+
+@Test func runPodSSHKeyStoreRejectsPublicKey() throws {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let sourceURL = root.appendingPathComponent("id_ed25519.pub")
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    try FileManager.default.createDirectory(
+        at: root,
+        withIntermediateDirectories: true
+    )
+    try Data("ssh-ed25519 AAAAC3Nza test@example".utf8).write(to: sourceURL)
+
+    let store = RunPodSSHKeyStore(
+        managedDirectoryURL: root.appendingPathComponent("managed")
+    )
+
+    #expect(throws: RunPodSSHKeyStoreError.self) {
+        try store.importPrivateKey(from: sourceURL)
+    }
+    #expect(!store.hasManagedPrivateKey)
 }
 
 @Test func runPodRemoteStatusParsesStableResultContract() throws {
@@ -260,6 +369,23 @@ private func runPodTestPod() throws -> RunPodPodSummary {
             }
             """
         )
+    }
+}
+
+@Test func runPodRemoteStatusPreservesPendingSetupEstimate() throws {
+    let snapshot = try RunPodRemoteStatusSnapshot.parse(
+        """
+        PIMP_STATUS:PENDING
+        Installing PyTorch, CUDA, and training dependencies. Elapsed: 9 min; estimated first setup time: 20\u{2013}45 min.
+        """
+    )
+
+    if case .pending = snapshot.status {
+        #expect(snapshot.result == nil)
+        #expect(snapshot.logTail.contains("Elapsed: 9 min"))
+        #expect(snapshot.logTail.contains("20\u{2013}45 min"))
+    } else {
+        Issue.record("Expected a pending remote setup snapshot")
     }
 }
 

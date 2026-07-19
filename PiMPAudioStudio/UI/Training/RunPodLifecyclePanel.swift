@@ -85,6 +85,42 @@ struct RunPodLifecyclePanel: View {
             }
 
             HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("SSH Key")
+                    Text(runPodSSHKeyStatus)
+                        .font(.caption)
+                        .foregroundStyle(hasConfiguredSSHKey ? .green : .secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+
+                Spacer()
+
+                Button {
+                    chooseRunPodSSHKey()
+                } label: {
+                    Label(
+                        hasConfiguredSSHKey ? "Replace\u{2026}" : "Choose Key\u{2026}",
+                        systemImage: "key"
+                    )
+                }
+
+                if runPodSSHKeyStore.hasManagedPrivateKey {
+                    Button(role: .destructive) {
+                        removeRunPodSSHKey()
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Remove the RunPod SSH key from PiMP Audio Studio")
+                }
+            }
+
+            Text("PiMP Audio Studio keeps a protected local copy in its sandbox for automated SSH and SCP. The private key is never added to the remote job zip.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+
+            HStack {
                 Button {
                     Task { await runPodService.refreshPods() }
                 } label: {
@@ -377,6 +413,30 @@ struct RunPodLifecyclePanel: View {
         }
     }
 
+    private var runPodSSHKeyStore: RunPodSSHKeyStore {
+        RunPodSSHKeyStore()
+    }
+
+    private var configuredSSHKeyURL: URL? {
+        RunPodSSHKeyStore.configuredPrivateKeyURL(for: sshKeyPath)
+    }
+
+    private var hasConfiguredSSHKey: Bool {
+        guard let configuredSSHKeyURL else { return false }
+        var isDirectory: ObjCBool = false
+        return FileManager.default.fileExists(
+            atPath: configuredSSHKeyURL.path(percentEncoded: false),
+            isDirectory: &isDirectory
+        ) && !isDirectory.boolValue
+    }
+
+    private var runPodSSHKeyStatus: String {
+        guard let configuredSSHKeyURL, hasConfiguredSSHKey else {
+            return "Not configured"
+        }
+        return "Ready \u{00b7} \(configuredSSHKeyURL.path(percentEncoded: false))"
+    }
+
     private var canLaunchRunPodPod: Bool {
         guard runPodService.hasAPIKey,
               hasSelectedPackage,
@@ -553,7 +613,7 @@ struct RunPodLifecyclePanel: View {
             }
 
             if let publicIp = pod.publicIp, let sshPort = pod.sshPort {
-                Text("SSH \(publicIp):\(sshPort)")
+                Text(verbatim: "SSH \(publicIp):\(sshPort)")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
@@ -580,6 +640,7 @@ struct RunPodLifecyclePanel: View {
                 }
                 .disabled(
                     preparedArchiveURL == nil
+                        || !hasConfiguredSSHKey
                         || (state != nil && state?.phase != .failed)
                         || pod.sshPort == nil
                 )
@@ -693,6 +754,41 @@ struct RunPodLifecyclePanel: View {
         hasRequestedInitialLaunchOptions = true
         Task {
             await runPodService.refreshLaunchOptions()
+        }
+    }
+
+    private func chooseRunPodSSHKey() {
+        let panel = NSOpenPanel()
+        panel.title = "Choose RunPod SSH Private Key"
+        panel.message = "Choose the private key whose public key is registered with RunPod."
+        panel.prompt = "Use SSH Key"
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = RunPodSSHKeyStore.suggestedSourceDirectoryURL
+
+        guard panel.runModal() == .OK, let selectedURL = panel.url else {
+            return
+        }
+
+        do {
+            let managedURL = try runPodSSHKeyStore.importPrivateKey(
+                from: selectedURL
+            )
+            sshKeyPath = managedURL.path(percentEncoded: false)
+            onNotice("RunPod SSH key is ready for automated uploads.")
+        } catch {
+            onNotice(error.localizedDescription)
+        }
+    }
+
+    private func removeRunPodSSHKey() {
+        do {
+            try runPodSSHKeyStore.removeManagedPrivateKey()
+            sshKeyPath = ""
+            onNotice("Removed the RunPod SSH key from PiMP Audio Studio.")
+        } catch {
+            onNotice("Could not remove the RunPod SSH key: \(error.localizedDescription)")
         }
     }
 

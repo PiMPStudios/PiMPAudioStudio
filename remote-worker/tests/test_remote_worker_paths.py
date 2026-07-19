@@ -14,6 +14,7 @@ from unittest.mock import patch
 
 
 WORKER_PATH = Path(__file__).resolve().parents[1] / "pimp-remote-worker"
+INSTALLER_PATH = Path(__file__).resolve().parents[1] / "install.sh"
 LOADER = SourceFileLoader("pimp_remote_worker", str(WORKER_PATH))
 SPEC = importlib.util.spec_from_loader(LOADER.name, LOADER)
 if SPEC is None or SPEC.loader is None:
@@ -152,6 +153,14 @@ def write_package_v2_job(root: Path, *, include: list[str] | None = None) -> Pat
 
 
 class RemoteWorkerPathTests(unittest.TestCase):
+    def test_installer_provisions_and_verifies_torchcodec(self) -> None:
+        installer = INSTALLER_PATH.read_text(encoding="utf-8")
+
+        self.assertIn('"torchcodec>=0.9.1"', installer)
+        self.assertIn('TORCHCODEC_REQUIREMENT="torchcodec>=0.7,<0.8"', installer)
+        self.assertIn('TORCHCODEC_REQUIREMENT="torchcodec>=0.10,<0.11"', installer)
+        self.assertIn("from torchcodec.decoders import AudioDecoder", installer)
+
     def test_package_root_must_remain_at_remote_job_directory(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
