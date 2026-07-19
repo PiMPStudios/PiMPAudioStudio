@@ -138,7 +138,7 @@ import Foundation
     #expect(!FileManager.default.fileExists(atPath: marker.path(percentEncoded: false)))
 }
 
-@Test func registryOrphanCleanupRunsWhenUserModelIndexLoads() async throws {
+@Test func registryOrphanCleanupPreservesRegisteredAndReservedDirectories() async throws {
     let tempDir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
     try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: tempDir) }
@@ -156,6 +156,11 @@ import Foundation
     let keptDir = tempDir.appending(path: "my-custom-dit", directoryHint: .isDirectory)
     try FileManager.default.createDirectory(at: keptDir, withIntermediateDirectories: true)
 
+    let adaptersDir = tempDir.appending(path: "adapters", directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: adaptersDir, withIntermediateDirectories: true)
+    let adapterSentinel = adaptersDir.appending(path: "adapter.safetensors")
+    try Data("adapter-weights".utf8).write(to: adapterSentinel)
+
     let orphanDir = tempDir.appending(path: "legacy-orphan-model", directoryHint: .isDirectory)
     try FileManager.default.createDirectory(at: orphanDir, withIntermediateDirectories: true)
 
@@ -164,6 +169,7 @@ import Foundation
 
     #expect(userIDs == ["my-custom-dit"])
     #expect(FileManager.default.fileExists(atPath: keptDir.path(percentEncoded: false)))
+    #expect(FileManager.default.fileExists(atPath: adapterSentinel.path(percentEncoded: false)))
     #expect(!FileManager.default.fileExists(atPath: orphanDir.path(percentEncoded: false)))
     let marker = tempDir.appending(path: ".model-migration-v1-complete")
     #expect(FileManager.default.fileExists(atPath: marker.path(percentEncoded: false)))

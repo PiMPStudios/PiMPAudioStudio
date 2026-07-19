@@ -410,6 +410,9 @@ public actor ModelRegistry {
     /// Per-models-root marker so migration state is isolated per directory.
     /// (Avoids a global UserDefaults race across app roots and unit tests.)
     private static let modelMigrationMarkerFileName = ".model-migration-v1-complete"
+    private static let modelMigrationProtectedDirectoryNames: Set<String> = [
+        "adapters",
+    ]
 
     /// One-shot migration from Phase-1 placeholder spec IDs to Phase-2 real IDs.
     /// Maps legacy `ace-step-dit` active ID to the new Turbo default and sweeps
@@ -454,6 +457,9 @@ public actor ModelRegistry {
             for entry in entries {
                 let name = entry.lastPathComponent
                 if name == modelMigrationMarkerFileName { continue }
+                if modelMigrationProtectedDirectoryNames.contains(name) {
+                    continue
+                }
                 var isDir: ObjCBool = false
                 FileManager.default.fileExists(atPath: entry.path(percentEncoded: false), isDirectory: &isDir)
                 guard isDir.boolValue else { continue }
