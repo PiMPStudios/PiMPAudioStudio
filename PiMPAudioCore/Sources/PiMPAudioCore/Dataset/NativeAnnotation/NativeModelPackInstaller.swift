@@ -152,6 +152,19 @@ public actor NativeModelPackInstaller {
         )
     }
 
+    public func remove(task: DatasetAnnotationTask) throws {
+        try Task.checkCancellation()
+        let source = NativeModelPackCatalog.entry(for: task)
+        let destination = modelsDirectory.appendingPathComponent(
+            source.destinationDirectoryName,
+            isDirectory: true
+        )
+        guard FileManager.default.fileExists(atPath: destination.path) else {
+            return
+        }
+        try FileManager.default.removeItem(at: destination)
+    }
+
     @discardableResult
     func install(
         _ source: NativeModelPackCatalogEntry,

@@ -73,10 +73,10 @@ All modes:
 Install the Native ACE packs under **Settings -> Models -> Dataset Annotation
 (Advanced)**. **Download** retrieves the pinned PiMP Audio Studio pack from
 Hugging Face, verifies every file against the pack manifest, validates the
-completed pack, and then installs it transactionally. The overflow menu keeps
-**Import Local Pack** available for offline transfers. Both packs use about
-9.34 GB of disk; 24 GB unified memory is the provisional minimum and 32 GB or
-more is recommended.
+completed pack, and then installs it transactionally. Installed packs show
+**Ready** and can be deleted and downloaded again from the same row. Both packs
+use about 9.34 GB of disk; 24 GB unified memory is the provisional minimum and
+32 GB or more is recommended.
 
 ## Which Bundle To Train
 

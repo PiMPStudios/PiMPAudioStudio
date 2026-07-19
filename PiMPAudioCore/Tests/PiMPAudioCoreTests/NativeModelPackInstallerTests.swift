@@ -147,6 +147,45 @@ final class NativeModelPackInstallerTests: XCTestCase {
         )
     }
 
+    func testRemoveDeletesOnlyRequestedPackAndIsIdempotent() async throws {
+        let modelsDirectory = try makeTemporaryDirectory()
+        let captioner = modelsDirectory.appendingPathComponent(
+            NativeModelPackCatalog.captioner.destinationDirectoryName,
+            isDirectory: true
+        )
+        let transcriber = modelsDirectory.appendingPathComponent(
+            NativeModelPackCatalog.transcriber.destinationDirectoryName,
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(
+            at: captioner,
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(
+            at: transcriber,
+            withIntermediateDirectories: true
+        )
+        try Data("captioner".utf8).write(
+            to: captioner.appendingPathComponent("sentinel")
+        )
+        try Data("transcriber".utf8).write(
+            to: transcriber.appendingPathComponent("sentinel")
+        )
+
+        let installer = NativeModelPackInstaller(
+            modelsDirectory: modelsDirectory
+        )
+        try await installer.remove(task: .caption)
+        try await installer.remove(task: .caption)
+
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: captioner.path)
+        )
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: transcriber.path)
+        )
+    }
+
     private func makeTemporaryDirectory() throws -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)

@@ -116,8 +116,8 @@ the full audio-language model ported to Swift/MLX. Install its four-bit
 captioner and transcriber packs from **Settings > Models > Dataset Annotation
 (Advanced)**. The built-in catalog pins the public PiMP Audio Studio Hugging
 Face repositories to immutable revisions. Downloads are staged, checksum
-verified, fully validated, and transactionally installed; local pack import
-remains available from the row's overflow menu.
+verified, fully validated, and transactionally installed. Installed packs are
+always active and can be deleted and downloaded again from the same row.
 
 ## Train From JSON
 

@@ -14,12 +14,13 @@ struct ModelsSettingsView: View {
     @State private var statuses: [String: ModelStatus] = [:]
     @State private var showDeleteConfirmation: String?
     @State private var showRemoveConfirmation: String?
+    @State private var showNativePackDeleteConfirmation:
+        DatasetAnnotationTask?
     @State private var errorMessage: String?
     @State private var refreshTask: Task<Void, Never>?
     @State private var isReleasingMemory: Bool = false
     @State private var nativeAnnotationAvailability:
         DatasetAnnotationBackendAvailability?
-    @State private var isImportingNativePack = false
     @State private var nativePackInstallProgress:
         [DatasetAnnotationTask: NativeModelPackInstallProgress] = [:]
     @State private var nativePackInstallTasks:
@@ -81,6 +82,25 @@ struct ModelsSettingsView: View {
             }
         } message: {
             Text("This will delete all downloaded files and remove the model from your list.")
+        }
+        .confirmationDialog(
+            "Delete Native ACE model files?",
+            isPresented: Binding(
+                get: { showNativePackDeleteConfirmation != nil },
+                set: {
+                    if !$0 {
+                        showNativePackDeleteConfirmation = nil
+                    }
+                }
+            )
+        ) {
+            if let task = showNativePackDeleteConfirmation {
+                Button("Delete Files", role: .destructive) {
+                    deleteNativeAnnotationPack(task: task)
+                }
+            }
+        } message: {
+            Text("The model will become unavailable until you download it again.")
         }
         .alert("Error", isPresented: Binding(
             get: { errorMessage != nil },
@@ -236,6 +256,24 @@ struct ModelsSettingsView: View {
             .font(.caption)
             .foregroundStyle(.secondary)
 
+            HStack(spacing: 4) {
+                Text("Hosted packs:")
+                    .foregroundStyle(.secondary)
+                Link(
+                    "Captioner",
+                    destination:
+                        NativeModelPackCatalog.captioner.modelPageURL
+                )
+                Text("·")
+                    .foregroundStyle(.secondary)
+                Link(
+                    "Transcriber",
+                    destination:
+                        NativeModelPackCatalog.transcriber.modelPageURL
+                )
+            }
+            .font(.caption2)
+
             if let availability = nativeAnnotationAvailability {
                 HStack {
                     Label(
@@ -260,71 +298,62 @@ struct ModelsSettingsView: View {
                         for: model.task
                     )
                     HStack {
-                        Label(
-                            catalogEntry.displayName,
-                            systemImage: model.isInstalled
-                                ? "checkmark.circle.fill"
-                                : "arrow.down.circle"
-                        )
-                        .foregroundStyle(
-                            model.isInstalled ? .green : .primary
-                        )
-                        Spacer()
-                        Text(model.isInstalled ? "Installed" : "Not Installed")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        if !model.isInstalled {
-                            if let progress =
-                                nativePackInstallProgress[model.task] {
-                                nativePackProgressView(
-                                    progress,
-                                    task: model.task
-                                )
-                            } else {
-                                Button("Download") {
-                                    downloadNativeAnnotationPack(
-                                        task: model.task
-                                    )
-                                }
-                                .disabled(isNativePackOperationActive)
-
-                                Menu {
-                                    Button("Import Local Pack…") {
-                                        importNativeAnnotationPack(
-                                            task: model.task
-                                        )
-                                    }
-                                    Link(
-                                        "View on Hugging Face",
-                                        destination:
-                                            catalogEntry.modelPageURL
-                                    )
-                                } label: {
-                                    Image(systemName: "ellipsis.circle")
-                                }
-                                .menuStyle(.borderlessButton)
-                                .fixedSize()
-                                .help("Other installation options")
-                                .disabled(isNativePackOperationActive)
-                            }
-                        }
-                    }
-                    if !model.isInstalled {
-                        Text(
-                            "Hugging Face · "
-                                + formattedByteCount(
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(catalogEntry.displayName)
+                                .font(.body)
+                            Text(
+                                formattedByteCount(
                                     catalogEntry.expectedSizeBytes
                                 )
-                        )
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .help(catalogEntry.repositoryID)
+                            )
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        if let progress =
+                            nativePackInstallProgress[model.task] {
+                            nativePackProgressView(
+                                progress,
+                                task: model.task
+                            )
+                        } else if model.isInstalled {
+                            nativePackStatusBadge(
+                                "Ready",
+                                color: .green
+                            )
+                            Button(role: .destructive) {
+                                showNativePackDeleteConfirmation =
+                                    model.task
+                            } label: {
+                                Image(systemName: "trash")
+                            }
+                            .controlSize(.small)
+                            .disabled(isNativePackOperationActive)
+                        } else {
+                            nativePackStatusBadge(
+                                "Not Downloaded",
+                                color: .secondary
+                            )
+                            Button("Download") {
+                                downloadNativeAnnotationPack(
+                                    task: model.task
+                                )
+                            }
+                            .controlSize(.small)
+                            .disabled(isNativePackOperationActive)
+                        }
                     }
-                    if let reason = model.unavailableReason,
-                       !model.isInstalled {
+                    .padding(.vertical, 2)
+
+                    if !model.isInstalled,
+                       nativePackInstallProgress[model.task] == nil,
+                       FileManager.default.fileExists(
+                           atPath: model.directory.path
+                       ),
+                       let reason = model.unavailableReason {
                         Text(reason)
                             .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.red)
                             .lineLimit(2)
                     }
                 }
@@ -333,19 +362,10 @@ struct ModelsSettingsView: View {
                     .controlSize(.small)
             }
 
-            HStack {
-                Button("Reveal Model Folder") {
-                    revealNativeAnnotationModelFolder()
-                }
-                .buttonStyle(.bordered)
-                if isImportingNativePack {
-                    ProgressView()
-                        .controlSize(.small)
-                    Text("Validating and importing…")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+            Button("Reveal Model Folder") {
+                revealNativeAnnotationModelFolder()
             }
+            .buttonStyle(.bordered)
 
             Text(
                 "Measured policy: 16 GB is unsupported, 24 GB is provisional, "
@@ -358,7 +378,19 @@ struct ModelsSettingsView: View {
     }
 
     private var isNativePackOperationActive: Bool {
-        isImportingNativePack || !nativePackInstallTasks.isEmpty
+        !nativePackInstallTasks.isEmpty
+    }
+
+    private func nativePackStatusBadge(
+        _ title: String,
+        color: Color
+    ) -> some View {
+        Text(title)
+            .font(.caption2)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(color.opacity(0.15), in: Capsule())
+            .foregroundStyle(color)
     }
 
     @ViewBuilder
@@ -545,92 +577,6 @@ struct ModelsSettingsView: View {
         }
     }
 
-    private func importNativeAnnotationPack(task: DatasetAnnotationTask) {
-        let panel = NSOpenPanel()
-        panel.title = task == .caption
-            ? "Select ACE Captioner Model Pack"
-            : "Select ACE Transcriber Model Pack"
-        panel.prompt = "Import"
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
-        guard panel.runModal() == .OK, let source = panel.url else { return }
-
-        isImportingNativePack = true
-        Task {
-            do {
-                let destinationName = task == .caption
-                    ? NativeACEDatasetAnnotationBackend.captionerDirectoryName
-                    : NativeACEDatasetAnnotationBackend.transcriberDirectoryName
-                let destination = AppStorageLocations.modelsDirectory
-                    .appendingPathComponent(
-                        destinationName,
-                        isDirectory: true
-                    )
-                try await Task.detached(priority: .userInitiated) {
-                    let temporaryDestination = destination
-                        .deletingLastPathComponent()
-                        .appendingPathComponent(
-                            ".\(destinationName).importing-\(UUID().uuidString)",
-                            isDirectory: true
-                        )
-                    let didAccess = source.startAccessingSecurityScopedResource()
-                    defer {
-                        if didAccess {
-                            source.stopAccessingSecurityScopedResource()
-                        }
-                        try? FileManager.default.removeItem(
-                            at: temporaryDestination
-                        )
-                    }
-                    let manifest =
-                        try NativeModelPackValidator.loadAndValidate(at: source)
-                    let expectedTask: OmniAnnotationTask =
-                        task == .caption ? .caption : .transcribe
-                    guard manifest.task == expectedTask else {
-                        throw NativeACEDatasetAnnotationBackendError
-                            .taskMismatch(
-                                expected: task,
-                                actual: manifest.task == .caption
-                                    ? .caption
-                                    : .transcribe
-                            )
-                    }
-                    guard !FileManager.default.fileExists(
-                        atPath: destination.path(percentEncoded: false)
-                    ) else {
-                        throw CocoaError(
-                            .fileWriteFileExists,
-                            userInfo: [
-                                NSFilePathErrorKey:
-                                    destination.path(percentEncoded: false),
-                            ]
-                        )
-                    }
-                    try FileManager.default.createDirectory(
-                        at: destination.deletingLastPathComponent(),
-                        withIntermediateDirectories: true
-                    )
-                    try FileManager.default.copyItem(
-                        at: source,
-                        to: temporaryDestination
-                    )
-                    _ = try NativeModelPackValidator.loadAndValidate(
-                        at: temporaryDestination
-                    )
-                    try FileManager.default.moveItem(
-                        at: temporaryDestination,
-                        to: destination
-                    )
-                }.value
-                refreshModels()
-            } catch {
-                errorMessage = error.localizedDescription
-            }
-            isImportingNativePack = false
-        }
-    }
-
     private func downloadNativeAnnotationPack(
         task: DatasetAnnotationTask
     ) {
@@ -669,6 +615,23 @@ struct ModelsSettingsView: View {
             nativePackInstallTasks[task] = nil
         }
         nativePackInstallTasks[task] = operation
+    }
+
+    private func deleteNativeAnnotationPack(
+        task: DatasetAnnotationTask
+    ) {
+        showNativePackDeleteConfirmation = nil
+        Task { @MainActor in
+            do {
+                let installer = NativeModelPackInstaller(
+                    modelsDirectory: AppStorageLocations.modelsDirectory
+                )
+                try await installer.remove(task: task)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            refreshModels()
+        }
     }
 
     private func updateNativePackProgress(
