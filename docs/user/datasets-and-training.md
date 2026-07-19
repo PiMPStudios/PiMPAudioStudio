@@ -66,7 +66,9 @@ All modes:
 - Caption and transcribe full mixes, or transcribe vocals when the lightweight
   path is used with stems.
 - Use Qwen3 Forced Aligner for timed ACE lyrics where available.
-- Estimates or preserves BPM/key metadata where available.
+- Analyzes each full mix for BPM, key, and ACE-Step time signature even when
+  stems are disabled. When stems exist, the cleaner instrumental analysis is
+  preferred.
 - Store model revision, quantization, prompt/settings, elapsed time, and raw
   output paths so review edits do not erase provenance.
 

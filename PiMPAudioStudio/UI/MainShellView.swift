@@ -1081,6 +1081,9 @@ private struct BuildTrainingView: View {
                     if package.keyStatus != "not_run" {
                         Text("key \(package.keyStatus)")
                     }
+                    if package.timeSignatureStatus != "not_run" {
+                        Text("meter \(package.timeSignatureStatus)")
+                    }
                 }
                 .font(.caption2)
                 .foregroundStyle(.secondary)
@@ -1109,6 +1112,9 @@ private struct BuildTrainingView: View {
                     Text("cache \(preprocessCacheStatus(for: package))")
                     if package.keyStatus != "not_run" {
                         Text("key \(package.keyStatus)")
+                    }
+                    if package.timeSignatureStatus != "not_run" {
+                        Text("meter \(package.timeSignatureStatus)")
                     }
                 }
                 .font(.caption2)

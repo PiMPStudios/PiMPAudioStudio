@@ -507,6 +507,7 @@ extension PiMPAudioCommandFacade {
             "transcriptionStatus": summary.transcriptionStatus,
             "bpmStatus": summary.bpmStatus,
             "keyStatus": summary.keyStatus,
+            "timeSignatureStatus": summary.timeSignatureStatus,
             "trainingBundlePath": summary.directory
                 .appendingPathComponent(TrainingDatasetPackageWriter.fullMixBundleFileName)
                 .path(percentEncoded: false),
@@ -1166,6 +1167,7 @@ extension PiMPAudioCommandFacade {
         var durationCount = 0
         var bpmCount = 0
         var keyCount = 0
+        var timeSignatureCount = 0
         var approvedCount = 0
         var captionSources: [String: Int] = [:]
         var lyricsSources: [String: Int] = [:]
@@ -1178,6 +1180,9 @@ extension PiMPAudioCommandFacade {
             if let duration = clip.durationSeconds, duration > 0 { durationCount += 1 }
             if !clip.bpm.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { bpmCount += 1 }
             if !clip.key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { keyCount += 1 }
+            if !clip.timeSignature.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                timeSignatureCount += 1
+            }
             if clip.isApproved { approvedCount += 1 }
             increment(&captionSources, key: clip.captionSource.isEmpty ? "unknown" : clip.captionSource)
             increment(&lyricsSources, key: clip.lyricsSource.isEmpty ? "unknown" : clip.lyricsSource)
@@ -1198,6 +1203,7 @@ extension PiMPAudioCommandFacade {
             "durationKnownCount": durationCount,
             "bpmKnownCount": bpmCount,
             "keyKnownCount": keyCount,
+            "timeSignatureKnownCount": timeSignatureCount,
             "captionSources": captionSources,
             "lyricsSources": lyricsSources,
             "transcriptionStatuses": transcriptionStatuses,
@@ -1215,6 +1221,9 @@ extension PiMPAudioCommandFacade {
             "durationSeconds": clip.durationSeconds ?? NSNull(),
             "bpm": clip.bpm.isEmpty ? NSNull() : clip.bpm,
             "key": clip.key.isEmpty ? NSNull() : clip.key,
+            "timeSignature": clip.timeSignature.isEmpty
+                ? NSNull()
+                : clip.timeSignature,
             "language": clip.language.isEmpty ? NSNull() : clip.language,
             "role": clip.role.isEmpty ? NSNull() : clip.role,
             "reviewStatus": clip.reviewStatus,

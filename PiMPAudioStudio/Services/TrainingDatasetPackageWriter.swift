@@ -675,6 +675,14 @@ enum TrainingDatasetPackageWriter {
             ?? stringValue(legacyAnnotation["language"])
         let rawOutputs = (legacyAnnotation["raw_output_files"] as? [String: Any] ?? [:])
             .compactMapValues { stringValue($0) }
+        let captionRawOutputs = rawOutputs.filter {
+            $0.key == "caption" || $0.key.hasPrefix("caption_")
+        }
+        let lyricsRawOutputs = rawOutputs.filter {
+            $0.key == "lyrics"
+                || $0.key.hasPrefix("lyrics_")
+                || $0.key == "timed_lyrics"
+        }
 
         let captionBackend = slug(
             stringValue(legacyAnnotation["annotation_backend"])
@@ -701,7 +709,7 @@ enum TrainingDatasetPackageWriter {
                     legacyAnnotation["generation_settings"]
                 ),
                 elapsedSeconds: doubleValue(legacyAnnotation["elapsed_seconds"]),
-                rawOutputFiles: rawOutputs.filter { $0.key != "lyrics" }
+                rawOutputFiles: captionRawOutputs
             )
         )
         let lyricsEntry = lyrics.isEmpty ? nil : DatasetTextAnnotationV2(
@@ -729,7 +737,7 @@ enum TrainingDatasetPackageWriter {
                     : stringDictionary(transcription["generation_settings"]),
                 elapsedSeconds: doubleValue(transcription["elapsed_seconds"])
                     ?? doubleValue(legacyAnnotation["elapsed_seconds"]),
-                rawOutputFiles: rawOutputs.filter { $0.key != "caption" }
+                rawOutputFiles: lyricsRawOutputs
             )
         )
         let approved = boolValue(review["approved"])
@@ -848,11 +856,21 @@ enum TrainingDatasetPackageWriter {
                 "approved": asset.annotation?.approved ?? false,
                 "status": asset.annotation?.reviewStatus ?? "needs_review",
             ]
-            record["transcription"] = [
-                "status": lyrics.isEmpty ? "not_run" : "complete",
-                "text": lyrics,
-                "source": lyricsSource,
-            ]
+            var transcription = record["transcription"] as? [String: Any]
+                ?? [:]
+            let existingTranscriptionStatus = stringValue(
+                transcription["status"]
+            )
+            if lyrics.isEmpty {
+                transcription["status"] = "not_run"
+            } else if !["complete", "manual_reviewed"].contains(
+                existingTranscriptionStatus ?? ""
+            ) {
+                transcription["status"] = "complete"
+            }
+            transcription["text"] = lyrics
+            transcription["source"] = lyricsSource
+            record["transcription"] = transcription
             record["audio"] = audioFileJSONObject(asset.file)
             if let duration = asset.file.durationSeconds {
                 record["clip_length_seconds"] = seconds(duration)
@@ -879,8 +897,13 @@ enum TrainingDatasetPackageWriter {
         for (key, value) in lyrics?.provenance?.rawOutputFiles ?? [:] {
             rawOutputFiles[key] = value
         }
+        let generatedAt = caption?.provenance?.generatedAt
+            ?? lyrics?.provenance?.generatedAt
+        let updatedAt = generatedAt.flatMap {
+            ISO8601DateFormatter().date(from: $0)
+        } ?? Date()
         return DatasetAnnotationMetadata(
-            updatedAt: Date(),
+            updatedAt: updatedAt,
             backend: DatasetAnnotationBackendDescriptor(
                 id: backend?.backendID ?? "manual",
                 version: backend?.backendVersion ?? "",

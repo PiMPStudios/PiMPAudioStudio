@@ -12,6 +12,7 @@ struct DatasetPackageSummary: Identifiable, Hashable {
     let transcriptionStatus: String
     let bpmStatus: String
     let keyStatus: String
+    let timeSignatureStatus: String
 
     var id: String { directory.standardizedFileURL.path(percentEncoded: false) }
 }
@@ -176,7 +177,20 @@ struct DatasetClipReview: Identifiable {
         }
 
         object["language"] = trimmedLanguage
-        object["timesignature"] = trimmedTimeSignature
+        if trimmedTimeSignature.isEmpty {
+            analysis.removeValue(forKey: "timesignature")
+            analysis.removeValue(forKey: "time_signature")
+            analysis.removeValue(forKey: "time_signature_status")
+            analysis.removeValue(forKey: "time_signature_source")
+            analysis.removeValue(forKey: "time_signature_confidence")
+            object.removeValue(forKey: "timesignature")
+            object.removeValue(forKey: "time_signature")
+        } else {
+            analysis["timesignature"] = trimmedTimeSignature
+            analysis["time_signature"] = trimmedTimeSignature
+            object["timesignature"] = trimmedTimeSignature
+            object["time_signature"] = trimmedTimeSignature
+        }
         object["role"] = trimmedRole
         object["notes"] = trimmedNotes
         object["asset_id"] = assetID
@@ -253,6 +267,23 @@ struct DatasetClipReview: Identifiable {
         let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
         let existingAnnotation = rawObject["annotation"] as? [String: Any] ?? [:]
         let existingTranscription = rawObject["transcription"] as? [String: Any] ?? [:]
+        let rawOutputs = (
+            existingAnnotation["raw_output_files"] as? [String: Any] ?? [:]
+        ).compactMapValues { $0 as? String }
+        var captionRawOutputs = rawOutputs.filter {
+            $0.key == "caption" || $0.key.hasPrefix("caption_")
+        }
+        var lyricsRawOutputs = rawOutputs.filter {
+            $0.key == "lyrics"
+                || $0.key.hasPrefix("lyrics_")
+                || $0.key == "timed_lyrics"
+        }
+        if !rawCaptionOutputFile.isEmpty {
+            captionRawOutputs["caption"] = rawCaptionOutputFile
+        }
+        if !rawLyricsOutputFile.isEmpty {
+            lyricsRawOutputs["lyrics"] = rawLyricsOutputFile
+        }
         let promptVersion = existingAnnotation["prompt_version"] as? String
         let quantization = existingAnnotation["quantization"] as? String
         let generationSettings = (existingAnnotation["generation_settings"] as? [String: Any] ?? [:])
@@ -283,16 +314,18 @@ struct DatasetClipReview: Identifiable {
             language: language.isEmpty ? nil : language,
             provenance: DatasetAnnotationProvenanceV2(
                 backendID: annotationBackend.isEmpty ? "manual" : annotationBackend,
+                backendVersion: existingAnnotation[
+                    "annotation_backend_version"
+                ] as? String,
                 modelID: annotationModelID.isEmpty ? nil : annotationModelID,
                 modelRevision: annotationModelRevision.isEmpty ? nil : annotationModelRevision,
                 promptVersion: promptVersion,
                 quantization: quantization,
-                generatedAt: ISO8601DateFormatter().string(from: updatedAt),
+                generatedAt: existingAnnotation["updated_at"] as? String
+                    ?? ISO8601DateFormatter().string(from: updatedAt),
                 generationSettings: generationSettings,
                 elapsedSeconds: elapsedSeconds,
-                rawOutputFiles: rawCaptionOutputFile.isEmpty
-                    ? [:]
-                    : ["caption": rawCaptionOutputFile]
+                rawOutputFiles: captionRawOutputs
             )
         )
         let lyricsEntry = trimmedLyrics.isEmpty ? nil : DatasetTextAnnotationV2(
@@ -309,14 +342,14 @@ struct DatasetClipReview: Identifiable {
                     ?? (annotationModelRevision.isEmpty ? nil : annotationModelRevision),
                 promptVersion: lyricsPromptVersion,
                 quantization: lyricsQuantization,
-                generatedAt: ISO8601DateFormatter().string(from: updatedAt),
+                generatedAt: existingTranscription["updated_at"] as? String
+                    ?? existingAnnotation["updated_at"] as? String
+                    ?? ISO8601DateFormatter().string(from: updatedAt),
                 generationSettings: lyricsGenerationSettings.isEmpty
                     ? generationSettings
                     : lyricsGenerationSettings,
                 elapsedSeconds: lyricsElapsedSeconds,
-                rawOutputFiles: rawLyricsOutputFile.isEmpty
-                    ? [:]
-                    : ["lyrics": rawLyricsOutputFile]
+                rawOutputFiles: lyricsRawOutputs
             )
         )
         return DatasetAssetAnnotationV2(
@@ -700,7 +733,22 @@ enum TrainingDatasetPackageEditor {
         if clip.key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             issues.append(DatasetPackageIssue(severity: .warning, message: "Key is missing."))
         }
-        if (clip.role == DatasetAssetRoleV2.fullMix.rawValue
+        if clip.timeSignature.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        ).isEmpty {
+            issues.append(
+                DatasetPackageIssue(
+                    severity: .warning,
+                    message: "Time signature is missing."
+                )
+            )
+        }
+        let separation = clip.rawObject["separation"] as? [String: Any]
+        let hasDeclaredStemAssets = clip.assets["vocals"] != nil
+            || clip.assets["instrumental"] != nil
+            || separation != nil
+        if hasDeclaredStemAssets,
+           (clip.role == DatasetAssetRoleV2.fullMix.rawValue
                 || clip.role == DatasetAssetRoleV2.clip.rawValue),
            clip.separationStatus == "not_run" || clip.separationStatus.isEmpty {
             issues.append(DatasetPackageIssue(severity: .warning, message: "Stem separation has not been recorded."))
@@ -726,9 +774,62 @@ enum TrainingDatasetPackageEditor {
     private static func summary(for directory: URL) -> DatasetPackageSummary {
         let manifest = readJSONObject(from: directory.appendingPathComponent(TrainingDatasetPackageWriter.datasetManifestFileName))
         let validation = TrainingDatasetPackageWriter.validatePackage(at: directory)
+        let records = readJSONArray(
+            from: directory.appendingPathComponent(
+                TrainingDatasetPackageWriter.captionsFileName
+            )
+        ) ?? []
         let enrichment = manifest?["enrichment"] as? [String: Any]
         let transcription = manifest?["transcription"] as? [String: Any]
         let analysis = manifest?["analysis"] as? [String: Any]
+        let derivedTranscriptionStatus = completionStatus(
+            completed: records.filter(transcriptionFinished).count,
+            total: records.count
+        )
+        let derivedEnrichmentStatus = completionStatus(
+            completed: records.filter { record in
+                annotationFinished(record)
+                    && transcriptionFinished(record)
+            }.count,
+            total: records.count
+        )
+        let derivedBPMStatus = metadataStatus(
+            records: records,
+            statusKey: "bpm_status",
+            hasValue: { record in
+                doubleValue(record["bpm"]) != nil
+                    || doubleValue(
+                        (record["analysis"] as? [String: Any])?[
+                            "tempo_bpm_estimate"
+                        ]
+                    ) != nil
+            }
+        )
+        let derivedKeyStatus = metadataStatus(
+            records: records,
+            statusKey: "key_status",
+            hasValue: { record in
+                firstString(record, keys: ["key", "keyscale"]) != nil
+                    || firstString(
+                        record["analysis"] as? [String: Any] ?? [:],
+                        keys: ["key", "keyscale"]
+                ) != nil
+            }
+        )
+        let derivedTimeSignatureStatus = metadataStatus(
+            records: records,
+            statusKey: "time_signature_status",
+            hasValue: { record in
+                firstString(
+                    record,
+                    keys: ["timesignature", "time_signature"]
+                ) != nil
+                    || firstString(
+                        record["analysis"] as? [String: Any] ?? [:],
+                        keys: ["timesignature", "time_signature"]
+                    ) != nil
+            }
+        )
         return DatasetPackageSummary(
             directory: directory,
             name: stringValue(manifest?["name"]) ?? directory.lastPathComponent,
@@ -736,11 +837,100 @@ enum TrainingDatasetPackageEditor {
             clipCount: intValue(manifest?["clip_count"]) ?? validation.clipCount,
             isValid: validation.isValid,
             validationSummary: validation.summary,
-            enrichmentStatus: stringValue(enrichment?["status"]) ?? "not_run",
-            transcriptionStatus: stringValue(transcription?["status"]) ?? stringValue(enrichment?["transcription_status"]) ?? "not_run",
-            bpmStatus: stringValue(analysis?["bpm_status"]) ?? stringValue(enrichment?["bpm_status"]) ?? "not_run",
-            keyStatus: stringValue(analysis?["key_status"]) ?? stringValue(enrichment?["key_status"]) ?? "not_run"
+            enrichmentStatus: resolvedStatus(
+                recorded: stringValue(enrichment?["status"]),
+                derived: derivedEnrichmentStatus
+            ),
+            transcriptionStatus: resolvedStatus(
+                recorded: stringValue(transcription?["status"])
+                    ?? stringValue(enrichment?["transcription_status"]),
+                derived: derivedTranscriptionStatus
+            ),
+            bpmStatus: resolvedStatus(
+                recorded: stringValue(analysis?["bpm_status"])
+                    ?? stringValue(enrichment?["bpm_status"]),
+                derived: derivedBPMStatus
+            ),
+            keyStatus: resolvedStatus(
+                recorded: stringValue(analysis?["key_status"])
+                    ?? stringValue(enrichment?["key_status"]),
+                derived: derivedKeyStatus
+            ),
+            timeSignatureStatus: resolvedStatus(
+                recorded: stringValue(
+                    analysis?["time_signature_status"]
+                ) ?? stringValue(enrichment?["time_signature_status"]),
+                derived: derivedTimeSignatureStatus
+            )
         )
+    }
+
+    private static func annotationFinished(
+        _ record: [String: Any]
+    ) -> Bool {
+        let annotation = record["annotation"] as? [String: Any] ?? [:]
+        let caption = firstString(record, keys: ["caption", "prompt"])
+        let source = firstString(record, keys: ["caption_source"])
+            ?? firstString(annotation, keys: ["caption_source"])
+        guard caption != nil, let source else { return false }
+        return !["none", "filename"].contains(source)
+    }
+
+    private static func transcriptionFinished(
+        _ record: [String: Any]
+    ) -> Bool {
+        let transcription = record["transcription"] as? [String: Any] ?? [:]
+        if firstString(
+            record,
+            keys: ["lyrics", "transcript"]
+        ) != nil || stringValue(transcription["text"]) != nil {
+            return true
+        }
+        guard let status = stringValue(transcription["status"]) else {
+            return false
+        }
+        return ["complete", "manual_reviewed", "empty"].contains(status)
+    }
+
+    private static func completionStatus(
+        completed: Int,
+        total: Int
+    ) -> String {
+        guard total > 0, completed > 0 else { return "not_run" }
+        return completed >= total ? "complete" : "partial"
+    }
+
+    private static func metadataStatus(
+        records: [[String: Any]],
+        statusKey: String,
+        hasValue: ([String: Any]) -> Bool
+    ) -> String {
+        guard !records.isEmpty else { return "not_run" }
+        let knownRecords = records.filter(hasValue)
+        guard !knownRecords.isEmpty else { return "not_run" }
+        guard knownRecords.count == records.count else { return "partial" }
+        let statuses = Set(knownRecords.compactMap { record in
+            let status = stringValue(
+                (record["analysis"] as? [String: Any])?[statusKey]
+            )
+            return status == "not_run" ? nil : status
+        })
+        guard !statuses.isEmpty else {
+            return "available_from_metadata"
+        }
+        return statuses.count == 1
+            ? statuses.first ?? "available_from_metadata"
+            : "complete"
+    }
+
+    private static func resolvedStatus(
+        recorded: String?,
+        derived: String
+    ) -> String {
+        guard let recorded, recorded != "not_run" else {
+            return derived
+        }
+        return recorded
     }
 
     private static func clip(
@@ -798,7 +988,13 @@ enum TrainingDatasetPackageEditor {
                 ?? firstString(analysis, keys: ["key", "keyscale"])
                 ?? "",
             language: firstString(object, keys: ["language"]) ?? "",
-            timeSignature: firstString(object, keys: ["timesignature", "time_signature"]) ?? "",
+            timeSignature: firstString(
+                object,
+                keys: ["timesignature", "time_signature"]
+            ) ?? firstString(
+                analysis,
+                keys: ["timesignature", "time_signature"]
+            ) ?? "",
             role: firstString(object, keys: ["role"]) ?? inferredRole(from: assets),
             notes: firstString(object, keys: ["notes"]) ?? firstString(trainingReview, keys: ["notes"]) ?? "",
             isApproved: isApproved,
@@ -892,6 +1088,9 @@ enum TrainingDatasetPackageEditor {
             "review_status": annotation?.reviewStatus ?? "needs_review",
             "raw_output_files": rawOutputs,
         ]
+        if let generatedAt = captionProvenance?.generatedAt {
+            legacyAnnotation["updated_at"] = generatedAt
+        }
         if let elapsedSeconds = provenance?.elapsedSeconds {
             legacyAnnotation["elapsed_seconds"] = elapsedSeconds
         }
@@ -909,6 +1108,9 @@ enum TrainingDatasetPackageEditor {
             "quantization": lyricsProvenance?.quantization ?? "",
             "generation_settings": lyricsProvenance?.generationSettings ?? [:],
         ]
+        if let generatedAt = lyricsProvenance?.generatedAt {
+            transcription["updated_at"] = generatedAt
+        }
         if let elapsedSeconds = lyricsProvenance?.elapsedSeconds {
             transcription["elapsed_seconds"] = elapsedSeconds
         }

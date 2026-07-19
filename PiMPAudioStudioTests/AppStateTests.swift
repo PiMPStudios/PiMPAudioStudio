@@ -93,6 +93,44 @@ private func pcm16WAVData(sampleRate: Int = 22_050, samples: [Float]) -> Data {
     return data
 }
 
+private func rhythmicChordWAVData(
+    sampleRate: Int = 22_050,
+    durationSeconds: Int = 8,
+    bpm: Double = 120,
+    beatsPerBar: Int = 4
+) -> Data {
+    let frameCount = sampleRate * durationSeconds
+    var samples = [Float](repeating: 0, count: frameCount)
+    for index in samples.indices {
+        let time = Double(index) / Double(sampleRate)
+        let chord =
+            0.18 * sin(2 * Double.pi * 82.407 * time)
+            + 0.10 * sin(2 * Double.pi * 123.471 * time)
+            + 0.10 * sin(2 * Double.pi * 164.814 * time)
+            + 0.05 * sin(2 * Double.pi * 246.942 * time)
+        samples[index] = Float(chord)
+    }
+
+    let beatInterval = max(
+        1,
+        Int((Double(sampleRate) * 60 / bpm).rounded())
+    )
+    for (beatIndex, beatStart) in stride(
+        from: 0,
+        to: frameCount,
+        by: beatInterval
+    ).enumerated() {
+        let amplitude: Float = beatIndex.isMultiple(of: beatsPerBar)
+            ? 0.85
+            : 0.38
+        for tap in 0..<256 where beatStart + tap < frameCount {
+            let envelope = 1 - (Float(tap) / 256)
+            samples[beatStart + tap] += amplitude * envelope
+        }
+    }
+    return pcm16WAVData(sampleRate: sampleRate, samples: samples)
+}
+
 private func zipEntries(in archiveURL: URL) throws -> [String] {
     let process = Process()
     let stdout = Pipe()
@@ -614,6 +652,21 @@ private extension JSONDecoder {
     let adapterModes = preprocess?["adapter_modes"] as? [String] ?? []
     #expect(adapterModes.contains("lora"))
     #expect(adapterModes.contains("lokr"))
+
+    var cleared = reloaded
+    cleared.clips[0].timeSignature = ""
+    try TrainingDatasetPackageEditor.save(cleared)
+    let clearedReload = try TrainingDatasetPackageEditor.loadPackage(
+        at: datasetDir
+    )
+    #expect(clearedReload.clips[0].timeSignature.isEmpty)
+    let clearedAnalysis = clearedReload.clips[0].rawObject["analysis"]
+        as? [String: Any]
+    #expect(clearedAnalysis?["timesignature"] == nil)
+    #expect(clearedAnalysis?["time_signature"] == nil)
+    #expect(clearedAnalysis?["time_signature_status"] == nil)
+    #expect(clearedAnalysis?["time_signature_source"] == nil)
+    #expect(clearedAnalysis?["time_signature_confidence"] == nil)
 }
 
 @Test func datasetPackageEditorLoadsLegacyPackageAsV2WithoutRewritingIt() throws {
@@ -1141,41 +1194,34 @@ private extension JSONDecoder {
     #expect(abs(duration - 0.1) < 0.001)
 }
 
-@Test func localDatasetEnrichmentAnalyzesTempoAndKeyFromAudio() throws {
+@Test(arguments: [2, 3, 4, 6])
+func localDatasetEnrichmentAnalyzesTempoKeyAndMeterFromAudio(
+    beatsPerBar: Int
+) throws {
     let directory = FileManager.default.temporaryDirectory
         .appendingPathComponent(UUID().uuidString, isDirectory: true)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
 
-    let sampleRate = 22_050
-    let frameCount = sampleRate * 8
-    var samples = [Float](repeating: 0, count: frameCount)
-    for index in samples.indices {
-        let time = Double(index) / Double(sampleRate)
-        let chord =
-            0.24 * sin(2 * Double.pi * 82.407 * time) +
-            0.14 * sin(2 * Double.pi * 123.471 * time) +
-            0.14 * sin(2 * Double.pi * 164.814 * time) +
-            0.08 * sin(2 * Double.pi * 246.942 * time)
-        samples[index] = Float(chord)
-    }
-
-    let beatInterval = sampleRate / 2
-    for beatStart in stride(from: 0, to: frameCount, by: beatInterval) {
-        for tap in 0..<256 where beatStart + tap < frameCount {
-            let envelope = 1 - (Float(tap) / 256)
-            samples[beatStart + tap] += 0.6 * envelope
-        }
-    }
-
     let url = directory.appendingPathComponent("e_minor_120bpm.wav")
-    try pcm16WAVData(sampleRate: sampleRate, samples: samples).write(to: url)
+    try rhythmicChordWAVData(
+        durationSeconds: 12,
+        beatsPerBar: beatsPerBar
+    ).write(to: url)
 
     let analysis = LocalDatasetEnrichmentService.analyzeAudioFile(url, role: "instrumental")
     let bpm = (analysis["tempo_bpm_estimate"] as? NSNumber)?.doubleValue ?? 0
     #expect(abs(bpm - 120) < 4)
     #expect(analysis["key_status"] as? String == "estimated_from_audio")
     #expect((analysis["keyscale"] as? String)?.isEmpty == false)
+    #expect(
+        analysis["timesignature"] as? String
+            == String(beatsPerBar)
+    )
+    #expect(
+        analysis["time_signature_status"] as? String
+            == "estimated_from_audio"
+    )
 }
 
 @Test func localDatasetPackageWriterPreservesEnrichmentMetadataOnCaptionRefresh() throws {
@@ -2056,7 +2102,7 @@ private extension JSONDecoder {
     defer { try? FileManager.default.removeItem(at: datasetDir) }
 
     let audioURL = sourcesDir.appendingPathComponent("f001_song.wav")
-    try silentWAVData().write(to: audioURL)
+    try rhythmicChordWAVData().write(to: audioURL)
     let captionsJSON = """
     [
       {
@@ -2088,6 +2134,9 @@ private extension JSONDecoder {
 
     #expect(result.separatedClipCount == 0)
     #expect(result.transcribedClipCount == 1)
+    #expect(result.bpmEstimateCount == 1)
+    #expect(result.keyEstimateCount == 1)
+    #expect(result.timeSignatureEstimateCount == 1)
     #expect(await backend.requestedTasks == [.caption, .transcribe])
     #expect(await backend.evictionCount == 1)
     #expect(
@@ -2107,6 +2156,16 @@ private extension JSONDecoder {
     #expect(record?["lyrics"] as? String == "[Verse]\nNative lyrics")
     #expect(record?["lyrics_source"] as? String == "ace-step-transcriber")
     #expect(record?["language"] as? String == "en")
+    #expect((record?["bpm"] as? NSNumber)?.doubleValue != nil)
+    #expect((record?["keyscale"] as? String)?.isEmpty == false)
+    #expect(record?["timesignature"] as? String == "4")
+    let analysis = record?["analysis"] as? [String: Any]
+    #expect(analysis?["bpm_status"] as? String == "estimated_from_audio")
+    #expect(analysis?["key_status"] as? String == "estimated_from_audio")
+    #expect(
+        analysis?["time_signature_status"] as? String
+            == "estimated_from_audio"
+    )
 
     let annotation = record?["annotation"] as? [String: Any]
     #expect(
@@ -2502,6 +2561,7 @@ private extension JSONDecoder {
                 elapsedSeconds: 12.5,
                 rawOutputFiles: [
                     "caption": "annotations/source/native-ace/caption.txt",
+                    "caption_result": "annotations/source/native-ace/caption.result.json",
                 ]
             )
         ),
@@ -2521,6 +2581,8 @@ private extension JSONDecoder {
                 elapsedSeconds: 21.5,
                 rawOutputFiles: [
                     "lyrics": "annotations/source/native-ace/lyrics.txt",
+                    "lyrics_lrc": "annotations/source/native-ace/lyrics.lrc",
+                    "timed_lyrics": "annotations/source/native-ace/lyrics.timed.json",
                 ]
             )
         ),
@@ -2535,7 +2597,24 @@ private extension JSONDecoder {
     )
 
     var review = try TrainingDatasetPackageEditor.loadPackage(at: datasetDir)
+    let initialIssues = TrainingDatasetPackageEditor.issues(
+        for: review.clips[0],
+        datasetDirectory: datasetDir
+    )
+    #expect(
+        initialIssues.contains {
+            $0.message == "Time signature is missing."
+        }
+    )
+    #expect(
+        !initialIssues.contains {
+            $0.message == "Stem separation has not been recorded."
+        }
+    )
     review.clips[0].isApproved = true
+    review.clips[0].bpm = "120"
+    review.clips[0].key = "E minor"
+    review.clips[0].timeSignature = "4"
     try TrainingDatasetPackageEditor.save(review)
 
     let saved = try TrainingDatasetPackageEditor.loadPackageV2(at: datasetDir)
@@ -2547,12 +2626,50 @@ private extension JSONDecoder {
     #expect(caption.quantization == "q4-affine-g64")
     #expect(caption.generationSettings["max_tokens"] == "512")
     #expect(caption.elapsedSeconds == 12.5)
+    #expect(caption.generatedAt == "2026-07-18T00:00:00Z")
+    #expect(
+        caption.rawOutputFiles == [
+            "caption": "annotations/source/native-ace/caption.txt",
+            "caption_result": "annotations/source/native-ace/caption.result.json",
+        ]
+    )
     #expect(lyrics.modelID == "ACE-Step/acestep-transcriber")
     #expect(lyrics.modelRevision == "lyrics-revision")
     #expect(lyrics.promptVersion == "1")
     #expect(lyrics.quantization == "q4-affine-g64")
     #expect(lyrics.generationSettings["max_tokens"] == "512")
     #expect(lyrics.elapsedSeconds == 21.5)
+    #expect(lyrics.generatedAt == "2026-07-18T00:01:00Z")
+    #expect(
+        lyrics.rawOutputFiles == [
+            "lyrics": "annotations/source/native-ace/lyrics.txt",
+            "lyrics_lrc": "annotations/source/native-ace/lyrics.lrc",
+            "timed_lyrics": "annotations/source/native-ace/lyrics.timed.json",
+        ]
+    )
+
+    let captionsData = try Data(
+        contentsOf: datasetDir.appendingPathComponent("captions.json")
+    )
+    let captions = try JSONSerialization.jsonObject(with: captionsData)
+        as? [[String: Any]]
+    let transcription = captions?.first?["transcription"]
+        as? [String: Any]
+    #expect(
+        transcription?["model"] as? String
+            == "ACE-Step/acestep-transcriber"
+    )
+    #expect(
+        transcription?["model_revision"] as? String
+            == "lyrics-revision"
+    )
+
+    let summary = TrainingDatasetPackageEditor.packageSummary(at: datasetDir)
+    #expect(summary.enrichmentStatus == "complete")
+    #expect(summary.transcriptionStatus == "complete")
+    #expect(summary.bpmStatus == "available_from_metadata")
+    #expect(summary.keyStatus == "available_from_metadata")
+    #expect(summary.timeSignatureStatus == "available_from_metadata")
 }
 
 @Test @MainActor func localFilesDatasetBuilderUsesCustomDatasetName() async throws {
