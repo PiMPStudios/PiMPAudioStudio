@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 import MCP
 import OSLog
 
@@ -22,19 +23,52 @@ enum PiMPAudioMCPServerState: Equatable {
     }
 }
 
+enum MCPBindAddress: String, CaseIterable, Identifiable, Sendable {
+    case loopback = "127.0.0.1"
+    case allInterfaces = "0.0.0.0"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .loopback:
+            return "Localhost (127.0.0.1)"
+        case .allInterfaces:
+            return "All interfaces (0.0.0.0)"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .loopback:
+            return "Only this Mac can connect."
+        case .allInterfaces:
+            return "Other machines on your network can connect. Use a bearer token."
+        }
+    }
+
+    var isLoopbackOnly: Bool { self == .loopback }
+}
+
 @MainActor
 final class PiMPAudioMCPServer: ObservableObject {
     private static let enabledKey = AppRuntimeIdentity.defaultsKey("mcp.enabled")
     private static let tokenRequiredKey = AppRuntimeIdentity.defaultsKey("mcp.tokenRequired")
     private static let tokenKey = AppRuntimeIdentity.defaultsKey("mcp.token")
+    private static let bindAddressKey = AppRuntimeIdentity.defaultsKey("mcp.bindAddress")
+    private static let portKey = AppRuntimeIdentity.defaultsKey("mcp.port")
     private static let legacyEnabledKey = AppRuntimeIdentity.legacyDefaultsKey("mcp.enabled")
     private static let legacyTokenRequiredKey = AppRuntimeIdentity.legacyDefaultsKey("mcp.tokenRequired")
     private static let legacyTokenKey = AppRuntimeIdentity.legacyDefaultsKey("mcp.token")
-    private static let defaultPort: UInt16 = 38765
+    static let defaultPort: UInt16 = 38765
+    static let minimumPort: UInt16 = 1_024
+    static let maximumPort: UInt16 = 65_535
 
     @Published private(set) var isEnabled: Bool
     @Published private(set) var isTokenRequired: Bool
     @Published private(set) var token: String
+    @Published private(set) var bindAddress: MCPBindAddress
+    @Published private(set) var port: UInt16
     @Published private(set) var state: PiMPAudioMCPServerState = .stopped
 
     private let logger = Logger(subsystem: "com.pimpstudios.PiMPAudioStudio", category: "MCP")
@@ -43,8 +77,27 @@ final class PiMPAudioMCPServer: ObservableObject {
     private var sdkBridge: PiMPAudioMCPSDKBridge?
     private var startupTask: Task<Void, Never>?
 
+    /// Preferred client URL for this Mac (always uses 127.0.0.1 for local clients).
     var endpoint: String {
-        "http://127.0.0.1:\(Self.defaultPort)/mcp"
+        "http://127.0.0.1:\(port)/mcp"
+    }
+
+    /// Human-readable bind summary, e.g. `127.0.0.1:38765` or `0.0.0.0:38765`.
+    var bindDescription: String {
+        "\(bindAddress.rawValue):\(port)"
+    }
+
+    /// Suggested URL for LAN clients when bound to all interfaces.
+    var networkEndpoint: String? {
+        guard bindAddress == .allInterfaces,
+              let host = Self.primaryLANAddress() else {
+            return nil
+        }
+        return "http://\(host):\(port)/mcp"
+    }
+
+    var isNetworkExposed: Bool {
+        bindAddress == .allInterfaces
     }
 
     init(facade: PiMPAudioCommandFacade) {
@@ -56,6 +109,8 @@ final class PiMPAudioMCPServer: ObservableObject {
             key: Self.tokenRequiredKey,
             legacyKey: Self.legacyTokenRequiredKey
         )
+        self.bindAddress = Self.loadBindAddress(from: defaults)
+        self.port = Self.loadPort(from: defaults)
         if let storedToken = Self.migratedString(defaults, key: Self.tokenKey, legacyKey: Self.legacyTokenKey),
            !storedToken.isEmpty {
             self.token = storedToken
@@ -93,6 +148,38 @@ final class PiMPAudioMCPServer: ObservableObject {
         }
     }
 
+    func setBindAddress(_ address: MCPBindAddress) {
+        let normalized = MCPBindAddress(rawValue: MCPHTTPServer.normalizedBindHost(address.rawValue))
+            ?? address
+        guard normalized != bindAddress else { return }
+        bindAddress = normalized
+        UserDefaults.standard.set(normalized.rawValue, forKey: Self.bindAddressKey)
+        // Network exposure without a token is risky; nudge security on by default.
+        if normalized == .allInterfaces, !isTokenRequired {
+            setTokenRequired(true)
+        }
+        restartIfEnabled()
+    }
+
+    @discardableResult
+    func setPort(_ newPort: UInt16) -> Bool {
+        guard Self.isValidPort(newPort) else { return false }
+        guard newPort != port else { return true }
+        port = newPort
+        UserDefaults.standard.set(Int(newPort), forKey: Self.portKey)
+        restartIfEnabled()
+        return true
+    }
+
+    @discardableResult
+    func setPort(from text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let value = UInt16(trimmed), setPort(value) else {
+            return false
+        }
+        return true
+    }
+
     func regenerateToken() {
         let generated = Self.generateToken()
         token = generated
@@ -111,6 +198,12 @@ final class PiMPAudioMCPServer: ObservableObject {
         state = .stopped
     }
 
+    private func restartIfEnabled() {
+        guard isEnabled else { return }
+        stop()
+        start()
+    }
+
     private func start() {
         guard httpServer == nil, startupTask == nil else {
             state = .running(endpoint: endpoint)
@@ -118,6 +211,9 @@ final class PiMPAudioMCPServer: ObservableObject {
         }
 
         state = .starting
+        let bindHost = bindAddress.rawValue
+        let listenPort = port
+        let allowNonLocalOrigins = !bindAddress.isLoopbackOnly
         startupTask = Task { @MainActor [weak self] in
             guard let self else { return }
 
@@ -133,7 +229,9 @@ final class PiMPAudioMCPServer: ObservableObject {
                 try Task.checkCancellation()
 
                 let server = try MCPHTTPServer(
-                    port: Self.defaultPort,
+                    port: listenPort,
+                    bindHost: bindHost,
+                    allowNonLocalOrigins: allowNonLocalOrigins,
                     tokenProvider: { [weak self] in
                         guard let self, self.isTokenRequired else { return nil }
                         return self.token
@@ -183,6 +281,70 @@ final class PiMPAudioMCPServer: ObservableObject {
 
     private static func generateToken() -> String {
         UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+    }
+
+    static func isValidPort(_ port: UInt16) -> Bool {
+        port >= minimumPort && port <= maximumPort
+    }
+
+    private static func loadBindAddress(from defaults: UserDefaults) -> MCPBindAddress {
+        let raw = defaults.string(forKey: bindAddressKey) ?? MCPBindAddress.loopback.rawValue
+        let normalized = MCPHTTPServer.normalizedBindHost(raw)
+        return MCPBindAddress(rawValue: normalized) ?? .loopback
+    }
+
+    private static func loadPort(from defaults: UserDefaults) -> UInt16 {
+        guard defaults.object(forKey: portKey) != nil else {
+            return defaultPort
+        }
+        let value = defaults.integer(forKey: portKey)
+        guard value >= Int(minimumPort), value <= Int(maximumPort) else {
+            return defaultPort
+        }
+        return UInt16(value)
+    }
+
+    /// Best-effort primary IPv4 address for LAN endpoint display.
+    private static func primaryLANAddress() -> String? {
+        var ifaddrPointer: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&ifaddrPointer) == 0, let first = ifaddrPointer else {
+            return nil
+        }
+        defer { freeifaddrs(ifaddrPointer) }
+
+        var candidate: String?
+        var pointer: UnsafeMutablePointer<ifaddrs>? = first
+        while let interface = pointer {
+            defer { pointer = interface.pointee.ifa_next }
+            let flags = Int32(interface.pointee.ifa_flags)
+            let isUp = (flags & IFF_UP) != 0
+            let isLoopback = (flags & IFF_LOOPBACK) != 0
+            guard isUp, !isLoopback else { continue }
+            guard let addr = interface.pointee.ifa_addr, addr.pointee.sa_family == UInt8(AF_INET) else {
+                continue
+            }
+
+            var hostname = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+            let result = getnameinfo(
+                addr,
+                socklen_t(addr.pointee.sa_len),
+                &hostname,
+                socklen_t(hostname.count),
+                nil,
+                0,
+                NI_NUMERICHOST
+            )
+            guard result == 0 else { continue }
+            let ip = String(cString: hostname)
+            // Prefer common private LAN ranges.
+            if ip.hasPrefix("192.168.") || ip.hasPrefix("10.") || ip.hasPrefix("172.") {
+                return ip
+            }
+            if candidate == nil {
+                candidate = ip
+            }
+        }
+        return candidate
     }
 
     private static func migratedBool(_ defaults: UserDefaults, key: String, legacyKey: String) -> Bool {

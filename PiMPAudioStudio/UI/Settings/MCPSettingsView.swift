@@ -3,15 +3,25 @@ import SwiftUI
 
 struct MCPSettingsView: View {
     @EnvironmentObject private var mcpServer: PiMPAudioMCPServer
+    @State private var portText: String = ""
+    @State private var portError: String?
 
     var body: some View {
         Form {
             serverSection
+            networkSection
             tokenSection
             toolsSection
         }
         .formStyle(.grouped)
         .frame(minWidth: 500, minHeight: 400)
+        .onAppear {
+            portText = String(mcpServer.port)
+            portError = nil
+        }
+        .onChange(of: mcpServer.port) { _, newValue in
+            portText = String(newValue)
+        }
     }
 
     private var serverSection: some View {
@@ -31,20 +41,24 @@ struct MCPSettingsView: View {
             }
 
             if case .running = mcpServer.state {
-                LabeledContent("Endpoint") {
-                    HStack {
-                        Text(mcpServer.endpoint)
-                            .font(.system(.caption, design: .monospaced))
-                            .textSelection(.enabled)
-                        Button {
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(mcpServer.endpoint, forType: .string)
-                        } label: {
-                            Image(systemName: "doc.on.doc")
-                        }
-                        .buttonStyle(.borderless)
-                        .help("Copy endpoint")
-                    }
+                LabeledContent("Bound") {
+                    Text(mcpServer.bindDescription)
+                        .font(.system(.caption, design: .monospaced))
+                        .textSelection(.enabled)
+                }
+
+                endpointRow(
+                    title: "Local endpoint",
+                    value: mcpServer.endpoint,
+                    help: "Copy local endpoint"
+                )
+
+                if let networkEndpoint = mcpServer.networkEndpoint {
+                    endpointRow(
+                        title: "Network endpoint",
+                        value: networkEndpoint,
+                        help: "Copy LAN endpoint"
+                    )
                 }
             }
 
@@ -54,14 +68,65 @@ struct MCPSettingsView: View {
                     .foregroundStyle(.red)
             }
 
-            Text("Localhost-only MCP endpoint for local agents. Covers generation, editing, datasets, local training, adapters/models, Remote GPU lifecycle, history, diagnostics, and operations. Expensive or destructive tools use dry-run defaults and confirm/elicitation gates.")
+            Text("MCP endpoint for local agents (and optional LAN access). Covers generation, editing, datasets, local training, adapters/models, Remote GPU lifecycle, history, diagnostics, and operations. Expensive or destructive tools use dry-run defaults and confirm/elicitation gates.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
     }
 
+    private var networkSection: some View {
+        Section("Bind Address & Port") {
+            Picker("Bind address", selection: Binding(
+                get: { mcpServer.bindAddress },
+                set: { mcpServer.setBindAddress($0) }
+            )) {
+                ForEach(MCPBindAddress.allCases) { address in
+                    Text(address.title).tag(address)
+                }
+            }
+
+            Text(mcpServer.bindAddress.detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            LabeledContent("Port") {
+                HStack(spacing: 8) {
+                    TextField("38765", text: $portText)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(.body, design: .monospaced))
+                        .frame(maxWidth: 100)
+                        .onSubmit(applyPort)
+                    Button("Apply") {
+                        applyPort()
+                    }
+                    .controlSize(.small)
+                    .disabled(!canApplyPort)
+                }
+            }
+
+            if let portError {
+                Text(portError)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            } else {
+                Text("Port range \(PiMPAudioMCPServer.minimumPort)–\(PiMPAudioMCPServer.maximumPort). Default is \(PiMPAudioMCPServer.defaultPort). Changing bind address or port restarts the server when it is enabled.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if mcpServer.isNetworkExposed {
+                Label(
+                    "All-interfaces binding exposes MCP on your LAN. Keep a bearer token enabled and avoid untrusted networks.",
+                    systemImage: "exclamationmark.triangle.fill"
+                )
+                .font(.caption)
+                .foregroundStyle(.orange)
+            }
+        }
+    }
+
     private var tokenSection: some View {
-        Section("Optional Local Token") {
+        Section(mcpServer.isNetworkExposed ? "Bearer Token (Recommended)" : "Optional Local Token") {
             Toggle("Require bearer token", isOn: Binding(
                 get: { mcpServer.isTokenRequired },
                 set: { mcpServer.setTokenRequired($0) }
@@ -91,9 +156,51 @@ struct MCPSettingsView: View {
                 }
             }
 
-            Text("For localhost-only use this is optional. Turn it on if you want local clients to send `Authorization: Bearer <token>`.")
+            Text(
+                mcpServer.isNetworkExposed
+                    ? "When bound to 0.0.0.0, require a token so LAN clients must send `Authorization: Bearer <token>`. Switching to all interfaces enables this automatically."
+                    : "For localhost-only use this is optional. Turn it on if you want local clients to send `Authorization: Bearer <token>`."
+            )
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    private var canApplyPort: Bool {
+        let trimmed = portText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let value = UInt16(trimmed), PiMPAudioMCPServer.isValidPort(value) else {
+            return false
+        }
+        return value != mcpServer.port
+    }
+
+    private func applyPort() {
+        let trimmed = portText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let value = UInt16(trimmed), PiMPAudioMCPServer.isValidPort(value) else {
+            portError = "Enter a port between \(PiMPAudioMCPServer.minimumPort) and \(PiMPAudioMCPServer.maximumPort)."
+            portText = String(mcpServer.port)
+            return
+        }
+        portError = nil
+        _ = mcpServer.setPort(value)
+        portText = String(mcpServer.port)
+    }
+
+    private func endpointRow(title: String, value: String, help: String) -> some View {
+        LabeledContent(title) {
+            HStack {
+                Text(value)
+                    .font(.system(.caption, design: .monospaced))
+                    .textSelection(.enabled)
+                Button {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(value, forType: .string)
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                }
+                .buttonStyle(.borderless)
+                .help(help)
+            }
         }
     }
 

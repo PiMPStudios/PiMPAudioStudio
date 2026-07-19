@@ -4,6 +4,8 @@ import MCP
 
 final class MCPHTTPServer {
     private let port: UInt16
+    private let bindHost: String
+    private let allowNonLocalOrigins: Bool
     private let tokenProvider: @MainActor () -> String?
     private let onReady: @MainActor () -> Void
     private let onFailed: @MainActor (Error) -> Void
@@ -20,12 +22,16 @@ final class MCPHTTPServer {
 
     init(
         port: UInt16,
+        bindHost: String = "127.0.0.1",
+        allowNonLocalOrigins: Bool = false,
         tokenProvider: @escaping @MainActor () -> String?,
         onReady: @escaping @MainActor () -> Void,
         onFailed: @escaping @MainActor (Error) -> Void,
         handler: @escaping @MainActor (MCP.HTTPRequest) async -> MCP.HTTPResponse
     ) throws {
         self.port = port
+        self.bindHost = bindHost
+        self.allowNonLocalOrigins = allowNonLocalOrigins
         self.tokenProvider = tokenProvider
         self.onReady = onReady
         self.onFailed = onFailed
@@ -40,7 +46,7 @@ final class MCPHTTPServer {
 
         do {
             try configureListenSocket(socketFD)
-            try bindLoopback(socketFD)
+            try bindAddress(socketFD)
             guard Darwin.listen(socketFD, SOMAXCONN) == 0 else {
                 throw Self.posixError("listen")
             }
@@ -91,12 +97,22 @@ final class MCPHTTPServer {
         }
     }
 
-    private func bindLoopback(_ socketFD: Int32) throws {
+    private func bindAddress(_ socketFD: Int32) throws {
         var address = sockaddr_in()
         address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
         address.sin_family = sa_family_t(AF_INET)
         address.sin_port = in_port_t(port).bigEndian
-        address.sin_addr = in_addr(s_addr: inet_addr("127.0.0.1"))
+        let resolvedHost = Self.normalizedBindHost(bindHost)
+        // inet_addr returns network-order IPv4. "0.0.0.0" resolves to INADDR_ANY (0).
+        // Failure is INADDR_NONE / (in_addr_t)-1.
+        let addressValue = inet_addr(resolvedHost)
+        if addressValue == in_addr_t(bitPattern: -1), resolvedHost != "255.255.255.255" {
+            throw MCPHTTPServerError(
+                operation: "bind \(resolvedHost):\(port)",
+                errnoCode: EINVAL
+            )
+        }
+        address.sin_addr = in_addr(s_addr: addressValue)
 
         let result = withUnsafePointer(to: &address) { pointer in
             pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPointer in
@@ -104,7 +120,19 @@ final class MCPHTTPServer {
             }
         }
         guard result == 0 else {
-            throw Self.posixError("bind 127.0.0.1:\(port)")
+            throw Self.posixError("bind \(resolvedHost):\(port)")
+        }
+    }
+
+    static func normalizedBindHost(_ host: String) -> String {
+        let trimmed = host.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        switch trimmed {
+        case "", "localhost", "loopback", "local":
+            return "127.0.0.1"
+        case "0.0.0.0", "*", "any", "all", "allinterfaces", "all-interfaces":
+            return "0.0.0.0"
+        default:
+            return trimmed
         }
     }
 
@@ -239,7 +267,7 @@ final class MCPHTTPServer {
     }
 
     private func respond(to request: RawHTTPRequest) async -> RawHTTPResponse {
-        guard request.hasTrustedOrigin else {
+        guard request.hasTrustedOrigin(allowNonLocalOrigins: allowNonLocalOrigins) else {
             return .jsonError(statusCode: 403, message: "Forbidden Origin")
         }
 
@@ -383,9 +411,14 @@ struct RawHTTPRequest {
         return String(authorization.dropFirst(prefix.count))
     }
 
-    var hasTrustedOrigin: Bool {
+    func hasTrustedOrigin(allowNonLocalOrigins: Bool) -> Bool {
         guard let origin = headers["origin"]?.trimmingCharacters(in: .whitespacesAndNewlines),
               !origin.isEmpty else {
+            return true
+        }
+        // Network-bound servers may receive LAN browser Origins; agent clients
+        // usually omit Origin entirely.
+        if allowNonLocalOrigins {
             return true
         }
         guard let url = URL(string: origin),

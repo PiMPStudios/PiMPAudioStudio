@@ -10,16 +10,36 @@ This page is the user-facing overview. Developers should also read
 
 1. Open **Settings → MCP**.
 2. Turn on **Enable MCP Server**.
-3. Copy the endpoint shown in Settings.
+3. Optionally set **Bind address** and **Port**.
+4. Copy the endpoint shown in Settings.
 
-Default endpoint:
+Default bind and endpoint:
 
 ```text
+Bind: 127.0.0.1:38765
 http://127.0.0.1:38765/mcp
 ```
 
+### Bind address
+
+| Setting | Meaning |
+| --- | --- |
+| Localhost (`127.0.0.1`) | Only this Mac can connect (default) |
+| All interfaces (`0.0.0.0`) | Other machines on your LAN can connect |
+
+When you switch to all interfaces, a bearer token is enabled automatically.
+Keep it on for LAN use and prefer trusted networks only. Settings shows a
+suggested **Network endpoint** using this Mac's LAN IP when available; remote
+clients should use that host (or your Mac's real IP), not literally `0.0.0.0`.
+
+### Port
+
+Default port is **38765**. Allowed range is **1024–65535**. Change the port field
+and click **Apply**. Changing bind address or port restarts the server when it
+is enabled.
+
 Optional bearer token is disabled by default for localhost-only use. If you
-enable it, clients must send:
+enable it (or bind to all interfaces), clients must send:
 
 ```text
 Authorization: Bearer <token>

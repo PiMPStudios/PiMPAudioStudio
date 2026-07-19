@@ -12,16 +12,38 @@ gate so it can stay embedded inside the desktop app.
 
 1. Open **Settings > MCP**.
 2. Turn on **Enable MCP Server**.
-3. Copy the endpoint shown in Settings.
+3. Optionally choose bind address (`127.0.0.1` or `0.0.0.0`) and port.
+4. Copy the endpoint shown in Settings.
 
-Default endpoint:
+Default bind and endpoint:
 
 ```text
+Bind: 127.0.0.1:38765
 http://127.0.0.1:38765/mcp
 ```
 
+Bind address:
+
+- `127.0.0.1` — localhost only (default).
+- `0.0.0.0` — all IPv4 interfaces (LAN reachable). Switching to this mode enables
+  the bearer token automatically. Clients on other machines should use the Mac's
+  LAN IP (Settings shows a network endpoint when one can be detected), not the
+  literal string `0.0.0.0`.
+
+Port:
+
+- Default `38765`.
+- Allowed range `1024`–`65535`.
+- Apply a new port from Settings; the server restarts when enabled.
+
+Override the smoke script target with:
+
+```bash
+PIMP_AUDIO_MCP_ENDPOINT='http://127.0.0.1:38765/mcp' scripts/smoke-pimpaudio-mcp.sh
+```
+
 The optional bearer token is disabled by default for localhost-only use. If you
-enable it, clients must send:
+enable it (or bind to all interfaces), clients must send:
 
 ```text
 Authorization: Bearer <token>

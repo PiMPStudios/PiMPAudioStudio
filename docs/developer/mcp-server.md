@@ -11,11 +11,23 @@ User overview: `docs/user/mcp.md`.
 
 ## Enablement
 
-Settings → MCP. Default endpoint:
+Settings → MCP. Defaults:
 
 ```text
-http://127.0.0.1:38765/mcp
+Bind: 127.0.0.1:38765
+Endpoint: http://127.0.0.1:38765/mcp
 ```
+
+Persisted keys (app defaults namespace):
+
+- `mcp.enabled`
+- `mcp.bindAddress` (`127.0.0.1` or `0.0.0.0`)
+- `mcp.port` (`1024`–`65535`, default `38765`)
+- `mcp.tokenRequired` / `mcp.token`
+
+`MCPHTTPServer` accepts `bindHost` + `port`. Binding `0.0.0.0` relaxes Origin
+checks for LAN browser clients and auto-enables the bearer token from Settings.
+Changing bind/port restarts a running server.
 
 ## Code Map
 
