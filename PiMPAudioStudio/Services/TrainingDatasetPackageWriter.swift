@@ -1624,6 +1624,7 @@ enum TrainingDatasetPackageWriter {
             "package_root": ".",
             "clip_count": clipCount,
             "default_bundle": fullMixBundleFileName,
+            "dataset_manifest": datasetManifestFileName,
             "bundles": [
                 fullMixBundle,
                 [

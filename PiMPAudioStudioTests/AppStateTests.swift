@@ -923,6 +923,7 @@ private extension JSONDecoder {
     #expect(providerTargets.contains("runpod"))
     #expect(providerTargets.contains("digitalocean_gpu"))
     #expect(remoteJSON?["default_bundle"] as? String == "training_bundle_full_mix.json")
+    #expect(remoteJSON?["dataset_manifest"] as? String == "dataset_manifest.json")
     let remoteBundles = remoteJSON?["bundles"] as? [[String: Any]] ?? []
     let remoteBundleNames = Set(remoteBundles.compactMap { $0["name"] as? String })
     #expect(remoteBundleNames.contains("full_mix"))
@@ -966,6 +967,7 @@ private extension JSONDecoder {
     #expect(job.pimpAudioRemoteJobVersion == "1.0")
     #expect(job.task == .trainLoRA)
     #expect(job.package.entryBundle == "training_bundle_full_mix.json")
+    #expect(job.package.datasetManifest == "dataset_manifest.json")
     #expect(job.package.selectedBundle.name == "full_mix")
     #expect(job.training?.adapterMode == .lora)
     #expect(job.training?.baseModelID == "ace-step-dit-xl-sft")
@@ -977,6 +979,13 @@ private extension JSONDecoder {
     #expect(job.outputs.resultFile == "remote_artifacts/result.json")
     #expect(job.safety.uploadRequiresUserApproval)
     #expect(job.safety.writeProviderSecretsToPackage == false)
+    let remoteValidation = try RemoteTrainingJobValidator.validate(
+        job,
+        packageDirectory: datasetDir
+    )
+    #expect(remoteValidation.selectedAssetCount == 1)
+    #expect(remoteValidation.assetRoles == ["clip"])
+    #expect(remoteValidation.maximumTrainingDurationSeconds != nil)
 
     let encodedJob = try RemoteTrainingJobCodec.encoder.encode(job)
     let encodedJobJSON = try JSONSerialization.jsonObject(with: encodedJob) as? [String: Any]
@@ -1052,7 +1061,8 @@ private extension JSONDecoder {
     let jobExtraFiles = try RemoteTrainingJobCodec.archiveExtraFiles(for: lokrJob)
     let runScriptData = try #require(jobExtraFiles[RemoteTrainingJobCodec.runScriptFileName])
     let runScript = try #require(String(data: runScriptData, encoding: .utf8))
-    #expect(runScript.contains("python3 -m zipfile -e"))
+    #expect(runScript.contains("exec pimp-remote-worker train \"$INPUT\""))
+    #expect(!runScript.contains("unzip -oq"))
     #expect(runScript.contains("stock official RunPod PyTorch pod"))
     #expect(runScript.contains("installing uploaded remote worker"))
     #expect(runScript.contains("/workspace/pimp-remote-worker-src/install.sh"))

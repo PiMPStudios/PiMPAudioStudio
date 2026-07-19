@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		01A8F4D37E3C42D6B1C9A501 /* remote-worker in Resources */ = {isa = PBXBuildFile; fileRef = 01A8F4D37E3C42D6B1C9A502 /* remote-worker */; };
 		02E720C4E915E4FC5E80E083 /* AdapterStackManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 170EDAB12E02A75BD53997D2 /* AdapterStackManager.swift */; };
 		02E87C9D466A616553A78B5F /* DSPParameters.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AC731FD1A3D2361C508EC75 /* DSPParameters.swift */; };
 		03BFFDD33F2CE2AAD253E055 /* MLX in Frameworks */ = {isa = PBXBuildFile; productRef = D9661A97DE1522B5DE5D2159 /* MLX */; };
@@ -140,6 +141,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		01A8F4D37E3C42D6B1C9A502 /* remote-worker */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "remote-worker"; sourceTree = SOURCE_ROOT; };
 		0112B72B90B6F4C1FD66A04C /* CommunityBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommunityBrowserView.swift; sourceTree = "<group>"; };
 		0258ADFE79C7081A0E21313D /* PitchShiftControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PitchShiftControlView.swift; sourceTree = "<group>"; };
 		0289E58F6A0E77CDC343102A /* AdapterStackView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdapterStackView.swift; sourceTree = "<group>"; };
@@ -377,6 +379,7 @@
 			isa = PBXGroup;
 			children = (
 				D9EBA06FC3F304493C6F64E0 /* Packages */,
+				01A8F4D37E3C42D6B1C9A502 /* remote-worker */,
 				8861DC53940F9F1256ECB019 /* PiMPAudioStudio */,
 				FA8D499C4F09BA3EACC21F8D /* PiMPAudioStudioTests */,
 				80CCF94F4D7410743DE3CDE0 /* Products */,
@@ -535,6 +538,7 @@
 			buildPhases = (
 				4DEF366694A95ACD88B82332 /* Sources */,
 				91E5BD096F55D84951B7CB80 /* Frameworks */,
+				01A8F4D37E3C42D6B1C9A503 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -609,6 +613,17 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		01A8F4D37E3C42D6B1C9A503 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				01A8F4D37E3C42D6B1C9A501 /* remote-worker in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		2BCFB7F4F4DBBB74BCF2D354 /* Sources */ = {

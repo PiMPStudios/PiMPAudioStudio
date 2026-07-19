@@ -944,6 +944,10 @@ private struct BuildTrainingView: View {
                 sshKeyPath: $runPodSSHKeyPath,
                 onLaunchRequested: { showingRunPodLaunchConfirmation = true },
                 onSelectArchiveRequested: selectRemoteJobArchive,
+                onUploadRequested: uploadRemoteJob,
+                onStartRequested: startRemoteJob,
+                onMonitorRequested: monitorRemoteJob,
+                onPullRequested: pullAndImportRemoteJob,
                 onStopRequested: { pendingRunPodStop = $0 },
                 onNotice: { remoteNotice = $0 }
             )
@@ -971,6 +975,77 @@ private struct BuildTrainingView: View {
 
         Task {
             await runPodService.launchPod(configuration: configuration)
+        }
+    }
+
+    private func uploadRemoteJob(to pod: RunPodPodSummary) {
+        guard let archiveURL = effectiveRemotePreparedArchiveURL else {
+            remoteNotice = "Create or choose a remote job zip before uploading."
+            return
+        }
+        Task {
+            await runPodService.uploadRemoteJob(
+                to: pod,
+                archiveURL: archiveURL,
+                sshKeyPath: runPodSSHKeyPath
+            )
+        }
+    }
+
+    private func startRemoteJob(on pod: RunPodPodSummary) {
+        guard let archiveURL = effectiveRemotePreparedArchiveURL else {
+            remoteNotice = "Create or choose a remote job zip before starting the worker."
+            return
+        }
+        Task {
+            await runPodService.startRemoteJob(
+                on: pod,
+                archiveURL: archiveURL,
+                sshKeyPath: runPodSSHKeyPath
+            )
+        }
+    }
+
+    private func monitorRemoteJob(on pod: RunPodPodSummary) {
+        guard let archiveURL = effectiveRemotePreparedArchiveURL else {
+            remoteNotice = "Choose the remote job zip associated with this worker."
+            return
+        }
+        Task {
+            await runPodService.refreshRemoteJob(
+                on: pod,
+                archiveURL: archiveURL,
+                sshKeyPath: runPodSSHKeyPath
+            )
+        }
+    }
+
+    private func pullAndImportRemoteJob(from pod: RunPodPodSummary) {
+        guard let archiveURL = effectiveRemotePreparedArchiveURL else {
+            remoteNotice = "Choose the completed remote job zip before pulling artifacts."
+            return
+        }
+        Task {
+            do {
+                let pullback = try await runPodService.downloadRemoteJobArtifacts(
+                    from: pod,
+                    archiveURL: archiveURL,
+                    sshKeyPath: runPodSSHKeyPath
+                )
+                let importer = CommunityService()
+                let adapter = try await importer.importLocalAdapter(
+                    directoryURL: pullback.finalAdapterURL
+                )
+                runPodService.markRemoteAdapterImported(
+                    podID: pod.id,
+                    archiveURL: archiveURL,
+                    adapterName: adapter.name
+                )
+                remoteNotice = "Downloaded and imported \(adapter.name). The remote result is preserved at \(pullback.directoryURL.path(percentEncoded: false))."
+                pendingRunPodStop = pod
+            } catch {
+                remoteNotice = error.localizedDescription
+            }
         }
     }
 
@@ -1183,6 +1258,10 @@ private struct BuildTrainingView: View {
                 lokrLinearAlpha: remoteAdapterKind == .lokr ? settings.lokrLinearAlpha : nil,
                 lokrWeightDecompose: remoteAdapterKind == .lokr ? settings.lokrWeightDecompose : nil
             )
+            let validation = try RemoteTrainingJobValidator.validate(
+                job,
+                packageDirectory: package.directory
+            )
             let extraFiles = try RemoteTrainingJobCodec.archiveExtraFiles(for: job)
 
             let panel = NSSavePanel()
@@ -1202,7 +1281,7 @@ private struct BuildTrainingView: View {
                     )
                     rememberRemoteArchive(archiveURL)
                     remotePreparedJobID = job.jobID
-                    remoteNotice = "Remote job exported to \(archiveURL.path(percentEncoded: false))."
+                    remoteNotice = "Validated \(validation.selectedAssetCount) package-v2 asset\(validation.selectedAssetCount == 1 ? "" : "s") for \(validation.assetRoles.joined(separator: ", ")); remote job exported to \(archiveURL.path(percentEncoded: false))."
                     refreshRemotePackages()
                 } catch is CancellationError {
                     remoteNotice = "Remote job export was cancelled."
@@ -1371,7 +1450,7 @@ private enum RemoteJobRecipe: String, CaseIterable, Identifiable {
                 targetModules: ["q_proj", "v_proj"],
                 attentionType: "both",
                 cfgRatio: 0.15,
-                maxDurationSeconds: 60
+                maxDurationSeconds: 240
             )
         case (.lora, .wide):
             return RemoteJobRecipeSettings(
@@ -1389,7 +1468,7 @@ private enum RemoteJobRecipe: String, CaseIterable, Identifiable {
                 targetModules: ["q_proj", "k_proj", "v_proj", "o_proj"],
                 attentionType: "both",
                 cfgRatio: 0.15,
-                maxDurationSeconds: 60
+                maxDurationSeconds: 240
             )
         case (.lokr, .narrow):
             return RemoteJobRecipeSettings(
@@ -1407,7 +1486,7 @@ private enum RemoteJobRecipe: String, CaseIterable, Identifiable {
                 targetModules: ["q_proj", "v_proj"],
                 attentionType: "both",
                 cfgRatio: 0.15,
-                maxDurationSeconds: 60
+                maxDurationSeconds: 240
             )
         case (.lokr, .wide):
             return RemoteJobRecipeSettings(
@@ -1425,7 +1504,7 @@ private enum RemoteJobRecipe: String, CaseIterable, Identifiable {
                 targetModules: ["q_proj", "k_proj", "v_proj", "o_proj"],
                 attentionType: "both",
                 cfgRatio: 0.15,
-                maxDurationSeconds: 60
+                maxDurationSeconds: 240
             )
         }
     }

@@ -1,10 +1,20 @@
 # PiMP Remote Worker
 
-This folder contains the first portable PiMP Audio Studio remote worker. It is meant for stock CUDA pods such as the official RunPod PyTorch template. It is not part of the macOS app runtime.
+This folder contains the first portable PiMP Audio Studio remote worker. It is
+meant for stock CUDA pods such as the official RunPod PyTorch template. The app
+bundles it as an inert upload payload but never executes it on macOS.
 
-The worker consumes an exported PiMP Audio Studio remote job zip, converts the selected `training_bundle_*.json` into Side-Step's dataset JSON format, preprocesses the audio, trains LoRA or LoKR through ACE-Step Side-Step, and writes standard `remote_artifacts/**` outputs.
+The worker consumes an exported PiMP Audio Studio remote job zip, resolves
+selected package-v2 assets by `asset_role`, preserves reviewed annotations and
+explicit training ranges, converts them into Side-Step's dataset JSON format,
+preprocesses the audio, trains LoRA or LoKR through ACE-Step Side-Step, and
+writes standard `remote_artifacts/**` outputs.
 
 ## Quick RunPod Flow
+
+PiMP's Remote GPU panel now performs this flow with **Upload**, **Start**,
+automatic monitoring, and **Pull & Import**. The commands below remain useful
+for diagnostics or manually launched providers.
 
 From your Mac, after launching a pod and copying the job zip:
 
@@ -52,7 +62,9 @@ remote_artifacts/
   final_adapter/
 ```
 
-`result.json` is the stable import point for future app-side pullback.
+`result.json` remains the stable v1 import point for app-side pullback. A dry
+run also records the selected package version, training plan, asset IDs, roles,
+and ranges under `command/dry_run.json`.
 
 ## Environment Variables
 
@@ -74,5 +86,8 @@ The Hugging Face token can be supplied through the normal `HF_TOKEN` or `HUGGING
 
 - The macOS app remains Swift/MLX-only. This worker is an explicit remote boundary for CUDA/Python machines.
 - Job paths must be relative to the directory containing `remote_job.json`; package escapes, symlink escapes, overlapping replaceable outputs, and unsafe zip members are rejected before training starts.
+- Package-v2 selections must have an explicit valid range no longer than
+  ACE-Step's 240-second preprocessing maximum. Ranges smaller than their source
+  asset are materialized with `ffmpeg` before preprocessing.
 - A future public PiMP RunPod template can bake this folder into an image, but this copy/install flow keeps the first end-to-end path account-neutral.
 - The worker intentionally writes the exact generated Side-Step commands before running them so failed jobs are easy to inspect.

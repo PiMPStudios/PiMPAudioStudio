@@ -19,6 +19,7 @@ from typing import Any
 
 VERSION = "0.1.0"
 DEFAULT_WORKDIR = Path("/workspace/pimp-remote-worker")
+MAX_TRAINING_SECONDS = 240.0
 
 
 def preferred_worker_python(workdir: Path) -> Path:
@@ -296,6 +297,7 @@ class RemoteWorker:
         self.preprocess_placeholder = self.artifacts_dir / "preprocess_placeholder"
         self.preprocess_audio_dir = self.artifacts_dir / "preprocess_audio"
         self.side_step_dataset = self.artifacts_dir / "side_step_dataset.json"
+        self.dataset_selection: dict[str, Any] = {}
         self.started_at: str | None = None
         self.artifacts_dir.mkdir(parents=True, exist_ok=True)
         self.command_dir.mkdir(parents=True, exist_ok=True)
@@ -426,12 +428,236 @@ class RemoteWorker:
         include = selected.get("include") if isinstance(selected.get("include"), list) else []
         return [str(item) for item in include]
 
-    def make_sidestep_dataset(self) -> dict[str, Any]:
-        bundle_path = self.selected_bundle_path()
-        bundle = read_json(bundle_path)
+    def dataset_manifest_path(self, bundle: dict[str, Any]) -> Path | None:
+        package = self.job.get("package") if isinstance(self.job.get("package"), dict) else {}
+        raw = first_string(package.get("dataset_manifest"))
+        source_version = first_string(bundle.get("source_package_version"))
+        if not raw and source_version and source_version.startswith("2."):
+            raw = "dataset_manifest.json"
+        if not raw:
+            return None
+        return resolve_package_path(self.package_root, raw, "package.dataset_manifest")
+
+    def selected_clips(
+        self,
+        bundle: dict[str, Any],
+        bundle_path: Path,
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         clips = bundle.get("clips")
         if not isinstance(clips, list) or not clips:
             raise ValueError(f"{bundle_path} does not contain clips")
+
+        includes = [item.lower() for item in self.selected_include()]
+        manifest_path = self.dataset_manifest_path(bundle)
+        if manifest_path is None:
+            selected = [
+                clip for clip in clips
+                if isinstance(clip, dict)
+                and clip.get("include_in_training") is not False
+                and (
+                    not includes
+                    or not first_string(clip.get("asset_role"))
+                    or str(clip.get("asset_role")).lower() in includes
+                )
+            ]
+            if not selected:
+                raise ValueError("The selected training bundle does not contain any included assets")
+            return selected, {
+                "source_package_version": first_string(bundle.get("source_package_version"), "legacy"),
+                "training_plan_id": first_string(bundle.get("training_plan_id")),
+                "asset_roles": sorted({
+                    str(clip.get("asset_role"))
+                    for clip in selected
+                    if first_string(clip.get("asset_role"))
+                }),
+                "asset_ids": [
+                    first_string(clip.get("asset_id"), clip.get("id")) or ""
+                    for clip in selected
+                ],
+                "training_ranges": [
+                    clip.get("training_range")
+                    for clip in selected
+                    if isinstance(clip.get("training_range"), dict)
+                ],
+            }
+
+        if not manifest_path.is_file():
+            raise FileNotFoundError(f"Package-v2 manifest is missing: {manifest_path}")
+        manifest = read_json(manifest_path)
+        version = first_string(manifest.get("pimp_audio_dataset_version"))
+        if version != "2.0":
+            raise ValueError(
+                f"Unsupported package-v2 manifest version {version or 'missing'}; expected 2.0"
+            )
+        assets = manifest.get("assets")
+        plans = manifest.get("training_plans")
+        if not isinstance(assets, list) or not assets:
+            raise ValueError("dataset_manifest.json does not contain assets")
+        if not isinstance(plans, list) or not plans:
+            raise ValueError("dataset_manifest.json does not contain training_plans")
+
+        assets_by_id: dict[str, dict[str, Any]] = {}
+        for asset in assets:
+            if not isinstance(asset, dict):
+                continue
+            asset_id = first_string(asset.get("asset_id"))
+            if not asset_id:
+                raise ValueError("dataset_manifest.json contains an asset without asset_id")
+            if asset_id in assets_by_id:
+                raise ValueError(f"dataset_manifest.json contains duplicate asset_id {asset_id}")
+            assets_by_id[asset_id] = asset
+
+        requested_plan_id = first_string(bundle.get("training_plan_id"))
+        plan = next(
+            (
+                candidate for candidate in plans
+                if isinstance(candidate, dict)
+                and requested_plan_id
+                and first_string(candidate.get("id")) == requested_plan_id
+            ),
+            None,
+        )
+        if plan is None:
+            plan = next(
+                (
+                    candidate for candidate in plans
+                    if isinstance(candidate, dict) and candidate.get("is_default") is True
+                ),
+                None,
+            )
+        if not isinstance(plan, dict):
+            raise ValueError(
+                f"dataset_manifest.json does not contain training plan {requested_plan_id or 'default'}"
+            )
+        selections = plan.get("selections")
+        if not isinstance(selections, list):
+            raise ValueError("The selected package-v2 training plan does not contain selections")
+        selections_by_id = {
+            str(selection.get("asset_id")): selection
+            for selection in selections
+            if isinstance(selection, dict) and first_string(selection.get("asset_id"))
+        }
+
+        selected: list[dict[str, Any]] = []
+        selected_ids: set[str] = set()
+        for clip in clips:
+            if not isinstance(clip, dict) or clip.get("include_in_training") is False:
+                continue
+            asset_id = first_string(clip.get("asset_id"), clip.get("id"))
+            if not asset_id:
+                raise ValueError("Package-v2 training bundle contains an entry without asset_id")
+            asset = assets_by_id.get(asset_id)
+            if asset is None:
+                raise ValueError(f"Training bundle references unknown package-v2 asset {asset_id}")
+            role = first_string(asset.get("asset_role"), clip.get("asset_role"))
+            if not role:
+                raise ValueError(f"Package-v2 asset {asset_id} does not declare asset_role")
+            if includes and role.lower() not in includes:
+                continue
+            selection = selections_by_id.get(asset_id)
+            if selection is None:
+                raise ValueError(
+                    f"Package-v2 asset {asset_id} is missing from training plan {plan.get('id', 'unknown')}"
+                )
+            file_record = asset.get("file") if isinstance(asset.get("file"), dict) else {}
+            file_path = first_string(file_record.get("path"))
+            if not file_path:
+                raise ValueError(f"Package-v2 asset {asset_id} does not declare file.path")
+
+            source_range = asset.get("source_range") if isinstance(asset.get("source_range"), dict) else {}
+            training_range = (
+                selection.get("training_range")
+                if isinstance(selection.get("training_range"), dict)
+                else {}
+            )
+            self.validate_training_range(asset_id, source_range, training_range)
+            annotation = asset.get("annotation") if isinstance(asset.get("annotation"), dict) else {}
+            caption_record = annotation.get("caption") if isinstance(annotation.get("caption"), dict) else {}
+            lyrics_record = annotation.get("lyrics") if isinstance(annotation.get("lyrics"), dict) else {}
+
+            normalized = dict(clip)
+            normalized.update({
+                "id": asset_id,
+                "asset_id": asset_id,
+                "asset_role": role,
+                "source_track_id": first_string(asset.get("source_track_id")),
+                "file": file_path,
+                "assets": {role: file_path},
+                "source_range": source_range,
+                "training_range": training_range,
+                "range_policy": first_string(selection.get("range_policy")),
+                "sample_window_seconds": first_number(selection.get("sample_window_seconds")),
+                "include_in_training": True,
+                "annotation": annotation,
+            })
+            normalized["caption"] = first_string(
+                caption_record.get("text"),
+                clip.get("caption"),
+                clip.get("prompt"),
+                asset_id,
+            )
+            normalized["lyrics"] = first_string(
+                lyrics_record.get("text"),
+                clip.get("lyrics"),
+                clip.get("transcript"),
+            )
+            language = first_string(caption_record.get("language"), lyrics_record.get("language"))
+            if language:
+                normalized["language"] = language
+            selected.append(normalized)
+            selected_ids.add(asset_id)
+
+        if not selected:
+            roles = ", ".join(includes) if includes else "the selected roles"
+            raise ValueError(f"Package-v2 training plan contains no assets for {roles}")
+
+        return selected, {
+            "source_package_version": version,
+            "dataset_manifest": relative_path(manifest_path, self.package_root),
+            "training_plan_id": first_string(plan.get("id")),
+            "asset_roles": sorted({
+                str(clip.get("asset_role")) for clip in selected
+            }),
+            "asset_ids": sorted(selected_ids),
+            "training_ranges": [
+                {
+                    "asset_id": str(clip.get("asset_id")),
+                    **(clip.get("training_range") or {}),
+                    "range_policy": clip.get("range_policy"),
+                }
+                for clip in selected
+            ],
+        }
+
+    def validate_training_range(
+        self,
+        asset_id: str,
+        source_range: dict[str, Any],
+        training_range: dict[str, Any],
+    ) -> None:
+        start = first_number(training_range.get("start_seconds"))
+        end = first_number(training_range.get("end_seconds"))
+        source_start = first_number(source_range.get("start_seconds")) or 0.0
+        source_end = first_number(source_range.get("end_seconds"))
+        if start is None or end is None:
+            raise ValueError(f"Package-v2 asset {asset_id} requires an explicit training_range")
+        if start < source_start - 0.001 or end <= start:
+            raise ValueError(f"Package-v2 asset {asset_id} has an invalid training_range")
+        if source_end is not None and end > source_end + 0.001:
+            raise ValueError(
+                f"Package-v2 asset {asset_id} training_range exceeds its source_range"
+            )
+        if end - start > MAX_TRAINING_SECONDS + 0.001:
+            raise ValueError(
+                f"Package-v2 asset {asset_id} training_range exceeds ACE-Step's "
+                f"{int(MAX_TRAINING_SECONDS)} second limit"
+            )
+
+    def make_sidestep_dataset(self) -> dict[str, Any]:
+        bundle_path = self.selected_bundle_path()
+        bundle = read_json(bundle_path)
+        clips, selection = self.selected_clips(bundle, bundle_path)
+        self.dataset_selection = selection
 
         package = self.job.get("package") if isinstance(self.job.get("package"), dict) else {}
         training = self.job.get("training") if isinstance(self.job.get("training"), dict) else {}
@@ -473,7 +699,24 @@ class RemoteWorker:
             if not audio_path.exists():
                 missing_audio.append(rel_audio)
                 continue
-            staged_audio_path = self.stage_preprocess_audio(index, clip, rel_audio, audio_path)
+            training_range = (
+                clip.get("training_range")
+                if isinstance(clip.get("training_range"), dict)
+                else {}
+            )
+            source_range = (
+                clip.get("source_range")
+                if isinstance(clip.get("source_range"), dict)
+                else {}
+            )
+            staged_audio_path = self.stage_preprocess_audio(
+                index,
+                clip,
+                rel_audio,
+                audio_path,
+                source_range=source_range,
+                training_range=training_range,
+            )
 
             caption = first_string(clip.get("caption"), clip.get("prompt"), clip.get("id"), audio_path.stem)
             lyrics = "[Instrumental]" if force_instrumental else first_string(
@@ -485,6 +728,13 @@ class RemoteWorker:
             if not lyrics:
                 lyrics = "[Instrumental]"
             duration = first_number(
+                (
+                    first_number(training_range.get("end_seconds"))
+                    - first_number(training_range.get("start_seconds"))
+                )
+                if first_number(training_range.get("end_seconds")) is not None
+                and first_number(training_range.get("start_seconds")) is not None
+                else None,
                 clip.get("duration"),
                 analysis.get("duration_seconds"),
                 clip.get("seconds_total"),
@@ -493,6 +743,9 @@ class RemoteWorker:
             keyscale = first_string(clip.get("keyscale"), clip.get("key"), analysis.get("keyscale"))
             sample: dict[str, Any] = {
                 "id": str(clip.get("id") or f"clip-{index + 1:04d}"),
+                "asset_id": first_string(clip.get("asset_id"), clip.get("id")),
+                "asset_role": first_string(clip.get("asset_role")),
+                "source_track_id": first_string(clip.get("source_track_id")),
                 "audio_path": staged_audio_path.as_posix(),
                 "filename": staged_audio_path.name,
                 "source_audio_path": audio_path.as_posix(),
@@ -515,6 +768,10 @@ class RemoteWorker:
                 "custom_tag": "",
                 "labeled": True,
                 "prompt_override": "caption",
+                "source_range": source_range or None,
+                "training_range": training_range or None,
+                "range_policy": first_string(clip.get("range_policy")),
+                "sample_window_seconds": first_number(clip.get("sample_window_seconds")),
             }
             samples.append(sample)
 
@@ -536,6 +793,9 @@ class RemoteWorker:
                 "all_instrumental": all(sample["is_instrumental"] for sample in samples),
                 "genre_ratio": 0,
                 "source_bundle": str(bundle_name),
+                "source_package_version": selection.get("source_package_version"),
+                "training_plan_id": selection.get("training_plan_id"),
+                "selected_asset_roles": selection.get("asset_roles", []),
                 "pimp_audio_remote_job_id": self.job.get("job_id"),
             },
             "samples": samples,
@@ -551,13 +811,65 @@ class RemoteWorker:
         self.metric(stage="dataset", sample_count=len(samples))
         return dataset
 
-    def stage_preprocess_audio(self, index: int, clip: dict[str, Any], rel_audio: str, source: Path) -> Path:
+    def stage_preprocess_audio(
+        self,
+        index: int,
+        clip: dict[str, Any],
+        rel_audio: str,
+        source: Path,
+        *,
+        source_range: dict[str, Any],
+        training_range: dict[str, Any],
+    ) -> Path:
         source_label = Path(str(clip.get("id") or rel_audio)).stem
         staged_stem = f"{index + 1:04d}-{safe_name(source_label)}"
-        suffix = source.suffix.lower() or ".wav"
+        start = first_number(training_range.get("start_seconds"))
+        end = first_number(training_range.get("end_seconds"))
+        source_start = first_number(source_range.get("start_seconds")) or 0.0
+        source_end = first_number(source_range.get("end_seconds"))
+        needs_crop = (
+            start is not None
+            and end is not None
+            and (
+                abs(start - source_start) > 0.001
+                or source_end is None
+                or abs(end - source_end) > 0.001
+            )
+        )
+        suffix = ".wav" if needs_crop and not self.args.dry_run else (source.suffix.lower() or ".wav")
         staged_path = self.preprocess_audio_dir / f"{staged_stem}{suffix}"
         if staged_path.exists() or staged_path.is_symlink():
             staged_path.unlink()
+        if needs_crop and not self.args.dry_run:
+            ffmpeg = shutil.which("ffmpeg")
+            if not ffmpeg:
+                raise FileNotFoundError(
+                    f"ffmpeg is required to materialize the training range for {clip.get('id', rel_audio)}"
+                )
+            duration = end - start
+            subprocess.run(
+                [
+                    ffmpeg,
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-y",
+                    "-ss",
+                    f"{start:.6f}",
+                    "-i",
+                    str(source),
+                    "-t",
+                    f"{duration:.6f}",
+                    "-map",
+                    "0:a:0",
+                    "-vn",
+                    "-c:a",
+                    "pcm_s24le",
+                    str(staged_path),
+                ],
+                check=True,
+            )
+            return staged_path
         try:
             staged_path.symlink_to(source)
         except OSError:
@@ -822,7 +1134,21 @@ except Exception as exc:
 
         ace_dir, checkpoints, python = self.env_paths()
         train_py = ace_dir / "train.py"
-        max_duration = int(training.get("max_duration_seconds") or 60)
+        configured_max_duration = float(
+            training.get("max_duration_seconds") or MAX_TRAINING_SECONDS
+        )
+        selected_durations = [
+            first_number(sample.get("duration"))
+            for sample in read_json(self.side_step_dataset).get("samples", [])
+        ]
+        selected_duration = max(
+            (duration for duration in selected_durations if duration is not None),
+            default=0.0,
+        )
+        max_duration = int(min(
+            MAX_TRAINING_SECONDS,
+            max(configured_max_duration, selected_duration),
+        ))
         epochs = int(training.get("epochs") or (100 if task == "train_lora" else 80))
         save_every = int(training.get("save_every") or 10)
         batch_size = int(training.get("batch_size") or 1)
@@ -1135,6 +1461,7 @@ except Exception as exc:
                 "package_root": str(self.package_root),
                 "side_step_dataset": str(self.side_step_dataset),
                 "sample_count": len(dataset.get("samples", [])),
+                "package_v2_selection": self.dataset_selection,
                 "command_cwd": str(command_cwd),
                 "preprocess_precision": preprocess_cmd[preprocess_cmd.index("--precision") + 1],
                 "training_precision": train_cmd[train_cmd.index("--precision") + 1],
