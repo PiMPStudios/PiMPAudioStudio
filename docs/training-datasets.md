@@ -114,8 +114,10 @@ Enrichment preserves separation/transcription metadata when captions are edited,
 The lightweight captioner remains metadata-based. The advanced ACE captioner is
 the full audio-language model ported to Swift/MLX. Install its four-bit
 captioner and transcriber packs from **Settings > Models > Dataset Annotation
-(Advanced)**. The current UI imports locally supplied, fully validated packs;
-hosted in-app downloads still require a production artifact catalog.
+(Advanced)**. The built-in catalog pins the public PiMP Audio Studio Hugging
+Face repositories to immutable revisions. Downloads are staged, checksum
+verified, fully validated, and transactionally installed; local pack import
+remains available from the row's overflow menu.
 
 ## Train From JSON
 

@@ -183,6 +183,7 @@ public enum NativeModelPackValidator {
             from: Data(contentsOf: manifestURL)
         )
         try validateMetadata(manifest)
+        try validateFileTable(manifest)
         return manifest
     }
 
@@ -196,34 +197,8 @@ public enum NativeModelPackValidator {
         try cancellationCheck()
         let manifest = try loadManifestMetadata(at: directory)
 
-        var roles: [String: NativeModelPackManifest.FileRecord] = [:]
-        var paths = Set<String>()
-        var totalBytes: Int64 = 0
         for record in manifest.files {
             try cancellationCheck()
-            try validateRelativePath(record.path)
-            guard roles[record.role] == nil else {
-                throw NativeModelPackError.invalidManifest(
-                    "duplicate file role \(record.role)"
-                )
-            }
-            guard paths.insert(record.path).inserted else {
-                throw NativeModelPackError.invalidManifest(
-                    "duplicate file path \(record.path)"
-                )
-            }
-            guard record.byteCount >= 0 else {
-                throw NativeModelPackError.invalidManifest(
-                    "negative byte count for \(record.path)"
-                )
-            }
-            guard record.sha256.count == 64,
-                  record.sha256.allSatisfy({ $0.isHexDigit })
-            else {
-                throw NativeModelPackError.invalidManifest(
-                    "invalid SHA-256 for \(record.path)"
-                )
-            }
             let fileURL = directory.appendingPathComponent(record.path)
             guard FileManager.default.fileExists(atPath: fileURL.path) else {
                 throw NativeModelPackError.missingFile(fileURL)
@@ -255,22 +230,6 @@ public enum NativeModelPackValidator {
                     actual: actualHash
                 )
             }
-            roles[record.role] = record
-            totalBytes += actualSize
-        }
-
-        for (role, path) in requiredFiles {
-            guard roles[role]?.path == path else {
-                throw NativeModelPackError.invalidManifest(
-                    "required role \(role) must reference \(path)"
-                )
-            }
-        }
-        guard totalBytes == manifest.expectedSizeBytes else {
-            throw NativeModelPackError.invalidManifest(
-                "expected size \(manifest.expectedSizeBytes) does not match "
-                    + "the \(totalBytes)-byte file set"
-            )
         }
 
         let promptsURL = directory.appendingPathComponent(
@@ -418,6 +377,64 @@ public enum NativeModelPackValidator {
         guard exclusions.isSuperset(of: requiredExclusions) else {
             throw NativeModelPackError.invalidManifest(
                 "talker, token2wav, and vision exclusions are required"
+            )
+        }
+    }
+
+    private static func validateFileTable(
+        _ manifest: NativeModelPackManifest
+    ) throws {
+        var roles: [String: NativeModelPackManifest.FileRecord] = [:]
+        var paths = Set<String>()
+        var totalBytes: Int64 = 0
+
+        for record in manifest.files {
+            try validateRelativePath(record.path)
+            guard roles[record.role] == nil else {
+                throw NativeModelPackError.invalidManifest(
+                    "duplicate file role \(record.role)"
+                )
+            }
+            guard paths.insert(record.path).inserted else {
+                throw NativeModelPackError.invalidManifest(
+                    "duplicate file path \(record.path)"
+                )
+            }
+            guard record.byteCount >= 0 else {
+                throw NativeModelPackError.invalidManifest(
+                    "negative byte count for \(record.path)"
+                )
+            }
+            guard record.sha256.count == 64,
+                  record.sha256.allSatisfy({ $0.isHexDigit })
+            else {
+                throw NativeModelPackError.invalidManifest(
+                    "invalid SHA-256 for \(record.path)"
+                )
+            }
+            let (newTotal, overflow) = totalBytes.addingReportingOverflow(
+                record.byteCount
+            )
+            guard !overflow else {
+                throw NativeModelPackError.invalidManifest(
+                    "file byte counts overflow Int64"
+                )
+            }
+            totalBytes = newTotal
+            roles[record.role] = record
+        }
+
+        for (role, path) in requiredFiles {
+            guard roles[role]?.path == path else {
+                throw NativeModelPackError.invalidManifest(
+                    "required role \(role) must reference \(path)"
+                )
+            }
+        }
+        guard totalBytes == manifest.expectedSizeBytes else {
+            throw NativeModelPackError.invalidManifest(
+                "expected size \(manifest.expectedSizeBytes) does not match "
+                    + "the \(totalBytes)-byte file set"
             )
         }
     }

@@ -1,16 +1,23 @@
 import Foundation
 import CryptoKit
 
-public actor DownloadClient {
+public actor DownloadClient: NativeModelPackDownloading {
     public init() {}
 
-    public func huggingFaceURL(repo: String, file: String) -> URL {
+    public func huggingFaceURL(
+        repo: String,
+        revision: String = "main",
+        file: String
+    ) -> URL {
         var components = URLComponents()
         components.scheme = "https"
         components.host = "huggingface.co"
-        components.path = "/\(repo)/resolve/main/\(file)"
+        components.path = "/\(repo)/resolve/\(revision)/\(file)"
         guard let url = components.url else {
-            preconditionFailure("Invalid HuggingFace URL for repo: \(repo), file: \(file)")
+            preconditionFailure(
+                "Invalid HuggingFace URL for repo: \(repo), "
+                    + "revision: \(revision), file: \(file)"
+            )
         }
         return url
     }
@@ -20,6 +27,7 @@ public actor DownloadClient {
     /// If `expectedHash` is nil or empty, skips verification.
     public func downloadAndVerify(
         repo: String,
+        revision: String = "main",
         file: String,
         to destination: URL,
         expectedHash: String?,
@@ -27,7 +35,11 @@ public actor DownloadClient {
         onProgress: @Sendable @escaping (Double) -> Void,
         onRetry: @Sendable @escaping () -> Void
     ) async throws {
-        let source = huggingFaceURL(repo: repo, file: file)
+        let source = huggingFaceURL(
+            repo: repo,
+            revision: revision,
+            file: file
+        )
         try await downloadFile(from: source, to: destination, bearerToken: bearerToken, onProgress: onProgress)
 
         guard let hash = expectedHash, !hash.isEmpty else { return }
@@ -52,13 +64,18 @@ public actor DownloadClient {
     /// Raw download without verification. Used internally by downloadAndVerify.
     public func download(
         repo: String,
+        revision: String = "main",
         file: String,
         to destination: URL,
         bearerToken: String? = nil,
         onProgress: @Sendable @escaping (Double) -> Void
     ) async throws {
         try await downloadFile(
-            from: huggingFaceURL(repo: repo, file: file),
+            from: huggingFaceURL(
+                repo: repo,
+                revision: revision,
+                file: file
+            ),
             to: destination,
             bearerToken: bearerToken,
             onProgress: onProgress

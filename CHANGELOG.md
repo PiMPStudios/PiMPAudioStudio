@@ -8,6 +8,7 @@ All notable changes to PiMP Audio Studio are documented here.
 
 ### Added
 
+- **Native ACE annotation packs now download in-app** — the Models tab installs the captioner and transcriber from pinned public Hugging Face revisions with aggregate progress, cancellation, per-file checksum verification, full pack validation, disk-space preflight, and transactional replacement; local pack import remains available from the row overflow menu.
 - **User and developer documentation hubs are started** — added `docs/user/` with Local CLI Access, Remote GPU Training, Diagnostics and Logs, and Troubleshooting guides, plus `docs/developer/` notes for bundling Markdown help into the app for public distribution.
 - **User documentation now covers setup, training, adapters, reports, and release packaging** — added first-launch/model setup, dataset/training workflow, adapter testing, bug-report checklist, and standalone release/packaging docs so the repo has a fuller source for future in-app Help.
 - **Remote Side-Step backend plan is documented** — added a planning note for making Side-Step the first-class remote CUDA training backend while keeping local training Swift/MLX-only, including the observed 32-sample tensor-cache speedup, chunk-duration behavior, Gemini/ACE-Step captioner/Music Flamingo sidecar workflow, recipe-sweep idea, and remote worker boundaries.

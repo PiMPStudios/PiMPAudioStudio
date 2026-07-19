@@ -9,6 +9,20 @@ import Foundation
     #expect(url.absoluteString == "https://huggingface.co/ACEStep/ACE-Step-v1-5-DiT/resolve/main/model.safetensors")
 }
 
+@Test func downloadClientBuildsPinnedRevisionURL() async {
+    let client = DownloadClient()
+    let url = await client.huggingFaceURL(
+        repo: "DaRealDahoodie/native-pack",
+        revision: "0123456789abcdef",
+        file: "nested/model.safetensors"
+    )
+
+    #expect(
+        url.absoluteString
+            == "https://huggingface.co/DaRealDahoodie/native-pack/resolve/0123456789abcdef/nested/model.safetensors"
+    )
+}
+
 @Test func downloadClientVerifiesSHA256() async throws {
     let client = DownloadClient()
     let tempDir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)

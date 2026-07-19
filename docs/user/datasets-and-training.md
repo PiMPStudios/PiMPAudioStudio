@@ -70,11 +70,13 @@ All modes:
 - Store model revision, quantization, prompt/settings, elapsed time, and raw
   output paths so review edits do not erase provenance.
 
-Install locally supplied Native ACE packs under **Settings -> Models -> Dataset
-Annotation (Advanced)**. The app fully validates and transactionally imports
-each pack. Both packs use about 9.34 GB of disk; 24 GB unified memory is the
-provisional minimum and 32 GB or more is recommended. Hosted downloads are not
-offered until PiMP has a production model-pack catalog.
+Install the Native ACE packs under **Settings -> Models -> Dataset Annotation
+(Advanced)**. **Download** retrieves the pinned PiMP Audio Studio pack from
+Hugging Face, verifies every file against the pack manifest, validates the
+completed pack, and then installs it transactionally. The overflow menu keeps
+**Import Local Pack** available for offline transfers. Both packs use about
+9.34 GB of disk; 24 GB unified memory is the provisional minimum and 32 GB or
+more is recommended.
 
 ## Which Bundle To Train
 

@@ -20,6 +20,12 @@ struct ModelsSettingsView: View {
     @State private var nativeAnnotationAvailability:
         DatasetAnnotationBackendAvailability?
     @State private var isImportingNativePack = false
+    @State private var nativePackInstallProgress:
+        [DatasetAnnotationTask: NativeModelPackInstallProgress] = [:]
+    @State private var nativePackInstallTasks:
+        [DatasetAnnotationTask: Task<Void, Never>] = [:]
+    @State private var nativePackCancellationRequests:
+        Set<DatasetAnnotationTask> = []
 
     var body: some View {
         Form {
@@ -221,8 +227,9 @@ struct ModelsSettingsView: View {
     private var nativeAnnotationSection: some View {
         Section("Dataset Annotation (Advanced)") {
             Text(
-                "Optional four-bit ACE captioner and transcriber packs run "
-                    + "whole-track annotation locally with Swift and MLX. "
+                "Download optional four-bit ACE captioner and transcriber "
+                    + "packs for whole-track annotation with Swift and MLX. "
+                    + "Every hosted file is checksum-verified before install. "
                     + "Automatic enrichment falls back to the lightweight "
                     + "native backend when these packs are unavailable."
             )
@@ -249,11 +256,12 @@ struct ModelsSettingsView: View {
                 }
 
                 ForEach(availability.models, id: \.task) { model in
+                    let catalogEntry = NativeModelPackCatalog.entry(
+                        for: model.task
+                    )
                     HStack {
                         Label(
-                            model.task == .caption
-                                ? "ACE Captioner 4-bit"
-                                : "ACE Transcriber 4-bit",
+                            catalogEntry.displayName,
                             systemImage: model.isInstalled
                                 ? "checkmark.circle.fill"
                                 : "arrow.down.circle"
@@ -266,11 +274,51 @@ struct ModelsSettingsView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         if !model.isInstalled {
-                            Button("Import Pack…") {
-                                importNativeAnnotationPack(task: model.task)
+                            if let progress =
+                                nativePackInstallProgress[model.task] {
+                                nativePackProgressView(
+                                    progress,
+                                    task: model.task
+                                )
+                            } else {
+                                Button("Download") {
+                                    downloadNativeAnnotationPack(
+                                        task: model.task
+                                    )
+                                }
+                                .disabled(isNativePackOperationActive)
+
+                                Menu {
+                                    Button("Import Local Pack…") {
+                                        importNativeAnnotationPack(
+                                            task: model.task
+                                        )
+                                    }
+                                    Link(
+                                        "View on Hugging Face",
+                                        destination:
+                                            catalogEntry.modelPageURL
+                                    )
+                                } label: {
+                                    Image(systemName: "ellipsis.circle")
+                                }
+                                .menuStyle(.borderlessButton)
+                                .fixedSize()
+                                .help("Other installation options")
+                                .disabled(isNativePackOperationActive)
                             }
-                            .disabled(isImportingNativePack)
                         }
+                    }
+                    if !model.isInstalled {
+                        Text(
+                            "Hugging Face · "
+                                + formattedByteCount(
+                                    catalogEntry.expectedSizeBytes
+                                )
+                        )
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .help(catalogEntry.repositoryID)
                     }
                     if let reason = model.unavailableReason,
                        !model.isInstalled {
@@ -307,6 +355,61 @@ struct ModelsSettingsView: View {
             .font(.caption)
             .foregroundStyle(.secondary)
         }
+    }
+
+    private var isNativePackOperationActive: Bool {
+        isImportingNativePack || !nativePackInstallTasks.isEmpty
+    }
+
+    @ViewBuilder
+    private func nativePackProgressView(
+        _ progress: NativeModelPackInstallProgress,
+        task: DatasetAnnotationTask
+    ) -> some View {
+        VStack(alignment: .trailing, spacing: 2) {
+            ProgressView(value: progress.fractionCompleted)
+                .frame(width: 76)
+            Text(nativePackProgressLabel(progress))
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .help(progress.currentFile ?? nativePackProgressLabel(progress))
+
+        if progress.stage != .installing
+            && progress.stage != .complete {
+            Button {
+                cancelNativeAnnotationPackDownload(task: task)
+            } label: {
+                Image(systemName: "xmark.circle")
+            }
+            .buttonStyle(.borderless)
+            .help("Cancel download")
+            .disabled(nativePackCancellationRequests.contains(task))
+        }
+    }
+
+    private func nativePackProgressLabel(
+        _ progress: NativeModelPackInstallProgress
+    ) -> String {
+        switch progress.stage {
+        case .preparing:
+            return "Preparing…"
+        case .downloading:
+            return "Downloading \(Int(progress.fractionCompleted * 100))%"
+        case .verifying:
+            return "Verifying…"
+        case .installing:
+            return "Installing…"
+        case .complete:
+            return "Installed"
+        }
+    }
+
+    private func formattedByteCount(_ bytes: Int64) -> String {
+        ByteCountFormatter.string(
+            fromByteCount: bytes,
+            countStyle: .file
+        )
     }
 
     private var aceStepLMSection: some View {
@@ -526,6 +629,97 @@ struct ModelsSettingsView: View {
             }
             isImportingNativePack = false
         }
+    }
+
+    private func downloadNativeAnnotationPack(
+        task: DatasetAnnotationTask
+    ) {
+        guard nativePackInstallTasks[task] == nil,
+              !isNativePackOperationActive
+        else {
+            return
+        }
+
+        nativePackInstallProgress[task] = NativeModelPackInstallProgress(
+            stage: .preparing,
+            fractionCompleted: 0
+        )
+        nativePackCancellationRequests.remove(task)
+        let operation = Task { @MainActor in
+            let installer = NativeModelPackInstaller(
+                modelsDirectory: AppStorageLocations.modelsDirectory
+            )
+            do {
+                _ = try await installer.install(task: task) { progress in
+                    Task { @MainActor in
+                        updateNativePackProgress(
+                            progress,
+                            task: task
+                        )
+                    }
+                }
+                refreshModels()
+            } catch {
+                if !isNativePackCancellation(error) {
+                    errorMessage = error.localizedDescription
+                }
+            }
+            nativePackInstallProgress[task] = nil
+            nativePackCancellationRequests.remove(task)
+            nativePackInstallTasks[task] = nil
+        }
+        nativePackInstallTasks[task] = operation
+    }
+
+    private func updateNativePackProgress(
+        _ progress: NativeModelPackInstallProgress,
+        task: DatasetAnnotationTask
+    ) {
+        guard nativePackInstallTasks[task] != nil else { return }
+        if let current = nativePackInstallProgress[task] {
+            let currentRank = nativePackStageRank(current.stage)
+            let newRank = nativePackStageRank(progress.stage)
+            guard newRank > currentRank
+                    || (
+                        newRank == currentRank
+                            && progress.fractionCompleted
+                                >= current.fractionCompleted
+                    )
+            else {
+                return
+            }
+        }
+        nativePackInstallProgress[task] = progress
+    }
+
+    private func nativePackStageRank(
+        _ stage: NativeModelPackInstallStage
+    ) -> Int {
+        switch stage {
+        case .preparing: return 0
+        case .downloading: return 1
+        case .verifying: return 2
+        case .installing: return 3
+        case .complete: return 4
+        }
+    }
+
+    private func cancelNativeAnnotationPackDownload(
+        task: DatasetAnnotationTask
+    ) {
+        nativePackCancellationRequests.insert(task)
+        nativePackInstallTasks[task]?.cancel()
+    }
+
+    private func isNativePackCancellation(_ error: Error) -> Bool {
+        if error is CancellationError {
+            return true
+        }
+        if let urlError = error as? URLError,
+           urlError.code == .cancelled {
+            return true
+        }
+        return Task.isCancelled
     }
 
     private func setActive(_ spec: ModelSpec) {
