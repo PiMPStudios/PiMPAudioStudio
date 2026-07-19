@@ -86,7 +86,7 @@ struct LocalFilesImportSheet: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Build Dataset from Local Files")
                     .font(.headline)
-                Text("Slice local audio into a packaged training dataset.")
+                Text("Package complete tracks or extract clips for training.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -182,7 +182,7 @@ struct LocalFilesImportSheet: View {
             TextField("dark blues, slow tempo, minor key, atmospheric guitar", text: $styleTemplate)
                 .textFieldStyle(.roundedBorder)
                 .disabled(isBusy)
-            Text("Applied to every clip as its training caption. Leave blank for filename placeholders that Enrich Dataset can replace with native metadata captions.")
+            Text("Applied to every training item as its caption. Leave blank for filename placeholders that Enrich Dataset can replace with native metadata captions.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -195,29 +195,11 @@ struct LocalFilesImportSheet: View {
                 .fontWeight(.semibold)
 
             VStack(spacing: 6) {
-                LabeledContent("Clip Length") {
-                    HStack(spacing: 8) {
-                        Slider(value: $config.clipLength, in: 15...60, step: 5)
-                            .frame(maxWidth: 160)
-                            .disabled(isBusy)
-                        Text("\(Int(config.clipLength))s")
-                            .monospacedDigit()
-                            .frame(width: 34, alignment: .trailing)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                LabeledContent("Clips per File") {
-                        Stepper("\(config.clipsPerTrack)",
-                                value: $config.clipsPerTrack,
-                                in: 1...20)
-                        .disabled(isBusy)
-                        .frame(maxWidth: 130)
-                }
                 HStack(spacing: 10) {
-                    Text("Sampling")
+                    Text("Source Mode")
                         .frame(width: 130, alignment: .trailing)
-                    Picker("Sampling", selection: $config.samplingMode) {
-                        ForEach(LocalDatasetClipSamplingMode.allCases) { mode in
+                    Picker("Source Mode", selection: $config.buildMode) {
+                        ForEach(LocalDatasetBuildMode.allCases) { mode in
                             Text(mode.displayName).tag(mode)
                         }
                     }
@@ -226,46 +208,84 @@ struct LocalFilesImportSheet: View {
                     .disabled(isBusy)
                     .frame(width: 300)
                 }
-                Text(config.samplingMode.helpText)
+                Text(config.buildMode.helpText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                if config.samplingMode == .randomSeeded {
-                    LabeledContent("Random Seed") {
-                        TextField("1337", value: $config.samplingSeed, format: .number)
-                            .multilineTextAlignment(.trailing)
-                            .monospacedDigit()
-                            .disabled(isBusy)
-                            .frame(width: 130)
-                            .onChange(of: config.samplingSeed) { _, newValue in
-                                config.samplingSeed = min(max(newValue, 0), 999_999)
-                            }
+
+                if config.buildMode == .clipExtraction {
+                    LabeledContent("Clip Length") {
+                        HStack(spacing: 8) {
+                            Slider(value: $config.clipLength, in: 15...60, step: 5)
+                                .frame(maxWidth: 160)
+                                .disabled(isBusy)
+                            Text("\(Int(config.clipLength))s")
+                                .monospacedDigit()
+                                .frame(width: 34, alignment: .trailing)
+                                .foregroundStyle(.secondary)
+                        }
                     }
-                }
-                LabeledContent("Max Total Clips") {
+                    LabeledContent("Clips per File") {
+                        Stepper("\(config.clipsPerTrack)",
+                                value: $config.clipsPerTrack,
+                                in: 1...20)
+                            .disabled(isBusy)
+                            .frame(maxWidth: 130)
+                    }
+                    HStack(spacing: 10) {
+                        Text("Sampling")
+                            .frame(width: 130, alignment: .trailing)
+                        Picker("Sampling", selection: $config.samplingMode) {
+                            ForEach(LocalDatasetClipSamplingMode.allCases) { mode in
+                                Text(mode.displayName).tag(mode)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.segmented)
+                        .disabled(isBusy)
+                        .frame(width: 300)
+                    }
+                    Text(config.samplingMode.helpText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if config.samplingMode == .randomSeeded {
+                        LabeledContent("Random Seed") {
+                            TextField("1337", value: $config.samplingSeed, format: .number)
+                                .multilineTextAlignment(.trailing)
+                                .monospacedDigit()
+                                .disabled(isBusy)
+                                .frame(width: 130)
+                                .onChange(of: config.samplingSeed) { _, newValue in
+                                    config.samplingSeed = min(max(newValue, 0), 999_999)
+                                }
+                        }
+                    }
+                    LabeledContent("Max Total Clips") {
                         Stepper("\(config.maxTotalClips)",
                                 value: $config.maxTotalClips,
                                 in: 5...LocalFilesDatasetConfig.maximumTotalClips,
                                 step: 5)
+                            .disabled(isBusy)
+                            .frame(maxWidth: 130)
+                    }
+                    LabeledContent("Clip Format") {
+                        Picker("Clip Format", selection: $config.clipFormat) {
+                            ForEach(LocalDatasetClipFormat.allCases) { format in
+                                Text(format.displayName).tag(format)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.segmented)
                         .disabled(isBusy)
-                        .frame(maxWidth: 130)
+                        .frame(maxWidth: 160)
+                    }
+                    Text(config.clipFormat.helpText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 datasetCoverageSummary
-                LabeledContent("Clip Format") {
-                    Picker("Clip Format", selection: $config.clipFormat) {
-                        ForEach(LocalDatasetClipFormat.allCases) { format in
-                            Text(format.displayName).tag(format)
-                        }
-                    }
-                    .labelsHidden()
-                    .pickerStyle(.segmented)
-                    .disabled(isBusy)
-                    .frame(maxWidth: 160)
-                }
-                Text(config.clipFormat.helpText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding(10)
             .background(.quaternary.opacity(0.3))
@@ -311,6 +331,12 @@ struct LocalFilesImportSheet: View {
         let fileCount = selectedFiles.count
         guard fileCount > 0 else {
             return ("Add source files to preview dataset coverage.", false)
+        }
+        if config.buildMode == .wholeTracks {
+            return (
+                "Will preserve all \(fileCount) complete source track\(fileCount == 1 ? "" : "s"). Full mixes are selected by default; stems remain opt-in.",
+                false
+            )
         }
 
         let requestedClips = fileCount * config.clipsPerTrack
@@ -361,7 +387,10 @@ struct LocalFilesImportSheet: View {
     private var progressLabel: String {
         switch builder.phase {
         case .chunking(let idx, let total, _):
-            return idx == 0 ? "Preparing files..." : "Chunking \(idx) of \(total)"
+            if idx == 0 { return "Preparing files..." }
+            return config.buildMode == .wholeTracks
+                ? "Preserving track \(idx) of \(total)"
+                : "Chunking \(idx) of \(total)"
         default:
             return ""
         }
@@ -390,7 +419,11 @@ struct LocalFilesImportSheet: View {
             HStack(spacing: 8) {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundStyle(.green)
-                Text("\(editableClips.count) clips packaged for training")
+                Text(
+                    config.buildMode == .wholeTracks
+                        ? "\(editableClips.count) whole tracks packaged for training"
+                        : "\(editableClips.count) clips packaged for training"
+                )
                     .font(.callout)
                     .fontWeight(.medium)
                 Spacer()

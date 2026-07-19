@@ -460,7 +460,7 @@ private extension JSONDecoder {
     let files = try TrainingDatasetImporter.importFiles(from: configURL)
 
     #expect(files.count == 1)
-    #expect(files[0].url.path == clipURL.path)
+    #expect(files[0].url.standardizedFileURL.path == clipURL.standardizedFileURL.path)
     #expect(files[0].description == "smoky blues full mix")
     #expect(files[0].lyrics.isEmpty)
 }
@@ -507,7 +507,7 @@ private extension JSONDecoder {
     let files = try TrainingDatasetImporter.importFiles(from: configURL)
 
     #expect(files.count == 1)
-    #expect(files[0].url.path == vocalURL.path)
+    #expect(files[0].url.standardizedFileURL.path == vocalURL.standardizedFileURL.path)
     #expect(files[0].description == "dark blues vocal stem")
     #expect(files[0].lyrics == "I kept singing in the dark")
 }
@@ -526,7 +526,7 @@ private extension JSONDecoder {
         outputDirectory: datasetDir,
         clips: [TrainingImportedFile(url: clipURL, description: "old caption")],
         sourceFiles: [clipURL],
-        config: LocalFilesDatasetConfig(),
+        config: LocalFilesDatasetConfig(buildMode: .clipExtraction),
         styleTemplate: "old caption"
     )
 
@@ -570,10 +570,12 @@ private extension JSONDecoder {
     #expect(reloaded.clips[0].timeSignature == "4/4")
     #expect(reloaded.isTrainingReady)
 
-    let reviewedManifestData = try Data(contentsOf: datasetDir.appendingPathComponent("dataset_manifest.json"))
-    let reviewedManifest = try JSONSerialization.jsonObject(with: reviewedManifestData) as? [String: Any]
-    let reviewedAnalysis = reviewedManifest?["analysis"] as? [String: Any]
-    #expect(reviewedAnalysis?["key_status"] as? String == "available_from_metadata")
+    let reviewedPackage = try TrainingDatasetPackageEditor.loadPackageV2(at: datasetDir)
+    let reviewedAsset = try #require(reviewedPackage.assets.first { $0.role == .clip })
+    #expect(reviewedAsset.annotation?.approved == true)
+    #expect(reviewedAsset.annotation?.reviewStatus == "approved")
+    #expect(reviewedAsset.annotation?.caption?.text == "smoky minor key blues trio")
+    #expect(reviewedAsset.annotation?.lyrics?.text == "I found the groove\nafter midnight\nstill moving")
 
     let backupRoot = datasetDir.appendingPathComponent("review_backups", isDirectory: true)
     let backups = try FileManager.default.contentsOfDirectory(
@@ -625,28 +627,39 @@ private extension JSONDecoder {
     let clipURL = clipsDir.appendingPathComponent("f001_clip_001.wav")
     try silentWAVData().write(to: sourceURL)
     try silentWAVData().write(to: clipURL)
-    try TrainingDatasetPackageWriter.writeLocalPackage(
-        outputDirectory: datasetDir,
-        clips: [
-            TrainingImportedFile(
-                url: clipURL,
-                description: "legacy dark blues",
-                sourceClip: TrainingSourceClipMetadata(
-                    fileName: "source.wav",
-                    startSeconds: 12,
-                    frameCount: 2_205,
-                    sampleRate: 22_050
-                )
-            ),
-        ],
-        sourceFiles: [sourceURL],
-        config: LocalFilesDatasetConfig(clipLength: 30, clipsPerTrack: 1, maxTotalClips: 1),
-        styleTemplate: "legacy dark blues",
-        createdAt: Date(timeIntervalSince1970: 0)
-    )
 
     let manifestURL = datasetDir.appendingPathComponent(TrainingDatasetPackageWriter.datasetManifestFileName)
     let captionsURL = datasetDir.appendingPathComponent(TrainingDatasetPackageWriter.captionsFileName)
+    try Data("""
+    {
+      "pimp_audio_dataset_version": "1.0",
+      "name": "legacy-package",
+      "created_at": "1970-01-01T00:00:00Z",
+      "clip_length_seconds": 30,
+      "source": {
+        "files": [
+          { "file_name": "source.wav", "duration_seconds": 42 }
+        ]
+      }
+    }
+    """.utf8).write(to: manifestURL)
+    try Data("""
+    [
+      {
+        "id": "f001_clip_001",
+        "file": "clips/f001_clip_001.wav",
+        "caption": "legacy dark blues",
+        "source_file_name": "source.wav",
+        "source_start_seconds": 12,
+        "audio": {
+          "format": "wav",
+          "duration_seconds": 30,
+          "sample_rate": 22050,
+          "channels": 1
+        }
+      }
+    ]
+    """.utf8).write(to: captionsURL)
     let originalManifest = try Data(contentsOf: manifestURL)
     let originalCaptions = try Data(contentsOf: captionsURL)
 
@@ -1063,28 +1076,23 @@ private extension JSONDecoder {
     #expect(jobArchiveEntries.contains("\(archiveRoot)README_REMOTE_GPU.md"))
     #expect(jobArchiveEntries.contains("\(archiveRoot)run_remote_training.sh"))
 
-    let manifestData = try Data(contentsOf: datasetDir.appendingPathComponent("dataset_manifest.json"))
-    let manifestJSON = try JSONSerialization.jsonObject(with: manifestData) as? [String: Any]
-    #expect(manifestJSON?["pimp_audio_dataset_version"] as? String == "1.0")
-    #expect(manifestJSON?["anvil_dataset_version"] == nil)
-    let audioJSON = manifestJSON?["audio"] as? [String: Any]
-    #expect(audioJSON?["metadata_status"] as? String == "audio_properties_unavailable")
-    #expect(audioJSON?["format"] as? String == "m4a")
-    let annotationJSON = manifestJSON?["annotation"] as? [String: Any]
-    #expect(annotationJSON?["schema_version"] as? String == "1.0")
-    let trainingJSON = manifestJSON?["training"] as? [String: Any]
-    #expect(trainingJSON?["preprocess_cache"] as? String == "preprocess_cache.json")
-
-    let sourceJSON = manifestJSON?["source"] as? [String: Any]
-    let sourceFilesJSON = sourceJSON?["files"] as? [[String: Any]]
-    #expect(sourceFilesJSON?.first?["file_name"] as? String == "source.wav")
-    #expect((sourceFilesJSON?.first?["byte_size"] as? NSNumber)?.intValue == 6)
-
-    let clipsJSON = manifestJSON?["clips"] as? [[String: Any]]
-    let clipAudioJSON = clipsJSON?.first?["audio"] as? [String: Any]
-    #expect(clipAudioJSON?["format"] as? String == "m4a")
-    #expect(clipAudioJSON?["metadata_status"] as? String == "unreadable_audio_header")
-    #expect((clipAudioJSON?["byte_size"] as? NSNumber)?.intValue == 4)
+    let package = try TrainingDatasetPackageEditor.loadPackageV2(at: datasetDir)
+    #expect(package.pimpAudioDatasetVersion == "2.0")
+    #expect(package.sourceTracks.count == 1)
+    #expect(package.sourceTracks[0].originalFileName == "source.wav")
+    #expect(package.sourceTracks[0].sourceFile?.byteSize == 6)
+    #expect(package.sourceTracks[0].sourceFile?.path.hasPrefix("sources/") == true)
+    let fullMix = try #require(package.assets.first { $0.role == .fullMix })
+    let clip = try #require(package.assets.first { $0.role == .clip })
+    #expect(clip.file.format == "m4a")
+    #expect(clip.file.byteSize == 4)
+    #expect(clip.derivedFrom == fullMix.id)
+    #expect(package.trainingPlans[0].selections.first {
+        $0.assetID == clip.id
+    }?.includeInTraining == true)
+    #expect(package.trainingPlans[0].selections.first {
+        $0.assetID == fullMix.id
+    }?.includeInTraining == false)
 }
 
 @Test func localDatasetPackageWriterReadsAudioHeadersWhenAvailable() throws {
@@ -1108,23 +1116,18 @@ private extension JSONDecoder {
         createdAt: Date(timeIntervalSince1970: 0)
     )
 
-    let manifestData = try Data(contentsOf: datasetDir.appendingPathComponent("dataset_manifest.json"))
-    let manifestJSON = try JSONSerialization.jsonObject(with: manifestData) as? [String: Any]
-    let audioJSON = manifestJSON?["audio"] as? [String: Any]
-    let clipsJSON = manifestJSON?["clips"] as? [[String: Any]]
-    let clipAudioJSON = clipsJSON?.first?["audio"] as? [String: Any]
+    let package = try TrainingDatasetPackageEditor.loadPackageV2(at: datasetDir)
+    let sourceFile = try #require(package.sourceTracks.first?.sourceFile)
+    let clipAsset = try #require(package.assets.first { $0.role == .clip })
 
-    #expect(audioJSON?["metadata_status"] as? String == "audio_properties_collected")
-    #expect(audioJSON?["format"] as? String == "wav")
-    #expect((audioJSON?["sample_rate"] as? NSNumber)?.intValue == 22_050)
-    #expect((audioJSON?["channels"] as? NSNumber)?.intValue == 1)
-    #expect(clipAudioJSON?["metadata_status"] as? String == "ok")
-    #expect((clipAudioJSON?["sample_rate"] as? NSNumber)?.intValue == 22_050)
-    #expect((clipAudioJSON?["channels"] as? NSNumber)?.intValue == 1)
-    #expect(clipsJSON?.first?["caption_source"] as? String == "filename")
-    let annotation = clipsJSON?.first?["annotation"] as? [String: Any]
-    #expect(annotation?["caption_source"] as? String == "filename")
-    let duration = (clipAudioJSON?["duration_seconds"] as? NSNumber)?.doubleValue ?? 0
+    #expect(sourceFile.format == "wav")
+    #expect(sourceFile.sampleRate == 22_050)
+    #expect(sourceFile.channels == 1)
+    #expect(clipAsset.file.format == "wav")
+    #expect(clipAsset.file.sampleRate == 22_050)
+    #expect(clipAsset.file.channels == 1)
+    #expect(clipAsset.annotation?.caption?.source == "filename")
+    let duration = clipAsset.file.durationSeconds ?? 0
     #expect(abs(duration - 0.1) < 0.001)
 }
 
@@ -1325,32 +1328,26 @@ private extension JSONDecoder {
         checkedAt: Date(timeIntervalSince1970: 1)
     )
 
-    let manifestData = try Data(contentsOf: datasetDir.appendingPathComponent("dataset_manifest.json"))
-    let manifest = try JSONSerialization.jsonObject(with: manifestData) as? [String: Any]
-    let separation = manifest?["separation"] as? [String: Any]
-    #expect(separation?["status"] as? String == "complete")
-    let availableAssets = separation?["available_assets"] as? [String] ?? []
-    #expect(availableAssets.contains("vocals"))
-    #expect(availableAssets.contains("instrumental"))
-    let transcription = manifest?["transcription"] as? [String: Any]
-    #expect(transcription?["status"] as? String == "complete")
-    let models = transcription?["models"] as? [String] ?? []
-    #expect(models.contains("fake-qwen3-asr"))
-    let analysis = manifest?["analysis"] as? [String: Any]
-    #expect(analysis?["bpm_status"] as? String == "estimated_from_stems")
-    #expect(analysis?["key_status"] as? String == "available_from_metadata")
-    let enrichment = manifest?["enrichment"] as? [String: Any]
-    #expect(enrichment?["status"] as? String == "complete")
-    #expect((enrichment?["separated_clip_count"] as? NSNumber)?.intValue == 1)
-    let training = manifest?["training"] as? [String: Any]
-    #expect(training?["vocal_bundle"] as? String == "training_bundle_vocals.json")
-    #expect(training?["instrumental_bundle"] as? String == "training_bundle_instrumental.json")
-    #expect(training?["preprocess_cache"] as? String == "preprocess_cache.json")
-    let annotation = manifest?["annotation"] as? [String: Any]
-    #expect(annotation?["status"] as? String == "manual_review_required")
-    let manifestClips = manifest?["clips"] as? [[String: Any]]
-    #expect(manifestClips?.first?["caption"] as? String == "dark blues")
-    #expect(manifestClips?.first?["lyrics"] as? String == "I keep singing low")
+    let package = try TrainingDatasetPackageEditor.loadPackageV2(at: datasetDir)
+    #expect(package.pimpAudioDatasetVersion == "2.0")
+    #expect(package.sourceTracks.count == 1)
+    #expect(package.assets.count == 4)
+    let clipAsset = try #require(package.assets.first { $0.role == .clip })
+    let vocalAsset = try #require(package.assets.first { $0.role == .vocals })
+    let instrumentalAsset = try #require(package.assets.first { $0.role == .instrumental })
+    #expect(vocalAsset.derivedFrom == clipAsset.id)
+    #expect(instrumentalAsset.derivedFrom == clipAsset.id)
+    #expect(vocalAsset.derivation?.kind == .stemSeparation)
+    #expect(vocalAsset.derivation?.backendID == "demucs-mlx")
+    #expect(vocalAsset.annotation?.caption?.text == "dark blues")
+    #expect(vocalAsset.annotation?.lyrics?.text == "I keep singing low")
+    #expect(instrumentalAsset.annotation?.lyrics == nil)
+    #expect(package.trainingPlans[0].selections.first {
+        $0.assetID == vocalAsset.id
+    }?.includeInTraining == false)
+    #expect(package.trainingPlans[0].selections.first {
+        $0.assetID == instrumentalAsset.id
+    }?.includeInTraining == false)
 
     let preprocessData = try Data(contentsOf: datasetDir.appendingPathComponent("preprocess_cache.json"))
     let preprocess = try JSONSerialization.jsonObject(with: preprocessData) as? [String: Any]
@@ -2103,7 +2100,7 @@ private extension JSONDecoder {
     #expect(instrumentalImported[0].lyrics.isEmpty)
 }
 
-@Test @MainActor func localFilesDatasetBuilderWritesWAVClipsByDefault() async throws {
+@Test @MainActor func localFilesDatasetBuilderWritesWAVClipsInClipExtractionMode() async throws {
     let tempRoot = FileManager.default.temporaryDirectory
         .appendingPathComponent(UUID().uuidString, isDirectory: true)
     try FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)
@@ -2135,24 +2132,209 @@ private extension JSONDecoder {
     #expect(imported[0].sourceClip?.startFrame == 1_102)
     #expect(abs((imported[0].sourceClip?.startSeconds ?? 0) - (Double(1_102) / 22_050.0)) < 0.001)
 
-    let manifestData = try Data(contentsOf: result.outputDirectory.appendingPathComponent("dataset_manifest.json"))
-    let manifestJSON = try JSONSerialization.jsonObject(with: manifestData) as? [String: Any]
-    let audioJSON = manifestJSON?["audio"] as? [String: Any]
-    #expect(audioJSON?["format"] as? String == "wav")
-    #expect(audioJSON?["metadata_status"] as? String == "audio_properties_collected")
-    let samplingJSON = manifestJSON?["clip_sampling"] as? [String: Any]
-    #expect(samplingJSON?["mode"] as? String == LocalDatasetClipSamplingMode.evenlySpread.rawValue)
-    let manifestClips = manifestJSON?["clips"] as? [[String: Any]]
-    let manifestFirstClip = manifestClips?.first
-    #expect((manifestFirstClip?["source_start_frame"] as? NSNumber)?.int64Value == 1_102)
-    #expect((manifestFirstClip?["source_start_seconds"] as? NSNumber)?.doubleValue ?? 0 > 0)
-    #expect((manifestFirstClip?["source"] as? [String: Any])?["file_name"] as? String == "source.wav")
+    let package = try TrainingDatasetPackageEditor.loadPackageV2(at: result.outputDirectory)
+    #expect(package.pimpAudioDatasetVersion == "2.0")
+    #expect(package.sourceTracks.count == 1)
+    #expect(package.sourceTracks[0].sourceFile?.path.hasPrefix("sources/") == true)
+    #expect(package.assets.filter { $0.role == .fullMix }.count == 1)
+    let clipAssets = package.assets.filter { $0.role == .clip }
+    #expect(clipAssets.count == 2)
+    #expect(clipAssets[0].file.format == "wav")
+    #expect(clipAssets[0].sourceRange.startSeconds > 0)
+    #expect(clipAssets[0].derivation?.kind == .clipExtraction)
+    #expect(
+        clipAssets[0].derivation?.details["sampling_mode"]
+            == LocalDatasetClipSamplingMode.evenlySpread.rawValue
+    )
+    let fullMixAsset = try #require(package.assets.first { $0.role == .fullMix })
+    #expect(clipAssets.allSatisfy { $0.derivedFrom == fullMixAsset.id })
+    let selectedIDs = package.trainingPlans[0].selections
+        .filter(\.includeInTraining)
+        .map(\.assetID)
+    #expect(Set(selectedIDs) == Set(clipAssets.map(\.id)))
 
     let captionsData = try Data(contentsOf: result.outputDirectory.appendingPathComponent("captions.json"))
     let captionsJSON = try JSONSerialization.jsonObject(with: captionsData) as? [[String: Any]]
     let firstCaption = captionsJSON?.first
     #expect((firstCaption?["source_start_frame"] as? NSNumber)?.int64Value == 1_102)
     #expect((firstCaption?["source"] as? [String: Any])?["file_name"] as? String == "source.wav")
+}
+
+@Test @MainActor func localFilesDatasetBuilderPreservesWholeTracksByDefault() async throws {
+    let tempRoot = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+    let sourceURL = tempRoot.appendingPathComponent("complete-song.wav")
+    let frameCount = 241 * 8_000
+    let sourceData = silentWAVData(
+        sampleRate: 8_000,
+        channels: 1,
+        frameCount: frameCount
+    )
+    try sourceData.write(to: sourceURL)
+
+    let result = try await LocalFilesDatasetBuilder.run(
+        sourceFiles: [sourceURL],
+        config: LocalFilesDatasetConfig(),
+        outputBase: tempRoot,
+        styleTemplate: "dark blues, complete song",
+        onPhase: { _ in }
+    )
+
+    #expect(result.clipCount == 1)
+    #expect(result.clips[0].url.path.contains("/sources/"))
+    #expect(try Data(contentsOf: result.clips[0].url) == sourceData)
+    #expect(!FileManager.default.fileExists(
+        atPath: result.outputDirectory.appendingPathComponent("clips").path
+    ))
+
+    let package = try TrainingDatasetPackageEditor.loadPackageV2(at: result.outputDirectory)
+    #expect(package.pimpAudioDatasetVersion == "2.0")
+    #expect(package.sourceTracks.count == 1)
+    #expect(package.sourceTracks[0].originalFileName == "complete-song.wav")
+    #expect(package.sourceTracks[0].sourceFile?.path.hasPrefix("sources/") == true)
+    #expect(package.assets.count == 1)
+    #expect(package.assets[0].role == .fullMix)
+    #expect(package.assets[0].sourceRange.endSeconds == 241)
+    #expect(package.trainingPlans.count == 1)
+    #expect(package.trainingPlans[0].backendID == "ace-step-training-v2")
+    #expect(package.trainingPlans[0].selections[0].includeInTraining)
+    #expect(package.trainingPlans[0].selections[0].rangePolicy == .backendLimit)
+    #expect(package.trainingPlans[0].selections[0].trainingRange.endSeconds == 240)
+
+    let bundleURL = result.outputDirectory.appendingPathComponent("training_bundle_full_mix.json")
+    let imported = try TrainingDatasetImporter.importFiles(from: bundleURL)
+    #expect(imported.count == 1)
+    #expect(imported[0].url == result.clips[0].url)
+
+    let remoteData = try Data(
+        contentsOf: result.outputDirectory.appendingPathComponent("remote_training_package.json")
+    )
+    let remote = try JSONSerialization.jsonObject(with: remoteData) as? [String: Any]
+    let copyRules = remote?["copy_rules"] as? [String: Any]
+    let includeRules = copyRules?["include"] as? [String] ?? []
+    #expect(includeRules.contains("sources/**"))
+    #expect(!includeRules.contains("clips/**"))
+    let bundles = remote?["bundles"] as? [[String: Any]] ?? []
+    let fullMix = bundles.first { $0["name"] as? String == "full_mix" }
+    #expect(fullMix?["training_lyrics_source"] as? String == "per_asset_annotation")
+    #expect(fullMix?["training_lyrics"] == nil)
+}
+
+@Test func wholeTrackReviewAndStemRefreshPreservePackageV2Relationships() throws {
+    let datasetDir = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(at: datasetDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: datasetDir) }
+
+    let sourceURL = datasetDir.appendingPathComponent("source-input.wav")
+    try silentWAVData(sampleRate: 22_050, channels: 1, frameCount: 4_410).write(to: sourceURL)
+    _ = try TrainingDatasetPackageWriter.writeLocalPackage(
+        outputDirectory: datasetDir,
+        clips: [
+            TrainingImportedFile(
+                url: sourceURL,
+                description: "whole-track caption"
+            ),
+        ],
+        sourceFiles: [sourceURL],
+        config: LocalFilesDatasetConfig(),
+        styleTemplate: "whole-track caption",
+        createdAt: Date(timeIntervalSince1970: 0)
+    )
+
+    var document = try TrainingDatasetPackageEditor.loadPackage(at: datasetDir)
+    document.clips[0].caption = "reviewed whole-track caption"
+    document.clips[0].lyrics = "I keep moving through the night"
+    document.clips[0].lyricsSource = "manual"
+    document.clips[0].isApproved = true
+    try TrainingDatasetPackageEditor.save(document)
+
+    let reviewedPackage = try TrainingDatasetPackageEditor.loadPackageV2(at: datasetDir)
+    #expect(reviewedPackage.assets[0].annotation?.caption?.text == "reviewed whole-track caption")
+    #expect(reviewedPackage.assets[0].annotation?.lyrics?.text == "I keep moving through the night")
+    #expect(reviewedPackage.assets[0].annotation?.approved == true)
+
+    let imported = try TrainingDatasetImporter.importFiles(
+        from: datasetDir.appendingPathComponent("training_bundle_full_mix.json")
+    )
+    #expect(imported[0].lyrics == "I keep moving through the night")
+
+    let stemsDirectory = datasetDir.appendingPathComponent("stems/track", isDirectory: true)
+    try FileManager.default.createDirectory(at: stemsDirectory, withIntermediateDirectories: true)
+    let vocalsURL = stemsDirectory.appendingPathComponent("vocals.wav")
+    let instrumentalURL = stemsDirectory.appendingPathComponent("instrumental.wav")
+    try silentWAVData().write(to: vocalsURL)
+    try silentWAVData().write(to: instrumentalURL)
+
+    let captionsURL = datasetDir.appendingPathComponent("captions.json")
+    let captionsData = try Data(contentsOf: captionsURL)
+    var captions = try #require(
+        JSONSerialization.jsonObject(with: captionsData) as? [[String: Any]]
+    )
+    var first = captions[0]
+    var assets = first["assets"] as? [String: Any] ?? [:]
+    assets["vocals"] = "stems/track/vocals.wav"
+    assets["instrumental"] = "stems/track/instrumental.wav"
+    first["assets"] = assets
+    first["separation"] = [
+        "backend": "demucs-mlx",
+        "model": "htdemucs",
+    ]
+    captions[0] = first
+    try JSONSerialization.data(
+        withJSONObject: captions,
+        options: [.prettyPrinted, .sortedKeys]
+    ).write(to: captionsURL, options: .atomic)
+    try TrainingDatasetPackageWriter.refreshTrainingBundles(at: datasetDir)
+
+    let stemPackage = try TrainingDatasetPackageEditor.loadPackageV2(at: datasetDir)
+    #expect(stemPackage.assets.count == 3)
+    let fullMixAsset = try #require(stemPackage.assets.first { $0.role == .fullMix })
+    let vocalAsset = try #require(stemPackage.assets.first { $0.role == .vocals })
+    let instrumentalAsset = try #require(stemPackage.assets.first { $0.role == .instrumental })
+    #expect(vocalAsset.derivedFrom == fullMixAsset.id)
+    #expect(instrumentalAsset.derivedFrom == fullMixAsset.id)
+    #expect(vocalAsset.sourceTrackID == fullMixAsset.sourceTrackID)
+    #expect(instrumentalAsset.sourceTrackID == fullMixAsset.sourceTrackID)
+    #expect(instrumentalAsset.annotation?.lyrics == nil)
+    #expect(stemPackage.trainingPlans[0].selections.filter(\.includeInTraining).map(\.assetID) == [
+        fullMixAsset.id,
+    ])
+
+    var stemReview = try TrainingDatasetPackageEditor.loadPackage(at: datasetDir)
+    #expect(stemReview.clips.count == 3)
+    #expect(stemReview.includedCount == 1)
+    #expect(Set(stemReview.clips.map(\.role)) == Set(["full_mix", "vocals", "instrumental"]))
+    let vocalReviewIndex = try #require(stemReview.clips.firstIndex { $0.assetID == vocalAsset.id })
+    #expect(!stemReview.clips[vocalReviewIndex].includeInTraining)
+    #expect(
+        stemReview.clips[vocalReviewIndex].derivedFromAssetID == fullMixAsset.id
+    )
+    stemReview.clips[vocalReviewIndex].includeInTraining = true
+    stemReview.clips[vocalReviewIndex].isApproved = true
+    stemReview.clips[vocalReviewIndex].reviewStatus = "approved"
+    #expect(stemReview.multipliedSourceTrackCount == 1)
+    try TrainingDatasetPackageEditor.save(stemReview)
+
+    let selectedStemPackage = try TrainingDatasetPackageEditor.loadPackageV2(at: datasetDir)
+    let selectedIDs = Set(
+        selectedStemPackage.trainingPlans[0].selections
+            .filter(\.includeInTraining)
+            .map(\.assetID)
+    )
+    #expect(selectedIDs == Set([fullMixAsset.id, vocalAsset.id]))
+    #expect(
+        selectedStemPackage.assets.first { $0.id == vocalAsset.id }?.annotation?.approved == true
+    )
+    let selectedBundleData = try Data(
+        contentsOf: datasetDir.appendingPathComponent("training_bundle_full_mix.json")
+    )
+    let selectedBundle = try JSONSerialization.jsonObject(with: selectedBundleData) as? [String: Any]
+    #expect(Set(selectedBundle?["include"] as? [String] ?? []) == Set(["full_mix", "vocals"]))
+    #expect((selectedBundle?["clips"] as? [[String: Any]])?.count == 2)
 }
 
 @Test @MainActor func localFilesDatasetBuilderUsesCustomDatasetName() async throws {
@@ -2930,7 +3112,9 @@ private func traceForComparison(
     let payload = facade.listTrainingDatasets(arguments: ["limit": 50])
     let datasets = payload["datasets"] as? [[String: Any]] ?? []
     let dataset = datasets.first {
-        $0["path"] as? String == packageDirectory.path(percentEncoded: false)
+        guard let path = $0["path"] as? String else { return false }
+        return URL(fileURLWithPath: path).standardizedFileURL.path
+            == packageDirectory.standardizedFileURL.path
     }
 
     #expect(dataset?["name"] as? String == "MCP Dataset")

@@ -318,6 +318,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
             records: records,
             role: .instrumental
         )
+        try TrainingDatasetPackageWriter.refreshTrainingBundles(at: datasetDirectory)
         try TrainingDatasetPackageWriter.refreshPreprocessCacheManifest(at: datasetDirectory)
         return (vocalCount, instrumentalCount)
     }
@@ -803,6 +804,12 @@ final class LocalDatasetEnrichmentService: ObservableObject {
     ) throws {
         let manifestURL = datasetDirectory.appendingPathComponent(TrainingDatasetPackageWriter.datasetManifestFileName)
         var manifest = readJSONObject(from: manifestURL) ?? [:]
+        if stringValue(manifest["pimp_audio_dataset_version"]) == DatasetPackageV2.currentVersion {
+            _ = try TrainingDatasetPackageWriter.refreshPackageV2FromCaptions(
+                at: datasetDirectory
+            )
+            return
+        }
         let now = ISO8601DateFormatter().string(from: Date())
         let captions = readJSONArray(from: datasetDirectory.appendingPathComponent(TrainingDatasetPackageWriter.captionsFileName))
         if !captions.isEmpty {

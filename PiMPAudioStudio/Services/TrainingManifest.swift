@@ -357,7 +357,9 @@ enum TrainingDatasetImporter {
                 from: enrichedClips,
                 include: include,
                 baseDirectory: datasetBase,
-                cacheContext: cacheContext
+                cacheContext: cacheContext,
+                usesPerAssetLyrics: firstString(dict, keys: ["training_lyrics_source"])
+                    == "per_asset_annotation"
             )
         }
 
@@ -372,7 +374,8 @@ enum TrainingDatasetImporter {
         from clips: [[String: Any]],
         include: [String],
         baseDirectory: URL,
-        cacheContext: PreprocessCacheContext? = nil
+        cacheContext: PreprocessCacheContext? = nil,
+        usesPerAssetLyrics: Bool = false
     ) -> [TrainingImportedFile] {
         clips.compactMap { clip in
             guard let audioPath = selectedAudioPath(from: clip, include: include) else {
@@ -386,7 +389,11 @@ enum TrainingDatasetImporter {
             let description = firstString(clip, keys: ["prompt", "caption"])
                 ?? tagsDescription(from: clip)
                 ?? audioURL.deletingPathExtension().lastPathComponent
-            let lyrics = shouldUseLyrics(for: audioPath, include: include)
+            let lyrics = shouldUseLyrics(
+                for: audioPath,
+                include: include,
+                usesPerAssetLyrics: usesPerAssetLyrics
+            )
                 ? transcript(from: clip)
                 : ""
             let clipID = firstString(clip, keys: ["id"])
@@ -707,10 +714,17 @@ enum TrainingDatasetImporter {
         return keys.filter { seen.insert($0).inserted }
     }
 
-    private static func shouldUseLyrics(for audioPath: String, include: [String]) -> Bool {
+    private static func shouldUseLyrics(
+        for audioPath: String,
+        include: [String],
+        usesPerAssetLyrics: Bool = false
+    ) -> Bool {
         let lowerPath = audioPath.lowercased()
         if lowerPath.contains("instrumental") {
             return false
+        }
+        if usesPerAssetLyrics {
+            return true
         }
         if include.contains(where: { ["vocal", "vocals", "voice", "voices"].contains($0.lowercased()) }) {
             return true

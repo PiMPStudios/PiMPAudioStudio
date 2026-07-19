@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import PiMPAudioCore
 
 protocol DatasetAnnotationBackend: Sendable {
     var annotationDescriptor: DatasetAnnotationBackendDescriptor { get }
@@ -102,7 +103,7 @@ struct TrainingDatasetPackageValidationResult: Equatable {
 
     var summary: String {
         if isValid {
-            return "\(clipCount) clips validated for package export."
+            return "\(clipCount) training asset\(clipCount == 1 ? "" : "s") validated for package export."
         }
         let issueCount = missingPackageFiles.count + missingClipFiles.count + errors.count
         return "\(issueCount) package issue\(issueCount == 1 ? "" : "s") found."
@@ -124,6 +125,7 @@ enum TrainingDatasetPackageError: LocalizedError {
 }
 
 enum TrainingDatasetPackageWriter {
+    static let aceStepTrainingMaximumDuration: TimeInterval = 240
     static let annotationSchemaVersion = "1.0"
     static let preprocessCacheVersion = "1.0"
     static let captionsFileName = "captions.json"
@@ -175,6 +177,7 @@ enum TrainingDatasetPackageWriter {
         }
     }
 
+    @discardableResult
     static func writeLocalPackage(
         outputDirectory: URL,
         clips: [TrainingImportedFile],
@@ -182,66 +185,739 @@ enum TrainingDatasetPackageWriter {
         config: LocalFilesDatasetConfig,
         styleTemplate: String,
         createdAt: Date = Date()
-    ) throws {
-        try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+    ) throws -> [TrainingImportedFile] {
+        if config.buildMode == .wholeTracks {
+            return try writeWholeTrackPackage(
+                outputDirectory: outputDirectory,
+                trainingItems: clips,
+                sourceFiles: sourceFiles,
+                styleTemplate: styleTemplate,
+                createdAt: createdAt
+            )
+        }
 
-        let existingCaptionRecords = captionRecordsByFile(from: outputDirectory)
-        let trimmedStyle = styleTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
-        let packageCaptionSource = trimmedStyle.isEmpty ? "filename" : "manual"
-        try writeCaptionsFile(
+        return try writeClipExtractionPackage(
+            outputDirectory: outputDirectory,
             clips: clips,
             sourceFiles: sourceFiles,
-            captionSource: packageCaptionSource,
-            to: outputDirectory,
-            existingRecordsByFile: existingCaptionRecords
-        )
-
-        let clipAudioMetadata = audioMetadataByPath(for: clips.map(\.url))
-        let sourceAudioMetadata = audioMetadataByPath(for: sourceFiles)
-        let clipEntries = packageClips(
-            from: clips,
-            sourceFiles: sourceFiles,
-            outputDirectory: outputDirectory,
             config: config,
-            audioMetadata: clipAudioMetadata,
-            captionSource: packageCaptionSource,
-            existingCaptionRecordsByFile: existingCaptionRecords
+            styleTemplate: styleTemplate,
+            createdAt: createdAt
         )
-        let createdAtString = ISO8601DateFormatter().string(from: createdAt)
+    }
 
-        try writeJSONObject(
-            datasetConfig(),
-            to: outputDirectory.appendingPathComponent(datasetConfigFileName)
+    static func stageWholeTrackSource(
+        _ sourceURL: URL,
+        index: Int,
+        outputDirectory: URL
+    ) throws -> URL {
+        let sourcesDirectory = outputDirectory.appendingPathComponent("sources", isDirectory: true)
+        try FileManager.default.createDirectory(at: sourcesDirectory, withIntermediateDirectories: true)
+
+        let baseName = slug(sourceURL.deletingPathExtension().lastPathComponent)
+        let fileExtension = sourceURL.pathExtension.lowercased()
+        let extensionSuffix = fileExtension.isEmpty ? "" : ".\(fileExtension)"
+        let fileName = "\(String(format: "f%03d", index + 1))_\(baseName)\(extensionSuffix)"
+        let destinationURL = sourcesDirectory.appendingPathComponent(fileName)
+        guard sourceURL.standardizedFileURL != destinationURL.standardizedFileURL else {
+            return destinationURL
+        }
+        guard !FileManager.default.fileExists(atPath: destinationURL.path(percentEncoded: false)) else {
+            return destinationURL
+        }
+        try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
+        return destinationURL
+    }
+
+    private static func writeWholeTrackPackage(
+        outputDirectory: URL,
+        trainingItems: [TrainingImportedFile],
+        sourceFiles: [URL],
+        styleTemplate: String,
+        createdAt: Date
+    ) throws -> [TrainingImportedFile] {
+        try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+        let manifestURL = outputDirectory.appendingPathComponent(datasetManifestFileName)
+        let existingPackage = readPackageV2(from: manifestURL)
+        let existingRecords = captionRecordsByFile(from: outputDirectory)
+        let existingAssetsByID = Dictionary(
+            uniqueKeysWithValues: (existingPackage?.assets ?? []).map { ($0.id, $0) }
         )
-        try writeJSONObject(
-            datasetManifest(
-                outputDirectory: outputDirectory,
-                clips: clipEntries,
-                sourceFiles: sourceFiles,
-                clipAudioMetadata: clips.map { clipAudioMetadata[normalizedFilePath($0.url)] ?? fallbackAudioMetadata(for: $0.url) },
-                sourceAudioMetadata: sourceAudioMetadata,
-                config: config,
-                styleTemplate: trimmedStyle,
-                createdAt: createdAtString
-            ),
-            to: outputDirectory.appendingPathComponent(datasetManifestFileName)
+        let trimmedStyle = styleTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
+        let createdAtString = existingPackage?.createdAt ?? ISO8601DateFormatter().string(from: createdAt)
+
+        var tracks: [DatasetSourceTrackV2] = []
+        var assets: [DatasetAssetV2] = []
+        var selections: [DatasetTrainingSelectionV2] = []
+        var packagedItems: [TrainingImportedFile] = []
+
+        for (index, sourceURL) in sourceFiles.enumerated() {
+            let packagedURL = try stageWholeTrackSource(
+                sourceURL,
+                index: index,
+                outputDirectory: outputDirectory
+            )
+            let metadata = audioMetadata(for: packagedURL)
+            let relativePath = relativeClipPath(for: packagedURL, from: outputDirectory)
+            let trackID = "track-\(String(format: "%04d", index + 1))-\(slug(sourceURL.deletingPathExtension().lastPathComponent))"
+            let assetID = "asset-\(trackID)-full-mix"
+            let matchingItem = wholeTrackTrainingItem(
+                sourceURL: sourceURL,
+                packagedURL: packagedURL,
+                index: index,
+                trainingItems: trainingItems
+            )
+            let caption = normalizedWholeTrackCaption(
+                item: matchingItem,
+                sourceURL: sourceURL,
+                styleTemplate: trimmedStyle
+            )
+            let captionSource = trimmedStyle.isEmpty ? "filename" : "manual"
+            let existingRecord = existingRecords[relativePath]
+                ?? existingRecords.values.first {
+                    stringValue($0["source_file_name"]) == sourceURL.lastPathComponent
+                }
+            let annotation = packageV2Annotation(
+                from: existingRecord,
+                fallbackCaption: caption,
+                fallbackCaptionSource: captionSource
+            )
+            let file = DatasetAudioFileV2(
+                path: relativePath,
+                format: metadata.format == "unknown" ? nil : metadata.format,
+                byteSize: metadata.byteSize,
+                durationSeconds: metadata.durationSeconds,
+                sampleRate: metadata.sampleRate,
+                channels: metadata.channels
+            )
+            let sourceRange = DatasetTimeRangeV2(
+                startSeconds: 0,
+                endSeconds: metadata.durationSeconds
+            )
+
+            tracks.append(
+                DatasetSourceTrackV2(
+                    id: trackID,
+                    originalFileName: sourceURL.lastPathComponent,
+                    durationSeconds: metadata.durationSeconds,
+                    sourceFile: file
+                )
+            )
+            assets.append(
+                DatasetAssetV2(
+                    id: assetID,
+                    sourceTrackID: trackID,
+                    role: .fullMix,
+                    file: file,
+                    sourceRange: sourceRange,
+                    derivation: DatasetAssetDerivationV2(kind: .imported),
+                    annotation: annotation
+                )
+            )
+
+            let effectiveEnd = metadata.durationSeconds.map {
+                min($0, aceStepTrainingMaximumDuration)
+            }
+            let isBackendLimited = (metadata.durationSeconds ?? 0) > aceStepTrainingMaximumDuration
+            selections.append(
+                DatasetTrainingSelectionV2(
+                    assetID: assetID,
+                    includeInTraining: true,
+                    trainingRange: DatasetTimeRangeV2(startSeconds: 0, endSeconds: effectiveEnd),
+                    rangePolicy: isBackendLimited ? .backendLimit : .fullSource
+                )
+            )
+            packagedItems.append(
+                TrainingImportedFile(
+                    url: packagedURL,
+                    description: annotation.caption?.text ?? caption,
+                    lyrics: annotation.lyrics?.text ?? "",
+                    sourceClip: TrainingSourceClipMetadata(
+                        fileName: sourceURL.lastPathComponent,
+                        startSeconds: 0,
+                        frameCount: metadata.frameCount,
+                        sampleRate: metadata.sampleRate.map(Double.init)
+                    )
+                )
+            )
+
+            let preservedDerivedAssets = existingAssetsByID.values
+                .filter { $0.sourceTrackID == trackID && $0.role != .fullMix }
+                .sorted { $0.id < $1.id }
+            assets.append(contentsOf: preservedDerivedAssets)
+            selections.append(contentsOf: preservedDerivedAssets.map {
+                DatasetTrainingSelectionV2(
+                    assetID: $0.id,
+                    includeInTraining: false,
+                    trainingRange: limitedTrainingRange(for: $0.sourceRange),
+                    rangePolicy: trainingRangePolicy(for: $0.sourceRange)
+                )
+            })
+        }
+
+        let package = DatasetPackageV2(
+            id: slug(outputDirectory.lastPathComponent),
+            name: outputDirectory.lastPathComponent,
+            createdAt: createdAtString,
+            sourceTracks: tracks,
+            assets: assets,
+            trainingPlans: [
+                DatasetTrainingPlanV2(
+                    id: "ace-step-full-mix",
+                    backendID: "ace-step-training-v2",
+                    name: "ACE-Step full mixes",
+                    isDefault: true,
+                    selections: selections
+                ),
+            ]
+        )
+        try writePackageV2Artifacts(
+            package,
+            outputDirectory: outputDirectory,
+            existingRecords: existingRecords,
+            buildMode: .wholeTracks,
+            writtenAt: createdAt
+        )
+        return packagedItems
+    }
+
+    private static func writeClipExtractionPackage(
+        outputDirectory: URL,
+        clips: [TrainingImportedFile],
+        sourceFiles: [URL],
+        config: LocalFilesDatasetConfig,
+        styleTemplate: String,
+        createdAt: Date
+    ) throws -> [TrainingImportedFile] {
+        try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+        let manifestURL = outputDirectory.appendingPathComponent(datasetManifestFileName)
+        let existingPackage = readPackageV2(from: manifestURL)
+        let existingRecords = captionRecordsByFile(from: outputDirectory)
+        var packageRecords = existingRecords
+        let existingAssets = existingPackage?.assets ?? []
+        let trimmedStyle = styleTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
+        let createdAtString = existingPackage?.createdAt ?? ISO8601DateFormatter().string(from: createdAt)
+
+        var tracks: [DatasetSourceTrackV2] = []
+        var assets: [DatasetAssetV2] = []
+        var selections: [DatasetTrainingSelectionV2] = []
+        var fullMixAssets: [DatasetAssetV2] = []
+
+        for (index, sourceURL) in sourceFiles.enumerated() {
+            let packagedURL = try stageWholeTrackSource(
+                sourceURL,
+                index: index,
+                outputDirectory: outputDirectory
+            )
+            let metadata = audioMetadata(for: packagedURL)
+            let file = DatasetAudioFileV2(
+                path: relativeClipPath(for: packagedURL, from: outputDirectory),
+                format: metadata.format == "unknown" ? nil : metadata.format,
+                byteSize: metadata.byteSize,
+                durationSeconds: metadata.durationSeconds,
+                sampleRate: metadata.sampleRate,
+                channels: metadata.channels
+            )
+            let trackID = "track-\(String(format: "%04d", index + 1))-\(slug(sourceURL.deletingPathExtension().lastPathComponent))"
+            let fullMixID = "asset-\(trackID)-full-mix"
+            let sourceRange = DatasetTimeRangeV2(startSeconds: 0, endSeconds: metadata.durationSeconds)
+            let fallbackCaption = trimmedStyle.isEmpty
+                ? sourceURL.deletingPathExtension().lastPathComponent
+                : trimmedStyle
+            let track = DatasetSourceTrackV2(
+                id: trackID,
+                originalFileName: sourceURL.lastPathComponent,
+                durationSeconds: metadata.durationSeconds,
+                sourceFile: file
+            )
+            let fullMix = DatasetAssetV2(
+                id: fullMixID,
+                sourceTrackID: trackID,
+                role: .fullMix,
+                file: file,
+                sourceRange: sourceRange,
+                derivation: DatasetAssetDerivationV2(kind: .imported),
+                annotation: packageV2Annotation(
+                    from: existingRecords[file.path],
+                    fallbackCaption: fallbackCaption,
+                    fallbackCaptionSource: trimmedStyle.isEmpty ? "filename" : "manual"
+                )
+            )
+            tracks.append(track)
+            assets.append(fullMix)
+            fullMixAssets.append(fullMix)
+            selections.append(
+                DatasetTrainingSelectionV2(
+                    assetID: fullMixID,
+                    includeInTraining: false,
+                    trainingRange: limitedTrainingRange(for: sourceRange),
+                    rangePolicy: trainingRangePolicy(for: sourceRange)
+                )
+            )
+        }
+
+        let clipsDirectory = outputDirectory.appendingPathComponent("clips", isDirectory: true)
+        try FileManager.default.createDirectory(at: clipsDirectory, withIntermediateDirectories: true)
+        var packagedClips: [TrainingImportedFile] = []
+
+        for (index, clip) in clips.enumerated() {
+            let clipURL: URL
+            if normalizedFilePath(clip.url).hasPrefix(normalizedDirectoryPath(outputDirectory)) {
+                clipURL = clip.url
+            } else {
+                let destination = clipsDirectory.appendingPathComponent(clip.url.lastPathComponent)
+                if !FileManager.default.fileExists(atPath: destination.path(percentEncoded: false)) {
+                    try FileManager.default.copyItem(at: clip.url, to: destination)
+                }
+                clipURL = destination
+            }
+
+            let indexedSource = sourceIndex(from: clipURL.lastPathComponent).map { $0 - 1 }
+            let metadataSource = clip.sourceClip?.fileName.flatMap { fileName in
+                sourceFiles.firstIndex { $0.lastPathComponent == fileName }
+            }
+            let sourceFileIndex = indexedSource
+                ?? metadataSource
+                ?? (sourceFiles.count == 1 ? 0 : nil)
+            guard let sourceFileIndex,
+                  tracks.indices.contains(sourceFileIndex),
+                  fullMixAssets.indices.contains(sourceFileIndex) else {
+                throw TrainingDatasetPackageError.invalidPackage(
+                    "Could not associate \(clipURL.lastPathComponent) with a preserved source track."
+                )
+            }
+            let track = tracks[sourceFileIndex]
+            let fullMix = fullMixAssets[sourceFileIndex]
+
+            let metadata = audioMetadata(for: clipURL)
+            let relativePath = relativeClipPath(for: clipURL, from: outputDirectory)
+            let startSeconds = clip.sourceClip?.startSeconds ?? 0
+            let durationSeconds = metadata.durationSeconds ?? config.clipLength
+            let sourceRange = DatasetTimeRangeV2(
+                startSeconds: startSeconds,
+                endSeconds: startSeconds + durationSeconds
+            )
+            let clipID = "asset-\(track.id)-clip-\(String(format: "%04d", index + 1))"
+            let fallbackCaption = normalizedCaption(for: clip)
+            let existingRecord = existingRecords[relativePath]
+            var annotationRecord = existingRecord ?? [:]
+            annotationRecord["caption"] = fallbackCaption
+            annotationRecord["prompt"] = fallbackCaption
+            annotationRecord["caption_source"] = trimmedStyle.isEmpty ? "filename" : "manual"
+            let annotation = packageV2Annotation(
+                from: annotationRecord,
+                fallbackCaption: fallbackCaption,
+                fallbackCaptionSource: trimmedStyle.isEmpty ? "filename" : "manual"
+            )
+            let file = DatasetAudioFileV2(
+                path: relativePath,
+                format: metadata.format == "unknown" ? nil : metadata.format,
+                byteSize: metadata.byteSize,
+                durationSeconds: metadata.durationSeconds,
+                sampleRate: metadata.sampleRate,
+                channels: metadata.channels
+            )
+            let clipAsset = DatasetAssetV2(
+                id: clipID,
+                sourceTrackID: track.id,
+                role: .clip,
+                file: file,
+                derivedFrom: fullMix.id,
+                sourceRange: sourceRange,
+                derivation: DatasetAssetDerivationV2(
+                    kind: .clipExtraction,
+                    backendID: "pimp-audio-native",
+                    createdAt: createdAtString,
+                    details: [
+                        "sampling_mode": config.samplingMode.rawValue,
+                        "sampling_seed": String(config.samplingSeed),
+                    ]
+                ),
+                annotation: annotation
+            )
+            assets.append(clipAsset)
+            var compatibilityRecord = existingRecord ?? [:]
+            compatibilityRecord["id"] = clipID
+            compatibilityRecord["file"] = relativePath
+            compatibilityRecord["caption"] = annotation.caption?.text ?? fallbackCaption
+            compatibilityRecord["lyrics"] = annotation.lyrics?.text ?? clip.lyrics
+            compatibilityRecord["audio"] = metadata.jsonObject
+            applySourceAuditFields(
+                to: &compatibilityRecord,
+                source: sourceMetadata(for: clip, sourceFiles: sourceFiles)
+            )
+            packageRecords[relativePath] = compatibilityRecord
+            selections.append(
+                DatasetTrainingSelectionV2(
+                    assetID: clipID,
+                    includeInTraining: true,
+                    trainingRange: sourceRange,
+                    rangePolicy: .fullSource
+                )
+            )
+            packagedClips.append(
+                TrainingImportedFile(
+                    url: clipURL,
+                    description: annotation.caption?.text ?? fallbackCaption,
+                    lyrics: annotation.lyrics?.text ?? clip.lyrics,
+                    sourceClip: clip.sourceClip
+                )
+            )
+
+            let preservedDerivedAssets = existingAssets
+                .filter { $0.derivedFrom == clipID && $0.role != .clip }
+                .sorted { $0.id < $1.id }
+            assets.append(contentsOf: preservedDerivedAssets)
+            selections.append(contentsOf: preservedDerivedAssets.map {
+                DatasetTrainingSelectionV2(
+                    assetID: $0.id,
+                    includeInTraining: false,
+                    trainingRange: limitedTrainingRange(for: $0.sourceRange),
+                    rangePolicy: trainingRangePolicy(for: $0.sourceRange)
+                )
+            })
+        }
+
+        let package = DatasetPackageV2(
+            id: slug(outputDirectory.lastPathComponent),
+            name: outputDirectory.lastPathComponent,
+            createdAt: createdAtString,
+            sourceTracks: tracks,
+            assets: assets,
+            trainingPlans: [
+                DatasetTrainingPlanV2(
+                    id: "ace-step-clips",
+                    backendID: "ace-step-training-v2",
+                    name: "ACE-Step derived clips",
+                    isDefault: true,
+                    selections: selections
+                ),
+            ]
+        )
+        try writePackageV2Artifacts(
+            package,
+            outputDirectory: outputDirectory,
+            existingRecords: packageRecords,
+            buildMode: .clipExtraction,
+            writtenAt: createdAt
+        )
+        return packagedClips
+    }
+
+    private static func wholeTrackTrainingItem(
+        sourceURL: URL,
+        packagedURL: URL,
+        index: Int,
+        trainingItems: [TrainingImportedFile]
+    ) -> TrainingImportedFile? {
+        trainingItems.first {
+            $0.sourceClip?.fileName == sourceURL.lastPathComponent
+                || $0.url.standardizedFileURL == packagedURL.standardizedFileURL
+                || $0.url.standardizedFileURL == sourceURL.standardizedFileURL
+        } ?? (trainingItems.indices.contains(index) ? trainingItems[index] : nil)
+    }
+
+    private static func normalizedWholeTrackCaption(
+        item: TrainingImportedFile?,
+        sourceURL: URL,
+        styleTemplate: String
+    ) -> String {
+        if let item {
+            let caption = item.description.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !caption.isEmpty {
+                return caption
+            }
+        }
+        if !styleTemplate.isEmpty {
+            return styleTemplate
+        }
+        return sourceURL.deletingPathExtension().lastPathComponent
+    }
+
+    private static func limitedTrainingRange(
+        for sourceRange: DatasetTimeRangeV2
+    ) -> DatasetTimeRangeV2 {
+        DatasetTimeRangeV2(
+            startSeconds: sourceRange.startSeconds,
+            endSeconds: sourceRange.endSeconds.map {
+                min($0, sourceRange.startSeconds + aceStepTrainingMaximumDuration)
+            }
+        )
+    }
+
+    private static func trainingRangePolicy(
+        for sourceRange: DatasetTimeRangeV2
+    ) -> DatasetTrainingRangePolicyV2 {
+        guard let duration = sourceRange.durationSeconds else { return .fullSource }
+        return duration > aceStepTrainingMaximumDuration ? .backendLimit : .fullSource
+    }
+
+    private static func packageV2Annotation(
+        from record: [String: Any]?,
+        fallbackCaption: String,
+        fallbackCaptionSource: String
+    ) -> DatasetAssetAnnotationV2 {
+        let record = record ?? [:]
+        let legacyAnnotation = record["annotation"] as? [String: Any] ?? [:]
+        let transcription = record["transcription"] as? [String: Any] ?? [:]
+        let review = record["training_review"] as? [String: Any] ?? [:]
+        let caption = stringValue(record["caption"])
+            ?? stringValue(record["prompt"])
+            ?? fallbackCaption
+        let captionSource = stringValue(record["caption_source"])
+            ?? stringValue(legacyAnnotation["caption_source"])
+            ?? fallbackCaptionSource
+        let lyrics = stringValue(record["lyrics"])
+            ?? stringValue(record["transcript"])
+            ?? stringValue(transcription["text"])
+            ?? ""
+        let lyricsSource = stringValue(record["lyrics_source"])
+            ?? stringValue(legacyAnnotation["lyrics_source"])
+            ?? stringValue(transcription["source"])
+            ?? (lyrics.isEmpty ? "none" : "manual")
+        let language = stringValue(record["language"])
+            ?? stringValue(legacyAnnotation["language"])
+        let rawOutputs = (legacyAnnotation["raw_output_files"] as? [String: Any] ?? [:])
+            .compactMapValues { stringValue($0) }
+
+        let captionBackend = slug(
+            stringValue(legacyAnnotation["annotation_backend"])
+                ?? (captionSource == "filename" ? "filename" : "manual")
+        )
+        let lyricsBackend = slug(
+            stringValue(transcription["backend"])
+                ?? stringValue(legacyAnnotation["annotation_backend"])
+                ?? "manual"
+        )
+        let captionEntry = DatasetTextAnnotationV2(
+            text: caption,
+            source: captionSource,
+            language: language,
+            provenance: DatasetAnnotationProvenanceV2(
+                backendID: captionBackend,
+                backendVersion: stringValue(legacyAnnotation["annotation_backend_version"]),
+                modelID: stringValue(legacyAnnotation["model_id"]),
+                modelRevision: stringValue(legacyAnnotation["model_revision"]),
+                generatedAt: stringValue(legacyAnnotation["updated_at"]),
+                rawOutputFiles: rawOutputs.filter { $0.key != "lyrics" }
+            )
+        )
+        let lyricsEntry = lyrics.isEmpty ? nil : DatasetTextAnnotationV2(
+            text: lyrics,
+            source: lyricsSource,
+            language: language,
+            provenance: DatasetAnnotationProvenanceV2(
+                backendID: lyricsBackend,
+                backendVersion: stringValue(transcription["backend_version"])
+                    ?? stringValue(legacyAnnotation["annotation_backend_version"]),
+                modelID: stringValue(transcription["model"])
+                    ?? stringValue(legacyAnnotation["model_id"]),
+                modelRevision: stringValue(transcription["model_revision"])
+                    ?? stringValue(legacyAnnotation["model_revision"]),
+                generatedAt: stringValue(transcription["updated_at"])
+                    ?? stringValue(legacyAnnotation["updated_at"]),
+                rawOutputFiles: rawOutputs.filter { $0.key != "caption" }
+            )
+        )
+        let approved = boolValue(review["approved"])
+            ?? (stringValue(legacyAnnotation["review_status"]) == "approved")
+        return DatasetAssetAnnotationV2(
+            caption: captionEntry,
+            lyrics: lyricsEntry,
+            reviewStatus: stringValue(review["status"])
+                ?? stringValue(legacyAnnotation["review_status"])
+                ?? (approved ? "approved" : "needs_review"),
+            approved: approved,
+            reviewedAt: stringValue(review["updated_at"]),
+            notes: stringValue(review["notes"])
+        )
+    }
+
+    private static func writePackageV2Artifacts(
+        _ package: DatasetPackageV2,
+        outputDirectory: URL,
+        existingRecords: [String: [String: Any]],
+        buildMode: LocalDatasetBuildMode,
+        writtenAt: Date
+    ) throws {
+        let manifestData = try DatasetPackageV2Codec.encodeValidated(package)
+        try manifestData.write(
+            to: outputDirectory.appendingPathComponent(datasetManifestFileName),
+            options: .atomic
         )
 
-        let bundle = trainingBundle(clips: clipEntries, createdAt: createdAtString)
+        let bundle = try compatibilityBundleObject(
+            from: package,
+            existingRecords: existingRecords
+        )
         try writeJSONObject(bundle, to: outputDirectory.appendingPathComponent(trainingBundleFileName))
         try writeJSONObject(bundle, to: outputDirectory.appendingPathComponent(fullMixBundleFileName))
-        try refreshPreprocessCacheManifest(at: outputDirectory, createdAt: createdAt)
+        try writeJSONObjectArray(
+            bundle["clips"] as? [[String: Any]] ?? [],
+            to: outputDirectory.appendingPathComponent(captionsFileName)
+        )
+        try writeJSONObject(
+            datasetConfig(for: buildMode),
+            to: outputDirectory.appendingPathComponent(datasetConfigFileName)
+        )
+        try refreshPreprocessCacheManifest(at: outputDirectory, createdAt: writtenAt)
         try writeJSONObject(
             remotePackageDescriptor(
                 outputDirectory: outputDirectory,
-                clipCount: clips.count,
-                createdAt: createdAtString
+                clipCount: package.trainingPlans.first(where: \.isDefault)?
+                    .selections.filter(\.includeInTraining).count ?? 0,
+                createdAt: ISO8601DateFormatter().string(from: writtenAt),
+                buildMode: buildMode
             ),
             to: outputDirectory.appendingPathComponent(remotePackageFileName)
         )
-
-        let validation = validatePackage(at: outputDirectory, checkedAt: createdAt)
+        let validation = validatePackage(at: outputDirectory, checkedAt: writtenAt)
         try writeValidationReport(validation, to: outputDirectory)
+    }
+
+    private static func compatibilityBundleObject(
+        from package: DatasetPackageV2,
+        existingRecords: [String: [String: Any]]
+    ) throws -> [String: Any] {
+        let data = try DatasetTrainingBundleV1Projection.encodeBundle(from: package)
+        guard var bundle = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw TrainingDatasetPackageError.invalidPackage(
+                "Package v2 could not produce a compatibility training bundle."
+            )
+        }
+        bundle["preprocess_cache"] = preprocessCacheFileName
+        bundle["training_lyrics_source"] = "per_asset_annotation"
+
+        let assetsByID = Dictionary(uniqueKeysWithValues: package.assets.map { ($0.id, $0) })
+        let tracksByID = Dictionary(uniqueKeysWithValues: package.sourceTracks.map { ($0.id, $0) })
+        let existingRecordsByID = existingRecords.values.reduce(into: [String: [String: Any]]()) {
+            result, record in
+            guard let id = stringValue(record["id"]), result[id] == nil else { return }
+            result[id] = record
+        }
+        let projectedClips = bundle["clips"] as? [[String: Any]] ?? []
+        bundle["clips"] = projectedClips.compactMap { projected -> [String: Any]? in
+            guard let assetID = stringValue(projected["asset_id"]),
+                  let asset = assetsByID[assetID],
+                  let track = tracksByID[asset.sourceTrackID] else {
+                return nil
+            }
+
+            var record = existingRecordsByID[asset.id]
+                ?? existingRecords[asset.file.path]
+                ?? [:]
+            for (key, value) in projected {
+                record[key] = value
+            }
+            var assetPaths = record["assets"] as? [String: Any] ?? [:]
+            assetPaths[asset.role.rawValue] = asset.file.path
+            record["id"] = asset.id
+            record["file"] = asset.file.path
+            record["assets"] = assetPaths
+            record["asset_id"] = asset.id
+            record["asset_role"] = asset.role.rawValue
+            record["source_track_id"] = track.id
+
+            let caption = asset.annotation?.caption?.text
+                ?? URL(fileURLWithPath: asset.file.path).deletingPathExtension().lastPathComponent
+            let lyrics = asset.annotation?.lyrics?.text ?? ""
+            let captionSource = asset.annotation?.caption?.source ?? "filename"
+            let lyricsSource = lyrics.isEmpty ? "none" : (asset.annotation?.lyrics?.source ?? "manual")
+            record["caption"] = caption
+            record["prompt"] = caption
+            record["caption_source"] = captionSource
+            record["lyrics"] = lyrics
+            record["transcript"] = lyrics
+            record["lyrics_source"] = lyricsSource
+            record["annotation_schema_version"] = annotationSchemaVersion
+            record["annotation"] = legacyAnnotationObject(from: asset.annotation)
+            record["training_review"] = [
+                "approved": asset.annotation?.approved ?? false,
+                "status": asset.annotation?.reviewStatus ?? "needs_review",
+            ]
+            record["transcription"] = [
+                "status": lyrics.isEmpty ? "not_run" : "complete",
+                "text": lyrics,
+                "source": lyricsSource,
+            ]
+            record["audio"] = audioFileJSONObject(asset.file)
+            if let duration = asset.file.durationSeconds {
+                record["clip_length_seconds"] = seconds(duration)
+            }
+            var source = record["source"] as? [String: Any] ?? [:]
+            source["kind"] = "local_file"
+            source["file_name"] = track.originalFileName
+            source["start_seconds"] = seconds(asset.sourceRange.startSeconds)
+            source["source_start_seconds"] = seconds(asset.sourceRange.startSeconds)
+            applySourceAuditFields(to: &record, source: source)
+            return record
+        }
+        bundle["clip_count"] = (bundle["clips"] as? [[String: Any]])?.count ?? 0
+        return bundle
+    }
+
+    private static func legacyAnnotationObject(
+        from annotation: DatasetAssetAnnotationV2?
+    ) -> [String: Any] {
+        let caption = annotation?.caption
+        let lyrics = annotation?.lyrics
+        let backend = caption?.provenance ?? lyrics?.provenance
+        var rawOutputFiles = caption?.provenance?.rawOutputFiles ?? [:]
+        for (key, value) in lyrics?.provenance?.rawOutputFiles ?? [:] {
+            rawOutputFiles[key] = value
+        }
+        return DatasetAnnotationMetadata(
+            updatedAt: Date(),
+            backend: DatasetAnnotationBackendDescriptor(
+                id: backend?.backendID ?? "manual",
+                version: backend?.backendVersion ?? "",
+                modelID: backend?.modelID ?? "",
+                modelRevision: backend?.modelRevision ?? ""
+            ),
+            captionSource: caption?.source ?? "none",
+            lyricsSource: lyrics?.source ?? "none",
+            language: caption?.language ?? lyrics?.language ?? "",
+            caption: caption?.text ?? "",
+            lyrics: lyrics?.text ?? "",
+            reviewStatus: annotation?.reviewStatus ?? "needs_review",
+            rawOutputFiles: rawOutputFiles
+        ).persistedObject
+    }
+
+    private static func audioFileJSONObject(_ file: DatasetAudioFileV2) -> [String: Any] {
+        var object: [String: Any] = [:]
+        if let format = file.format { object["format"] = format }
+        if let byteSize = file.byteSize { object["byte_size"] = byteSize }
+        if let duration = file.durationSeconds { object["duration_seconds"] = seconds(duration) }
+        if let sampleRate = file.sampleRate { object["sample_rate"] = sampleRate }
+        if let channels = file.channels { object["channels"] = channels }
+        if let sha256 = file.sha256 { object["sha256"] = sha256 }
+        return object
+    }
+
+    private static func datasetConfig(for buildMode: LocalDatasetBuildMode) -> [String: Any] {
+        let isWholeTrackPackage = buildMode == .wholeTracks
+        return [
+            "pimp_audio_dataset_config_version": "2.0",
+            "dataset_type": "audio_dir",
+            "datasets": [
+                [
+                    "path": isWholeTrackPackage ? "sources" : "clips",
+                    "caption_file": captionsFileName,
+                    "audio_role": isWholeTrackPackage ? "full_mix" : "clip",
+                ],
+            ],
+            "random_crop": false,
+            "source_policy": isWholeTrackPackage
+                ? "whole_tracks"
+                : "whole_tracks_with_derived_clips",
+            "training_max_duration_seconds": seconds(aceStepTrainingMaximumDuration),
+        ]
+    }
+
+    private static func readPackageV2(from manifestURL: URL) -> DatasetPackageV2? {
+        guard let data = try? Data(contentsOf: manifestURL) else { return nil }
+        return try? DatasetPackageV2Codec.decodeValidated(data)
     }
 
     static func validatePackage(
@@ -265,7 +941,7 @@ enum TrainingDatasetPackageWriter {
         let bundle = readJSONObject(from: bundleURL)
         let clips = bundle?["clips"] as? [[String: Any]] ?? []
         let datasetBase = datasetBaseDirectory(from: bundle, fallback: outputDirectory)
-        let missingClipFiles = clips.compactMap { clip -> String? in
+        var missingClipFiles = clips.compactMap { clip -> String? in
             guard let path = selectedAudioPath(from: clip) else {
                 return "missing audio path"
             }
@@ -279,6 +955,23 @@ enum TrainingDatasetPackageWriter {
         }
         if clips.isEmpty {
             errors.append("\(fullMixBundleFileName) does not contain any clips.")
+        }
+
+        let manifestURL = outputDirectory.appendingPathComponent(datasetManifestFileName)
+        if let manifest = readJSONObject(from: manifestURL),
+           stringValue(manifest["pimp_audio_dataset_version"]) == DatasetPackageV2.currentVersion {
+            do {
+                let package = try DatasetPackageV2Codec.decodeValidated(Data(contentsOf: manifestURL))
+                for asset in package.assets {
+                    let assetURL = resolve(asset.file.path, relativeTo: outputDirectory)
+                    if !FileManager.default.fileExists(atPath: assetURL.path(percentEncoded: false)),
+                       !missingClipFiles.contains(asset.file.path) {
+                        missingClipFiles.append(asset.file.path)
+                    }
+                }
+            } catch {
+                errors.append("dataset_manifest.json is not a valid package-v2 manifest: \(error.localizedDescription)")
+            }
         }
 
         let importableClipCount = (try? TrainingDatasetImporter.importFiles(from: bundleURL).count) ?? 0
@@ -310,6 +1003,10 @@ enum TrainingDatasetPackageWriter {
         at outputDirectory: URL,
         updatedAt: Date = Date()
     ) throws {
+        if try refreshPackageV2FromCaptions(at: outputDirectory, updatedAt: updatedAt) {
+            return
+        }
+
         let captions = readJSONArray(from: outputDirectory.appendingPathComponent(captionsFileName))
         guard !captions.isEmpty else {
             throw TrainingDatasetPackageError.invalidPackage("captions.json does not contain any clips.")
@@ -321,6 +1018,163 @@ enum TrainingDatasetPackageWriter {
         try writeJSONObject(bundle, to: outputDirectory.appendingPathComponent(fullMixBundleFileName))
         try refreshPreprocessCacheManifest(at: outputDirectory, createdAt: updatedAt)
         try refreshValidationReport(at: outputDirectory, checkedAt: updatedAt)
+    }
+
+    static func writeReviewedPackageV2(
+        _ package: DatasetPackageV2,
+        records: [[String: Any]],
+        outputDirectory: URL,
+        updatedAt: Date = Date()
+    ) throws {
+        let recordsByFile = records.reduce(into: [String: [String: Any]]()) { result, record in
+            guard let file = stringValue(record["file"]), result[file] == nil else { return }
+            result[file] = record
+        }
+        try writePackageV2Artifacts(
+            package,
+            outputDirectory: outputDirectory,
+            existingRecords: recordsByFile,
+            buildMode: buildMode(for: package),
+            writtenAt: updatedAt
+        )
+    }
+
+    @discardableResult
+    static func refreshPackageV2FromCaptions(
+        at outputDirectory: URL,
+        updatedAt: Date = Date()
+    ) throws -> Bool {
+        let manifestURL = outputDirectory.appendingPathComponent(datasetManifestFileName)
+        guard var package = readPackageV2(from: manifestURL) else { return false }
+        let records = readJSONArray(from: outputDirectory.appendingPathComponent(captionsFileName))
+        guard !records.isEmpty else {
+            throw TrainingDatasetPackageError.invalidPackage("captions.json does not contain any assets.")
+        }
+        let recordsByFile = records.reduce(into: [String: [String: Any]]()) { result, record in
+            guard let file = stringValue(record["file"]), result[file] == nil else { return }
+            result[file] = record
+        }
+        let recordsByID = records.reduce(into: [String: [String: Any]]()) { result, record in
+            guard let id = stringValue(record["id"]), result[id] == nil else { return }
+            result[id] = record
+        }
+
+        for index in package.assets.indices
+        where package.assets[index].role == .fullMix || package.assets[index].role == .clip {
+            let asset = package.assets[index]
+            guard let record = recordsByID[asset.id] ?? recordsByFile[asset.file.path] else { continue }
+            package.assets[index].annotation = packageV2Annotation(
+                from: record,
+                fallbackCaption: asset.annotation?.caption?.text
+                    ?? URL(fileURLWithPath: asset.file.path).deletingPathExtension().lastPathComponent,
+                fallbackCaptionSource: asset.annotation?.caption?.source ?? "filename"
+            )
+        }
+
+        let baseAssets = package.assets.filter { $0.role == .fullMix || $0.role == .clip }
+        for baseAsset in baseAssets {
+            guard let record = recordsByID[baseAsset.id] ?? recordsByFile[baseAsset.file.path] else {
+                continue
+            }
+            var paths = record["assets"] as? [String: Any] ?? [:]
+            let separation = record["separation"] as? [String: Any] ?? [:]
+            for (key, value) in separation["stems"] as? [String: Any] ?? [:] {
+                if paths[key] == nil {
+                    paths[key] = value
+                }
+            }
+            for role in [DatasetAssetRoleV2.vocals, .instrumental] {
+                guard let relativePath = stringValue(paths[role.rawValue]) else { continue }
+                let fileURL = resolve(relativePath, relativeTo: outputDirectory)
+                let metadata = audioMetadata(for: fileURL)
+                var annotation = packageV2Annotation(
+                    from: record,
+                    fallbackCaption: baseAsset.annotation?.caption?.text
+                        ?? URL(fileURLWithPath: baseAsset.file.path).deletingPathExtension().lastPathComponent,
+                    fallbackCaptionSource: baseAsset.annotation?.caption?.source ?? "filename"
+                )
+                if role == .instrumental {
+                    annotation.lyrics = nil
+                }
+                let file = DatasetAudioFileV2(
+                    path: relativePath,
+                    format: metadata.format == "unknown" ? nil : metadata.format,
+                    byteSize: metadata.byteSize,
+                    durationSeconds: metadata.durationSeconds,
+                    sampleRate: metadata.sampleRate,
+                    channels: metadata.channels
+                )
+                let derivation = DatasetAssetDerivationV2(
+                    kind: .stemSeparation,
+                    backendID: slug(stringValue(separation["backend"]) ?? "demucs-mlx"),
+                    backendVersion: stringValue(separation["backend_version"]),
+                    modelID: stringValue(separation["model"]),
+                    modelRevision: stringValue(separation["model_revision"]),
+                    createdAt: stringValue(separation["updated_at"])
+                )
+
+                if let assetIndex = package.assets.firstIndex(where: {
+                    $0.derivedFrom == baseAsset.id && $0.role == role
+                }) {
+                    package.assets[assetIndex].file = file
+                    package.assets[assetIndex].derivedFrom = baseAsset.id
+                    package.assets[assetIndex].sourceRange = baseAsset.sourceRange
+                    package.assets[assetIndex].derivation = derivation
+                    package.assets[assetIndex].annotation = annotation
+                    ensureOptInSelection(
+                        for: package.assets[assetIndex],
+                        in: &package.trainingPlans
+                    )
+                } else {
+                    let derivedAsset = DatasetAssetV2(
+                        id: "asset-\(baseAsset.id)-\(role.rawValue)",
+                        sourceTrackID: baseAsset.sourceTrackID,
+                        role: role,
+                        file: file,
+                        derivedFrom: baseAsset.id,
+                        sourceRange: baseAsset.sourceRange,
+                        derivation: derivation,
+                        annotation: annotation
+                    )
+                    package.assets.append(derivedAsset)
+                    ensureOptInSelection(for: derivedAsset, in: &package.trainingPlans)
+                }
+            }
+        }
+
+        try writePackageV2Artifacts(
+            package,
+            outputDirectory: outputDirectory,
+            existingRecords: recordsByFile,
+            buildMode: buildMode(for: package),
+            writtenAt: updatedAt
+        )
+        return true
+    }
+
+    private static func ensureOptInSelection(
+        for asset: DatasetAssetV2,
+        in plans: inout [DatasetTrainingPlanV2]
+    ) {
+        for index in plans.indices where !plans[index].selections.contains(where: { $0.assetID == asset.id }) {
+            plans[index].selections.append(
+                DatasetTrainingSelectionV2(
+                    assetID: asset.id,
+                    includeInTraining: false,
+                    trainingRange: limitedTrainingRange(for: asset.sourceRange),
+                    rangePolicy: trainingRangePolicy(for: asset.sourceRange)
+                )
+            )
+        }
+    }
+
+    private static func buildMode(for package: DatasetPackageV2) -> LocalDatasetBuildMode {
+        let defaultPlan = package.trainingPlans.first(where: \.isDefault)
+        if defaultPlan?.id == "ace-step-clips"
+            || defaultPlan?.name.localizedCaseInsensitiveContains("derived clips") == true {
+            return .clipExtraction
+        }
+        return .wholeTracks
     }
 
     @discardableResult
@@ -719,9 +1573,32 @@ enum TrainingDatasetPackageWriter {
     private static func remotePackageDescriptor(
         outputDirectory: URL,
         clipCount: Int,
-        createdAt: String
+        createdAt: String,
+        buildMode: LocalDatasetBuildMode = .clipExtraction
     ) -> [String: Any] {
-        [
+        let isWholeTrackPackage = buildMode == .wholeTracks
+        var fullMixBundle: [String: Any] = [
+            "name": "full_mix",
+            "path": fullMixBundleFileName,
+            "include": [isWholeTrackPackage ? "full_mix" : "clip"],
+            "training_lyrics_source": "per_asset_annotation",
+        ]
+        fullMixBundle["asset_role"] = isWholeTrackPackage ? "full_mix" : "clip"
+        let mediaRules = isWholeTrackPackage
+            ? ["sources/**"]
+            : ["sources/**", "clips/**"]
+        let notes = isWholeTrackPackage
+            ? [
+                "Complete source tracks are canonical and full mixes are selected by default.",
+                "ACE-Step preprocessing uses at most 240 seconds per track; dataset_manifest.json records the effective range.",
+                "Stem and clip assets are optional and remain linked to their source track.",
+            ]
+            : [
+                "Complete source tracks are canonical; fixed-length clips are derived assets selected by this plan.",
+                "Stem assets remain linked to their parent clip and are opt-in.",
+                "Remote workers should copy sources and clips together so provenance remains intact.",
+            ]
+        return [
             "pimp_audio_remote_package_version": "1.0",
             "created_at": createdAt,
             "package_name": outputDirectory.lastPathComponent,
@@ -729,13 +1606,7 @@ enum TrainingDatasetPackageWriter {
             "clip_count": clipCount,
             "default_bundle": fullMixBundleFileName,
             "bundles": [
-                [
-                    "name": "full_mix",
-                    "path": fullMixBundleFileName,
-                    "include": ["full_mix"],
-                    "training_lyrics": "[Instrumental]",
-                    "training_lyrics_source": "constant",
-                ],
+                fullMixBundle,
                 [
                     "name": "vocals",
                     "path": vocalBundleFileName,
@@ -756,8 +1627,7 @@ enum TrainingDatasetPackageWriter {
             "provider_targets": ["runpod", "digitalocean_gpu"],
             "preprocess_cache": preprocessCacheFileName,
             "copy_rules": [
-                "include": [
-                    "clips/**",
+                "include": mediaRules + [
                     "stems/**",
                     "annotations/**",
                     "preprocessed/**",
@@ -785,10 +1655,7 @@ enum TrainingDatasetPackageWriter {
                 "secrets_required": [],
                 "expected_gpu_class": "h100_or_h200",
             ],
-            "notes": [
-                "Local-file packages start with full-mix clips. Stem bundles are optional and are written after local enrichment runs.",
-                "Remote workers should copy the package root intact and resolve clip assets relative to the selected bundle file.",
-            ],
+            "notes": notes,
         ]
     }
 
@@ -1104,6 +1971,9 @@ enum TrainingDatasetPackageWriter {
         updatedAt: Date
     ) throws {
         let manifestURL = outputDirectory.appendingPathComponent(datasetManifestFileName)
+        if readPackageV2(from: manifestURL) != nil {
+            return
+        }
         guard var manifest = readJSONObject(from: manifestURL) else { return }
 
         let captions = readJSONArray(from: outputDirectory.appendingPathComponent(captionsFileName))

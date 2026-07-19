@@ -22,10 +22,15 @@ struct DatasetPackageDocument {
     var createdAt: String?
     var clips: [DatasetClipReview]
     var validation: TrainingDatasetPackageValidationResult
+    var packageV2: DatasetPackageV2? = nil
     var hasUnsavedChanges: Bool = false
 
     var approvedCount: Int {
-        clips.filter(\.isApproved).count
+        clips.filter { $0.includeInTraining && $0.isApproved }.count
+    }
+
+    var includedCount: Int {
+        clips.filter(\.includeInTraining).count
     }
 
     var blockerCount: Int {
@@ -41,11 +46,23 @@ struct DatasetPackageDocument {
             count + TrainingDatasetPackageEditor.issues(for: clip, datasetDirectory: directory)
                 .filter { $0.severity == .warning }
                 .count
-        }
+        } + multipliedSourceTrackCount
+    }
+
+    var multipliedSourceTrackCount: Int {
+        Dictionary(
+            grouping: clips.filter {
+                $0.includeInTraining && $0.sourceTrackID != nil
+            },
+            by: \.sourceTrackID
+        )
+        .values
+        .filter { $0.count > 1 }
+        .count
     }
 
     var isTrainingReady: Bool {
-        blockerCount == 0 && !clips.isEmpty
+        blockerCount == 0 && includedCount > 0
     }
 }
 
@@ -74,6 +91,15 @@ struct DatasetClipReview: Identifiable {
     var audioStatus: String
     var separationStatus: String
     var transcriptionStatus: String
+    var assetID: String?
+    var sourceTrackID: String?
+    var derivedFromAssetID: String?
+    var includeInTraining: Bool
+    var sourceStartSeconds: Double?
+    var sourceEndSeconds: Double?
+    var trainingStartSeconds: Double?
+    var trainingEndSeconds: Double?
+    var trainingRangePolicy: String
     var rawObject: [String: Any]
 
     var displayName: String {
@@ -81,12 +107,17 @@ struct DatasetClipReview: Identifiable {
     }
 
     var primaryAudioPath: String? {
-        assets["full_mix"] ?? (file.isEmpty ? nil : file)
+        !file.isEmpty ? file : assets["full_mix"]
     }
 
     func audioURL(relativeTo datasetDirectory: URL) -> URL? {
-        guard let path = assets["full_mix"] ?? (!file.isEmpty ? file : nil) else { return nil }
+        guard let path = !file.isEmpty ? file : assets["full_mix"] else { return nil }
         return TrainingDatasetPackageEditor.resolve(path, relativeTo: datasetDirectory)
+    }
+
+    var effectiveTrainingDurationSeconds: Double? {
+        guard let trainingStartSeconds, let trainingEndSeconds else { return nil }
+        return trainingEndSeconds - trainingStartSeconds
     }
 
     func persistedObject(updatedAt: Date = Date()) -> [String: Any] {
@@ -148,6 +179,28 @@ struct DatasetClipReview: Identifiable {
         object["timesignature"] = trimmedTimeSignature
         object["role"] = trimmedRole
         object["notes"] = trimmedNotes
+        object["asset_id"] = assetID
+        object["source_track_id"] = sourceTrackID
+        object["derived_from"] = derivedFromAssetID
+        object["asset_role"] = trimmedRole
+        object["include_in_training"] = includeInTraining
+        if let sourceStartSeconds {
+            var sourceRange: [String: Any] = ["start_seconds": sourceStartSeconds]
+            if let sourceEndSeconds {
+                sourceRange["end_seconds"] = sourceEndSeconds
+            }
+            object["source_range"] = sourceRange
+        }
+        if let trainingStartSeconds {
+            var trainingRange: [String: Any] = ["start_seconds": trainingStartSeconds]
+            if let trainingEndSeconds {
+                trainingRange["end_seconds"] = trainingEndSeconds
+            }
+            object["training_range"] = trainingRange
+        }
+        if !trainingRangePolicy.isEmpty {
+            object["range_policy"] = trainingRangePolicy
+        }
         object["analysis"] = analysis
 
         let persistedReviewStatus = isApproved ? "approved" : (reviewStatus.isEmpty ? "needs_review" : reviewStatus)
@@ -178,6 +231,49 @@ struct DatasetClipReview: Identifiable {
             "notes": trimmedNotes,
         ]
         return object
+    }
+
+    func packageV2Annotation(updatedAt: Date) -> DatasetAssetAnnotationV2 {
+        let trimmedCaption = caption.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedLyrics = lyrics.trimmingCharacters(in: .whitespacesAndNewlines)
+        let language = language.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        let captionEntry = trimmedCaption.isEmpty ? nil : DatasetTextAnnotationV2(
+            text: trimmedCaption,
+            source: captionSource.isEmpty ? "manual" : captionSource,
+            language: language.isEmpty ? nil : language,
+            provenance: DatasetAnnotationProvenanceV2(
+                backendID: annotationBackend.isEmpty ? "manual" : annotationBackend,
+                modelID: annotationModelID.isEmpty ? nil : annotationModelID,
+                modelRevision: annotationModelRevision.isEmpty ? nil : annotationModelRevision,
+                generatedAt: ISO8601DateFormatter().string(from: updatedAt),
+                rawOutputFiles: rawCaptionOutputFile.isEmpty
+                    ? [:]
+                    : ["caption": rawCaptionOutputFile]
+            )
+        )
+        let lyricsEntry = trimmedLyrics.isEmpty ? nil : DatasetTextAnnotationV2(
+            text: trimmedLyrics,
+            source: lyricsSource.isEmpty ? "manual" : lyricsSource,
+            language: language.isEmpty ? nil : language,
+            provenance: DatasetAnnotationProvenanceV2(
+                backendID: annotationBackend.isEmpty ? "manual" : annotationBackend,
+                modelID: annotationModelID.isEmpty ? nil : annotationModelID,
+                modelRevision: annotationModelRevision.isEmpty ? nil : annotationModelRevision,
+                generatedAt: ISO8601DateFormatter().string(from: updatedAt),
+                rawOutputFiles: rawLyricsOutputFile.isEmpty
+                    ? [:]
+                    : ["lyrics": rawLyricsOutputFile]
+            )
+        )
+        return DatasetAssetAnnotationV2(
+            caption: captionEntry,
+            lyrics: lyricsEntry,
+            reviewStatus: isApproved ? "approved" : (reviewStatus.isEmpty ? "needs_review" : reviewStatus),
+            approved: isApproved,
+            reviewedAt: ISO8601DateFormatter().string(from: updatedAt),
+            notes: trimmedNotes.isEmpty ? nil : trimmedNotes
+        )
     }
 }
 
@@ -293,8 +389,63 @@ enum TrainingDatasetPackageEditor {
             throw TrainingDatasetPackageEditorError.invalidCaptions(directory)
         }
 
-        let manifest = readJSONObject(from: directory.appendingPathComponent(TrainingDatasetPackageWriter.datasetManifestFileName))
+        let manifestURL = directory.appendingPathComponent(TrainingDatasetPackageWriter.datasetManifestFileName)
+        let manifest = readJSONObject(from: manifestURL)
         let validation = TrainingDatasetPackageWriter.validatePackage(at: directory)
+        if stringValue(manifest?["pimp_audio_dataset_version"]) == DatasetPackageV2.currentVersion {
+            let package = try DatasetPackageV2Codec.decodeValidated(Data(contentsOf: manifestURL))
+            let recordsByID = records.reduce(into: [String: [String: Any]]()) { result, record in
+                guard let id = firstString(record, keys: ["asset_id", "id"]),
+                      result[id] == nil else {
+                    return
+                }
+                result[id] = record
+            }
+            let recordsByFile = records.reduce(into: [String: [String: Any]]()) { result, record in
+                guard let file = firstString(record, keys: ["file", "path"]),
+                      result[file] == nil else {
+                    return
+                }
+                result[file] = record
+            }
+            let plan = package.trainingPlans.first(where: \.isDefault)
+            let reviewAssets = package.assets.enumerated()
+                .map { index, asset in
+                    (
+                        index: index,
+                        asset: asset,
+                        selection: plan?.selections.first { $0.assetID == asset.id }
+                    )
+                }
+                .sorted { lhs, rhs in
+                    let lhsIncluded = lhs.selection?.includeInTraining ?? false
+                    let rhsIncluded = rhs.selection?.includeInTraining ?? false
+                    if lhsIncluded != rhsIncluded {
+                        return lhsIncluded && !rhsIncluded
+                    }
+                    return lhs.index < rhs.index
+                }
+            return DatasetPackageDocument(
+                directory: directory,
+                name: package.name,
+                createdAt: package.createdAt,
+                clips: reviewAssets.enumerated().map { index, item in
+                    let asset = item.asset
+                    let record = recordsByID[asset.id] ?? recordsByFile[asset.file.path]
+                    return clip(
+                        from: reviewObject(
+                            for: asset,
+                            selection: item.selection,
+                            existingRecord: record
+                        ),
+                        index: index,
+                        datasetDirectory: directory
+                    )
+                },
+                validation: validation,
+                packageV2: package
+            )
+        }
         return DatasetPackageDocument(
             directory: directory,
             name: stringValue(manifest?["name"]) ?? directory.lastPathComponent,
@@ -312,6 +463,44 @@ enum TrainingDatasetPackageEditor {
             createdAt: updatedAt
         )
         let records = document.clips.map { $0.persistedObject(updatedAt: updatedAt) }
+        if var package = document.packageV2 {
+            guard let defaultPlanIndex = package.trainingPlans.firstIndex(where: \.isDefault) else {
+                throw TrainingDatasetPackageError.invalidPackage(
+                    "Package v2 does not have a default training plan."
+                )
+            }
+            for clip in document.clips {
+                guard let assetID = clip.assetID,
+                      let assetIndex = package.assets.firstIndex(where: { $0.id == assetID }) else {
+                    continue
+                }
+                package.assets[assetIndex].annotation = clip.packageV2Annotation(updatedAt: updatedAt)
+                if let selectionIndex = package.trainingPlans[defaultPlanIndex].selections.firstIndex(
+                    where: { $0.assetID == assetID }
+                ) {
+                    package.trainingPlans[defaultPlanIndex]
+                        .selections[selectionIndex]
+                        .includeInTraining = clip.includeInTraining
+                } else {
+                    package.trainingPlans[defaultPlanIndex].selections.append(
+                        DatasetTrainingSelectionV2(
+                            assetID: assetID,
+                            includeInTraining: clip.includeInTraining,
+                            trainingRange: package.assets[assetIndex].sourceRange,
+                            rangePolicy: .fullSource
+                        )
+                    )
+                }
+            }
+            try TrainingDatasetPackageWriter.writeReviewedPackageV2(
+                package,
+                records: records,
+                outputDirectory: document.directory,
+                updatedAt: updatedAt
+            )
+            return
+        }
+
         try writeJSONArray(records, to: document.directory.appendingPathComponent(TrainingDatasetPackageWriter.captionsFileName))
         try TrainingDatasetPackageWriter.refreshTrainingBundles(at: document.directory)
 
@@ -340,7 +529,7 @@ enum TrainingDatasetPackageEditor {
             "notes",
         ]]
 
-        for clip in document.clips {
+        for clip in document.clips where clip.includeInTraining {
             guard let audioURL = clip.audioURL(relativeTo: document.directory) else { continue }
             let stemURL = audioURL.deletingPathExtension()
             let caption = clip.caption.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -432,6 +621,7 @@ enum TrainingDatasetPackageEditor {
     }
 
     static func issues(for clip: DatasetClipReview, datasetDirectory: URL) -> [DatasetPackageIssue] {
+        guard clip.includeInTraining else { return [] }
         var issues: [DatasetPackageIssue] = []
 
         if clip.caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -447,7 +637,8 @@ enum TrainingDatasetPackageEditor {
         } else {
             issues.append(DatasetPackageIssue(severity: .blocker, message: "No audio path is set."))
         }
-        if clip.lyrics.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if clip.role != DatasetAssetRoleV2.instrumental.rawValue,
+           clip.lyrics.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             issues.append(DatasetPackageIssue(severity: .warning, message: "Lyrics/transcript are empty."))
         }
         if clip.bpm.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -456,7 +647,9 @@ enum TrainingDatasetPackageEditor {
         if clip.key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             issues.append(DatasetPackageIssue(severity: .warning, message: "Key is missing."))
         }
-        if clip.separationStatus == "not_run" || clip.separationStatus.isEmpty {
+        if (clip.role == DatasetAssetRoleV2.fullMix.rawValue
+                || clip.role == DatasetAssetRoleV2.clip.rawValue),
+           clip.separationStatus == "not_run" || clip.separationStatus.isEmpty {
             issues.append(DatasetPackageIssue(severity: .warning, message: "Stem separation has not been recorded."))
         }
         return issues
@@ -511,6 +704,8 @@ enum TrainingDatasetPackageEditor {
         let rawOutputFiles = annotation["raw_output_files"] as? [String: Any] ?? [:]
         let trainingReview = object["training_review"] as? [String: Any] ?? [:]
         let audio = object["audio"] as? [String: Any] ?? [:]
+        let sourceRange = object["source_range"] as? [String: Any] ?? [:]
+        let trainingRange = object["training_range"] as? [String: Any] ?? [:]
         let caption = firstString(object, keys: ["caption", "prompt"]) ?? ""
         let lyrics = firstString(object, keys: ["lyrics", "transcript"])
             ?? firstString(transcription, keys: ["text"])
@@ -558,8 +753,96 @@ enum TrainingDatasetPackageEditor {
             audioStatus: firstString(audio, keys: ["metadata_status"]) ?? "unknown",
             separationStatus: separationStatus(from: object, datasetDirectory: datasetDirectory),
             transcriptionStatus: firstString(transcription, keys: ["status"]) ?? "not_run",
+            assetID: firstString(object, keys: ["asset_id"]),
+            sourceTrackID: firstString(object, keys: ["source_track_id"]),
+            derivedFromAssetID: firstString(object, keys: ["derived_from"]),
+            includeInTraining: boolValue(object["include_in_training"]) ?? true,
+            sourceStartSeconds: doubleValue(sourceRange["start_seconds"]),
+            sourceEndSeconds: doubleValue(sourceRange["end_seconds"]),
+            trainingStartSeconds: doubleValue(trainingRange["start_seconds"]),
+            trainingEndSeconds: doubleValue(trainingRange["end_seconds"]),
+            trainingRangePolicy: firstString(object, keys: ["range_policy"]) ?? "",
             rawObject: object
         )
+    }
+
+    private static func reviewObject(
+        for asset: DatasetAssetV2,
+        selection: DatasetTrainingSelectionV2?,
+        existingRecord: [String: Any]?
+    ) -> [String: Any] {
+        var object = existingRecord ?? [:]
+        var assets = stringDictionary(object["assets"]) ?? [:]
+        assets[asset.role.rawValue] = asset.file.path
+        object["id"] = asset.id
+        object["asset_id"] = asset.id
+        object["source_track_id"] = asset.sourceTrackID
+        object["derived_from"] = asset.derivedFrom
+        object["file"] = asset.file.path
+        object["assets"] = assets
+        object["role"] = asset.role.rawValue
+        object["asset_role"] = asset.role.rawValue
+        object["include_in_training"] = selection?.includeInTraining ?? false
+        object["source_range"] = timeRangeObject(asset.sourceRange)
+        if let selection {
+            object["training_range"] = timeRangeObject(selection.trainingRange)
+            object["range_policy"] = selection.rangePolicy.rawValue
+        }
+
+        var audio: [String: Any] = object["audio"] as? [String: Any] ?? [:]
+        if let format = asset.file.format { audio["format"] = format }
+        if let byteSize = asset.file.byteSize { audio["byte_size"] = byteSize }
+        if let duration = asset.file.durationSeconds { audio["duration_seconds"] = duration }
+        if let sampleRate = asset.file.sampleRate { audio["sample_rate"] = sampleRate }
+        if let channels = asset.file.channels { audio["channels"] = channels }
+        object["audio"] = audio
+        if let duration = asset.file.durationSeconds {
+            object["clip_length_seconds"] = duration
+        }
+
+        let annotation = asset.annotation
+        let caption = annotation?.caption?.text ?? ""
+        let lyrics = annotation?.lyrics?.text ?? ""
+        object["caption"] = caption
+        object["prompt"] = caption
+        object["caption_source"] = annotation?.caption?.source ?? (caption.isEmpty ? "none" : "manual")
+        object["lyrics"] = lyrics
+        object["transcript"] = lyrics
+        object["lyrics_source"] = annotation?.lyrics?.source ?? (lyrics.isEmpty ? "none" : "manual")
+        object["language"] = annotation?.caption?.language ?? annotation?.lyrics?.language ?? ""
+        object["notes"] = annotation?.notes ?? ""
+        object["training_review"] = [
+            "approved": annotation?.approved ?? false,
+            "status": annotation?.reviewStatus ?? "needs_review",
+            "updated_at": annotation?.reviewedAt ?? "",
+            "notes": annotation?.notes ?? "",
+        ]
+
+        let provenance = annotation?.caption?.provenance ?? annotation?.lyrics?.provenance
+        var rawOutputs = annotation?.caption?.provenance?.rawOutputFiles ?? [:]
+        for (key, value) in annotation?.lyrics?.provenance?.rawOutputFiles ?? [:] {
+            rawOutputs[key] = value
+        }
+        object["annotation"] = [
+            "schema_version": TrainingDatasetPackageWriter.annotationSchemaVersion,
+            "annotation_backend": provenance?.backendID ?? "manual",
+            "annotation_backend_version": provenance?.backendVersion ?? "",
+            "model_id": provenance?.modelID ?? "",
+            "model_revision": provenance?.modelRevision ?? "",
+            "caption_source": annotation?.caption?.source ?? "none",
+            "lyrics_source": annotation?.lyrics?.source ?? "none",
+            "review_status": annotation?.reviewStatus ?? "needs_review",
+            "raw_output_files": rawOutputs,
+        ]
+        return object
+    }
+
+    private static func timeRangeObject(_ range: DatasetTimeRangeV2) -> [String: Any] {
+        var object: [String: Any] = ["start_seconds": range.startSeconds]
+        if let endSeconds = range.endSeconds {
+            object["end_seconds"] = endSeconds
+        }
+        return object
     }
 
     private static func separationStatus(from object: [String: Any], datasetDirectory: URL) -> String {

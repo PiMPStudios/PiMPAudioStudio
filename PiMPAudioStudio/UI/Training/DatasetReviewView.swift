@@ -145,7 +145,8 @@ struct DatasetReviewView: View {
                 .fontWeight(.semibold)
                 .foregroundStyle(document.isTrainingReady ? .green : .orange)
 
-                metric("\(document.clips.count)", "Clips")
+                metric("\(document.clips.count)", "Assets")
+                metric("\(document.includedCount)", "Selected")
                 metric("\(document.approvedCount)", "Approved")
                 metric("\(document.blockerCount)", "Blockers")
                 metric("\(document.warningCount)", "Warnings")
@@ -177,6 +178,14 @@ struct DatasetReviewView: View {
                     Text(notice)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                } else if document.multipliedSourceTrackCount > 0 {
+                    Text(
+                        "\(document.multipliedSourceTrackCount) source track"
+                            + "\(document.multipliedSourceTrackCount == 1 ? "" : "s") "
+                            + "has multiple selected representations. This increases its effective training weight."
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.orange)
                 } else {
                     Text(document.validation.summary)
                         .font(.caption)
@@ -223,8 +232,16 @@ struct DatasetReviewView: View {
         let warnings = issues.filter { $0.severity == .warning }.count
 
         return HStack(alignment: .top, spacing: 8) {
-            Image(systemName: clip.isApproved ? "checkmark.circle.fill" : "waveform")
-                .foregroundStyle(clip.isApproved ? .green : .secondary)
+            Image(
+                systemName: clip.includeInTraining
+                    ? (clip.isApproved ? "checkmark.circle.fill" : "waveform")
+                    : "circle.dashed"
+            )
+                .foregroundStyle(
+                    clip.includeInTraining
+                        ? (clip.isApproved ? .green : .secondary)
+                        : Color.secondary.opacity(0.55)
+                )
                 .frame(width: 18)
             VStack(alignment: .leading, spacing: 3) {
                 Text(clip.displayName)
@@ -237,6 +254,10 @@ struct DatasetReviewView: View {
                     .lineLimit(2)
                 HStack(spacing: 6) {
                     badge(clip.role.isEmpty ? "full_mix" : clip.role)
+                    badge(
+                        clip.includeInTraining ? "selected" : "opt-in",
+                        color: clip.includeInTraining ? .blue : .secondary
+                    )
                     if let duration = clip.durationSeconds {
                         Text("\(Int(duration.rounded()))s")
                             .font(.caption2)
@@ -269,8 +290,8 @@ struct DatasetReviewView: View {
             }
         } else {
             statusMessage(
-                "Select a Clip",
-                message: "Choose a clip to review captions, lyrics, metadata, and readiness warnings.",
+                "Select an Asset",
+                message: "Choose an audio asset to review its role, training selection, annotations, and readiness.",
                 systemImage: "waveform",
                 color: .secondary
             )
@@ -291,8 +312,13 @@ struct DatasetReviewView: View {
                     .truncationMode(.middle)
             }
             Spacer()
-            Toggle("Approved", isOn: approvedBinding(index))
-                .toggleStyle(.checkbox)
+            VStack(alignment: .trailing, spacing: 6) {
+                Toggle("Include in Training", isOn: includeInTrainingBinding(index))
+                    .toggleStyle(.checkbox)
+                Toggle("Approved", isOn: approvedBinding(index))
+                    .toggleStyle(.checkbox)
+                    .disabled(!clip.includeInTraining)
+            }
         }
     }
 
@@ -385,15 +411,28 @@ struct DatasetReviewView: View {
                 }
             }
 
-            HStack {
-                Picker("Role", selection: binding(index, \.role)) {
-                    Text("Full Mix").tag("full_mix")
-                    Text("Vocal").tag("vocal")
-                    Text("Instrumental").tag("instrumental")
+            if document!.clips[index].assetID == nil {
+                HStack {
+                    Picker("Role", selection: binding(index, \.role)) {
+                        Text("Full Mix").tag("full_mix")
+                        Text("Vocals").tag("vocals")
+                        Text("Instrumental").tag("instrumental")
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(maxWidth: 320)
+                    Spacer()
                 }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 320)
-                Spacer()
+            } else {
+                HStack(spacing: 8) {
+                    Text("Asset Role")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    badge(document!.clips[index].role)
+                    if !document!.clips[index].trainingRangePolicy.isEmpty {
+                        badge(document!.clips[index].trainingRangePolicy)
+                    }
+                    Spacer()
+                }
             }
 
             VStack(alignment: .leading, spacing: 6) {
@@ -435,6 +474,36 @@ struct DatasetReviewView: View {
                     Text("Review")
                         .foregroundStyle(.secondary)
                     Text(clip.reviewStatus.isEmpty ? "needs_review" : clip.reviewStatus)
+                }
+                GridRow {
+                    Text("Training")
+                        .foregroundStyle(.secondary)
+                    Text(clip.includeInTraining ? "selected" : "opt-in")
+                }
+                if let duration = clip.effectiveTrainingDurationSeconds {
+                    GridRow {
+                        Text("Effective Range")
+                            .foregroundStyle(.secondary)
+                        Text("\(duration.formatted(.number.precision(.fractionLength(0...2))))s")
+                    }
+                }
+                if let sourceTrackID = clip.sourceTrackID {
+                    GridRow {
+                        Text("Source Track")
+                            .foregroundStyle(.secondary)
+                        Text(sourceTrackID)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                }
+                if let derivedFromAssetID = clip.derivedFromAssetID {
+                    GridRow {
+                        Text("Derived From")
+                            .foregroundStyle(.secondary)
+                        Text(derivedFromAssetID)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
                 }
                 GridRow {
                     Text("Caption Source")
@@ -546,6 +615,16 @@ struct DatasetReviewView: View {
             set: { value in
                 document!.clips[index].isApproved = value
                 document!.clips[index].reviewStatus = value ? "approved" : "needs_review"
+                document!.hasUnsavedChanges = true
+            }
+        )
+    }
+
+    private func includeInTrainingBinding(_ index: Int) -> Binding<Bool> {
+        Binding(
+            get: { document!.clips[index].includeInTraining },
+            set: { value in
+                document!.clips[index].includeInTraining = value
                 document!.hasUnsavedChanges = true
             }
         )
@@ -667,7 +746,7 @@ struct DatasetReviewView: View {
         guard let current = document else { return }
         do {
             let count = try TrainingDatasetPackageEditor.exportSidecars(from: current)
-            notice = "Exported sidecars for \(count) clip\(count == 1 ? "" : "s")."
+            notice = "Exported sidecars for \(count) asset\(count == 1 ? "" : "s")."
         } catch {
             notice = nil
             errorMessage = error.localizedDescription
@@ -676,11 +755,12 @@ struct DatasetReviewView: View {
 
     private func markAllApproved() {
         guard document != nil else { return }
-        for index in document!.clips.indices {
+        for index in document!.clips.indices where document!.clips[index].includeInTraining {
             document!.clips[index].isApproved = true
+            document!.clips[index].reviewStatus = "approved"
         }
         document!.hasUnsavedChanges = true
-        notice = "All clips marked approved. Save to persist."
+        notice = "All selected assets marked approved. Save to persist."
     }
 
     private func startEnrichment() {

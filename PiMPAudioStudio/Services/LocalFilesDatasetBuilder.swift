@@ -2,6 +2,29 @@ import AVFoundation
 import Foundation
 import PiMPAudioCore
 
+enum LocalDatasetBuildMode: String, CaseIterable, Hashable, Identifiable {
+    case wholeTracks = "whole_tracks"
+    case clipExtraction = "clip_extraction"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .wholeTracks: return "Whole Tracks"
+        case .clipExtraction: return "Extract Clips"
+        }
+    }
+
+    var helpText: String {
+        switch self {
+        case .wholeTracks:
+            return "Preserves every complete source and trains from full mixes by default. Recommended for ACE-Step 1.5."
+        case .clipExtraction:
+            return "Creates fixed-length derived clips for experiments or tightly controlled sample counts."
+        }
+    }
+}
+
 enum LocalDatasetClipFormat: String, CaseIterable, Hashable, Identifiable {
     case wav
     case m4a
@@ -55,12 +78,54 @@ enum LocalDatasetClipSamplingMode: String, CaseIterable, Hashable, Identifiable 
 struct LocalFilesDatasetConfig {
     static let maximumTotalClips = 1_000
 
+    var buildMode: LocalDatasetBuildMode = .wholeTracks
     var clipLength: TimeInterval = 35
     var clipsPerTrack: Int = 8
     var maxTotalClips: Int = 40
     var clipFormat: LocalDatasetClipFormat = .wav
     var samplingMode: LocalDatasetClipSamplingMode = .evenlySpread
     var samplingSeed: Int = 1337
+
+    init() {}
+
+    init(
+        buildMode: LocalDatasetBuildMode,
+        clipLength: TimeInterval = 35,
+        clipsPerTrack: Int = 8,
+        maxTotalClips: Int = 40,
+        clipFormat: LocalDatasetClipFormat = .wav,
+        samplingMode: LocalDatasetClipSamplingMode = .evenlySpread,
+        samplingSeed: Int = 1337
+    ) {
+        self.buildMode = buildMode
+        self.clipLength = clipLength
+        self.clipsPerTrack = clipsPerTrack
+        self.maxTotalClips = maxTotalClips
+        self.clipFormat = clipFormat
+        self.samplingMode = samplingMode
+        self.samplingSeed = samplingSeed
+    }
+
+    /// Compatibility initializer for callers that explicitly configure clip
+    /// extraction values. New UI state uses `init()` and defaults to whole tracks.
+    init(
+        clipLength: TimeInterval,
+        clipsPerTrack: Int,
+        maxTotalClips: Int,
+        clipFormat: LocalDatasetClipFormat = .wav,
+        samplingMode: LocalDatasetClipSamplingMode = .evenlySpread,
+        samplingSeed: Int = 1337
+    ) {
+        self.init(
+            buildMode: .clipExtraction,
+            clipLength: clipLength,
+            clipsPerTrack: clipsPerTrack,
+            maxTotalClips: maxTotalClips,
+            clipFormat: clipFormat,
+            samplingMode: samplingMode,
+            samplingSeed: samplingSeed
+        )
+    }
 }
 
 enum LocalDatasetClipSampler {
@@ -347,11 +412,16 @@ final class LocalFilesDatasetBuilder: ObservableObject {
 
         let buildStartedAt = Date()
         let trimmedStyle = styleTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
-        let requestedClips = sourceFiles.count * config.clipsPerTrack
-        let plannedClips = min(requestedClips, config.maxTotalClips)
+        let requestedItems = config.buildMode == .wholeTracks
+            ? sourceFiles.count
+            : sourceFiles.count * config.clipsPerTrack
+        let plannedItems = config.buildMode == .wholeTracks
+            ? sourceFiles.count
+            : min(requestedItems, config.maxTotalClips)
         AudioDiagnostics.note(
             "dataset/local/buildBegin",
             "sources=\(sourceFiles.count) directories=\(sourceDirectories.count) "
+                + "mode=\(config.buildMode.rawValue) "
                 + "clipLength=\(secondsText(config.clipLength)) clipsPerFile=\(config.clipsPerTrack) "
                 + "maxTotal=\(config.maxTotalClips) format=\(config.clipFormat.rawValue) "
                 + "sampling=\(config.samplingMode.rawValue) seed=\(config.samplingSeed) "
@@ -369,26 +439,28 @@ final class LocalFilesDatasetBuilder: ObservableObject {
         let outputDir = outputBase
             .appendingPathComponent("TrainingDatasets", isDirectory: true)
             .appendingPathComponent("\(folderTag)_local_\(timestampTag())", isDirectory: true)
-        let clipsDir = outputDir.appendingPathComponent("clips", isDirectory: true)
-        try FileManager.default.createDirectory(at: clipsDir, withIntermediateDirectories: true)
+        let mediaDirectoryName = config.buildMode == .wholeTracks ? "sources" : "clips"
+        let mediaDirectory = outputDir.appendingPathComponent(mediaDirectoryName, isDirectory: true)
+        try FileManager.default.createDirectory(at: mediaDirectory, withIntermediateDirectories: true)
         AudioDiagnostics.note(
             "dataset/local/outputReady",
-            "output=\(outputDir.path(percentEncoded: false)) clips=\(clipsDir.path(percentEncoded: false))"
+            "output=\(outputDir.path(percentEncoded: false)) media=\(mediaDirectory.path(percentEncoded: false))"
         )
         AudioDiagnostics.note(
             "dataset/local/coverage",
-            "requested=\(requestedClips) planned=\(plannedClips) capped=\(requestedClips > config.maxTotalClips) "
+            "requested=\(requestedItems) planned=\(plannedItems) "
+                + "capped=\(config.buildMode == .clipExtraction && requestedItems > config.maxTotalClips) "
                 + "sources=\(sourceFiles.count)"
         )
 
-        var allClips: [TrainingImportedFile] = []
+        var trainingItems: [TrainingImportedFile] = []
 
         for (idx, sourceURL) in sourceFiles.enumerated() {
             try Task.checkCancellation()
-            guard allClips.count < config.maxTotalClips else {
+            guard config.buildMode == .wholeTracks || trainingItems.count < config.maxTotalClips else {
                 AudioDiagnostics.note(
                     "dataset/local/capReached",
-                    "atSource=\(idx + 1) totalSources=\(sourceFiles.count) totalClips=\(allClips.count) cap=\(config.maxTotalClips)"
+                    "atSource=\(idx + 1) totalSources=\(sourceFiles.count) totalItems=\(trainingItems.count) cap=\(config.maxTotalClips)"
                 )
                 break
             }
@@ -404,7 +476,31 @@ final class LocalFilesDatasetBuilder: ObservableObject {
             }
 
             do {
-                let remaining = config.maxTotalClips - allClips.count
+                let packagedSourceURL = try TrainingDatasetPackageWriter.stageWholeTrackSource(
+                    sourceURL,
+                    index: idx,
+                    outputDirectory: outputDir
+                )
+                if config.buildMode == .wholeTracks {
+                    let caption = trimmedStyle.isEmpty ? title : trimmedStyle
+                    trainingItems.append(
+                        TrainingImportedFile(
+                            url: packagedSourceURL,
+                            description: caption,
+                            sourceClip: TrainingSourceClipMetadata(
+                                fileName: sourceURL.lastPathComponent,
+                                startSeconds: 0
+                            )
+                        )
+                    )
+                    AudioDiagnostics.note(
+                        "dataset/local/sourcePreserved",
+                        "index=\(idx + 1)/\(sourceFiles.count) file=\(sourceURL.lastPathComponent)"
+                    )
+                    continue
+                }
+
+                let remaining = config.maxTotalClips - trainingItems.count
                 let maxClipsForSource = min(config.clipsPerTrack, remaining)
                 let sourceStartedAt = Date()
                 AudioDiagnostics.note(
@@ -419,16 +515,16 @@ final class LocalFilesDatasetBuilder: ObservableObject {
                     clipLength: config.clipLength,
                     maxClips: maxClipsForSource,
                     styleTemplate: trimmedStyle,
-                    outputDirectory: clipsDir,
+                    outputDirectory: mediaDirectory,
                     clipFormat: config.clipFormat,
                     samplingMode: config.samplingMode,
                     samplingSeed: config.samplingSeed
                 )
-                allClips.append(contentsOf: chunks)
+                trainingItems.append(contentsOf: chunks)
                 AudioDiagnostics.note(
                     "dataset/local/sourceEnd",
                     "index=\(idx + 1)/\(sourceFiles.count) file=\(sourceURL.lastPathComponent) "
-                        + "produced=\(chunks.count) totalClips=\(allClips.count) "
+                        + "produced=\(chunks.count) totalItems=\(trainingItems.count) "
                         + "elapsed=\(secondsText(Date().timeIntervalSince(sourceStartedAt)))"
                 )
             } catch is CancellationError {
@@ -443,7 +539,7 @@ final class LocalFilesDatasetBuilder: ObservableObject {
             }
         }
 
-        guard !allClips.isEmpty else {
+        guard !trainingItems.isEmpty else {
             AudioDiagnostics.note("dataset/local/buildEmpty", "sources=\(sourceFiles.count)")
             throw LocalFilesDatasetError.noClipsProduced
         }
@@ -451,27 +547,27 @@ final class LocalFilesDatasetBuilder: ObservableObject {
         let packageStartedAt = Date()
         AudioDiagnostics.note(
             "dataset/local/packageWriteBegin",
-            "clips=\(allClips.count) output=\(outputDir.path(percentEncoded: false))"
+            "items=\(trainingItems.count) output=\(outputDir.path(percentEncoded: false))"
         )
         AudioDiagnostics.memory("dataset/local/packageWriteBegin")
-        try TrainingDatasetPackageWriter.writeLocalPackage(
+        let packagedItems = try TrainingDatasetPackageWriter.writeLocalPackage(
             outputDirectory: outputDir,
-            clips: allClips,
+            clips: trainingItems,
             sourceFiles: sourceFiles,
             config: config,
             styleTemplate: trimmedStyle
         )
         AudioDiagnostics.note(
             "dataset/local/packageWriteEnd",
-            "clips=\(allClips.count) elapsed=\(secondsText(Date().timeIntervalSince(packageStartedAt)))"
+            "items=\(packagedItems.count) elapsed=\(secondsText(Date().timeIntervalSince(packageStartedAt)))"
         )
         AudioDiagnostics.note(
             "dataset/local/buildEnd",
-            "clips=\(allClips.count) output=\(outputDir.path(percentEncoded: false)) "
+            "items=\(packagedItems.count) output=\(outputDir.path(percentEncoded: false)) "
                 + "elapsed=\(secondsText(Date().timeIntervalSince(buildStartedAt)))"
         )
         AudioDiagnostics.memory("dataset/local/buildEnd")
-        return LocalFilesDatasetResult(outputDirectory: outputDir, clips: allClips)
+        return LocalFilesDatasetResult(outputDirectory: outputDir, clips: packagedItems)
     }
 
     nonisolated private static func chunkAudio(

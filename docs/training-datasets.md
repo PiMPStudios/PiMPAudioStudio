@@ -1,22 +1,21 @@
 # Training Dataset Packages
 
-PiMP Audio Studio can build and import local LoRA training datasets without a cloud service. The current dataset builder is local-file/full-mix first, with package metadata shaped so a future remote worker can consume the same folder or zip.
+PiMP Audio Studio can build and import local LoRA training datasets without a
+cloud service. The local-file builder preserves complete sources and writes
+package v2, while compatibility bundles let the current local trainer and
+remote worker consume the same folder or zip.
 
 ## Package Version Status
 
-The shipping builder still writes the clip-based v1 package described below.
-The typed whole-track package-v2 contract, validator, non-destructive v1
-adapter, and compatibility bundle projection are now implemented. See
-[dataset-package-v2.md](dataset-package-v2.md) for the contract and migration
-rules.
-
-The next slice will make the builder preserve complete source tracks and write
-v2 packages by default. Until that UI and writer work lands, this document's
-existing build instructions remain the behavior users see in the app.
+New packages use the typed whole-track package-v2 contract. Existing v1
+clip-based packages remain readable through a non-destructive compatibility
+adapter and are not rewritten merely by opening them. See
+[dataset-package-v2.md](dataset-package-v2.md) for the contract, training-plan,
+and migration rules.
 
 ## Build From Local Files
 
-Use **Build > Datasets > From Local Files...** to slice local audio into a package under:
+Use **Build > Datasets > From Local Files...** to create a package under:
 
 ```text
 <Output Directory>/TrainingDatasets/<source>_local_<timestamp>/
@@ -24,12 +23,19 @@ Use **Build > Datasets > From Local Files...** to slice local audio into a packa
 
 The package contains:
 
-- `clips/` - generated training clips. WAV/PCM is the default and recommended format; M4A remains available as a compact option for quick tests.
-- `captions.json` - clip captions for audio-dir style tooling.
+- `sources/` - byte-preserved complete imported tracks; these are canonical in
+  both build modes.
+- `clips/` - optional derived training clips written only in **Extract Clips**
+  mode. WAV/PCM is the recommended format; M4A remains available.
+- `captions.json` - compatibility annotations for assets selected by the
+  default training plan.
 - `dataset_config.json` - generic audio-directory training config.
-- `dataset_manifest.json` - full package metadata, source file list, clip list, audio header metadata, and package status.
-- `training_bundle.json` - PiMP Audio Studio training bundle for the generated full-mix clips.
-- `training_bundle_full_mix.json` - explicit full-mix bundle; this is the safest file to re-import into PiMP Audio Studio's trainer.
+- `dataset_manifest.json` - canonical v2 source tracks, assets, derivation
+  relationships, annotations, and explicit training selections/ranges.
+- `training_bundle.json` - compatibility projection of the default v2 training
+  plan.
+- `training_bundle_full_mix.json` - current default-plan entry point for PiMP
+  Audio Studio and the remote worker. Its selected roles come from the v2 plan.
 - `training_bundle_vocals.json` - optional vocal-stem bundle written after local enrichment.
 - `training_bundle_instrumental.json` - optional instrumental-stem bundle written after local enrichment.
 - `remote_training_package.json` - provider-neutral descriptor for future RunPod/DigitalOcean GPU workers.
@@ -37,15 +43,37 @@ The package contains:
 - `preprocess_cache.json` - adapter-agnostic cache manifest tracking bundle fingerprints, cache status, and sample-level tensor locations shared by LoRA and LoKR preprocessing.
 - `review_backups/` - timestamped snapshots of package JSON written before review saves.
 
-Readable audio headers are recorded when AVFoundation can open the source/clip. Invalid stubs or unsupported headers do not fail the package; they are marked with `metadata_status`.
+**Whole Tracks** is the default and recommended ACE-Step mode. It creates one
+`full_mix` asset per preserved source and selects those assets for training.
+ACE-Step's effective 240-second limit is recorded as a backend-limited training
+range without truncating or replacing the preserved source.
 
-Local file clipping defaults to deterministic **Evenly Spread** sampling, so long recordings contribute clips from across the whole file instead of only the opening section. The import sheet also supports **Sequential** sampling for old first-window behavior and **Random Seeded** sampling for reproducible random windows. The selected mode and seed are recorded in `dataset_manifest.json` under `clip_sampling`.
+**Extract Clips** is an explicit alternative for loops, long recordings, and
+controlled sample counts. Each clip is a derived `clip` asset linked to its
+preserved `full_mix`; the clips, rather than the full mixes, are selected by
+that plan. Sampling can be deterministic **Evenly Spread**, **Sequential**, or
+**Random Seeded**, with mode and seed stored in each clip's derivation details.
+
+Readable audio headers are recorded when AVFoundation can open an asset.
+Incomplete metadata is allowed, but package validation reports unknown ranges
+and missing files.
 
 ## Annotation Provenance
 
-Each clip record carries `caption_source`, `lyrics_source`, and an `annotation` object with the schema version, backend/model identifiers, language, raw artifact paths, and review status. Filename placeholders from blank style descriptions are marked as `filename`, manual edits in the review workspace are marked as `manual`, imported sidecars are marked as sidecar/CSV sources, native metadata captions are marked as `native`, and native Qwen3-ASR lyric output is marked as `native-qwen3-asr`.
+Each v2 asset carries independent caption and lyrics annotations with
+backend/model provenance, language, raw artifact paths, and review status.
+Filename placeholders from blank style descriptions are marked as `filename`,
+manual edits in Dataset Review are marked as `manual`, imported sidecars use
+sidecar/CSV sources, native metadata captions use `native`, and native
+Qwen3-ASR output uses `native-qwen3-asr`.
 
-Saving from the review workspace writes a backup first, then refreshes `captions.json`, the training bundles, validation, manifest annotation summaries, and `preprocess_cache.json`.
+Dataset Review lists selected and opt-in assets together. It shows each asset
+role, source-track relationship, parent asset, range policy, and effective
+training duration. **Include in Training** edits the default v2 training plan.
+Stems and other representations remain opt-in; selecting multiple
+representations from one source displays an effective-weight warning. Saving
+writes a backup first, then refreshes the canonical manifest, compatibility
+bundles, captions, validation, remote descriptor, and preprocess manifest.
 
 Use **Export Sidecars** in the review workspace to write reviewed metadata back beside the audio files in ACE-compatible formats:
 
@@ -106,14 +134,20 @@ LoKR adapters can be selected for generation like LoRA adapters, but stacks are 
 
 ## Remote Package Shape
 
-Use **Export Zip** from the Datasets review workspace after clips are approved. The same reviewed packages are also available under **Build > Training > Remote GPU** for export-focused handoff. The exported zip keeps the package root intact. Remote workers should:
+Use **Export Zip** from Dataset Review after selected assets are approved. The
+same reviewed packages are also available under **Build > Training > Remote
+GPU** for export-focused handoff. The exported zip keeps `sources/`, optional
+derived assets, and their metadata together. Remote workers should:
 
 1. Unzip the package.
 2. Read `remote_training_package.json`.
 3. Resolve `entry_bundle` from the package root.
-4. Resolve clip paths relative to the selected bundle's `dataset_dir`.
+4. Resolve selected asset paths relative to the bundle's `dataset_dir`.
 
-The initial package is full-mix only. After local enrichment, the same package can also include `stems/`, `training_bundle_vocals.json`, and `training_bundle_instrumental.json`; remote workers should pick the bundle that matches the intended training target.
+The default whole-track plan selects full mixes only. After local enrichment,
+the same package can include linked stems and optional stem bundles. Dataset
+Review can opt those roles into the default plan without losing their source
+relationships.
 
 Remote packages include `preprocess_cache.json`, `annotations/**`, and `preprocessed/**` in their copy rules. Local bundle preprocessing can now populate `preprocessed/<bundle>/samples/*.safetensors` plus `index.json`; remote workers should read or write the same cache shape instead of inventing provider-specific tensor layouts.
 

@@ -1,7 +1,7 @@
 # Dataset Package v2
 
-Status: contract and compatibility foundation implemented; whole-track builder
-and review UI integration are the next slices.
+Status: contract, compatibility, whole-track/clip writers, and role-aware
+Dataset Review integration implemented.
 
 Package v2 makes complete source tracks canonical. Full mixes, stems, and clips
 are separate assets connected to a stable source track instead of being
@@ -71,12 +71,15 @@ training window from being collapsed into one misleading duration field.
 
 ## Default Selection
 
-New whole-track packages will create a full-mix asset for every source track
-and include only those full mixes in the default training plan.
+New whole-track packages create a full-mix asset for every source track and
+include only those full mixes in the default training plan. Explicit clip mode
+still preserves those complete sources, then creates selected `clip` assets
+with `derived_from` relationships to the canonical full mix.
 
-Stem and clip assets are opt-in. The validator emits a warning when one training
-plan includes more than one asset from the same source track because those
-representations increase that track's effective training weight.
+Stem and alternate assets are opt-in. Dataset Review exposes the plan selection,
+source relationship, effective range, and a warning when more than one
+representation of a source is selected. The validator enforces the same
+relationship and weight-safety rules outside the UI.
 
 ## Legacy Package Rules
 
@@ -143,16 +146,22 @@ Schema validation does not replace filesystem validation. Archive extraction
 and remote execution must continue rejecting symlink escapes after paths are
 resolved on disk.
 
-## Next Slice
+## Current Writer and Review Flow
 
-The next package milestone is the whole-track writer:
+The local-file builder now:
 
-1. copy each complete imported source into `sources/`;
-2. emit one source track and one default full-mix asset per file;
-3. create backend-specific training plans with visible ranges;
-4. retain optional clip extraction as an explicit derived-asset mode;
-5. update Dataset Review to present source tracks, asset roles, and weight
-   warnings.
+1. copies every complete imported source into `sources/`;
+2. emits stable source-track and full-mix asset IDs;
+3. selects full mixes by default, with a visible 240-second backend range when
+   required;
+4. retains clip extraction as an explicit derived-asset mode;
+5. adds separated stems as opt-in derived assets;
+6. projects the selected v2 plan to existing local/remote bundle files.
 
-Native ACE annotation integration follows after the whole-track package writer
-and review flow are stable.
+Dataset Review reads all v2 assets, not only the compatibility bundle. Review
+saves update annotations and `include_in_training` selections in the canonical
+manifest before regenerating projections.
+
+The next package milestone is native ACE annotation integration against this
+stable whole-track graph, followed by direct package-v2 remote-worker
+consumption.
