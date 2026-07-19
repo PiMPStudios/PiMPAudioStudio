@@ -144,25 +144,24 @@ User-facing docs live in:
 docs/user/
 ```
 
-Start here:
+Start at `docs/user/README.md`. Covered topics include getting started, model
+setup, music and SFX generation, the editor, history/presets, datasets and
+training, adapters, remote GPU, intelligence/lyrics, local CLI access, MCP,
+diagnostics, shortcuts, troubleshooting, and bug reports.
 
-- `docs/user/model-setup.md`
-- `docs/user/datasets-and-training.md`
-- `docs/user/adapters.md`
-- `docs/user/remote-gpu-training.md`
-- `docs/user/local-cli-access.md`
-- `docs/user/diagnostics-and-logs.md`
-- `docs/user/troubleshooting.md`
-- `docs/user/bug-report-checklist.md`
-
-Developer and packaging notes live in:
+Developer docs live in:
 
 ```text
 docs/developer/
 ```
 
-The public release plan is to bundle selected user docs into an in-app Help
-window so users do not need repository access.
+Start at `docs/developer/README.md` for architecture, repo layout, build/test,
+inference pipelines, dataset/training internals, adapters, remote worker, MCP,
+sandbox/security, documentation integration, and release packaging.
+
+The public release plan is to bundle selected user docs into an in-app
+Documentation/Help experience so users do not need repository access. Menu bar
+wiring is intentionally deferred until presentation is decided.
 
 ## Project Layout
 

@@ -24,10 +24,10 @@ Use the refresh button after signing in from Terminal.
 
 ## How The Buttons Work
 
-- Refresh: reruns detection for every provider.
-- Checkmark: runs the provider test or auth probe again.
-- Gear: grants sandbox folder access when macOS blocks the app from reading a
-  provider install folder. It does not sign in to the provider.
+- **Refresh** — reruns detection for every provider.
+- **Checkmark** — runs the provider test or auth probe again.
+- **Gear** — grants sandbox folder access when macOS blocks the app from reading
+  a provider install folder. It does **not** sign in to the provider.
 
 ## Grok Says Test Failed
 
@@ -72,8 +72,9 @@ grok models
 
 Then return to PiMP Audio Studio and click Refresh.
 
-Note: `grok models` may still list models while also saying `You are not
-authenticated`. The important part is whether that unauthenticated line is gone.
+Note: `grok models` may still list models while also saying
+`You are not authenticated`. The important part is whether that unauthenticated
+line is gone.
 
 ## Sandbox Access
 
@@ -101,3 +102,8 @@ grok models
 
 Swap `grok` for the provider that is failing. Do not paste API keys or auth
 tokens into bug reports.
+
+## Related
+
+- [Intelligence And Lyrics](intelligence.md)
+- [Troubleshooting](troubleshooting.md)

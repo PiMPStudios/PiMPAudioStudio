@@ -13,8 +13,8 @@ Open:
 Generate -> Advanced -> Verbose audio diagnostics
 ```
 
-When enabled, the app writes `[AUDIODIAG]` lines to the Xcode console and to a
-timestamped log file in the app diagnostics folder.
+When enabled, the app writes `[AUDIODIAG]` lines to the Xcode console (when run
+from Xcode) and to a timestamped log file in the app diagnostics folder.
 
 ## Log Location
 
@@ -34,32 +34,39 @@ The Generate view also shows the active log path beside the diagnostics toggle.
 
 ## What To Capture
 
-For generation issues:
+### Generation issues
 
-- The newest `PiMPAudioStudio-AUDIODIAG-*.log`.
-- The generated `.wav`.
-- The sibling `.trace.json`, if present.
-- The prompt, lyrics, seed, duration, model, and adapter stack.
+- Newest `PiMPAudioStudio-AUDIODIAG-*.log`
+- Generated `.wav`
+- Sibling `.trace.json` if present
+- Prompt, lyrics, seed, duration, model, adapter stack and gains
 
-For training issues:
+### Training issues
 
-- The newest `PiMPAudioStudio-AUDIODIAG-*.log`.
-- The training run folder.
-- `training_log.json`, if present.
-- Dataset package path.
-- Adapter recipe and settings.
+- Newest AUDIODIAG log
+- Training run folder
+- `training_log.json` if present
+- Dataset package path
+- Adapter recipe and settings
 
-For remote GPU issues:
+### Remote GPU issues
 
-- `remote_artifacts/logs.jsonl`.
-- `remote_artifacts/metrics.jsonl`.
-- `remote_artifacts/result.json`.
-- `remote_artifacts/command/dry_run.json`.
-- The generated `remote_job.json`.
+- `remote_artifacts/logs.jsonl`
+- `remote_artifacts/metrics.jsonl`
+- `remote_artifacts/result.json`
+- `remote_artifacts/command/dry_run.json`
+- Generated `remote_job.json`
 
-## Useful Things To Search
+### Dataset issues
 
-Generation:
+- Package folder
+- `dataset_manifest.json`
+- `captions.json`
+- `package_validation.json`
+
+## Useful Search Terms
+
+### Generation
 
 ```text
 generation/
@@ -69,7 +76,7 @@ diffusion/
 vae/
 ```
 
-Training:
+### Training
 
 ```text
 training/
@@ -79,9 +86,10 @@ training/checkpoint
 gradNorm
 updateNorm
 valLoss
+valueAndGrad
 ```
 
-Remote GPU:
+### Remote GPU / RunPod
 
 ```text
 runpod/
@@ -96,4 +104,10 @@ error
 ## Privacy
 
 Logs can include prompts, lyrics, local paths, model names, adapter names, and
-dataset names. Review logs before sharing them publicly.
+dataset names. Review logs before sharing them publicly. Never paste API keys,
+SSH private keys, or Hugging Face tokens into bug reports.
+
+## Related
+
+- [Bug Report Checklist](bug-report-checklist.md)
+- [Troubleshooting](troubleshooting.md)

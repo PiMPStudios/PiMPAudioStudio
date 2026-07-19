@@ -1,96 +1,135 @@
 # Datasets And Training
 
-PiMP Audio Studio can build reviewed training packages from local audio, enrich
-them with stems and lyrics, and use those packages for local or remote adapter
-training.
+PiMP Audio Studio can build reviewed training packages from local audio (or
+YouTube imports), enrich them with stems and lyrics, and train adapters locally
+or remotely.
 
 ## Build A Dataset
 
 Open:
 
 ```text
-Build -> Datasets -> From Local Files...
+Build -> Datasets
 ```
 
-Choose source audio files and a dataset name. **Whole Tracks** is the default
-source mode and preserves every complete input. Choose **Extract Clips** only
-when you intentionally want clip length, clips-per-file, total-cap, and sampling
-controls. The app writes a package under your selected output directory:
+### From Local Files
+
+Choose **From Local Files…**, pick source audio, and name the dataset.
+
+| Source mode | Behavior |
+| --- | --- |
+| **Whole Tracks** (default) | Preserves every complete input as a source; trains on full mixes with backend range limits |
+| **Extract Clips** | Explicitly slices clips with length, clips-per-file, total-cap, and sampling controls |
+
+Packages land under:
 
 ```text
-TrainingDatasets/<dataset-name>_local_<timestamp>/
+<Output Directory>/TrainingDatasets/<dataset-name>_local_<timestamp>/
 ```
 
-## Clip Sampling (Optional)
+### Clip Sampling (Extract Clips Only)
 
-Sampling appears only in Extract Clips mode and controls how source files are
-sliced into derived training clips.
+| Mode | Behavior |
+| --- | --- |
+| Evenly Spread | Default. Samples across each file; avoids training only on openings |
+| Sequential | First-window style; good for deterministic smoke tests |
+| Random Seeded | Reproducible random windows; seed is stored |
 
-- `Evenly Spread` - default. Samples from across each file so long sources do
-  not only train on the opening section.
-- `Sequential` - old first-window behavior. Useful for quick deterministic
-  tests, but less representative for long files.
-- `Random Seeded` - reproducible random windows. The seed can be typed directly.
+Limits:
 
-The builder supports up to 1,000 total clips and warns when your selected caps
-will not cover every source file.
+- Up to **1,000** total clips
+- The builder warns when caps will not cover every source file
+
+Evenly-spread sampling uses bin centers (not exact first/last edges) and records
+source path, start seconds, start frame, frame count, and sample rate in package
+metadata.
+
+### From YouTube
+
+**From YouTube…** downloads/import-prepares audio into training-ready files and
+can open the training sheet. Prefer local files when you already own the masters.
+
+## Package Layout (User View)
+
+A local package typically includes:
+
+| Item | Purpose |
+| --- | --- |
+| `sources/` | Byte-preserved complete imported tracks |
+| `clips/` | Optional derived clips (Extract Clips mode) |
+| `dataset_manifest.json` | Canonical package-v2 graph |
+| `captions.json` | Compatibility captions for the active plan |
+| `training_bundle_full_mix.json` | Default full-mix training entry |
+| `training_bundle_vocals.json` | After enrichment with stems |
+| `training_bundle_instrumental.json` | After enrichment with stems |
+| `package_validation.json` | Validation / blockers |
+| `preprocess_cache.json` | Shared preprocess cache status |
+| `annotations/` | Raw enrichment artifacts when present |
+| `stems/` | Optional Demucs stems |
+
+New packages use whole-track **package v2**. Older v1 packages still open through
+a non-destructive compatibility adapter.
+
+Technical contract: `docs/dataset-package-v2.md` and `docs/training-datasets.md`.
 
 ## Review Before Training
 
-After build, use:
+Select a package in the Datasets sidebar to open **Dataset Review**.
 
-```text
-Build -> Datasets -> Review Dataset
-```
+Review:
 
-Review captions, lyrics, BPM, key, language, time signature, notes, and package
-blockers. `Open in Training` should only be used once the package is ready.
+- Captions and lyrics
+- BPM, key, language, time signature
+- Notes and approval status
+- Include-in-training selections
+- Package validation blockers
+
+Use **Open in Training** only when the package is ready (blockers cleared).
 
 The review workspace can import sidecars and export reviewed metadata in
-ACE-compatible formats.
+ACE-compatible formats:
+
+- `{filename}.caption.txt`
+- `{filename}.lyrics.txt`
+- `{filename}.json`
+- package-level `metadata.csv`
+
+Saving review metadata writes a backup under `review_backups/` first.
 
 ## Enrich Dataset
 
-Dataset enrichment annotates complete full mixes locally. Use its compact
-**Options** menu to choose:
+**Enrich Dataset** annotates full mixes in place. Options menu:
 
-- **Automatic** - use Native ACE when both optional packs are installed and the
-  Mac meets the memory policy; otherwise use the lightweight native path.
-- **Lightweight Native** - use the built-in metadata caption and Qwen3-ASR path.
-- **Native ACE (Advanced)** - require the four-bit ACE captioner and transcriber.
-- **Create vocal and instrumental stems** - separately opt in to Demucs stem
-  separation and stem training bundles.
+| Option | Behavior |
+| --- | --- |
+| Automatic | Native ACE when both packs are installed and memory policy allows; else lightweight native |
+| Lightweight Native | Built-in metadata captions + Qwen3-ASR path |
+| Native ACE (Advanced) | Four-bit ACE captioner + transcriber packs |
+| Create vocal and instrumental stems | Opt-in Demucs (Swift/MLX) + stem training bundles |
 
-All modes:
+All enrichment modes:
 
-- Caption and transcribe full mixes, or transcribe vocals when the lightweight
-  path is used with stems.
-- Use Qwen3 Forced Aligner for timed ACE lyrics where available.
-- Analyzes each full mix for BPM, key, and ACE-Step time signature even when
-  stems are disabled. When stems exist, the cleaner instrumental analysis is
-  preferred.
-- Store model revision, quantization, prompt/settings, elapsed time, and raw
-  output paths so review edits do not erase provenance.
+- Caption and/or transcribe full mixes (or vocals on lightweight+stems paths)
+- Use Qwen3 Forced Aligner for timed ACE lyrics when available
+- Analyze BPM, key, and ACE-Step time signature (instrumental preferred when stems exist)
+- Store model revision, quantization, settings, elapsed time, and raw output paths
 
-Install the Native ACE packs under **Settings -> Models -> Dataset Annotation
-(Advanced)**. **Download** retrieves the pinned PiMP Audio Studio pack from
-Hugging Face, verifies every file against the pack manifest, validates the
-completed pack, and then installs it transactionally. Installed packs show
-**Ready** and can be deleted and downloaded again from the same row. Both packs
-use about 9.34 GB of disk; 24 GB unified memory is the provisional minimum and
-32 GB or more is recommended.
+Install Native ACE packs under **Settings → Models → Dataset Annotation
+(Advanced)**. Combined pack size is about **9.34 GB**. **24 GB** unified memory
+is provisional minimum; **32 GB+** recommended.
+
+Before enrichment, the app releases idle generation/cover/SFX/LoRA/LLM weights to
+free memory.
 
 ## Which Bundle To Train
 
-Use the bundle that matches the adapter you want:
+| Bundle | Use when |
+| --- | --- |
+| `training_bundle_full_mix.json` | Style / full-song adapter; default for non-stem packages |
+| `training_bundle_vocals.json` | Voice adapter after stem enrichment |
+| `training_bundle_instrumental.json` | Instrumental/style adapter after stem enrichment |
 
-- `training_bundle_full_mix.json` - style/full-song adapter.
-- `training_bundle_vocals.json` - voice/vocal adapter after enrichment.
-- `training_bundle_instrumental.json` - instrumental/style adapter after
-  enrichment.
-
-If you built a full-mix dataset and never enriched it, use
-`training_bundle_full_mix.json`.
+If you never enriched stems, use the full-mix bundle.
 
 ## Local Training
 
@@ -100,66 +139,75 @@ Open:
 Build -> Training
 ```
 
-Then choose `LoRA` or `LoKR`, select `Train from Files...`, and pick the package
-or training bundle.
+Choose **LoRA** or **LoKR**, then pick a reviewed package or **Train from
+Files…**.
 
-Local training is Swift/MLX only. It supports:
+Local training is **Swift/MLX only**. Features:
 
-- Narrow and Wide recipes.
-- LoRA rank choices including 96.
-- LoKR linear-dim recipes.
-- LoKR DoRA.
-- Deterministic seeds.
-- Validation loss.
-- Checkpoints and resume.
-- Optimizer-state restore.
-- Training-completion audition snapshots.
+- Narrow and Wide recipes
+- LoRA ranks including 96; LoKR linear-dim recipes
+- LoKR DoRA
+- Deterministic seeds
+- Validation loss and best-checkpoint selection
+- Checkpoints, pause/resume with optimizer state
+- Training-completion audition snapshots (base + gain ladder)
 
-Local training uses microbatch-1 with gradient accumulation. Batch-size fields
-in remote job schemas are for remote/cloud workers, not the native local trainer.
+Local trainers use **microbatch-1 with gradient accumulation**. Batch-size fields
+in remote job schemas apply to remote/cloud workers, not the native local
+trainer.
 
-## Narrow Versus Wide
+### Narrow Versus Wide
 
-`Narrow` is the safer local starting point. It trains fewer layers/projections,
-uses less memory, and is easier to iterate on.
+| Recipe | Intent |
+| --- | --- |
+| Narrow | Safer local default: fewer layers/projections, less memory, faster iteration |
+| Wide | Broader coverage / stronger style capture; more memory and longer runs |
 
-`Wide` trains broader layer/projection coverage. It can produce a stronger
-adapter, but it costs more memory and is more likely to need careful settings.
+Wide LoRA defaults include a much larger footprint (for example rank 96, many
+epochs, full attention projections). Start Narrow unless the dataset is proven.
 
-For a new dataset, start Narrow unless you specifically want the larger recipe.
-Use Wide when you have already proven the dataset is healthy and want stronger
-style capture.
+### Dataset Size Hints
 
-## Dataset Size Hints
+| Clips / samples | Guidance |
+| --- | --- |
+| 50–200 | Smoke tests; high overfit risk |
+| 200–600 | Practical local range |
+| 600–1,000 | Stronger coverage; better for remote or long local runs |
 
-More clips usually give a better spread, but they also increase training time.
+For long sources, **clip/sample count** matters more than wall-clock source
+duration. Thirty-two ninety-minute files with only 160 clips still train 160
+windows.
 
-Useful starting points:
+### Pause And Stop
 
-- 50-200 clips - quick smoke tests, high risk of overfitting.
-- 200-600 clips - practical local training range.
-- 600-1,000 clips - stronger coverage, better suited to remote training or long
-  local runs.
+While training is active you can pause/stop. If progress exists, the app offers
+**Save & Pause** (checkpoint + optimizer state) versus discard.
 
-For very long source files, clip count matters more than source file duration.
-If you have 32 ninety-minute sources but only create 160 clips, training sees
-160 windows, not the full 48 hours of audio.
+### Completion Audition
+
+After a successful run, use fixed-seed audition snapshots to render base and
+selected gains (commonly `1.0`, `1.6`, `2.0`), save takes to History, and open
+Trace Compare.
 
 ## Remote Training
 
-Remote GPU training packages the reviewed dataset plus `remote_job.json` for a
-cloud worker. See [Remote GPU Training](remote-gpu-training.md) for the RunPod
-flow.
+Remote GPU packages the reviewed dataset plus `remote_job.json` for a cloud
+worker. See [Remote GPU Training](remote-gpu-training.md).
 
-Remote jobs currently operate on the clip/stem package created by the app. A
-future Side-Step source-job backend is planned for workflows that upload full
-source tracks plus sidecars and let the remote worker perform Side-Step-native
-preprocessing/training.
+Remote jobs currently operate on the clip/stem package plan selected in the app.
+A future Side-Step source-job backend is planned for full source tracks plus
+sidecars with remote preprocessing.
+
+## Train From History
+
+In **History → Select**, choose takes and click **Train LoRA** to open training
+with those entries as the starting set. Prefer curated dataset packages for
+serious style adapters.
 
 ## Deeper Technical Reference
 
-For package file layout and engineering details, see:
-
 ```text
 docs/training-datasets.md
+docs/dataset-package-v2.md
+docs/developer/dataset-and-training-internals.md
 ```

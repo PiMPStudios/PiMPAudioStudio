@@ -1,26 +1,58 @@
-# PiMP Audio Studio Developer Docs
+# PiMP Audio Studio Developer Documentation
 
-These docs are for people building, packaging, or extending PiMP Audio Studio.
-User-facing instructions live under `docs/user/`.
+These docs are for people building, packaging, extending, or automating PiMP
+Audio Studio. End-user instructions live under `docs/user/`.
 
-## Current Developer Docs
+## Start Here
 
-- [Documentation Integration](documentation-integration.md) - how to turn the
-  Markdown docs into in-app help for packaged builds.
-- [Release And Packaging](release-packaging.md) - standalone app packaging,
-  signing/notarization shape, sandbox notes, and release checklist.
+| Topic | Guide |
+| --- | --- |
+| System architecture and boundaries | [Architecture](architecture.md) |
+| Repo map and module ownership | [Repository Layout](repository-layout.md) |
+| Build, test, XcodeGen | [Build And Test](build-and-test.md) |
+| Inference pipelines and models | [Inference And Pipelines](inference-and-pipelines.md) |
+| Dataset packages and training loops | [Dataset And Training Internals](dataset-and-training-internals.md) |
+| Adapters, LoRA/LoKR, merge | [Adapters And LoRA](adapters-and-lora.md) |
+| Portable CUDA worker | [Remote Worker](remote-worker.md) |
+| Local MCP server | [MCP Server](mcp-server.md) |
+| Paths, sandbox, secrets | [Storage, Sandbox, Security](storage-sandbox-security.md) |
+| Bundling user docs for Help | [Documentation Integration](documentation-integration.md) |
+| Signing, notarization, DMG | [Release And Packaging](release-packaging.md) |
 
-## Existing Engineering Notes
+## Related Top-Level Docs
 
-The top-level `docs/` folder also contains roadmap and investigation notes such
-as:
+Engineering notes that remain outside the polished developer hub:
 
-- `remote-sidestep-backend-plan.md`
-- `remote-worker-contract.md`
-- `dataset-annotation-roadmap.md`
-- `mcp-local.md`
-- `mcp-standards-roadmap.md`
-- `debug/*`
+| Path | Role |
+| --- | --- |
+| `docs/mcp-local.md` | Detailed MCP transport and tool reference |
+| `docs/training-datasets.md` | Package file layout and enrichment details |
+| `docs/dataset-package-v2.md` | Package-v2 contract |
+| `docs/remote-worker-contract.md` | Remote artifact/job contracts |
+| `docs/remote-sidestep-backend-plan.md` | Planned Side-Step source-job backend |
+| `docs/superpowers/` | Historical phase specs/plans |
+| `docs/debug/` | Incident analyses |
 
-Those files are valuable for implementation context, but most should not be
-shown directly to end users without editing.
+Do not ship raw investigation notes as end-user Help without editing.
+
+## Architecture Snapshot
+
+```text
+PiMPAudioStudio (SwiftUI app)
+  UI/ Services/ DSP/ Models/
+        |
+        v
+PiMPAudioCore (Swift package)
+  Inference/ Dataset/ LoRA/ ModelRegistry/ LLM/ Community/
+        |
+        +--> MLX / MLXNN (local Apple Silicon)
+        |
+remote-worker/ (Python, cloud only)
+  Side-Step / ACE-Step / PyTorch / CUDA
+```
+
+Hard boundaries:
+
+- The macOS app stays native Swift/SwiftUI/MLX — no Python runtime in the app.
+- Remote workers may use Python/CUDA on user-approved cloud hardware.
+- Secrets stay in Keychain or user environment variables, never in job zips.

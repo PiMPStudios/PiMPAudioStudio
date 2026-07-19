@@ -7,59 +7,61 @@ artifacts needed to reproduce or understand the issue.
 
 Never share:
 
-- RunPod API keys.
-- Hugging Face tokens.
-- OpenAI/Anthropic/Gemini/xAI keys.
-- SSH private keys.
-- Full provider account secrets.
+- RunPod API keys
+- Hugging Face tokens
+- OpenAI / Anthropic / Gemini / xAI keys
+- SSH private keys
+- Full provider account secrets
+- MCP bearer tokens
 
 If a command includes a token, redact it before sharing.
 
 ## Always Include
 
-- PiMP Audio Studio version.
-- macOS version.
-- Mac model and memory size.
-- What screen/workflow you were using.
-- What you expected to happen.
-- What actually happened.
-- Whether the issue repeats after restarting the app.
+- PiMP Audio Studio version
+- macOS version
+- Mac model and memory size
+- What screen/workflow you were using
+- What you expected to happen
+- What actually happened
+- Whether the issue repeats after restarting the app
 
 ## Generation Issues
 
 Include:
 
-- Prompt.
-- Lyrics.
-- Seed.
-- Duration.
-- Guidance.
-- Active base model.
-- Active adapter names and gains.
-- Generated `.wav`.
-- Sibling `.trace.json`.
-- Newest `PiMPAudioStudio-AUDIODIAG-*.log` if verbose diagnostics were enabled.
+- Prompt
+- Lyrics
+- Seed
+- Duration
+- Guidance preset and scale
+- Precision / steps / shift if non-default
+- Active base model
+- Active adapter names and gains
+- Generated `.wav`
+- Sibling `.trace.json`
+- Newest `PiMPAudioStudio-AUDIODIAG-*.log` if verbose diagnostics were enabled
 
-If the problem is "adapter sounds like it does nothing", include both:
+If the problem is "adapter does nothing", include both:
 
-- Base generation with no adapter.
-- Adapter generation with the same seed/settings.
+- Base generation with no adapter
+- Adapter generation with the same seed/settings
 
 ## Training Issues
 
 Include:
 
-- Dataset package path or name.
-- Training bundle used, such as `training_bundle_vocals.json`.
-- Adapter kind: LoRA or LoKR.
-- Recipe: Narrow or Wide.
+- Dataset package path or name
+- Training bundle used, such as `training_bundle_vocals.json`
+- Adapter kind: LoRA or LoKR
+- Recipe: Narrow or Wide
 - Rank/linear dim, alpha/gain settings, layer coverage, projections, epochs,
-  seed, and DoRA setting.
-- `training_log.json`.
-- Newest `PiMPAudioStudio-AUDIODIAG-*.log`.
-- Checkpoint or adapter folder if the issue is import/inference-related.
+  seed, and DoRA setting
+- `training_log.json`
+- Newest AUDIODIAG log
+- Checkpoint or adapter folder if the issue is import/inference-related
 
-If training stalled, include the last 50-100 relevant log lines around:
+If training stalled, include the last 50–100 relevant log lines around:
 
 ```text
 training/
@@ -72,12 +74,12 @@ training/progress
 
 Include:
 
-- Dataset package folder.
-- `dataset_manifest.json`.
-- `captions.json`.
-- `package_validation.json`.
-- The specific source file or clip id that looks wrong.
-- Sampling mode, clip length, clips per file, and max clips.
+- Dataset package folder
+- `dataset_manifest.json`
+- `captions.json`
+- `package_validation.json`
+- The specific source file or clip id that looks wrong
+- Sampling mode, clip length, clips per file, and max clips
 
 If clips repeat unexpectedly, include at least two repeated clip filenames and
 their manifest entries.
@@ -86,34 +88,40 @@ their manifest entries.
 
 Include:
 
-- Provider and GPU type.
-- Pod template or image name.
-- Worker version from:
+- Provider and GPU type
+- Pod template or image name
+- Worker version from `pimp-remote-worker doctor` when available
+- The command or UI action that failed
+- `remote_job.json`
+- `remote_artifacts/logs.jsonl`
+- `remote_artifacts/metrics.jsonl`
+- `remote_artifacts/result.json`
+- `remote_artifacts/command/dry_run.json` if present
 
-```bash
-pimp-remote-worker doctor
-```
+If the pod was terminated, download small logs/metadata first.
 
-- The command that failed.
-- `remote_job.json`.
-- `remote_artifacts/logs.jsonl`.
-- `remote_artifacts/metrics.jsonl`.
-- `remote_artifacts/result.json`.
-- `remote_artifacts/command/dry_run.json`, if present.
+## Editor Issues
 
-If the pod was terminated, download the small logs/metadata files before deleting
-the pod.
+Include:
+
+- Edit mode (inpaint / repaint)
+- Selection start/end if relevant
+- Region prompt
+- Strength and guidance
+- DSP effect chain if any
+- Pipeline model readiness
+- Export format if export failed
 
 ## Model Download Issues
 
 Include:
 
-- Model display name.
-- Model id if visible.
-- Exact error text.
-- HTTP status code if shown.
-- Whether a Hugging Face token is saved.
-- Whether the Hugging Face license was accepted.
+- Model display name
+- Model id if visible
+- Exact error text
+- HTTP status code if shown
+- Whether a Hugging Face token is saved
+- Whether the Hugging Face license was accepted
 
 Do not include the token itself.
 
@@ -121,9 +129,9 @@ Do not include the token itself.
 
 Include:
 
-- Provider row that failed.
-- Provider CLI version.
-- The exact command output from a safe status command.
+- Provider row that failed
+- Provider CLI version
+- Exact command output from a safe status command
 
 Examples:
 
@@ -137,6 +145,16 @@ hf auth whoami
 
 For Grok specifically, `You are not authenticated.` means the Grok CLI is not
 logged in yet. Run `grok login --oauth` or `grok login --device-auth`.
+
+## MCP Issues
+
+Include:
+
+- Whether MCP is enabled
+- Endpoint used
+- Whether a bearer token is enabled (not the token value)
+- Tool name and whether `dryRun` / `confirm` were set
+- Sanitized request/response JSON
 
 ## Minimum Useful Report Template
 
