@@ -17,6 +17,10 @@ struct RunPodLifecyclePanel: View {
     @Binding var sshKeyPath: String
     let onLaunchRequested: () -> Void
     let onSelectArchiveRequested: () -> Void
+    let onUploadRequested: (RunPodPodSummary) -> Void
+    let onStartRequested: (RunPodPodSummary) -> Void
+    let onMonitorRequested: (RunPodPodSummary) -> Void
+    let onPullRequested: (RunPodPodSummary) -> Void
     let onStopRequested: (RunPodPodSummary) -> Void
     let onNotice: (String) -> Void
 
@@ -217,7 +221,7 @@ struct RunPodLifecyclePanel: View {
                 }
             }
 
-            Text("Launch creates the RunPod pod. Use the pod row actions left to right: upload the job zip and PiMP worker, SSH into the pod, then extract/run the worker.")
+            Text("Launch creates the RunPod pod. Once SSH is available, the pod row can upload, start, monitor, download, and import the reviewed job without manual Terminal steps.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -484,8 +488,111 @@ struct RunPodLifecyclePanel: View {
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
             }
+
+            if preparedArchiveURL != nil {
+                automatedRemoteJobControls(for: pod)
+            }
         }
         .padding(.vertical, 4)
+    }
+
+    private func automatedRemoteJobControls(
+        for pod: RunPodPodSummary
+    ) -> some View {
+        let state = runPodService.remoteJobState(
+            for: pod,
+            archiveURL: preparedArchiveURL
+        )
+        return VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 6) {
+                Button("Upload") {
+                    onUploadRequested(pod)
+                }
+                .disabled(
+                    preparedArchiveURL == nil
+                        || (state != nil && state?.phase != .failed)
+                        || pod.sshPort == nil
+                )
+
+                Button("Start") {
+                    onStartRequested(pod)
+                }
+                .disabled(state?.phase != .uploaded)
+
+                Button("Monitor") {
+                    onMonitorRequested(pod)
+                }
+                .disabled(
+                    state?.phase != .starting
+                        && state?.phase != .running
+                        && state?.phase != .succeeded
+                        && state?.phase != .failed
+                )
+
+                Button("Pull & Import") {
+                    onPullRequested(pod)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(state?.phase != .succeeded)
+
+                Spacer()
+
+                if state?.phase.isBusy == true {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+            }
+            .controlSize(.small)
+
+            if let state {
+                Label(
+                    state.message,
+                    systemImage: remoteJobStatusIcon(state.phase)
+                )
+                .font(.caption2)
+                .foregroundStyle(remoteJobStatusColor(state.phase))
+                .lineLimit(3)
+                .textSelection(.enabled)
+
+                if !state.logTail.isEmpty {
+                    Text(state.logTail)
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(5)
+                        .textSelection(.enabled)
+                }
+            } else {
+                Text("Upload the selected zip to begin the managed remote-worker flow.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func remoteJobStatusIcon(
+        _ phase: RunPodRemoteJobPhase
+    ) -> String {
+        switch phase {
+        case .uploaded, .succeeded, .downloaded, .imported:
+            return "checkmark.circle.fill"
+        case .failed:
+            return "exclamationmark.triangle.fill"
+        case .uploading, .starting, .running, .downloading:
+            return "clock.arrow.circlepath"
+        }
+    }
+
+    private func remoteJobStatusColor(
+        _ phase: RunPodRemoteJobPhase
+    ) -> Color {
+        switch phase {
+        case .uploaded, .succeeded, .downloaded, .imported:
+            return .green
+        case .failed:
+            return .orange
+        case .uploading, .starting, .running, .downloading:
+            return .secondary
+        }
     }
 
     private func runPodStatusIcon(for pod: RunPodPodSummary) -> String {

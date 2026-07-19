@@ -1271,6 +1271,74 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         records: [[String: Any]],
         role: StemBundleRole
     ) throws -> Int {
+        let manifestURL = datasetDirectory.appendingPathComponent(
+            TrainingDatasetPackageWriter.datasetManifestFileName
+        )
+        if let manifestData = try? Data(contentsOf: manifestURL),
+           let package = try? DatasetPackageV2Codec.decodeValidated(manifestData),
+           let plan = package.trainingPlans.first(where: \.isDefault) {
+            let selectionsByID = Dictionary(
+                uniqueKeysWithValues: plan.selections.map { ($0.assetID, $0) }
+            )
+            let clips = package.assets.compactMap {
+                asset -> DatasetTrainingClipV1? in
+                guard asset.role.rawValue == role.assetKey,
+                      let selection = selectionsByID[asset.id],
+                      FileManager.default.fileExists(
+                        atPath: datasetDirectory
+                            .appendingPathComponent(asset.file.path)
+                            .path(percentEncoded: false)
+                      ) else {
+                    return nil
+                }
+                let caption = asset.annotation?.caption?.text
+                    ?? URL(fileURLWithPath: asset.file.path)
+                        .deletingPathExtension()
+                        .lastPathComponent
+                let lyrics = role == .instrumental
+                    ? "[Instrumental]"
+                    : (asset.annotation?.lyrics?.text ?? "")
+                return DatasetTrainingClipV1(
+                    id: asset.id,
+                    file: asset.file.path,
+                    assets: [asset.role.rawValue: asset.file.path],
+                    caption: caption,
+                    prompt: caption,
+                    lyrics: lyrics,
+                    transcript: lyrics,
+                    annotation: asset.annotation,
+                    sourceTrackID: asset.sourceTrackID,
+                    assetID: asset.id,
+                    assetRole: asset.role,
+                    sourceRange: asset.sourceRange,
+                    trainingRange: selection.trainingRange,
+                    rangePolicy: selection.rangePolicy,
+                    sampleWindowSeconds: selection.sampleWindowSeconds,
+                    includeInTraining: true
+                )
+            }
+            let bundle = DatasetTrainingBundleV1(
+                sourcePackageVersion: package.pimpAudioDatasetVersion,
+                createdAt: ISO8601DateFormatter().string(from: Date()),
+                include: [role.includeName],
+                trainingLyricsSource: role.trainingLyricsSource,
+                trainingPlanID: plan.id,
+                backendID: plan.backendID,
+                clips: clips
+            )
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [
+                .prettyPrinted,
+                .sortedKeys,
+                .withoutEscapingSlashes,
+            ]
+            try encoder.encode(bundle).write(
+                to: datasetDirectory.appendingPathComponent(role.bundleFileName),
+                options: .atomic
+            )
+            return clips.count
+        }
+
         let createdAt = ISO8601DateFormatter().string(from: Date())
         let clips = records.enumerated().compactMap { index, record -> [String: Any]? in
             guard let stemPath = stemPath(for: role, in: record),

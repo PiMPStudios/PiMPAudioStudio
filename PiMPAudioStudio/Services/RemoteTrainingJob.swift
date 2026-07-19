@@ -1,4 +1,5 @@
 import Foundation
+import PiMPAudioCore
 
 enum RemoteTrainingTask: String, Codable, CaseIterable, Hashable, Sendable {
     case preprocess
@@ -27,6 +28,7 @@ struct RemoteTrainingPackageDescriptor: Codable, Hashable, Sendable {
     var packageRoot: String
     var clipCount: Int
     var defaultBundle: String
+    var datasetManifest: String?
     var bundles: [RemoteTrainingBundleReference]
     var providerTargets: [String]
     var preprocessCache: String
@@ -40,6 +42,7 @@ struct RemoteTrainingPackageDescriptor: Codable, Hashable, Sendable {
         case packageRoot = "package_root"
         case clipCount = "clip_count"
         case defaultBundle = "default_bundle"
+        case datasetManifest = "dataset_manifest"
         case bundles
         case providerTargets = "provider_targets"
         case preprocessCache = "preprocess_cache"
@@ -58,6 +61,7 @@ struct RemoteTrainingPackageDescriptor: Codable, Hashable, Sendable {
         packageRoot: String,
         clipCount: Int,
         defaultBundle: String,
+        datasetManifest: String? = nil,
         bundles: [RemoteTrainingBundleReference],
         providerTargets: [String],
         preprocessCache: String,
@@ -70,6 +74,7 @@ struct RemoteTrainingPackageDescriptor: Codable, Hashable, Sendable {
         self.packageRoot = packageRoot
         self.clipCount = clipCount
         self.defaultBundle = defaultBundle
+        self.datasetManifest = datasetManifest
         self.bundles = bundles
         self.providerTargets = providerTargets
         self.preprocessCache = preprocessCache
@@ -89,6 +94,7 @@ struct RemoteTrainingPackageDescriptor: Codable, Hashable, Sendable {
         self.packageRoot = try container.decode(String.self, forKey: .packageRoot)
         self.clipCount = try container.decode(Int.self, forKey: .clipCount)
         self.defaultBundle = try container.decode(String.self, forKey: .defaultBundle)
+        self.datasetManifest = try container.decodeIfPresent(String.self, forKey: .datasetManifest)
         self.bundles = try container.decode([RemoteTrainingBundleReference].self, forKey: .bundles)
         self.providerTargets = try container.decode([String].self, forKey: .providerTargets)
         self.preprocessCache = try container.decode(String.self, forKey: .preprocessCache)
@@ -217,6 +223,7 @@ struct RemoteTrainingJobPackage: Codable, Hashable, Sendable {
     var packageName: String
     var packageRoot: String
     var descriptor: String
+    var datasetManifest: String?
     var entryBundle: String
     var selectedBundle: RemoteTrainingBundleReference
     var preprocessCache: String
@@ -226,6 +233,7 @@ struct RemoteTrainingJobPackage: Codable, Hashable, Sendable {
         case packageName = "package_name"
         case packageRoot = "package_root"
         case descriptor
+        case datasetManifest = "dataset_manifest"
         case entryBundle = "entry_bundle"
         case selectedBundle = "selected_bundle"
         case preprocessCache = "preprocess_cache"
@@ -452,7 +460,7 @@ enum RemoteTrainingJobCodec {
         [
             jobFileName: try encoder.encode(job),
             readmeFileName: Data(remoteReadme(for: job).utf8),
-            runScriptFileName: Data(remoteRunScript(for: job).utf8),
+            runScriptFileName: Data(remoteRunScript().utf8),
         ]
     }
 
@@ -516,47 +524,17 @@ enum RemoteTrainingJobCodec {
         ssh -p <ssh-port> -i ~/.ssh/id_ed25519 root@<pod-ip> 'bash /workspace/pimp-remote-worker-src/install.sh'
         ```
 
-        The script can extract zips with either `unzip` or Python's built-in `zipfile` module. It expects either an installed `pimp-remote-worker` command, `/workspace/pimp-remote-worker-src/install.sh` from the upload command, or an official PiMP Audio Studio worker template.
+        The script delegates zip validation and extraction to `pimp-remote-worker`, which rejects unsafe archive members before writing them. It expects either an installed `pimp-remote-worker` command, `/workspace/pimp-remote-worker-src/install.sh` from the upload command, or an official PiMP Audio Studio worker template.
         Provider API keys, SSH keys, and account IDs are intentionally not stored in this archive.
         """
     }
 
-    private static func remoteRunScript(for job: RemoteTrainingJobRequest) -> String {
+    private static func remoteRunScript() -> String {
         """
         #!/usr/bin/env bash
         set -euo pipefail
 
         INPUT="${1:-.}"
-        WORKDIR=""
-
-        if [ -f "$INPUT" ]; then
-          WORKDIR="/workspace/pimp-remote-jobs/\(job.jobID)"
-          mkdir -p "$WORKDIR"
-          if command -v unzip >/dev/null 2>&1; then
-            unzip -oq "$INPUT" -d "$WORKDIR"
-          elif command -v python3 >/dev/null 2>&1; then
-            python3 -m zipfile -e "$INPUT" "$WORKDIR"
-          else
-            echo "Could not extract $INPUT. Install unzip or python3, then rerun this script."
-            exit 3
-          fi
-          JOB_FILE="$(find "$WORKDIR" -maxdepth 3 -name remote_job.json -print -quit)"
-          if [ -n "$JOB_FILE" ]; then
-            PACKAGE_ROOT="$(dirname "$JOB_FILE")"
-          fi
-        else
-          PACKAGE_ROOT="$INPUT"
-        fi
-
-        if [ -z "${PACKAGE_ROOT:-}" ] || [ ! -f "$PACKAGE_ROOT/remote_job.json" ]; then
-          echo "Could not find remote_job.json. Run this from the package root or pass the exported zip path."
-          exit 2
-        fi
-
-        cd "$PACKAGE_ROOT"
-        echo "[PiMP] package_root=$PWD"
-        echo "[PiMP] job=$(grep -m1 '"job_id"' remote_job.json | sed 's/[",]//g' | xargs || true)"
-        echo "[PiMP] task=$(grep -m1 '"task"' remote_job.json | sed 's/[",]//g' | xargs || true)"
 
         if ! command -v pimp-remote-worker >/dev/null 2>&1 && [ -f /workspace/pimp-remote-worker-src/install.sh ]; then
           echo "[PiMP] installing uploaded remote worker"
@@ -567,7 +545,7 @@ enum RemoteTrainingJobCodec {
         fi
 
         if command -v pimp-remote-worker >/dev/null 2>&1; then
-          exec pimp-remote-worker train remote_job.json
+          exec pimp-remote-worker train "$INPUT"
         fi
 
         cat <<'MSG'
@@ -592,6 +570,270 @@ enum RemoteTrainingJobCodec {
         MSG
         exit 127
         """
+    }
+}
+
+struct RemoteTrainingJobValidationSummary: Hashable, Sendable {
+    var selectedAssetCount: Int
+    var assetRoles: [String]
+    var trainingPlanID: String?
+    var maximumTrainingDurationSeconds: Double?
+}
+
+enum RemoteTrainingJobValidationError: LocalizedError {
+    case invalidJob(String)
+    case unsafePath(String)
+    case missingFile(String)
+    case invalidPackageV2(String)
+    case inconsistentBundle(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidJob(let detail):
+            return "Remote job validation failed: \(detail)"
+        case .unsafePath(let path):
+            return "Remote job contains an unsafe package-relative path: \(path)"
+        case .missingFile(let path):
+            return "Remote job package is missing \(path)."
+        case .invalidPackageV2(let detail):
+            return "Remote package-v2 validation failed: \(detail)"
+        case .inconsistentBundle(let detail):
+            return "Remote training bundle does not match dataset_manifest.json: \(detail)"
+        }
+    }
+}
+
+enum RemoteTrainingJobValidator {
+    private struct BundleClip {
+        var assetID: String
+        var role: String
+        var file: String
+        var trainingRange: DatasetTimeRangeV2?
+        var rangePolicy: String?
+    }
+
+    static func validate(
+        _ job: RemoteTrainingJobRequest,
+        packageDirectory: URL
+    ) throws -> RemoteTrainingJobValidationSummary {
+        guard job.pimpAudioRemoteJobVersion == RemoteTrainingJobRequest.schemaVersion else {
+            throw RemoteTrainingJobValidationError.invalidJob(
+                "unsupported schema \(job.pimpAudioRemoteJobVersion)"
+            )
+        }
+        guard job.package.packageRoot == "." else {
+            throw RemoteTrainingJobValidationError.invalidJob(
+                "package_root must be the directory containing remote_job.json"
+            )
+        }
+        guard !job.safety.writeProviderSecretsToPackage else {
+            throw RemoteTrainingJobValidationError.invalidJob(
+                "provider secrets may not be written to the archive"
+            )
+        }
+
+        let descriptorURL = try packageURL(
+            job.package.descriptor,
+            root: packageDirectory
+        )
+        let bundleURL = try packageURL(
+            job.package.entryBundle,
+            root: packageDirectory
+        )
+        for requiredURL in [descriptorURL, bundleURL] {
+            guard FileManager.default.fileExists(
+                atPath: requiredURL.path(percentEncoded: false)
+            ) else {
+                throw RemoteTrainingJobValidationError.missingFile(
+                    requiredURL.lastPathComponent
+                )
+            }
+        }
+
+        let bundleData = try Data(contentsOf: bundleURL)
+        guard let bundle = try JSONSerialization.jsonObject(
+            with: bundleData
+        ) as? [String: Any] else {
+            throw RemoteTrainingJobValidationError.invalidJob(
+                "entry bundle is not a JSON object"
+            )
+        }
+        let selectedRoles = Set(
+            job.package.selectedBundle.include.map {
+                $0.trimmingCharacters(in: .whitespacesAndNewlines)
+            }.filter { !$0.isEmpty }
+        )
+        guard !selectedRoles.isEmpty else {
+            throw RemoteTrainingJobValidationError.invalidJob(
+                "selected_bundle.include must contain at least one asset_role"
+            )
+        }
+
+        let fallbackRole = selectedRoles.count == 1
+            ? selectedRoles.first
+            : nil
+        let selectedClips = (bundle["clips"] as? [[String: Any]] ?? [])
+            .compactMap { clip -> BundleClip? in
+                if let include = clip["include_in_training"] as? Bool,
+                   !include {
+                    return nil
+                }
+                let role = (clip["asset_role"] as? String)
+                    ?? fallbackRole
+                    ?? ""
+                guard selectedRoles.contains(role) else { return nil }
+                let assetID = (clip["asset_id"] as? String)
+                    ?? (clip["id"] as? String)
+                    ?? ""
+                let file = (clip["file"] as? String) ?? ""
+                guard !assetID.isEmpty, !file.isEmpty else { return nil }
+                let rangeObject = clip["training_range"] as? [String: Any]
+                let start = (rangeObject?["start_seconds"] as? NSNumber)?
+                    .doubleValue
+                let end = (rangeObject?["end_seconds"] as? NSNumber)?
+                    .doubleValue
+                let trainingRange = start.map {
+                    DatasetTimeRangeV2(startSeconds: $0, endSeconds: end)
+                }
+                return BundleClip(
+                    assetID: assetID,
+                    role: role,
+                    file: file,
+                    trainingRange: trainingRange,
+                    rangePolicy: clip["range_policy"] as? String
+                )
+            }
+        guard !selectedClips.isEmpty else {
+            throw RemoteTrainingJobValidationError.inconsistentBundle(
+                "no included assets match \(selectedRoles.sorted().joined(separator: ", "))"
+            )
+        }
+
+        let sourcePackageVersion = bundle["source_package_version"] as? String
+        let trainingPlanID = bundle["training_plan_id"] as? String
+        guard sourcePackageVersion == DatasetPackageV2.currentVersion else {
+            return RemoteTrainingJobValidationSummary(
+                selectedAssetCount: selectedClips.count,
+                assetRoles: selectedRoles.sorted(),
+                trainingPlanID: trainingPlanID,
+                maximumTrainingDurationSeconds: selectedClips
+                    .compactMap { $0.trainingRange?.durationSeconds }
+                    .max()
+            )
+        }
+
+        let manifestPath = job.package.datasetManifest
+            ?? TrainingDatasetPackageWriter.datasetManifestFileName
+        let manifestURL = try packageURL(manifestPath, root: packageDirectory)
+        guard FileManager.default.fileExists(
+            atPath: manifestURL.path(percentEncoded: false)
+        ) else {
+            throw RemoteTrainingJobValidationError.missingFile(manifestPath)
+        }
+
+        let package: DatasetPackageV2
+        do {
+            package = try DatasetPackageV2Codec.decodeValidated(
+                Data(contentsOf: manifestURL)
+            )
+        } catch {
+            throw RemoteTrainingJobValidationError.invalidPackageV2(
+                error.localizedDescription
+            )
+        }
+        guard let trainingPlanID,
+              let plan = package.trainingPlans.first(where: {
+                  $0.id == trainingPlanID
+              }) else {
+            throw RemoteTrainingJobValidationError.inconsistentBundle(
+                "training plan \(trainingPlanID ?? "missing") is absent"
+            )
+        }
+
+        let assetsByID = Dictionary(
+            uniqueKeysWithValues: package.assets.map { ($0.id, $0) }
+        )
+        let selectionsByID = Dictionary(
+            uniqueKeysWithValues: plan.selections.map { ($0.assetID, $0) }
+        )
+        for clip in selectedClips {
+            guard let asset = assetsByID[clip.assetID] else {
+                throw RemoteTrainingJobValidationError.inconsistentBundle(
+                    "asset \(clip.assetID) is absent"
+                )
+            }
+            guard asset.role.rawValue == clip.role,
+                  selectedRoles.contains(asset.role.rawValue) else {
+                throw RemoteTrainingJobValidationError.inconsistentBundle(
+                    "asset \(clip.assetID) has role \(asset.role.rawValue), not \(clip.role)"
+                )
+            }
+            guard asset.file.path == clip.file else {
+                throw RemoteTrainingJobValidationError.inconsistentBundle(
+                    "asset \(clip.assetID) file path differs from the manifest"
+                )
+            }
+            guard let clipTrainingRange = clip.trainingRange,
+                  let selection = selectionsByID[clip.assetID],
+                  selection.trainingRange == clipTrainingRange,
+                  selection.rangePolicy.rawValue == clip.rangePolicy else {
+                throw RemoteTrainingJobValidationError.inconsistentBundle(
+                    "asset \(clip.assetID) training range differs from plan \(plan.id)"
+                )
+            }
+            guard clipTrainingRange.startSeconds >= asset.sourceRange.startSeconds,
+                  let trainingEnd = clipTrainingRange.endSeconds,
+                  trainingEnd > clipTrainingRange.startSeconds,
+                  clipTrainingRange.durationSeconds ?? 0 <= 240 else {
+                throw RemoteTrainingJobValidationError.inconsistentBundle(
+                    "asset \(clip.assetID) has an invalid ACE-Step training range"
+                )
+            }
+            if let sourceEnd = asset.sourceRange.endSeconds,
+               trainingEnd > sourceEnd {
+                throw RemoteTrainingJobValidationError.inconsistentBundle(
+                    "asset \(clip.assetID) training range exceeds its source range"
+                )
+            }
+            let audioURL = try packageURL(asset.file.path, root: packageDirectory)
+            guard FileManager.default.fileExists(
+                atPath: audioURL.path(percentEncoded: false)
+            ) else {
+                throw RemoteTrainingJobValidationError.missingFile(asset.file.path)
+            }
+        }
+
+        return RemoteTrainingJobValidationSummary(
+            selectedAssetCount: selectedClips.count,
+            assetRoles: selectedRoles.sorted(),
+            trainingPlanID: plan.id,
+            maximumTrainingDurationSeconds: selectedClips
+                .compactMap { $0.trainingRange?.durationSeconds }
+                .max()
+        )
+    }
+
+    private static func packageURL(_ path: String, root: URL) throws -> URL {
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              !trimmed.hasPrefix("/"),
+              !trimmed.hasPrefix("~"),
+              !trimmed.contains("\\") else {
+            throw RemoteTrainingJobValidationError.unsafePath(path)
+        }
+        let components = trimmed.split(separator: "/", omittingEmptySubsequences: false)
+        guard !components.contains(where: { $0 == ".." || $0.isEmpty }) else {
+            throw RemoteTrainingJobValidationError.unsafePath(path)
+        }
+        let resolvedRoot = root.standardizedFileURL.resolvingSymlinksInPath()
+        let resolved = root.appendingPathComponent(trimmed)
+            .standardizedFileURL
+            .resolvingSymlinksInPath()
+        guard resolved.path == resolvedRoot.path
+            || resolved.path.hasPrefix(resolvedRoot.path + "/") else {
+            throw RemoteTrainingJobValidationError.unsafePath(path)
+        }
+        return resolved
     }
 }
 
@@ -667,6 +909,7 @@ extension RemoteTrainingJobRequest {
                 packageName: descriptor.packageName,
                 packageRoot: descriptor.packageRoot,
                 descriptor: TrainingDatasetPackageWriter.remotePackageFileName,
+                datasetManifest: descriptor.datasetManifest,
                 entryBundle: selectedBundle.path,
                 selectedBundle: selectedBundle,
                 preprocessCache: descriptor.preprocessCache,

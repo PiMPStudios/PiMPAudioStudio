@@ -11,18 +11,23 @@ final class RunPodService: ObservableObject {
     @Published private(set) var isRefreshingGPUTypes = false
     @Published private(set) var isLaunching = false
     @Published private(set) var terminatingPodID: String?
+    @Published private(set) var remoteJobStates: [String: RunPodRemoteJobState] = [:]
     @Published var lastMessage: String?
     @Published var lastError: String?
 
     private let apiKeyStore: APIKeyStore
     private let client: RunPodAPIClient
+    private let remoteExecutor: any RunPodRemoteCommandExecuting
+    private var remoteMonitorTasks: [String: Task<Void, Never>] = [:]
 
     init(
         apiKeyStore: APIKeyStore,
-        client: RunPodAPIClient = RunPodAPIClient()
+        client: RunPodAPIClient = RunPodAPIClient(),
+        remoteExecutor: any RunPodRemoteCommandExecuting = RunPodRemoteProcessExecutor()
     ) {
         self.apiKeyStore = apiKeyStore
         self.client = client
+        self.remoteExecutor = remoteExecutor
     }
 
     var hasAPIKey: Bool {
@@ -175,6 +180,7 @@ final class RunPodService: ObservableObject {
         do {
             note("terminate/begin", "podID=\(id)")
             try await client.deletePod(token: token, podID: id)
+            remoteMonitorTasks.removeValue(forKey: id)?.cancel()
             pods.removeAll { $0.id == id }
             note("terminate/success", "podID=\(id)")
             lastMessage = "Terminate requested for RunPod pod \(id)."
@@ -188,6 +194,344 @@ final class RunPodService: ObservableObject {
 
     var stoppingPodID: String? {
         terminatingPodID
+    }
+
+    func remoteJobState(
+        for pod: RunPodPodSummary,
+        archiveURL: URL?
+    ) -> RunPodRemoteJobState? {
+        guard let archiveURL,
+              let state = remoteJobStates[pod.id],
+              state.archivePath == archiveURL.path(percentEncoded: false) else {
+            return nil
+        }
+        return state
+    }
+
+    func uploadRemoteJob(
+        to pod: RunPodPodSummary,
+        archiveURL: URL,
+        sshKeyPath: String,
+        workerDirectoryURL: URL = RunPodRemoteWorkerLocator.defaultDirectoryURL()
+    ) async {
+        do {
+            let plan = try RunPodRemoteJobPlan(
+                pod: pod,
+                archiveURL: archiveURL,
+                sshKeyPath: sshKeyPath,
+                workerDirectoryURL: workerDirectoryURL
+            )
+            updateRemoteJobState(
+                podID: pod.id,
+                archiveURL: archiveURL,
+                phase: .uploading,
+                message: "Preparing \(pod.displayName) and uploading the job plus worker."
+            )
+            try await runRemoteCommand(plan.prepareUploadCommand)
+            try await runRemoteCommand(plan.uploadArchiveCommand)
+            try await runRemoteCommand(plan.uploadWorkerCommand)
+            updateRemoteJobState(
+                podID: pod.id,
+                archiveURL: archiveURL,
+                phase: .uploaded,
+                message: "Upload complete. The worker is ready to start."
+            )
+            lastMessage = "Uploaded \(archiveURL.lastPathComponent) and the PiMP worker to \(pod.displayName)."
+            lastError = nil
+        } catch is CancellationError {
+            updateRemoteJobState(
+                podID: pod.id,
+                archiveURL: archiveURL,
+                phase: .failed,
+                message: "Remote upload was cancelled."
+            )
+        } catch {
+            failRemoteJob(podID: pod.id, archiveURL: archiveURL, error: error)
+        }
+    }
+
+    func startRemoteJob(
+        on pod: RunPodPodSummary,
+        archiveURL: URL,
+        sshKeyPath: String
+    ) async {
+        do {
+            let plan = try RunPodRemoteJobPlan(
+                pod: pod,
+                archiveURL: archiveURL,
+                sshKeyPath: sshKeyPath
+            )
+            updateRemoteJobState(
+                podID: pod.id,
+                archiveURL: archiveURL,
+                phase: .starting,
+                message: "Installing the worker and starting remote training."
+            )
+            let response = try await runRemoteCommand(
+                plan.startCommand,
+                timeoutSeconds: 1_800
+            )
+            let detail = response.stdout
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            updateRemoteJobState(
+                podID: pod.id,
+                archiveURL: archiveURL,
+                phase: .running,
+                message: detail.isEmpty
+                    ? "Remote worker started."
+                    : String(detail.suffix(1_000))
+            )
+            lastMessage = "Remote worker started on \(pod.displayName)."
+            lastError = nil
+            beginMonitoring(plan: plan)
+        } catch is CancellationError {
+            updateRemoteJobState(
+                podID: pod.id,
+                archiveURL: archiveURL,
+                phase: .failed,
+                message: "Starting the remote worker was cancelled."
+            )
+        } catch {
+            failRemoteJob(podID: pod.id, archiveURL: archiveURL, error: error)
+        }
+    }
+
+    func refreshRemoteJob(
+        on pod: RunPodPodSummary,
+        archiveURL: URL,
+        sshKeyPath: String
+    ) async {
+        do {
+            let plan = try RunPodRemoteJobPlan(
+                pod: pod,
+                archiveURL: archiveURL,
+                sshKeyPath: sshKeyPath
+            )
+            try await refreshRemoteJob(plan: plan)
+        } catch is CancellationError {
+            return
+        } catch {
+            failRemoteJob(podID: pod.id, archiveURL: archiveURL, error: error)
+        }
+    }
+
+    func downloadRemoteJobArtifacts(
+        from pod: RunPodPodSummary,
+        archiveURL: URL,
+        sshKeyPath: String
+    ) async throws -> RunPodRemoteJobPullback {
+        let plan = try RunPodRemoteJobPlan(
+            pod: pod,
+            archiveURL: archiveURL,
+            sshKeyPath: sshKeyPath
+        )
+        updateRemoteJobState(
+            podID: pod.id,
+            archiveURL: archiveURL,
+            phase: .downloading,
+            message: "Preparing and downloading remote artifacts."
+        )
+        do {
+            try await runRemoteCommand(plan.preparePullbackCommand)
+            let destination = try plan.makeLocalPullbackDirectory()
+            let pullCommand = plan.pullArtifactsCommand(destinationURL: destination)
+            try await runRemoteCommand(pullCommand, timeoutSeconds: 1_800)
+
+            let artifactsURL = destination.appendingPathComponent(
+                "remote_artifacts",
+                isDirectory: true
+            )
+            let resultURL = artifactsURL.appendingPathComponent("result.json")
+            let result = try RemoteTrainingJobCodec.decoder.decode(
+                RemoteTrainingJobResult.self,
+                from: Data(contentsOf: resultURL)
+            )
+            guard result.pimpAudioRemoteResultVersion
+                    == RemoteTrainingJobResult.schemaVersion else {
+                throw RunPodRemoteJobError.invalidResult(
+                    "unsupported result schema \(result.pimpAudioRemoteResultVersion)"
+                )
+            }
+            guard result.status == .succeeded else {
+                throw RunPodRemoteJobError.invalidResult(
+                    result.error?.message ?? "remote worker did not report success"
+                )
+            }
+            let finalAdapterURL = artifactsURL.appendingPathComponent(
+                "final_adapter",
+                isDirectory: true
+            )
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(
+                atPath: finalAdapterURL.path(percentEncoded: false),
+                isDirectory: &isDirectory
+            ), isDirectory.boolValue else {
+                throw RunPodRemoteJobError.invalidResult(
+                    "final_adapter directory is missing from the pullback"
+                )
+            }
+
+            let pullback = RunPodRemoteJobPullback(
+                directoryURL: destination,
+                artifactsURL: artifactsURL,
+                finalAdapterURL: finalAdapterURL,
+                result: result
+            )
+            remoteJobStates[pod.id] = RunPodRemoteJobState(
+                archivePath: archiveURL.path(percentEncoded: false),
+                phase: .downloaded,
+                message: "Artifacts downloaded and validated. Importing the final adapter is safe.",
+                logTail: remoteJobStates[pod.id]?.logTail ?? "",
+                result: result,
+                localArtifactsPath: artifactsURL.path(percentEncoded: false),
+                importedAdapterName: nil
+            )
+            lastMessage = "Downloaded validated remote artifacts from \(pod.displayName)."
+            lastError = nil
+            return pullback
+        } catch {
+            failRemoteJob(podID: pod.id, archiveURL: archiveURL, error: error)
+            throw error
+        }
+    }
+
+    func markRemoteAdapterImported(
+        podID: String,
+        archiveURL: URL,
+        adapterName: String
+    ) {
+        guard var state = remoteJobStates[podID],
+              state.archivePath == archiveURL.path(percentEncoded: false) else {
+            return
+        }
+        state.phase = .imported
+        state.importedAdapterName = adapterName
+        state.message = "Imported \(adapterName) into the local adapter registry."
+        remoteJobStates[podID] = state
+    }
+
+    private func beginMonitoring(plan: RunPodRemoteJobPlan) {
+        remoteMonitorTasks.removeValue(forKey: plan.podID)?.cancel()
+        remoteMonitorTasks[plan.podID] = Task { [weak self] in
+            guard let self else { return }
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(for: .seconds(5))
+                    try Task.checkCancellation()
+                    await self.refreshRemoteJob(plan: plan)
+                    guard let state = self.remoteJobStates[plan.podID],
+                          !state.phase.isTerminal else {
+                        return
+                    }
+                } catch {
+                    return
+                }
+            }
+        }
+    }
+
+    private func refreshRemoteJob(plan: RunPodRemoteJobPlan) async {
+        do {
+            let response = try await runRemoteCommand(plan.statusCommand)
+            let snapshot = try RunPodRemoteStatusSnapshot.parse(response.stdout)
+            var state = remoteJobStates[plan.podID] ?? RunPodRemoteJobState(
+                archivePath: plan.archiveURL.path(percentEncoded: false),
+                phase: .running,
+                message: "Remote worker is running.",
+                logTail: "",
+                result: nil,
+                localArtifactsPath: nil,
+                importedAdapterName: nil
+            )
+            state.archivePath = plan.archiveURL.path(percentEncoded: false)
+            state.logTail = snapshot.logTail
+            switch snapshot.status {
+            case .running:
+                state.phase = .running
+                state.message = "Remote worker is running. Status refreshes automatically."
+            case .pending:
+                state.phase = .starting
+                state.message = "The remote worker has not written its PID yet."
+            case .failed:
+                state.phase = .failed
+                state.message = snapshot.logTail.isEmpty
+                    ? "The remote worker stopped without writing result.json."
+                    : String(snapshot.logTail.suffix(1_000))
+            case .result:
+                guard let result = snapshot.result else {
+                    throw RunPodRemoteJobError.invalidResult(
+                        "result marker did not contain result.json"
+                    )
+                }
+                state.result = result
+                state.phase = result.status == .succeeded ? .succeeded : .failed
+                state.message = result.status == .succeeded
+                    ? "Remote training succeeded. Pull back and import the adapter."
+                    : (result.error?.message ?? "Remote training failed.")
+            }
+            remoteJobStates[plan.podID] = state
+        } catch is CancellationError {
+            return
+        } catch {
+            failRemoteJob(
+                podID: plan.podID,
+                archiveURL: plan.archiveURL,
+                error: error
+            )
+        }
+    }
+
+    private func runRemoteCommand(
+        _ command: RunPodRemoteCommand,
+        timeoutSeconds: TimeInterval = 300
+    ) async throws -> RunPodRemoteCommandResult {
+        let result = try await remoteExecutor.run(
+            executableURL: command.executableURL,
+            arguments: command.arguments,
+            timeoutSeconds: timeoutSeconds
+        )
+        guard result.exitStatus == 0 else {
+            let detail = result.stderr
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            throw RunPodRemoteJobError.commandFailed(
+                detail.isEmpty
+                    ? "\(command.displayName) exited with status \(result.exitStatus)"
+                    : String(detail.suffix(2_000))
+            )
+        }
+        return result
+    }
+
+    private func updateRemoteJobState(
+        podID: String,
+        archiveURL: URL,
+        phase: RunPodRemoteJobPhase,
+        message: String
+    ) {
+        remoteJobStates[podID] = RunPodRemoteJobState(
+            archivePath: archiveURL.path(percentEncoded: false),
+            phase: phase,
+            message: message,
+            logTail: remoteJobStates[podID]?.logTail ?? "",
+            result: remoteJobStates[podID]?.result,
+            localArtifactsPath: remoteJobStates[podID]?.localArtifactsPath,
+            importedAdapterName: remoteJobStates[podID]?.importedAdapterName
+        )
+    }
+
+    private func failRemoteJob(
+        podID: String,
+        archiveURL: URL,
+        error: Error
+    ) {
+        let message = RunPodRemoteJobError.userFacingMessage(for: error)
+        updateRemoteJobState(
+            podID: podID,
+            archiveURL: archiveURL,
+            phase: .failed,
+            message: message
+        )
+        lastError = message
     }
 
     private func runPodToken() -> String? {
@@ -215,6 +559,606 @@ final class RunPodService: ObservableObject {
 
     private func note(_ tag: String, _ message: String) {
         AudioDiagnostics.note("runpod/\(tag)", message)
+    }
+}
+
+enum RunPodRemoteJobPhase: String, Equatable, Sendable {
+    case uploading
+    case uploaded
+    case starting
+    case running
+    case succeeded
+    case failed
+    case downloading
+    case downloaded
+    case imported
+
+    var isBusy: Bool {
+        switch self {
+        case .uploading, .starting, .downloading:
+            return true
+        default:
+            return false
+        }
+    }
+
+    var isTerminal: Bool {
+        switch self {
+        case .succeeded, .failed, .downloaded, .imported:
+            return true
+        default:
+            return false
+        }
+    }
+}
+
+struct RunPodRemoteJobState: Equatable, Sendable {
+    var archivePath: String
+    var phase: RunPodRemoteJobPhase
+    var message: String
+    var logTail: String
+    var result: RemoteTrainingJobResult?
+    var localArtifactsPath: String?
+    var importedAdapterName: String?
+}
+
+struct RunPodRemoteJobPullback: Sendable {
+    var directoryURL: URL
+    var artifactsURL: URL
+    var finalAdapterURL: URL
+    var result: RemoteTrainingJobResult
+}
+
+enum RunPodRemoteJobError: LocalizedError {
+    case invalidConfiguration(String)
+    case commandFailed(String)
+    case invalidResult(String)
+    case timedOut(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidConfiguration(let detail):
+            return "Remote worker configuration is incomplete: \(detail)"
+        case .commandFailed(let detail):
+            return "Remote worker command failed: \(detail)"
+        case .invalidResult(let detail):
+            return "Remote worker result is invalid: \(detail)"
+        case .timedOut(let command):
+            return "\(command) timed out."
+        }
+    }
+
+    static func userFacingMessage(for error: Error) -> String {
+        if let localized = error as? LocalizedError,
+           let description = localized.errorDescription {
+            return description
+        }
+        return error.localizedDescription
+    }
+}
+
+struct RunPodRemoteCommand: Equatable, Sendable {
+    var executableURL: URL
+    var arguments: [String]
+    var displayName: String
+}
+
+struct RunPodRemoteCommandResult: Equatable, Sendable {
+    var exitStatus: Int32
+    var stdout: String
+    var stderr: String
+}
+
+protocol RunPodRemoteCommandExecuting: Sendable {
+    func run(
+        executableURL: URL,
+        arguments: [String],
+        timeoutSeconds: TimeInterval
+    ) async throws -> RunPodRemoteCommandResult
+}
+
+struct RunPodRemoteJobPlan: Sendable {
+    let podID: String
+    let archiveURL: URL
+    let workerDirectoryURL: URL
+    let host: String
+    let port: Int
+    let sshKeyPath: String?
+    let remoteJobKey: String
+
+    init(
+        pod: RunPodPodSummary,
+        archiveURL: URL,
+        sshKeyPath: String,
+        workerDirectoryURL: URL = RunPodRemoteWorkerLocator.defaultDirectoryURL()
+    ) throws {
+        var archiveIsDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(
+            atPath: archiveURL.path(percentEncoded: false),
+            isDirectory: &archiveIsDirectory
+        ), !archiveIsDirectory.boolValue else {
+            throw RunPodRemoteJobError.invalidConfiguration(
+                "the selected remote job zip no longer exists"
+            )
+        }
+        guard FileManager.default.fileExists(
+            atPath: workerDirectoryURL
+                .appendingPathComponent("install.sh")
+                .path(percentEncoded: false)
+        ) else {
+            throw RunPodRemoteJobError.invalidConfiguration(
+                "the portable PiMP remote worker could not be found"
+            )
+        }
+        guard let publicIP = pod.publicIp?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+              !publicIP.isEmpty,
+              publicIP.rangeOfCharacter(
+                from: CharacterSet(
+                    charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-"
+                ).inverted
+              ) == nil,
+              let sshPort = pod.sshPort,
+              (1...65_535).contains(sshPort) else {
+            throw RunPodRemoteJobError.invalidConfiguration(
+                "the pod does not expose a valid public SSH endpoint"
+            )
+        }
+
+        let trimmedKey = sshKeyPath.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        let expandedKey = trimmedKey.isEmpty
+            ? nil
+            : NSString(string: trimmedKey).expandingTildeInPath
+        if let expandedKey,
+           !FileManager.default.fileExists(atPath: expandedKey) {
+            throw RunPodRemoteJobError.invalidConfiguration(
+                "SSH key not found at \(expandedKey)"
+            )
+        }
+
+        self.podID = pod.id
+        self.archiveURL = archiveURL
+        self.workerDirectoryURL = workerDirectoryURL
+        self.host = publicIP
+        self.port = sshPort
+        self.sshKeyPath = expandedKey
+        self.remoteJobKey = Self.safeRemoteJobKey(
+            archiveURL.deletingPathExtension().lastPathComponent
+        )
+    }
+
+    var prepareUploadCommand: RunPodRemoteCommand {
+        sshCommand(
+            """
+            set -euo pipefail
+            mkdir -p /workspace/jobs
+            rm -rf /workspace/pimp-remote-worker-src
+            """,
+            displayName: "Prepare remote upload"
+        )
+    }
+
+    var uploadArchiveCommand: RunPodRemoteCommand {
+        scpCommand(
+            source: archiveURL.path(percentEncoded: false),
+            destination: "root@\(host):/workspace/jobs/",
+            recursive: false,
+            displayName: "Upload remote job zip"
+        )
+    }
+
+    var uploadWorkerCommand: RunPodRemoteCommand {
+        scpCommand(
+            source: workerDirectoryURL.path(percentEncoded: false),
+            destination: "root@\(host):/workspace/pimp-remote-worker-src",
+            recursive: true,
+            displayName: "Upload portable remote worker"
+        )
+    }
+
+    var startCommand: RunPodRemoteCommand {
+        let root = remoteRoot
+        let archive = "/workspace/jobs/\(archiveURL.lastPathComponent)"
+        return sshCommand(
+            """
+            set -euo pipefail
+            ROOT=\(shellQuoted(root))
+            ARCHIVE=\(shellQuoted(archive))
+            rm -rf "$ROOT"
+            mkdir -p "$ROOT"
+            if [ -f /workspace/pimp-remote-worker-src/install.sh ]; then
+              bash /workspace/pimp-remote-worker-src/install.sh > "$ROOT/install.log" 2>&1
+            fi
+            if [ -f /workspace/pimp-remote-worker/env.sh ]; then
+              source /workspace/pimp-remote-worker/env.sh
+            fi
+            if ! command -v pimp-remote-worker >/dev/null 2>&1; then
+              echo "The portable PiMP remote worker was not installed." >&2
+              exit 127
+            fi
+            export PIMP_REMOTE_JOB_DIR="$ROOT"
+            nohup pimp-remote-worker train "$ARCHIVE" \
+              > "$ROOT/console.log" 2>&1 < /dev/null &
+            PID=$!
+            printf '%s\n' "$PID" > "$ROOT/worker.pid"
+            echo "Started PiMP remote worker (PID $PID)."
+            """,
+            displayName: "Start remote worker"
+        )
+    }
+
+    var statusCommand: RunPodRemoteCommand {
+        let root = remoteRoot
+        return sshCommand(
+            """
+            set -euo pipefail
+            ROOT=\(shellQuoted(root))
+            RESULT="$(find "$ROOT" -maxdepth 8 -path '*/remote_artifacts/result.json' -type f -print -quit)"
+            LOGS="$(find "$ROOT" -maxdepth 8 -path '*/remote_artifacts/logs.jsonl' -type f -print -quit)"
+            CONSOLE="$ROOT/console.log"
+            PID_FILE="$ROOT/worker.pid"
+            if [ -n "$RESULT" ]; then
+              echo "PIMP_STATUS:RESULT"
+              cat "$RESULT"
+            elif [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+              echo "PIMP_STATUS:RUNNING"
+              if [ -n "$LOGS" ]; then tail -n 30 "$LOGS"; elif [ -f "$CONSOLE" ]; then tail -n 30 "$CONSOLE"; fi
+            elif [ -f "$PID_FILE" ]; then
+              echo "PIMP_STATUS:FAILED"
+              if [ -n "$LOGS" ]; then tail -n 30 "$LOGS"; elif [ -f "$CONSOLE" ]; then tail -n 30 "$CONSOLE"; fi
+            else
+              echo "PIMP_STATUS:PENDING"
+            fi
+            """,
+            displayName: "Refresh remote worker status"
+        )
+    }
+
+    var preparePullbackCommand: RunPodRemoteCommand {
+        let root = remoteRoot
+        return sshCommand(
+            """
+            set -euo pipefail
+            ROOT=\(shellQuoted(root))
+            RESULT="$(find "$ROOT" -maxdepth 8 -path '*/remote_artifacts/result.json' -type f -print -quit)"
+            test -n "$RESULT"
+            PACKAGE_ROOT="$(dirname "$(dirname "$RESULT")")"
+            case "$PACKAGE_ROOT" in "$ROOT"/*) ;; *) echo "Unsafe package root." >&2; exit 4 ;; esac
+            rm -rf "$ROOT/pullback"
+            mkdir -p "$ROOT/pullback"
+            cp -R "$PACKAGE_ROOT/remote_artifacts" "$ROOT/pullback/remote_artifacts"
+            """,
+            displayName: "Prepare remote artifact pullback"
+        )
+    }
+
+    func pullArtifactsCommand(destinationURL: URL) -> RunPodRemoteCommand {
+        scpCommand(
+            source: "root@\(host):\(remoteRoot)/pullback/remote_artifacts",
+            destination: destinationURL.path(percentEncoded: false),
+            recursive: true,
+            displayName: "Download remote artifacts"
+        )
+    }
+
+    func makeLocalPullbackDirectory() throws -> URL {
+        let parent = archiveURL.deletingLastPathComponent()
+            .appendingPathComponent("Remote Training Results", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: parent,
+            withIntermediateDirectories: true
+        )
+        let podSuffix = String(podID.prefix(8))
+        var destination = parent.appendingPathComponent(
+            "\(remoteJobKey)-\(podSuffix)",
+            isDirectory: true
+        )
+        if FileManager.default.fileExists(
+            atPath: destination.path(percentEncoded: false)
+        ) {
+            destination = parent.appendingPathComponent(
+                "\(remoteJobKey)-\(podSuffix)-\(UUID().uuidString.prefix(8))",
+                isDirectory: true
+            )
+        }
+        try FileManager.default.createDirectory(
+            at: destination,
+            withIntermediateDirectories: true
+        )
+        return destination
+    }
+
+    private var remoteRoot: String {
+        "/workspace/pimp-remote-jobs/\(remoteJobKey)"
+    }
+
+    private func sshCommand(
+        _ remoteCommand: String,
+        displayName: String
+    ) -> RunPodRemoteCommand {
+        RunPodRemoteCommand(
+            executableURL: URL(fileURLWithPath: "/usr/bin/ssh"),
+            arguments: sshOptions
+                + ["-p", String(port), "root@\(host)", remoteCommand],
+            displayName: displayName
+        )
+    }
+
+    private func scpCommand(
+        source: String,
+        destination: String,
+        recursive: Bool,
+        displayName: String
+    ) -> RunPodRemoteCommand {
+        var arguments = sshOptions + ["-P", String(port)]
+        if recursive {
+            arguments.append("-r")
+        }
+        arguments.append(contentsOf: [source, destination])
+        return RunPodRemoteCommand(
+            executableURL: URL(fileURLWithPath: "/usr/bin/scp"),
+            arguments: arguments,
+            displayName: displayName
+        )
+    }
+
+    private var sshOptions: [String] {
+        var arguments = [
+            "-o", "BatchMode=yes",
+            "-o", "StrictHostKeyChecking=accept-new",
+            "-o", "ConnectTimeout=20",
+        ]
+        if let sshKeyPath {
+            arguments.append(contentsOf: ["-i", sshKeyPath])
+        }
+        return arguments
+    }
+
+    private static func safeRemoteJobKey(_ value: String) -> String {
+        let normalized = value
+            .lowercased()
+            .replacingOccurrences(
+                of: "[^a-z0-9-]+",
+                with: "-",
+                options: .regularExpression
+            )
+            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        let base = normalized.isEmpty ? "remote-job" : normalized
+        return String(base.prefix(80))
+    }
+}
+
+enum RunPodRemoteStatus {
+    case pending
+    case running
+    case failed
+    case result
+}
+
+struct RunPodRemoteStatusSnapshot {
+    var status: RunPodRemoteStatus
+    var logTail: String
+    var result: RemoteTrainingJobResult?
+
+    static func parse(_ output: String) throws -> RunPodRemoteStatusSnapshot {
+        let markers: [(String, RunPodRemoteStatus)] = [
+            ("PIMP_STATUS:RESULT", .result),
+            ("PIMP_STATUS:RUNNING", .running),
+            ("PIMP_STATUS:FAILED", .failed),
+            ("PIMP_STATUS:PENDING", .pending),
+        ]
+        guard let match = markers.first(where: { output.contains($0.0) }),
+              let markerRange = output.range(of: match.0) else {
+            throw RunPodRemoteJobError.invalidResult(
+                "status response did not contain a PiMP status marker"
+            )
+        }
+        let payload = output[markerRange.upperBound...]
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if case .result = match.1 {
+            guard let data = payload.data(using: .utf8) else {
+                throw RunPodRemoteJobError.invalidResult(
+                    "result.json was not valid UTF-8"
+                )
+            }
+            let result = try RemoteTrainingJobCodec.decoder.decode(
+                RemoteTrainingJobResult.self,
+                from: data
+            )
+            guard result.pimpAudioRemoteResultVersion
+                    == RemoteTrainingJobResult.schemaVersion else {
+                throw RunPodRemoteJobError.invalidResult(
+                    "unsupported result schema \(result.pimpAudioRemoteResultVersion)"
+                )
+            }
+            return RunPodRemoteStatusSnapshot(
+                status: .result,
+                logTail: "",
+                result: result
+            )
+        }
+        return RunPodRemoteStatusSnapshot(
+            status: match.1,
+            logTail: payload,
+            result: nil
+        )
+    }
+}
+
+final class RunPodRemoteProcessExecutor:
+    RunPodRemoteCommandExecuting,
+    @unchecked Sendable
+{
+    func run(
+        executableURL: URL,
+        arguments: [String],
+        timeoutSeconds: TimeInterval
+    ) async throws -> RunPodRemoteCommandResult {
+        let process = RunPodCapturedProcess(
+            executableURL: executableURL,
+            arguments: arguments
+        )
+        return try await process.run(timeoutSeconds: timeoutSeconds)
+    }
+}
+
+private final class RunPodCapturedProcess: @unchecked Sendable {
+    private let process = Process()
+    private let stdout = Pipe()
+    private let stderr = Pipe()
+    private let lock = NSLock()
+    private var stdoutData = Data()
+    private var stderrData = Data()
+    private var continuation: CheckedContinuation<
+        RunPodRemoteCommandResult,
+        Error
+    >?
+    private var didResume = false
+    private var didCancel = false
+
+    init(executableURL: URL, arguments: [String]) {
+        process.executableURL = executableURL
+        process.arguments = arguments
+        process.standardOutput = stdout
+        process.standardError = stderr
+    }
+
+    func run(timeoutSeconds: TimeInterval) async throws -> RunPodRemoteCommandResult {
+        try await withThrowingTaskGroup(
+            of: RunPodRemoteCommandResult.self
+        ) { group in
+            group.addTask {
+                try await self.runProcess()
+            }
+            group.addTask {
+                try await Task.sleep(
+                    nanoseconds: UInt64(timeoutSeconds * 1_000_000_000)
+                )
+                self.cancel()
+                throw RunPodRemoteJobError.timedOut(
+                    self.process.executableURL?.lastPathComponent ?? "remote command"
+                )
+            }
+            guard let result = try await group.next() else {
+                throw CancellationError()
+            }
+            group.cancelAll()
+            return result
+        }
+    }
+
+    private func runProcess() async throws -> RunPodRemoteCommandResult {
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation {
+                (continuation: CheckedContinuation<
+                    RunPodRemoteCommandResult,
+                    Error
+                >) in
+                start(continuation)
+            }
+        } onCancel: {
+            cancel()
+        }
+    }
+
+    private func start(
+        _ continuation: CheckedContinuation<
+            RunPodRemoteCommandResult,
+            Error
+        >
+    ) {
+        lock.lock()
+        if didCancel {
+            lock.unlock()
+            continuation.resume(throwing: CancellationError())
+            return
+        }
+        self.continuation = continuation
+        lock.unlock()
+
+        stdout.fileHandleForReading.readabilityHandler = { [weak self] handle in
+            self?.append(handle.availableData, toStdout: true)
+        }
+        stderr.fileHandleForReading.readabilityHandler = { [weak self] handle in
+            self?.append(handle.availableData, toStdout: false)
+        }
+        process.terminationHandler = { [weak self] process in
+            self?.finish(process)
+        }
+        do {
+            try process.run()
+        } catch {
+            finish(error)
+        }
+    }
+
+    private func append(_ data: Data, toStdout: Bool) {
+        guard !data.isEmpty else { return }
+        lock.lock()
+        if toStdout {
+            stdoutData.append(data)
+        } else {
+            stderrData.append(data)
+        }
+        lock.unlock()
+    }
+
+    private func finish(_ process: Process) {
+        stdout.fileHandleForReading.readabilityHandler = nil
+        stderr.fileHandleForReading.readabilityHandler = nil
+        let remainingStdout = stdout.fileHandleForReading.readDataToEndOfFile()
+        let remainingStderr = stderr.fileHandleForReading.readDataToEndOfFile()
+
+        lock.lock()
+        stdoutData.append(remainingStdout)
+        stderrData.append(remainingStderr)
+        guard !didResume, let continuation else {
+            lock.unlock()
+            return
+        }
+        didResume = true
+        self.continuation = nil
+        let output = stdoutData
+        let errors = stderrData
+        lock.unlock()
+        continuation.resume(returning: RunPodRemoteCommandResult(
+            exitStatus: process.terminationStatus,
+            stdout: String(data: output, encoding: .utf8) ?? "",
+            stderr: String(data: errors, encoding: .utf8) ?? ""
+        ))
+    }
+
+    private func finish(_ error: Error) {
+        stdout.fileHandleForReading.readabilityHandler = nil
+        stderr.fileHandleForReading.readabilityHandler = nil
+        lock.lock()
+        guard !didResume, let continuation else {
+            lock.unlock()
+            return
+        }
+        didResume = true
+        self.continuation = nil
+        lock.unlock()
+        continuation.resume(throwing: error)
+    }
+
+    private func cancel() {
+        stdout.fileHandleForReading.readabilityHandler = nil
+        stderr.fileHandleForReading.readabilityHandler = nil
+        lock.lock()
+        didCancel = true
+        let continuation = didResume ? nil : self.continuation
+        if continuation != nil {
+            didResume = true
+            self.continuation = nil
+        }
+        lock.unlock()
+        if process.isRunning {
+            process.terminate()
+        }
+        continuation?.resume(throwing: CancellationError())
     }
 }
 
@@ -427,27 +1371,18 @@ struct RunPodPodSummary: Identifiable, Decodable, Equatable, Sendable {
         set -euo pipefail
         cd /workspace/jobs
         ZIP=\(zipName)
-        mkdir -p /workspace/pimp-remote-jobs/current
-        if command -v unzip >/dev/null 2>&1; then
-          unzip -oq "$ZIP" -d /workspace/pimp-remote-jobs/current
-        elif command -v python3 >/dev/null 2>&1; then
-          python3 -m zipfile -e "$ZIP" /workspace/pimp-remote-jobs/current
-        else
-          echo "Install unzip or python3 first."; exit 3
-        fi
-        JOB_FILE="$(find /workspace/pimp-remote-jobs/current -maxdepth 4 -name remote_job.json -print -quit)"
-        if [ -z "$JOB_FILE" ]; then
-          echo "Could not find remote_job.json after extracting $ZIP"
-          exit 2
-        fi
         if [ -f /workspace/pimp-remote-worker-src/install.sh ]; then
           bash /workspace/pimp-remote-worker-src/install.sh
         fi
         if [ -f /workspace/pimp-remote-worker/env.sh ]; then
           source /workspace/pimp-remote-worker/env.sh
         fi
-        cd "$(dirname "$JOB_FILE")"
-        bash run_remote_training.sh .
+        if ! command -v pimp-remote-worker >/dev/null 2>&1; then
+          echo "The portable PiMP remote worker was not installed."
+          exit 127
+        fi
+        export PIMP_REMOTE_JOB_DIR=/workspace/pimp-remote-jobs/current
+        pimp-remote-worker train "$ZIP"
         PIMP_REMOTE_RUN
         """
     }

@@ -46,6 +46,49 @@ private final class RunPodMockTransport: RunPodTransport, @unchecked Sendable {
     }
 }
 
+private actor RunPodRemoteMockExecutor: RunPodRemoteCommandExecuting {
+    private var results: [RunPodRemoteCommandResult]
+    private(set) var invocations: [(URL, [String])] = []
+
+    init(results: [RunPodRemoteCommandResult]) {
+        self.results = results
+    }
+
+    func run(
+        executableURL: URL,
+        arguments: [String],
+        timeoutSeconds: TimeInterval
+    ) async throws -> RunPodRemoteCommandResult {
+        invocations.append((executableURL, arguments))
+        if results.isEmpty {
+            return RunPodRemoteCommandResult(
+                exitStatus: 0,
+                stdout: "",
+                stderr: ""
+            )
+        }
+        return results.removeFirst()
+    }
+}
+
+private func runPodTestPod() throws -> RunPodPodSummary {
+    try JSONDecoder().decode(
+        RunPodPodSummary.self,
+        from: Data(
+            """
+            {
+              "id": "pod-test-123",
+              "name": "pimp-test",
+              "desiredStatus": "RUNNING",
+              "publicIp": "216.81.151.42",
+              "portMappings": {"22": 11646},
+              "ports": ["22/tcp"]
+            }
+            """.utf8
+        )
+    )
+}
+
 @Test func apiKeyStoreKeepsRunPodOutOfLyricProviderList() {
     #expect(APIKeyStore.apiKeyProviders.contains { $0.id == APIKeyStore.runPodProviderID })
     #expect(!APIKeyStore.providers.contains { $0.id == APIKeyStore.runPodProviderID })
@@ -98,15 +141,187 @@ private final class RunPodMockTransport: RunPodTransport, @unchecked Sendable {
     #expect(uploadCommand.contains("scp -P 11646 -i ~/.ssh/id_ed25519 -r \"$WORKER_DIR\" root@216.81.151.42:/workspace/pimp-remote-worker-src"))
 
     let remoteCommand = try #require(pods[0].remotePackageCommand(archiveURL: archiveURL))
-    #expect(remoteCommand.contains("python3 -m zipfile -e"))
     #expect(remoteCommand.contains("ZIP='job one.zip'"))
     #expect(remoteCommand.contains("bash /workspace/pimp-remote-worker-src/install.sh"))
     #expect(remoteCommand.contains("source /workspace/pimp-remote-worker/env.sh"))
-    #expect(remoteCommand.contains("bash run_remote_training.sh ."))
+    #expect(remoteCommand.contains("pimp-remote-worker train \"$ZIP\""))
+    #expect(!remoteCommand.contains("unzip -oq"))
 
     #expect(transport.requests.first?.httpMethod == "GET")
     #expect(transport.requests.first?.url?.absoluteString == "https://rest.runpod.io/v1/pods")
     #expect(transport.requests.first?.value(forHTTPHeaderField: "Authorization") == "Bearer rp_test_token")
+}
+
+@Test func runPodRemoteJobPlanUsesArgumentArraysAndScopedRemotePaths() throws {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let workerDirectory = root.appendingPathComponent(
+        "remote worker",
+        isDirectory: true
+    )
+    try FileManager.default.createDirectory(
+        at: workerDirectory,
+        withIntermediateDirectories: true
+    )
+    defer { try? FileManager.default.removeItem(at: root) }
+    let archiveURL = root.appendingPathComponent("Whole Track Job.zip")
+    try Data("zip".utf8).write(to: archiveURL)
+    try Data("#!/bin/bash".utf8).write(
+        to: workerDirectory.appendingPathComponent("install.sh")
+    )
+
+    let plan = try RunPodRemoteJobPlan(
+        pod: runPodTestPod(),
+        archiveURL: archiveURL,
+        sshKeyPath: "",
+        workerDirectoryURL: workerDirectory
+    )
+
+    #expect(plan.remoteJobKey == "whole-track-job")
+    #expect(plan.prepareUploadCommand.executableURL.path == "/usr/bin/ssh")
+    #expect(plan.uploadArchiveCommand.executableURL.path == "/usr/bin/scp")
+    #expect(plan.uploadArchiveCommand.arguments.contains(archiveURL.path))
+    #expect(
+        plan.uploadWorkerCommand.arguments.contains(
+            workerDirectory.path(percentEncoded: false)
+        )
+    )
+    #expect(
+        plan.startCommand.arguments.last?
+            .contains("/workspace/pimp-remote-jobs/whole-track-job") == true
+    )
+    #expect(
+        plan.startCommand.arguments.last?
+            .contains("nohup pimp-remote-worker train") == true
+    )
+    #expect(
+        plan.startCommand.arguments.last?
+            .contains("unzip -oq") == false
+    )
+    #expect(
+        plan.startCommand.arguments.last?
+            .contains("PIMP_REMOTE_JOB_DIR") == true
+    )
+    #expect(
+        plan.preparePullbackCommand.arguments.last?
+            .contains("remote_artifacts/result.json") == true
+    )
+    #expect(
+        !plan.startCommand.arguments
+            .joined(separator: " ")
+            .localizedCaseInsensitiveContains("api_key")
+    )
+}
+
+@Test func runPodRemoteStatusParsesStableResultContract() throws {
+    let snapshot = try RunPodRemoteStatusSnapshot.parse(
+        """
+        PIMP_STATUS:RESULT
+        {
+          "pimp_audio_remote_result_version": "1.0",
+          "job_id": "job-123",
+          "task": "train_lora",
+          "status": "succeeded",
+          "started_at": "2026-07-18T00:00:00Z",
+          "finished_at": "2026-07-18T00:10:00Z",
+          "artifacts": [
+            {
+              "kind": "final_adapter",
+              "path": "remote_artifacts/final_adapter",
+              "media_type": "application/vnd.pimp-audio.adapter"
+            }
+          ],
+          "metrics": {"sample_count": 2}
+        }
+        """
+    )
+
+    if case .result = snapshot.status {
+        #expect(snapshot.result?.jobID == "job-123")
+        #expect(snapshot.result?.status == .succeeded)
+        #expect(snapshot.result?.artifacts.first?.kind == "final_adapter")
+    } else {
+        Issue.record("Expected a parsed result snapshot")
+    }
+}
+
+@Test func runPodRemoteStatusRejectsUnknownResultSchema() {
+    #expect(throws: RunPodRemoteJobError.self) {
+        try RunPodRemoteStatusSnapshot.parse(
+            """
+            PIMP_STATUS:RESULT
+            {
+              "pimp_audio_remote_result_version": "2.0",
+              "job_id": "job-123",
+              "task": "train_lora",
+              "status": "succeeded",
+              "artifacts": [],
+              "metrics": {}
+            }
+            """
+        )
+    }
+}
+
+@MainActor
+@Test func runPodServiceUploadsArchiveAndWorkerWithoutShellInterpolation() async throws {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let workerDirectory = root.appendingPathComponent(
+        "remote-worker",
+        isDirectory: true
+    )
+    try FileManager.default.createDirectory(
+        at: workerDirectory,
+        withIntermediateDirectories: true
+    )
+    defer { try? FileManager.default.removeItem(at: root) }
+    let archiveURL = root.appendingPathComponent("job.zip")
+    try Data("zip".utf8).write(to: archiveURL)
+    try Data("#!/bin/bash".utf8).write(
+        to: workerDirectory.appendingPathComponent("install.sh")
+    )
+
+    let executor = RunPodRemoteMockExecutor(
+        results: Array(
+            repeating: RunPodRemoteCommandResult(
+                exitStatus: 0,
+                stdout: "",
+                stderr: ""
+            ),
+            count: 3
+        )
+    )
+    let service = RunPodService(
+        apiKeyStore: APIKeyStore(),
+        remoteExecutor: executor
+    )
+    let pod = try runPodTestPod()
+
+    await service.uploadRemoteJob(
+        to: pod,
+        archiveURL: archiveURL,
+        sshKeyPath: "",
+        workerDirectoryURL: workerDirectory
+    )
+
+    #expect(
+        service.remoteJobState(for: pod, archiveURL: archiveURL)?.phase
+            == .uploaded
+    )
+    let invocations = await executor.invocations
+    #expect(invocations.count == 3)
+    #expect(invocations.map(\.0.path) == [
+        "/usr/bin/ssh",
+        "/usr/bin/scp",
+        "/usr/bin/scp",
+    ])
+    #expect(invocations[1].1.contains(archiveURL.path))
+    #expect(
+        invocations[2].1.contains(
+            workerDirectory.path(percentEncoded: false)
+        )
+    )
 }
 
 @Test func runPodClientListGPUTypesParsesPricingAndAvailability() async throws {

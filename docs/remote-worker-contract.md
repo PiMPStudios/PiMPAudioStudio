@@ -14,7 +14,7 @@ The contract is intentionally separate from RunPod, DigitalOcean, or any other p
 
 ## Non-Goals
 
-- No direct provider API integration in this phase.
+- No provider-specific fields in the portable job or result schema.
 - No automatic audio upload without explicit user action.
 - No provider-specific worker image or billing policy in package metadata.
 - No Python dependency inside the macOS app. Remote workers may use whatever runtime they need behind an explicit remote boundary.
@@ -58,6 +58,7 @@ Minimal shape:
     "package_name": "TheDarkGentlemen_local_2026-05-29-120000",
     "package_root": ".",
     "descriptor": "remote_training_package.json",
+    "dataset_manifest": "dataset_manifest.json",
     "entry_bundle": "training_bundle_full_mix.json",
     "selected_bundle": {
       "name": "full_mix",
@@ -115,13 +116,17 @@ The worker should:
 1. Read `remote_job.json`.
 2. Read `remote_training_package.json`.
 3. Resolve paths from `package.package_root`.
-4. Use `package.entry_bundle` as the selected training bundle.
-5. Write append-only logs to `remote_artifacts/logs.jsonl`.
-6. Write metrics events to `remote_artifacts/metrics.jsonl`.
-7. Write checkpoints under `remote_artifacts/checkpoints/`.
-8. Write the final adapter under `remote_artifacts/final_adapter/`.
-9. Write `remote_artifacts/result.json` at the end.
-10. If the worker changes package metadata, write the updated package under `remote_artifacts/package/`.
+4. Use `package.entry_bundle` plus `selected_bundle.include` to select
+   package-v2 assets by `asset_role`.
+5. Validate selected asset IDs against `dataset_manifest.json`, use the
+   manifest's reviewed annotations, and honor the selected training plan's
+   explicit `training_range`.
+6. Write append-only logs to `remote_artifacts/logs.jsonl`.
+7. Write metrics events to `remote_artifacts/metrics.jsonl`.
+8. Write checkpoints under `remote_artifacts/checkpoints/`.
+9. Write the final adapter under `remote_artifacts/final_adapter/`.
+10. Write `remote_artifacts/result.json` at the end.
+11. If the worker changes package metadata, write the updated package under `remote_artifacts/package/`.
 
 Workers may fill or reuse `preprocessed/<bundle>/samples/*.safetensors` and `preprocessed/<bundle>/index.json`. They should refresh `preprocess_cache.json` when cache status changes.
 
@@ -218,6 +223,14 @@ The first RunPod integration is intentionally app-local provider control, not a 
 - In-app launches use RunPod Secure Cloud capacity only; users who need Community Cloud or other non-standard placement controls should launch those pods from the RunPod console and use the exported job package manually.
 - Pod launch is always behind a confirmation prompt because it can start billable GPU time.
 - The app can copy SSH/upload handoff commands for the most recently exported job zip.
+- The managed flow uploads the bundled portable worker and job with argument-array
+  `ssh`/`scp` processes, installs it, starts training detached, and polls the
+  provider-neutral result/log files.
+- A successful result can be pulled into a local `Remote Training Results`
+  directory and its `final_adapter` imported through the same adapter importer
+  used for local Side-Step runs.
+- After import, PiMP presents the existing destructive termination
+  confirmation; it never silently deletes the pod.
 
 Worker logs, progress metrics, artifact pullback, and adapter import should still come from the provider-neutral `remote_artifacts/**` contract. RunPod pod status is a host lifecycle signal; it is not a replacement for worker-level training status.
 
@@ -231,11 +244,13 @@ Worker logs, progress metrics, artifact pullback, and adapter import should stil
 
 ## First Implementation Path
 
-1. Generate and validate `remote_job.json` locally.
-2. Export package zip plus job request.
-3. Add a local "dry-run worker" command or test harness that reads the zip and writes fake `remote_artifacts`. Shipped as `remote-worker/pimp-remote-worker train <job.zip> --dry-run`.
-4. Add provider settings and Keychain-backed credentials. Shipped for RunPod API tokens.
-5. Implement one provider adapter. Partially shipped for RunPod pod list/launch/stop and SSH upload handoff commands.
-6. Add the second provider adapter against the same app-side protocol.
-
-Remaining RunPod work should focus on one-click worker install/run, worker log/progress polling, artifact download, and one-click adapter import without changing the provider-neutral package/result shape.
+1. Generate and package-v2 validate `remote_job.json` locally. Shipped.
+2. Export the reviewed package zip plus job request. Shipped.
+3. Dry-run the real portable worker and preserve the stable v1 result contract.
+   Shipped as `pimp-remote-worker train <job.zip> --dry-run`.
+4. Store RunPod credentials in Keychain and explicitly confirm billable pod
+   launch. Shipped.
+5. Upload, install, start, poll, pull back, and import through the managed
+   RunPod SSH flow. Shipped and locally regression-tested.
+6. Run the final billable whole-track acceptance job, then implement a second
+   provider adapter only if product demand justifies it.
