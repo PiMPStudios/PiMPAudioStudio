@@ -345,7 +345,8 @@ enum PEFTKeyRemapper {
     /// We detect the variant from keywords in the HF path so the adapter list can show
     /// "Turbo", "SFT", "XL", or "Base" rather than collapsing everything to turbo.
     static func resolveBaseModelID(from hfPath: String?) -> String {
-        guard let path = hfPath else { return "ace-step-dit-turbo" }
+        let path = hfPath?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !path.isEmpty else { return "ace-step-dit-turbo" }
         let lower = path.lowercased()
         let looksLikeACEVariant =
             lower.contains("ace-step") ||

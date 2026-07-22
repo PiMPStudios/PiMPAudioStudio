@@ -27,13 +27,17 @@ final class APIKeyStore: ObservableObject {
 
     private static let serviceName = AppRuntimeIdentity.keychainServiceName
     private static let legacyServiceName = AppRuntimeIdentity.legacyKeychainServiceName
+    private static var shouldReadKeychain: Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil
+    }
 
     init() {
         refreshAvailableProviders()
     }
 
     func apiKey(for provider: String) -> String? {
-        if let keychainKey = readFromKeychain(account: provider) {
+        if Self.shouldReadKeychain,
+           let keychainKey = readFromKeychain(account: provider) {
             return keychainKey
         }
         if let envVar = Self.apiKeyProviders.first(where: { $0.id == provider })?.envVar {
@@ -65,7 +69,8 @@ final class APIKeyStore: ObservableObject {
     }
 
     func keySource(for provider: String) -> KeySource {
-        if readFromKeychain(account: provider) != nil {
+        if Self.shouldReadKeychain,
+           readFromKeychain(account: provider) != nil {
             return .keychain
         }
         if let envVar = Self.apiKeyProviders.first(where: { $0.id == provider })?.envVar,

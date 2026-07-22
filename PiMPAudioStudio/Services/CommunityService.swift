@@ -572,6 +572,16 @@ final class CommunityService: ObservableObject {
         }
 
         let rawArrays = try MLX.loadArrays(url: selectedWeightsURL)
+        let trainingConfig = localSideStepTrainingConfig(
+            directoryURL: directoryURL,
+            weightsURL: selectedWeightsURL,
+            nameSeedURL: nameSeedURL
+        )
+        let declaredBaseModel = peftConfig.baseModelNameOrPath?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let baseModelIDOverride = declaredBaseModel?.isEmpty == false
+            ? nil
+            : trainingConfig?.resolvedBaseModelID
 
         if type == "lokr" {
             let metadata = (try? safetensorsMetadata(from: selectedWeightsURL)) ?? [:]
@@ -583,6 +593,7 @@ final class CommunityService: ObservableObject {
                     preferredName,
                     fallbackURL: nameSeedURL ?? directoryURL
                 ),
+                baseModelIDOverride: baseModelIDOverride,
                 source: .imported,
                 remoteRepoURL: nil,
                 errorURL: directoryURL
@@ -596,6 +607,7 @@ final class CommunityService: ObservableObject {
                 preferredName,
                 fallbackURL: nameSeedURL ?? directoryURL
             ),
+            baseModelIDOverride: baseModelIDOverride,
             source: .imported,
             remoteRepoURL: nil,
             errorURL: directoryURL
@@ -681,6 +693,7 @@ final class CommunityService: ObservableObject {
         peftConfig: PEFTAdapterConfig?,
         inferredConfig: PEFTKeyRemapper.InferredConfig? = nil,
         nameSeed: String,
+        baseModelIDOverride: String? = nil,
         source: AdapterSource,
         remoteRepoURL: URL?,
         errorURL: URL
@@ -718,7 +731,7 @@ final class CommunityService: ObservableObject {
 
         let adapterID = uniqueAdapterID(from: nameSeed)
         let adapterName = nameSeed
-        let baseModelID = PEFTKeyRemapper.resolveBaseModelID(
+        let baseModelID = baseModelIDOverride ?? PEFTKeyRemapper.resolveBaseModelID(
             from: peftConfig?.baseModelNameOrPath
         )
 
@@ -1462,13 +1475,18 @@ private struct SideStepTrainingConfig: Decodable {
     let explicitBaseModelID: String?
 
     var resolvedBaseModelID: String? {
-        if let explicitBaseModelID {
+        if let explicitBaseModelID = normalized(explicitBaseModelID) {
             return explicitBaseModelID
         }
-        guard let candidate = modelVariant ?? baseModel else {
+        guard let candidate = normalized(modelVariant) ?? normalized(baseModel) else {
             return nil
         }
         return PEFTKeyRemapper.resolveBaseModelID(from: candidate)
+    }
+
+    private func normalized(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     enum CodingKeys: String, CodingKey {

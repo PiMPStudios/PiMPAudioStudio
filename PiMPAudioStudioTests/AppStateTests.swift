@@ -1490,6 +1490,8 @@ func localDatasetEnrichmentAnalyzesTempoKeyAndMeterFromAudio(
 }
 
 @Test func peftBaseModelInferencePreservesXLVariant() {
+    #expect(PEFTKeyRemapper.resolveBaseModelID(from: "") == "ace-step-dit-turbo")
+    #expect(PEFTKeyRemapper.resolveBaseModelID(from: "   ") == "ace-step-dit-turbo")
     #expect(
         PEFTKeyRemapper.resolveBaseModelID(from: "ACE-Step/acestep-v15-xl-turbo")
             == "ace-step-dit-xl-turbo"
@@ -1541,6 +1543,49 @@ func localDatasetEnrichmentAnalyzesTempoKeyAndMeterFromAudio(
     #expect(result.trainedLayerIndices == [0, 1])
     #expect(result.weightDecompose == true)
     #expect(result.weights["lycoris_condition_embedder.lokrW1"] == nil)
+}
+
+@Test @MainActor func localSideStepLoRAFolderImportUsesTrainingVariantWhenPEFTBaseIsBlank() async throws {
+    let sourceDir = FileManager.default.temporaryDirectory
+        .appendingPathComponent("sidestep-blank-base-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: sourceDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: sourceDir) }
+
+    let config = """
+    {
+      "peft_type": "LORA",
+      "base_model_name_or_path": "",
+      "r": 4,
+      "lora_alpha": 8,
+      "lora_dropout": 0.1,
+      "target_modules": ["q_proj"]
+    }
+    """
+    try Data(config.utf8).write(to: sourceDir.appendingPathComponent("adapter_config.json"))
+    try Data(#"{"model_variant":"xl-sft"}"#.utf8)
+        .write(to: sourceDir.appendingPathComponent("training_config.json"))
+
+    let arrays: [String: MLXArray] = [
+        "base_model.model.layers.0.self_attn.q_proj.lora_A.weight":
+            MLXArray([Float](repeating: 1, count: 8), [4, 2]),
+        "base_model.model.layers.0.self_attn.q_proj.lora_B.weight":
+            MLXArray([Float](repeating: 1, count: 12), [3, 4]),
+    ]
+    try MLX.save(
+        arrays: arrays,
+        url: sourceDir.appendingPathComponent("adapter_model.safetensors")
+    )
+
+    let service = CommunityService()
+    let imported = try await service.importLocalAdapter(directoryURL: sourceDir)
+    defer {
+        if let directory = try? AdapterRegistry.adapterDirectory(id: imported.id) {
+            try? FileManager.default.removeItem(at: directory)
+        }
+    }
+
+    #expect(imported.kind == .lora)
+    #expect(imported.baseModelID == "ace-step-dit-xl-sft")
 }
 
 @Test @MainActor func localLyCORISLoKRFolderImportConvertsSideStepWeights() async throws {
@@ -1651,6 +1696,9 @@ func localDatasetEnrichmentAnalyzesTempoKeyAndMeterFromAudio(
     try FileManager.default.createDirectory(at: bestDir, withIntermediateDirectories: true)
     try FileManager.default.createDirectory(at: finalDir, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: sourceDir) }
+
+    try Data(#"{"model_variant":"xl-sft"}"#.utf8)
+        .write(to: sourceDir.appendingPathComponent("training_config.json"))
 
     let bestConfig = """
     {
