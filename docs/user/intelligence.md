@@ -38,10 +38,14 @@ On **Generate**, use the enhance control to rewrite or strengthen the current
 prompt. Enhancement returns text into the prompt field; it does not change
 models, adapters, or history by itself.
 
+The enhancer aims for a **single dense audio-caption paragraph** (genre,
+instruments, voice, tempo, mood, place) suitable for ACE-Step-style generation —
+not a titled production brief or mix notes.
+
 Tips:
 
-- Start with a clear seed idea before enhancing.
-- Re-run enhancement if the result is too generic.
+- Start with a clear seed idea before enhancing; keep concrete nouns you care about.
+- Re-run enhancement if the result is too generic or too long.
 - Cancel/stop if a run is stuck; free memory before generating music.
 
 ## Lyric Writer
