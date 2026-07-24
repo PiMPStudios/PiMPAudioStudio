@@ -37,6 +37,8 @@ final class LLMModelManager: ObservableObject {
 
     // MARK: Defaults
 
+    /// Supported local LLMs only (Llama 3 chat template + Llama decoder in `LLMActor`).
+    /// Arbitrary Hugging Face repos are not offered.
     static let defaultModels: [LLMModelSpec] = [
         LLMModelSpec(
             id: "llama-3.2-3b-instruct-4bit",
@@ -44,7 +46,14 @@ final class LLMModelManager: ObservableObject {
             repoID: "mlx-community/Llama-3.2-3B-Instruct-4bit",
             sizeBytes: 1_800_000_000,
             isDefault: true
-        )
+        ),
+        LLMModelSpec(
+            id: "meta-llama-3.1-8b-instruct-4bit",
+            displayName: "Llama 3.1 8B Instruct (4-bit)",
+            repoID: "mlx-community/Meta-Llama-3.1-8B-Instruct-4bit",
+            sizeBytes: 4_500_000_000,
+            isDefault: false
+        ),
     ]
 
     // MARK: Storage
@@ -59,15 +68,12 @@ final class LLMModelManager: ObservableObject {
     // MARK: Init
 
     init() {
-        // Load persisted available models or fall back to defaults
-        if let data = UserDefaults.standard.data(forKey: modelsKey),
-           let decoded = try? JSONDecoder().decode([LLMModelSpec].self, from: data) {
-            self.availableModels = decoded
-        } else {
-            self.availableModels = Self.defaultModels
-        }
+        // Always present the fixed supported catalog. Older custom-repo entries
+        // are dropped so the UI never implies arbitrary HF packs work.
+        self.availableModels = Self.defaultModels
+        persistModels()
 
-        // Load persisted active model selection
+        // Load persisted active model selection if it is still a stock model.
         if let activeID = UserDefaults.standard.string(forKey: activeModelKey) {
             self.activeModel = availableModels.first { $0.id == activeID }
         }
@@ -225,48 +231,6 @@ final class LLMModelManager: ObservableObject {
             return false
         }
         return entries.contains { $0.hasSuffix(".safetensors") }
-    }
-
-    /// Validates and adds a custom model from a HuggingFace repo ID.
-    func addCustomModel(repoID: String) async throws {
-        let id = repoID.replacingOccurrences(of: "/", with: "-").lowercased()
-
-        guard !availableModels.contains(where: { $0.id == id }) else { return }
-
-        let baseURL = "https://huggingface.co/\(repoID)/resolve/main/"
-        let session = URLSession.shared
-        let requiredFiles = ["config.json", "tokenizer.json"]
-
-        for file in requiredFiles {
-            guard let url = URL(string: baseURL + file) else {
-                throw LLMError.missingFile(file)
-            }
-            var request = URLRequest(url: url)
-            request.httpMethod = "HEAD"
-            let (_, response) = try await session.data(for: request)
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-                throw LLMError.missingFile(file)
-            }
-        }
-
-        let displayName = repoID.components(separatedBy: "/").last ?? repoID
-        let spec = LLMModelSpec(
-            id: id,
-            displayName: displayName,
-            repoID: repoID,
-            sizeBytes: 0,
-            isDefault: false
-        )
-        availableModels.append(spec)
-        persistModels()
-    }
-
-    /// Removes a custom (non-default) model from the available list and disk.
-    func removeCustomModel(_ spec: LLMModelSpec) {
-        guard !spec.isDefault else { return }
-        deleteModel(spec)
-        availableModels.removeAll { $0.id == spec.id }
-        persistModels()
     }
 
     // MARK: - Private Helpers

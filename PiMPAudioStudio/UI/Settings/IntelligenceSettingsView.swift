@@ -7,8 +7,6 @@ struct IntelligenceSettingsView: View {
     @EnvironmentObject private var lyricWriterManager: LyricWriterManager
 
     @State private var newAPIKeys: [String: String] = [:]
-    @State private var customModelRepoID: String = ""
-    @State private var customModelError: String?
 
     var body: some View {
         Form {
@@ -32,15 +30,26 @@ struct IntelligenceSettingsView: View {
     }
 
     private var modelSection: some View {
-        Section("Local Model") {
+        Section {
+            Text("On-device Llama 3–compatible MLX models for Prompt Enhance and Local lyrics. Only these two sizes are supported.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
             ForEach(modelManager.availableModels) { spec in
                 HStack {
-                    VStack(alignment: .leading) {
+                    VStack(alignment: .leading, spacing: 2) {
                         Text(spec.displayName)
                             .font(.body)
-                        Text(ByteCountFormatter.string(fromByteCount: spec.sizeBytes, countStyle: .file))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        HStack(spacing: 6) {
+                            Text(ByteCountFormatter.string(fromByteCount: spec.sizeBytes, countStyle: .file))
+                            if spec.isDefault {
+                                Text("· default")
+                            } else {
+                                Text("· higher quality")
+                            }
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     }
 
                     Spacer()
@@ -82,34 +91,8 @@ struct IntelligenceSettingsView: View {
                     .foregroundStyle(.red)
                     .font(.caption)
             }
-
-            Divider()
-
-            HStack {
-                TextField("HuggingFace repo (e.g. mlx-community/Model-4bit)", text: $customModelRepoID)
-                    .textFieldStyle(.roundedBorder)
-
-                Button("Add Model") {
-                    customModelError = nil
-                    Task {
-                        do {
-                            try await modelManager.addCustomModel(repoID: customModelRepoID)
-                            customModelRepoID = ""
-                        } catch {
-                            customModelError = "Invalid repo: missing required files"
-                        }
-                    }
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .disabled(customModelRepoID.isEmpty)
-            }
-
-            if let error = customModelError {
-                Label(error, systemImage: "exclamationmark.triangle")
-                    .foregroundStyle(.red)
-                    .font(.caption)
-            }
+        } header: {
+            Text("Local Model")
         }
     }
 

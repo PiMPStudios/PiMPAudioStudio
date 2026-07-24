@@ -18,8 +18,17 @@ A local on-device model can power:
 - Prompt enhancement
 - Local lyric writing
 
-Download and manage the local model from the Intelligence settings section (and
-related Models controls where applicable). After enhancement or lyric writing
+PiMP only supports **Llama 3–compatible MLX instruct** checkpoints (the runtime
+uses a Llama 3 chat template and Llama decoder). Settings offers two stock
+sizes:
+
+| Model | Role |
+| --- | --- |
+| Llama 3.2 3B Instruct (4-bit) | Default — faster, less RAM |
+| Llama 3.1 8B Instruct (4-bit) | Higher quality — more RAM |
+
+There is no “add arbitrary Hugging Face repo” control for the local LLM; use
+Download / Activate on the stock rows only. After enhancement or lyric writing
 finishes, the app can evict the local LLM so music/SFX models regain memory
 headroom before Generate.
 
@@ -44,10 +53,10 @@ Typical backends:
 
 | Backend | Notes |
 | --- | --- |
-| Local (On-Device) | Uses the local intelligence model when installed |
+| Local (On-Device) | Uses the active local Llama model when installed |
 | Claude (Anthropic) | CLI and/or API key paths |
 | OpenAI / Codex-style | CLI and/or API key paths |
-| Gemini (Google) | CLI OAuth state and/or API key |
+| Gemini (Google) | API key only (no Local CLI row) |
 | Grok (xAI) | CLI and/or API key paths |
 
 ### API Keys

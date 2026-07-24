@@ -109,6 +109,13 @@ A local on-device lyric / intelligence model can be managed from Settings →
 Intelligence. Prompt enhancement and local lyric writing can use it when
 available. Cloud providers are optional alternatives.
 
+Supported stock models (Llama 3–compatible MLX only):
+
+- **Llama 3.2 3B Instruct (4-bit)** — default, lighter
+- **Llama 3.1 8B Instruct (4-bit)** — higher quality, more RAM
+
+There is no custom Hugging Face add path for this runtime.
+
 ## Hugging Face Token
 
 Some models are gated or require an accepted Hugging Face license. Save a token
