@@ -210,10 +210,11 @@ import Testing
     )
 
     #expect(modes["openai"] == .realUser)
-    #expect(modes["google"] == .realUser)
+    #expect(modes["google"] == nil) // Gemini CLI intentionally not registered
     #expect(modes["xai"] == .realUser)
     #expect(modes["huggingface"] == .realUser)
     #expect(modes["anthropic"] == .process)
+    #expect(!ProviderCLIDefinition.all.contains(where: { $0.providerID == "google" }))
 }
 
 @Test func providerCLIEnvironmentCanUseRealUserHomeForCredentialCLIs() {

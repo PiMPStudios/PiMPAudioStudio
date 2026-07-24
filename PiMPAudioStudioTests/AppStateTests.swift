@@ -3246,6 +3246,102 @@ private extension DatasetAnnotationTask {
     }
 }
 
+@Test func providerCLILyricIsolationSeedsCodexAndGrokHomes() throws {
+    let fileManager = FileManager.default
+    let realHome = fileManager.temporaryDirectory
+        .appendingPathComponent("pimpaudio-fake-real-home-\(UUID().uuidString)", isDirectory: true)
+    defer { try? fileManager.removeItem(at: realHome) }
+
+    for folder in [".grok", ".codex"] {
+        let dir = realHome.appendingPathComponent(folder, isDirectory: true)
+        try fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
+        try Data(#"{"token":"test-auth"}"#.utf8).write(to: dir.appendingPathComponent("auth.json"))
+    }
+
+    let grok = try ProviderCLILyricIsolation.prepare(
+        mode: .grok,
+        displayName: "Grok (xAI)",
+        fileManager: fileManager,
+        realUserHome: realHome.path
+    )
+    defer { grok.cleanup(fileManager: fileManager) }
+    guard case .custom(let grokHomePath) = grok.homeDirectoryMode else {
+        #expect(Bool(false), "expected custom home for grok")
+        return
+    }
+    let grokAuth = URL(fileURLWithPath: grokHomePath)
+        .appendingPathComponent(".grok/auth.json")
+    #expect(try String(contentsOf: grokAuth, encoding: .utf8).contains("test-auth"))
+
+    let codex = try ProviderCLILyricIsolation.prepare(
+        mode: .codex,
+        displayName: "OpenAI",
+        fileManager: fileManager,
+        realUserHome: realHome.path
+    )
+    defer { codex.cleanup(fileManager: fileManager) }
+    guard case .custom(let codexHomePath) = codex.homeDirectoryMode else {
+        #expect(Bool(false), "expected custom home for codex")
+        return
+    }
+    let hooks = URL(fileURLWithPath: codexHomePath)
+        .appendingPathComponent(".codex/hooks.json")
+    #expect(try String(contentsOf: hooks, encoding: .utf8).contains("{"))
+}
+
+@Test func grokLyricIsolatedHomeFailsWhenAuthMissing() {
+    let fileManager = FileManager.default
+    let realHome = fileManager.temporaryDirectory
+        .appendingPathComponent("pimpaudio-fake-real-home-\(UUID().uuidString)", isDirectory: true)
+    defer { try? fileManager.removeItem(at: realHome) }
+
+    do {
+        _ = try ProviderCLILyricIsolation.prepare(
+            mode: .grok,
+            displayName: "Grok (xAI)",
+            fileManager: fileManager,
+            realUserHome: realHome.path
+        )
+        #expect(Bool(false), "expected missing-auth failure")
+    } catch let error as LyricWriterError {
+        #expect(error.localizedDescription.localizedCaseInsensitiveContains("not signed in"))
+    } catch {
+        #expect(Bool(false), "unexpected error \(error)")
+    }
+}
+
+@Test func lyricCLIFailureDetailPrefersJSONMessage() {
+    let result = ProviderCommandResult(
+        command: "grok",
+        arguments: [],
+        exitStatus: 1,
+        stdout: #"{"type":"error","message":"Couldn't create session: Permission denied."}"#,
+        stderr: "Error: Couldn't create session: Permission denied."
+    )
+    #expect(
+        LyricCLIFailureDetail.message(from: result)
+            == "Couldn't create session: Permission denied."
+    )
+}
+
+@Test func providerCLIEnvironmentSupportsCustomHomeForWritableGrokSessions() {
+    let customHome = "/var/folders/xx/pimpaudio-grok-lyric-test"
+    let environment = ProviderCommandRunner.commandEnvironment(
+        from: [
+            "HOME": "/Users/testuser/Library/Containers/com.pimpstudios.PiMPAudioStudio/Data",
+            "USER": "testuser",
+            "PATH": "/usr/bin:/bin",
+            "PIMP_AUDIO_DISABLE_PROVIDER_CLI_GRANTS": "1",
+        ],
+        homeDirectoryMode: .custom(customHome)
+    )
+
+    #expect(environment["HOME"] == customHome)
+    let pathDirectories = environment["PATH"]?.split(separator: ":").map(String.init) ?? []
+    #expect(pathDirectories.contains("\(customHome)/.grok/bin"))
+    #expect(pathDirectories.contains("/Users/testuser/.grok/bin"))
+}
+
 @Test func lyricSanitizerRestructuresOversizedSingleVerseForLongSongs() {
     let raw = """
     [Verse]

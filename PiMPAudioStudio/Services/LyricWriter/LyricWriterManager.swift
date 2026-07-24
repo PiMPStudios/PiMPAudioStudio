@@ -66,6 +66,11 @@ final class LyricWriterManager: ObservableObject {
             return nil
         }
 
+        // Some backends (e.g. Gemini) are API-key only — no Local CLI Access entry.
+        if ProviderCLIDefinition.all.first(where: { $0.providerID == backendID }) == nil {
+            return "Add a \(provider.displayName) API key"
+        }
+
         let status = providerAccessStore.status(
             for: provider.id,
             displayName: provider.displayName

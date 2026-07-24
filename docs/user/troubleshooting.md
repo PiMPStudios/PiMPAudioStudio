@@ -29,9 +29,34 @@ Then click Refresh in **Settings → Intelligence → Local CLI Access**.
 
 ### Provider shows "Sandbox access needed"
 
-Click the gear icon for that provider row and grant access to the suggested
-folder. Then click Refresh. The gear grants folder access only; it does not sign
-in to the provider.
+Click the folder-badge icon for that provider row and grant access to the
+suggested folder. Then click Refresh. That control grants folder access only; it
+does not sign in to the provider.
+
+### Grok Write Lyrics exits with status 1
+
+Common causes:
+
+1. Not signed in (`grok models` shows “You are not authenticated”).
+2. Older app builds tried to write Grok sessions under real `~/.grok`, which the
+   sandbox may block even when sign-in checks pass.
+
+Fix:
+
+```bash
+grok login --oauth
+# or: grok login --device-auth
+grok models
+```
+
+Then use a build that runs Grok lyric writes with an isolated temporary HOME
+(so sessions do not need write access to real `~/.grok`). If the red error
+includes a Grok message, that text is the authoritative failure reason.
+
+### Gemini is missing from Local CLI Access
+
+Expected. Gemini lyric writing is API-key based in PiMP. Add a key under
+**Settings → Intelligence → API Keys**, or pick another lyric backend.
 
 ## Model Downloads
 

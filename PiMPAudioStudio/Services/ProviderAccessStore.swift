@@ -307,26 +307,10 @@ struct ProviderCLIDefinition {
             testArguments: nil,
             testParser: nil
         ),
-        ProviderCLIDefinition(
-            providerID: "google",
-            displayName: "Gemini CLI",
-            commandCandidates: ["gemini"],
-            versionArguments: ["--version"],
-            homeDirectoryMode: .realUser,
-            authProbeArguments: nil,
-            authParser: nil,
-            localAuthProbe: ProviderCLIParsers.parseGeminiLocalAuth,
-            testArguments: [
-                "--skip-trust",
-                "--prompt",
-                "Reply with OK only.",
-                "--output-format",
-                "json",
-                "--approval-mode",
-                "plan",
-            ],
-            testParser: ProviderCLIParsers.parseGeminiTest
-        ),
+        // Gemini CLI is intentionally not registered for Local CLI Access.
+        // Google's free-tier Code Assist / `gemini` client currently rejects lyric
+        // runs with IneligibleTierError while OAuth still looks "signed in", which
+        // falsely advertises readiness. Gemini remains available via API key.
         ProviderCLIDefinition(
             providerID: "xai",
             displayName: "Grok CLI",
@@ -874,6 +858,7 @@ enum ProviderCommandRunner {
         arguments: [String],
         standardInput: String? = nil,
         homeDirectoryMode: ProviderCLIHomeDirectoryMode = .process,
+        currentDirectoryURL: URL? = nil,
         timeoutSeconds: TimeInterval
     ) async throws -> ProviderCommandResult {
         let scopedAccess = ProviderCLIAccessGrants.startAccessingGrantedDirectories()
@@ -893,6 +878,7 @@ enum ProviderCommandRunner {
             processArguments: launch.processArguments,
             standardInput: standardInput,
             environment: environment,
+            currentDirectoryURL: currentDirectoryURL,
             launchDiagnostic: launch.diagnostic
         )
         return try await capture.run(timeoutSeconds: timeoutSeconds)
@@ -902,6 +888,9 @@ enum ProviderCommandRunner {
 enum ProviderCLIHomeDirectoryMode: Equatable, Sendable {
     case process
     case realUser
+    /// Explicit HOME for one-shot CLI work that must write under a sandbox-writable root
+    /// (e.g. Grok lyric sessions cannot write under the real `~/.grok`, which is read-only).
+    case custom(String)
 }
 
 struct ProviderCommandLaunch {
@@ -1103,6 +1092,8 @@ enum ProviderCLIPaths {
             return processHomeDirectory(environment: environment)
         case .realUser:
             return realUserHomeDirectory(environment: environment)
+        case .custom(let path):
+            return path
         }
     }
 
@@ -1239,6 +1230,7 @@ private final class ProviderCapturedProcess: @unchecked Sendable {
         processArguments: [String],
         standardInput: String?,
         environment: [String: String],
+        currentDirectoryURL: URL? = nil,
         launchDiagnostic: String
     ) {
         self.command = command
@@ -1251,6 +1243,9 @@ private final class ProviderCapturedProcess: @unchecked Sendable {
         process.environment = environment
         process.standardOutput = stdout
         process.standardError = stderr
+        if let currentDirectoryURL {
+            process.currentDirectoryURL = currentDirectoryURL
+        }
         if let standardInputPipe {
             process.standardInput = standardInputPipe
         }

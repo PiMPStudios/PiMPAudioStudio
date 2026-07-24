@@ -18,9 +18,13 @@ Use the refresh button after signing in from Terminal.
 | --- | --- | --- | --- |
 | Claude | `claude` | `claude auth status` | `claude` or `claude auth login` |
 | OpenAI Codex | `codex` | `codex login status` | `codex login` |
-| Gemini | `gemini` | local OAuth settings in `~/.gemini` | `gemini` |
 | Grok | `grok` | `grok models` | `grok login --oauth` |
 | Hugging Face | `hf` or `huggingface-cli` | `hf auth whoami` | `hf auth login` |
+
+Gemini is **not** listed under Local CLI Access. Google’s free-tier Code Assist /
+`gemini` client currently reports OAuth “signed in” while lyric runs fail with
+`IneligibleTierError`. Use **Settings → Intelligence → API Keys** with a
+`GOOGLE_API_KEY` (or `GEMINI_API_KEY` env) for Gemini lyric writing instead.
 
 ## How The Buttons Work
 
@@ -87,8 +91,38 @@ home directory, such as:
 ~/.cache/huggingface
 ```
 
-If the app shows `Sandbox access needed`, click the gear button for that row and
-grant access to the suggested folder. After granting access, click Refresh.
+If the app shows `Sandbox access needed`, click the folder button for that row
+and grant access to the suggested folder. After granting access, click Refresh.
+
+### Write Lyrics and provider sessions
+
+The sandbox can **read** several provider homes for sign-in checks:
+
+```text
+~/.grok   (read-only)
+~/.codex  (read-only)
+~/.gemini (read-write)
+```
+
+But **Write Lyrics** often needs the CLI to create temporary session/cache files.
+PiMP does **not** need durable sessions for lyrics, so CLI lyric runs use an
+isolated temporary HOME under the app container, seeded with only the auth
+files required, then discarded. That avoids session write failures against the
+real provider home.
+
+If Write Lyrics still fails, open:
+
+```text
+~/Library/Containers/com.pimpstudios.PiMPAudioStudio/Data/Library/Application Support/PiMPAudioStudio/Logs/lyric-cli-last-failure.log
+```
+
+(or Application Support when not sandboxed) for the last CLI stdout/stderr.
+
+### Gemini
+
+Gemini is API-key only in PiMP (no Local CLI row). Configure a Google AI Studio
+key under **API Keys**, or use Local / Claude / Codex / Grok for CLI-backed
+lyrics.
 
 ## Good Debug Information To Capture
 

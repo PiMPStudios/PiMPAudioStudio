@@ -10,7 +10,7 @@ protocol LyricWriter: Sendable {
 enum LyricWriterError: LocalizedError {
     case requestEncodingFailed(String)
     case requestFailed(String, String)
-    case providerExited(String, Int32)
+    case providerExited(String, Int32, String?)
 
     var errorDescription: String? {
         switch self {
@@ -18,7 +18,10 @@ enum LyricWriterError: LocalizedError {
             return "\(provider) lyric request could not be encoded."
         case .requestFailed(let provider, let detail):
             return "\(provider) lyric request failed: \(detail)"
-        case .providerExited(let provider, let status):
+        case .providerExited(let provider, let status, let detail):
+            if let detail, !detail.isEmpty {
+                return "\(provider) lyric writer exited with status \(status): \(detail)"
+            }
             return "\(provider) lyric writer exited with status \(status)."
         }
     }
@@ -82,16 +85,38 @@ struct ProviderCLILyricWriter: LyricWriter {
                     )
                     defer { invocation.cleanup() }
 
+                    // Provider CLIs often need to write session/cache files under HOME.
+                    // Sandbox entitlements make real `~/.grok` / `~/.codex` read-only (Gemini is
+                    // read-write, Claude uses process home + Keychain). Lyric writes are one-shot
+                    // and do not need durable sessions, so seed a temporary writable HOME.
+                    let isolation = try ProviderCLILyricIsolation.prepare(
+                        mode: mode,
+                        displayName: displayName
+                    )
+                    defer { isolation.cleanup() }
+
                     let result = try await ProviderCommandRunner.run(
                         command: command,
                         arguments: invocation.arguments,
                         standardInput: invocation.standardInput,
-                        homeDirectoryMode: homeDirectoryMode,
+                        homeDirectoryMode: isolation.homeDirectoryMode ?? homeDirectoryMode,
+                        currentDirectoryURL: isolation.workingDirectoryURL,
                         timeoutSeconds: 120
                     )
 
                     guard result.exitStatus == 0 else {
-                        throw LyricWriterError.providerExited(displayName, result.exitStatus)
+                        let detail = LyricCLIFailureDetail.message(from: result)
+                        LyricCLIFailureDetail.persist(
+                            provider: displayName,
+                            command: command,
+                            arguments: invocation.arguments,
+                            result: result
+                        )
+                        throw LyricWriterError.providerExited(
+                            displayName,
+                            result.exitStatus,
+                            detail
+                        )
                     }
 
                     let text = LyricCLIResponseParser.responseText(
@@ -116,6 +141,275 @@ struct ProviderCLILyricWriter: LyricWriter {
     }
 }
 
+/// Isolation package for one-shot provider CLI lyric runs.
+///
+/// Real home provider dirs are often sandbox **read-only** (`~/.grok`, `~/.codex`). Lyric
+/// generation does not need durable sessions, so we seed a temporary writable HOME with only
+/// the credentials needed for auth, then discard it.
+struct ProviderCLILyricIsolation {
+    let homeDirectoryMode: ProviderCLIHomeDirectoryMode?
+    let workingDirectoryURL: URL
+    let cleanupURLs: [URL]
+
+    func cleanup(fileManager: FileManager = .default) {
+        for url in cleanupURLs {
+            try? fileManager.removeItem(at: url)
+        }
+    }
+
+    static func prepare(
+        mode: ProviderCLILyricMode,
+        displayName: String,
+        fileManager: FileManager = .default,
+        realUserHome: String = ProviderCLIPaths.realUserHomeDirectory()
+    ) throws -> ProviderCLILyricIsolation {
+        let workRoot = fileManager.temporaryDirectory
+            .appendingPathComponent(
+                "pimpaudio-lyric-cli-\(mode.rawValue)-\(UUID().uuidString)",
+                isDirectory: true
+            )
+        try fileManager.createDirectory(at: workRoot, withIntermediateDirectories: true)
+
+        switch mode {
+        case .claude:
+            // Claude auth is Keychain-backed; process/container HOME is already writable.
+            // Still pin cwd to a sandbox-writable directory.
+            return ProviderCLILyricIsolation(
+                homeDirectoryMode: nil,
+                workingDirectoryURL: workRoot,
+                cleanupURLs: [workRoot]
+            )
+
+        case .codex:
+            let home = try seedHome(
+                providerFolder: ".codex",
+                displayName: displayName,
+                requiredFiles: ["auth.json"],
+                optionalFiles: ["config.toml"],
+                extraFiles: ["hooks.json": Data("{}\n".utf8)],
+                workRoot: workRoot,
+                realUserHome: realUserHome,
+                fileManager: fileManager,
+                notSignedInHint: "Run `codex login` in Terminal, then retry."
+            )
+            return ProviderCLILyricIsolation(
+                homeDirectoryMode: .custom(home.path),
+                workingDirectoryURL: workRoot,
+                cleanupURLs: [workRoot]
+            )
+
+        case .gemini:
+            let home = try seedHome(
+                providerFolder: ".gemini",
+                displayName: displayName,
+                requiredFiles: ["settings.json"],
+                optionalFiles: [
+                    "oauth_creds.json",
+                    "google_accounts.json",
+                    "installation_id",
+                    "state.json",
+                    "trustedFolders.json",
+                    "projects.json",
+                ],
+                extraFiles: [:],
+                workRoot: workRoot,
+                realUserHome: realUserHome,
+                fileManager: fileManager,
+                notSignedInHint: "Run `gemini` and complete Google OAuth, then retry."
+            )
+            return ProviderCLILyricIsolation(
+                homeDirectoryMode: .custom(home.path),
+                workingDirectoryURL: workRoot,
+                cleanupURLs: [workRoot]
+            )
+
+        case .grok:
+            let home = try seedHome(
+                providerFolder: ".grok",
+                displayName: displayName,
+                requiredFiles: ["auth.json"],
+                optionalFiles: ["config.toml", "agent_id"],
+                extraFiles: [:],
+                workRoot: workRoot,
+                realUserHome: realUserHome,
+                fileManager: fileManager,
+                notSignedInHint: "Run `grok login --oauth` or `grok login --device-auth` in Terminal, then retry."
+            )
+            return ProviderCLILyricIsolation(
+                homeDirectoryMode: .custom(home.path),
+                workingDirectoryURL: workRoot,
+                cleanupURLs: [workRoot]
+            )
+        }
+    }
+
+    private static func seedHome(
+        providerFolder: String,
+        displayName: String,
+        requiredFiles: [String],
+        optionalFiles: [String],
+        extraFiles: [String: Data],
+        workRoot: URL,
+        realUserHome: String,
+        fileManager: FileManager,
+        notSignedInHint: String
+    ) throws -> URL {
+        let home = workRoot.appendingPathComponent("home", isDirectory: true)
+        let providerDir = home.appendingPathComponent(providerFolder, isDirectory: true)
+        try fileManager.createDirectory(at: providerDir, withIntermediateDirectories: true)
+
+        let realProvider = URL(fileURLWithPath: realUserHome, isDirectory: true)
+            .appendingPathComponent(providerFolder, isDirectory: true)
+
+        for name in requiredFiles {
+            let source = realProvider.appendingPathComponent(name)
+            guard fileManager.fileExists(atPath: source.path) else {
+                throw LyricWriterError.requestFailed(
+                    displayName,
+                    "Not signed in. \(notSignedInHint)"
+                )
+            }
+            try fileManager.copyItem(at: source, to: providerDir.appendingPathComponent(name))
+        }
+
+        for name in optionalFiles {
+            let source = realProvider.appendingPathComponent(name)
+            guard fileManager.fileExists(atPath: source.path) else { continue }
+            try? fileManager.copyItem(at: source, to: providerDir.appendingPathComponent(name))
+        }
+
+        for (name, data) in extraFiles {
+            try data.write(to: providerDir.appendingPathComponent(name), options: .atomic)
+        }
+
+        return home
+    }
+}
+
+/// Back-compat alias used by existing unit tests.
+enum GrokLyricIsolatedHome {
+    static func prepare(
+        fileManager: FileManager = .default,
+        realUserHome: String = ProviderCLIPaths.realUserHomeDirectory()
+    ) throws -> URL {
+        let isolation = try ProviderCLILyricIsolation.prepare(
+            mode: .grok,
+            displayName: "Grok (xAI)",
+            fileManager: fileManager,
+            realUserHome: realUserHome
+        )
+        // Caller owns cleanup of the full isolation package; expose HOME root only.
+        guard case .custom(let path) = isolation.homeDirectoryMode else {
+            throw LyricWriterError.requestFailed("Grok (xAI)", "Failed to prepare isolated home.")
+        }
+        // Stash cleanup list on a marker file so cleanup(_:) can remove parents.
+        let home = URL(fileURLWithPath: path, isDirectory: true)
+        let marker = home.appendingPathComponent(".pimpaudio-cleanup-roots")
+        let roots = isolation.cleanupURLs.map(\.path).joined(separator: "\n")
+        try? Data(roots.utf8).write(to: marker)
+        return home
+    }
+
+    static func cleanup(_ url: URL, fileManager: FileManager = .default) {
+        let marker = url.appendingPathComponent(".pimpaudio-cleanup-roots")
+        if let data = try? Data(contentsOf: marker),
+           let text = String(data: data, encoding: .utf8) {
+            for path in text.split(separator: "\n").map(String.init) where !path.isEmpty {
+                try? fileManager.removeItem(atPath: path)
+            }
+            return
+        }
+        try? fileManager.removeItem(at: url)
+    }
+}
+
+enum LyricCLIFailureDetail {
+    static func message(from result: ProviderCommandResult) -> String? {
+        let candidates = [result.stderr, result.stdout, result.combinedOutput]
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        for candidate in candidates {
+            // Prefer JSON "message" fields (Grok/Codex style), including pretty-printed blobs.
+            if let message = firstJSONMessage(in: candidate) {
+                return message
+            }
+
+            let firstLine = candidate
+                .components(separatedBy: .newlines)
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .first { !$0.isEmpty }
+            if let firstLine {
+                return firstLine
+            }
+        }
+        return nil
+    }
+
+    static func persist(
+        provider: String,
+        command: String,
+        arguments: [String],
+        result: ProviderCommandResult
+    ) {
+        let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
+            .first?
+            .appendingPathComponent("PiMPAudioStudio/Logs", isDirectory: true)
+        guard let directory else { return }
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appendingPathComponent("lyric-cli-last-failure.log")
+        let body = """
+        provider=\(provider)
+        command=\(command)
+        arguments=\(arguments.joined(separator: " "))
+        exit=\(result.exitStatus)
+        launch=\(result.launchDiagnostic ?? "")
+        --- stdout ---
+        \(result.stdout)
+        --- stderr ---
+        \(result.stderr)
+        """
+        try? Data(body.utf8).write(to: url, options: .atomic)
+    }
+
+    private static func firstJSONMessage(in text: String) -> String? {
+        if let data = text.data(using: .utf8),
+           let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let message = object["message"] as? String {
+            let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty { return trimmed }
+        }
+
+        // Scan for embedded JSON objects with a message field (stderr wrappers, JSONL, etc.).
+        var depth = 0
+        var start: String.Index?
+        var index = text.startIndex
+        while index < text.endIndex {
+            let ch = text[index]
+            if ch == "{" {
+                if depth == 0 { start = index }
+                depth += 1
+            } else if ch == "}" {
+                if depth > 0 {
+                    depth -= 1
+                    if depth == 0, let start {
+                        let end = text.index(after: index)
+                        let slice = String(text[start..<end])
+                        if let data = slice.data(using: .utf8),
+                           let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                           let message = object["message"] as? String {
+                            let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+                            if !trimmed.isEmpty { return trimmed }
+                        }
+                    }
+                }
+            }
+            index = text.index(after: index)
+        }
+        return nil
+    }
+}
+
 struct ProviderCLILyricInvocation {
     let arguments: [String]
     let standardInput: String?
@@ -127,7 +421,7 @@ struct ProviderCLILyricInvocation {
     }
 }
 
-enum ProviderCLILyricMode: Sendable {
+enum ProviderCLILyricMode: String, Sendable {
     case claude
     case codex
     case gemini

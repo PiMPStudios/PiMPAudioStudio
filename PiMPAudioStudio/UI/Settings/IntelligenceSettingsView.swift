@@ -135,10 +135,12 @@ struct IntelligenceSettingsView: View {
 
     private var localCLIAccessSection: some View {
         Section {
-            ForEach(APIKeyStore.providers, id: \.id) { provider in
+            // Only providers with a registered CLI definition appear here (not API-only
+            // backends such as Gemini, which is key-based for lyric writing).
+            ForEach(ProviderCLIDefinition.all, id: \.providerID) { definition in
                 let status = providerAccessStore.status(
-                    for: provider.id,
-                    displayName: provider.displayName
+                    for: definition.providerID,
+                    displayName: definition.displayName
                 )
 
                 HStack(spacing: 12) {
@@ -147,7 +149,7 @@ struct IntelligenceSettingsView: View {
                         .frame(width: 18)
 
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(provider.displayName)
+                        Text(definition.displayName)
                             .font(.body)
 
                         Text(statusTitle(for: status))
@@ -171,7 +173,11 @@ struct IntelligenceSettingsView: View {
 
                     if status.canGrantAccess {
                         Button {
-                            Task { await providerAccessStore.grantAccess(providerID: provider.id) }
+                            Task {
+                                await providerAccessStore.grantAccess(
+                                    providerID: definition.providerID
+                                )
+                            }
                         } label: {
                             Image(systemName: "folder.badge.plus")
                         }
@@ -180,7 +186,9 @@ struct IntelligenceSettingsView: View {
                     }
 
                     Button {
-                        Task { await providerAccessStore.test(providerID: provider.id) }
+                        Task {
+                            await providerAccessStore.test(providerID: definition.providerID)
+                        }
                     } label: {
                         Image(systemName: "checkmark.seal")
                     }
