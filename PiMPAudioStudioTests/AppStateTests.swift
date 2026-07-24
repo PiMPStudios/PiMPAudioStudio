@@ -1688,6 +1688,65 @@ func localDatasetEnrichmentAnalyzesTempoKeyAndMeterFromAudio(
     #expect(!installedKeys.contains("layers.2.crossAttn.vProj.lokrW1"))
 }
 
+@Test @MainActor func localPEFTImportUsesMaxRankFromRankPattern() async throws {
+    let sourceDir = FileManager.default.temporaryDirectory
+        .appendingPathComponent("peft-variable-rank-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: sourceDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: sourceDir) }
+
+    let config = """
+    {
+      "peft_type": "LORA",
+      "base_model_name_or_path": "ACE-Step/acestep-v15-xl-sft",
+      "r": 16,
+      "lora_alpha": 32,
+      "lora_dropout": 0.1,
+      "target_modules": ["q_proj", "v_proj"],
+      "rank_pattern": {
+        "layers.0.self_attn.q_proj": 64,
+        "layers.0.self_attn.v_proj": 256
+      },
+      "alpha_pattern": {
+        "layers.0.self_attn.q_proj": 128,
+        "layers.0.self_attn.v_proj": 512
+      }
+    }
+    """
+    try Data(config.utf8).write(to: sourceDir.appendingPathComponent("adapter_config.json"))
+
+    let arrays: [String: MLXArray] = [
+        "base_model.model.layers.0.self_attn.q_proj.lora_A.weight":
+            MLXArray([Float](repeating: 1, count: 64 * 8), [64, 8]),
+        "base_model.model.layers.0.self_attn.q_proj.lora_B.weight":
+            MLXArray([Float](repeating: 1, count: 8 * 64), [8, 64]),
+        "base_model.model.layers.0.self_attn.v_proj.lora_A.weight":
+            MLXArray([Float](repeating: 1, count: 256 * 8), [256, 8]),
+        "base_model.model.layers.0.self_attn.v_proj.lora_B.weight":
+            MLXArray([Float](repeating: 1, count: 8 * 256), [8, 256]),
+    ]
+    try MLX.save(
+        arrays: arrays,
+        url: sourceDir.appendingPathComponent("adapter_model.safetensors")
+    )
+
+    let service = CommunityService()
+    let imported = try await service.importLocalAdapter(
+        directoryURL: sourceDir,
+        preferredName: "Variable Rank LoRA"
+    )
+    defer {
+        if let directory = try? AdapterRegistry.adapterDirectory(id: imported.id) {
+            try? FileManager.default.removeItem(at: directory)
+        }
+    }
+
+    #expect(imported.baseModelID == "ace-step-dit-xl-sft")
+    #expect(imported.config.rank == 256)
+    // Preserve PEFT default scale (32/16 = 2) against the effective max rank.
+    #expect(imported.config.alpha == 512)
+    #expect(abs(imported.config.scaling - 2.0) < 0.000_1)
+}
+
 @Test @MainActor func localSideStepLoRARunFolderImportPrefersBestAndFoldsAlphaPattern() async throws {
     let sourceDir = FileManager.default.temporaryDirectory
         .appendingPathComponent("sidestep-xl-base-lora-\(UUID().uuidString)", isDirectory: true)

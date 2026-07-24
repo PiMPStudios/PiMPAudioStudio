@@ -703,8 +703,14 @@ final class CommunityService: ObservableObject {
             throw CommunityError.noMappableWeights(errorURL)
         }
 
-        let rank = peftConfig?.r ?? inferredConfig?.rank ?? 16
-        let alpha = peftConfig?.loraAlpha ?? inferredConfig?.alpha ?? Float(rank)
+        // PEFT's top-level `r` / `lora_alpha` are often just defaults (e.g. r=16)
+        // while `rank_pattern` / actual lora_A shapes hold the real capacity
+        // (Side-Step variable-rank adapters go up to 128–256). Prefer the true max.
+        let (rank, alpha) = resolveEffectivePEFTLoRARankAndAlpha(
+            peftConfig: peftConfig,
+            inferredConfig: inferredConfig,
+            remapped: rawRemapped
+        )
         let remapped = normalizePEFTLoRAScaling(
             rawRemapped,
             peftConfig: peftConfig,
@@ -752,6 +758,39 @@ final class CommunityService: ObservableObject {
         try AdapterRegistry.save(adapter: adapter, weights: remappedWeights)
 
         return adapter
+    }
+
+    /// Resolve display/runtime rank and alpha for a PEFT LoRA import.
+    ///
+    /// Uses the maximum of:
+    /// - configured `r` / inferred rank
+    /// - `rank_pattern` values (variable-rank Side-Step / PEFT exports)
+    /// - remapped `loraA` leading dimensions
+    ///
+    /// Alpha is scaled so `alpha/rank` matches the PEFT default scale
+    /// (`lora_alpha / r`), keeping `normalizePEFTLoRAScaling` correct when
+    /// path-specific `alpha_pattern` entries are folded into B.
+    private func resolveEffectivePEFTLoRARankAndAlpha(
+        peftConfig: PEFTAdapterConfig?,
+        inferredConfig: PEFTKeyRemapper.InferredConfig?,
+        remapped: [String: MLXArray]
+    ) -> (rank: Int, alpha: Float) {
+        let configuredRank = max(1, peftConfig?.r ?? inferredConfig?.rank ?? 16)
+        let configuredAlpha = peftConfig?.loraAlpha ?? inferredConfig?.alpha ?? Float(configuredRank)
+        let scale = configuredAlpha / Float(configuredRank)
+
+        let patternMaxRank = peftConfig?.rankPattern.values.max() ?? 0
+        let weightMaxRank = remapped.reduce(0) { partial, entry in
+            guard entry.key.hasSuffix(".loraA"), entry.value.shape.count >= 2 else {
+                return partial
+            }
+            // PEFT / PiMP loraA is [rank, inFeatures]
+            return max(partial, entry.value.shape[0])
+        }
+
+        let rank = max(configuredRank, patternMaxRank, weightMaxRank, 1)
+        let alpha = scale * Float(rank)
+        return (rank, alpha)
     }
 
     private func normalizePEFTLoRAScaling(

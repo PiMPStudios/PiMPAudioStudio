@@ -138,17 +138,21 @@ enum PEFTKeyRemapper {
     /// Infer rank, alpha, and target_modules from raw PEFT weight keys and shapes.
     ///
     /// PEFT stores `lora_A` with shape `[rank, in_features]`, so `shape[0]` is rank.
+    /// When ranks vary across modules (Side-Step / PEFT `rank_pattern`), report the
+    /// **maximum** rank so UI and LoRAConfig reflect true capacity.
     /// Alpha defaults to rank (the PEFT library default when not specified).
     /// Target modules are extracted by scanning keys for known projection names.
     ///
     /// Returns `nil` if no `lora_A` weights are found (not a LoRA checkpoint).
     static func inferConfig(from dict: [String: MLXArray]) -> InferredConfig? {
-        // Find any lora_A tensor — shape is [rank, in_features]
-        guard let (_, loraA) = dict.first(where: { $0.key.contains("lora_A") }),
-              loraA.shape.count >= 2 else { return nil }
-
-        // rank is always the smaller dimension (rank << in_features in practice)
-        let rank = min(loraA.shape[0], loraA.shape[1])
+        let ranks = dict.compactMap { key, value -> Int? in
+            guard key.contains("lora_A"), value.shape.count >= 2 else { return nil }
+            // rank is the leading dim; fall back to min for unusual layouts
+            let leading = value.shape[0]
+            let trailing = value.shape[1]
+            return leading <= trailing ? leading : min(leading, trailing)
+        }
+        guard let rank = ranks.max(), rank > 0 else { return nil }
 
         let targetModules = extractTargetModules(from: Array(dict.keys))
         return InferredConfig(rank: rank, alpha: Float(rank), targetModules: targetModules)
