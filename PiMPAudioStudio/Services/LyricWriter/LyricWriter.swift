@@ -688,26 +688,90 @@ struct LyricWritingPlan {
 
     var systemPrompt: String {
         """
-        You are a concise songwriter writing lyrics for an AI music generator.
-        Match the user's mood, genre, and energy, but fit the lyric density to the exact clip duration.
+        You write tight, singable lyrics for an AI music generator (not a poem essay).
+        Fit lyric density to the exact clip duration.
         Target duration: \(durationSeconds) seconds.
         Write \(lineBudget), total, across the whole song.
         \(sectionPlan)
-        If the prompt sounds instrumental, riff-based, ambient, or like a backing track, write only a sparse chant or hook instead of a full vocal song.
-        Prefer short concrete phrases over long narrative lines.
-        End on a complete line. Never trail off mid-sentence.
-        The first non-empty character of your answer must be "[".
-        Every requested section marker must appear on its own line. Do not collapse the whole song into one [Verse].
-        Do not put more than 6 lyric lines under a single section marker.
-        Output only section markers and singable lyric lines.
-        Do not include commentary, titles, key, tempo, duration, line counts, explanations, markdown bullets, chord symbols like (Am), timestamps like [0:00 - 0:10], or performance directions like [Ambient fade-out].
+
+        World and voice:
+        - Read the song description as the sonic world. Match its mood, genre, and energy.
+        - Pull concrete images from the description into the lyrics when they appear \
+        (place, weather, time of night, objects, instruments, vocal character). Prefer \
+        those over generic heartbreak language.
+        - If the description names a vocal character (e.g. gritty raspy male), write lines \
+        that sound like that singer, not a neutral pop narrator.
+        - Let instruments color the scene when natural (slide answering from the next room, \
+        harmonica cutting the gutter drip, porch screen, juke joint dark). Do not inventory \
+        the band or paste production notes as lyrics.
+
+        Line craft (recipe):
+        - Each verse line = one concrete image or physical action (what is seen, touched, \
+        heard, or done). Not a stack of mood adjectives.
+        - Emotion words need an object or action ("throat catches on the long note", not \
+        "mournful longing and despair").
+        - Chorus = 1–2 short memorable hooks that return. Do not restate "I'm sad in the rain" \
+        with new adjectives.
+        - Prefer scene over synonym lists of mournful / lonely / empty / heartfelt.
+        - End on a complete line. Never trail off mid-sentence.
+
+        Hard bans (never write these, or close paraphrases):
+        - "searching for a love", "searching for a light", "love that's gone"
+        - "memories linger", "memories remain", "face the rain alone"
+        - "broken heart", "cracks my heart", "tears fall like rain"
+        - "lonely melody", "endless night", "ray of hope", "why did you leave"
+        - "mournful sigh", "lonely thrill", "mournful star", "empty sky" as empty fillers
+        - Production terms sung as lyrics: "minor key", "BPM", "tempo", "in the mix", \
+        "slide guitar solo", "guitar weeps" as a band inventory line
+        - Invented song titles, or a chorus that only names weather + sadness
+
+        Form and output (strict):
+        - If the prompt sounds instrumental, riff-based, ambient, or like a backing track, \
+        write only a sparse chant or hook instead of a full vocal song.
+        - The first non-empty character of your answer must be "[".
+        - Every requested section marker must appear on its own line. Do not collapse the whole song into one [Verse].
+        - Do not put more than 6 lyric lines under a single section marker.
+        - Output only section markers and singable lyric lines.
+        - Do not include commentary, titles, key, tempo, duration, line counts, explanations, \
+        markdown bullets, chord symbols like (Am), timestamps like [0:00 - 0:10], or performance \
+        directions like [Ambient fade-out] or [Guitar Solo].
+        """
+    }
+
+    /// On-device Llama needs a short worked example; API/CLI backends skip this to save tokens.
+    var systemPromptForLocalLLM: String {
+        """
+        \(systemPrompt)
+
+        Example of good shape (style only — write fresh lines for the real song, do not copy):
+        [Verse 1]
+        Gray sheet on the porch screen
+        Thumb on the third frets, same two bars again
+        Slide answers from the kitchen dark
+        My throat catches on the long notes
+
+        [Chorus]
+        Harmonica cuts once through the gutter drip
+        I don't call your name, I just hold the bend
         """
     }
 
     func userPrompt(prompt: String, style: String) -> String {
         let trimmedStyle = style.trimmingCharacters(in: .whitespacesAndNewlines)
         let instruction = """
-        Use this as creative direction only. Do not repeat production notes, BPM, key, instrument lists, timestamps, fade directions, or duration metadata in the lyrics.
+        Use the song description as the world and sound. Weave its concrete details into \
+        the lyric imagery (place, weather, objects, vocal grain, instrument as action).
+
+        Recipe reminder: one image or action per verse line; chorus is a short hook; no \
+        pure emotion stacks; no production metadata as lyrics.
+
+        Never write (or paraphrase): searching for a love/light, love that's gone, \
+        memories linger/remain, face the rain alone, broken/cracks my heart, tears fall \
+        like rain, lonely melody, mournful sigh, lonely thrill, empty sky, minor key, \
+        BPM, tempo, slide guitar solo as a lyric line.
+
+        Do not paste instrument lists, mix notes, timestamps, fade directions, or duration \
+        as lyric lines.
         """
         guard !trimmedStyle.isEmpty else {
             return "Song description:\n\(prompt)\n\n\(instruction)"

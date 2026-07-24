@@ -15,15 +15,19 @@ struct LocalLyricWriter: LyricWriter {
     func write(prompt: String, style: String, duration: TimeInterval) -> AsyncThrowingStream<String, Error> {
         let plan = LyricWritingPlan.make(duration: duration)
         let userPrompt = plan.userPrompt(prompt: prompt, style: style)
+        // Local small models need the shared craft rules plus a short few-shot example.
+        let systemPrompt = plan.systemPromptForLocalLLM
 
         let actor = llm
         return AsyncThrowingStream { continuation in
             let task = Task {
                 let stream = await actor.generate(
-                    systemPrompt: plan.systemPrompt,
+                    systemPrompt: systemPrompt,
                     userPrompt: userPrompt,
                     maxTokens: plan.maxTokens,
-                    temperature: 0.8
+                    // Cooler sampling + hard bans/few-shot reduce cliché padding;
+                    // still high enough for variation across regenerations.
+                    temperature: 0.6
                 )
                 for await chunk in stream {
                     if Task.isCancelled { break }

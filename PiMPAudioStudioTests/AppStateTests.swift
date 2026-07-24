@@ -2951,6 +2951,36 @@ func localDatasetEnrichmentAnalyzesTempoKeyAndMeterFromAudio(
     #expect(plan.systemPrompt.contains("Do not collapse the whole song into one [Verse]"))
 }
 
+@Test func lyricPlanSteersConcretePromptGroundedLines() {
+    let plan = LyricWritingPlan.make(duration: 180)
+    let user = plan.userPrompt(
+        prompt: "rainy night porch guitar blues, gritty raspy male vocal, harmonica cry",
+        style: "Delta blues"
+    )
+
+    #expect(plan.systemPrompt.contains("Pull concrete images from the description"))
+    #expect(plan.systemPrompt.contains("one concrete image or physical action"))
+    #expect(plan.systemPrompt.contains("searching for a love"))
+    #expect(plan.systemPrompt.contains("memories linger"))
+    #expect(plan.systemPrompt.contains("minor key"))
+    #expect(plan.systemPrompt.contains("vocal character"))
+    #expect(user.contains("Never write"))
+    #expect(user.contains("face the rain alone"))
+    #expect(user.contains("Song description:"))
+    #expect(user.contains("Style:"))
+}
+
+@Test func lyricPlanLocalFewShotIsSeparateFromSharedSystemPrompt() {
+    let plan = LyricWritingPlan.make(duration: 120)
+    let local = plan.systemPromptForLocalLLM
+
+    #expect(local.contains(plan.systemPrompt))
+    #expect(local.contains("Example of good shape"))
+    #expect(local.contains("Gray sheet on the porch screen"))
+    #expect(local.contains("I just hold the bend"))
+    #expect(!plan.systemPrompt.contains("Example of good shape"))
+}
+
 @MainActor
 @Test func lyricBackendProvidersExcludeHuggingFace() {
     let providerIDs = LyricWriterManager.remoteBackendProviders.map(\.id)

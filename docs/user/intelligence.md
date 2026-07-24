@@ -51,7 +51,11 @@ Tips:
 ## Lyric Writer
 
 The lyric writer can fill the Generate lyrics field. Choose a backend in
-Intelligence settings.
+Intelligence settings. Duration-aware section plans still apply for all backends.
+All backends get craft rules that favor one concrete image or action per line and
+ban stock rain-ballad / production-as-lyric phrases. Local (on-device) writing also
+uses a short few-shot example and cooler sampling so small Llama models stay
+scene-specific instead of generic heartbreak filler.
 
 Typical backends:
 
