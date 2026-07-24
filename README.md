@@ -215,7 +215,15 @@ Near-term work called out by the docs:
 
 ## License
 
-Private repository. All rights reserved.
+PiMP Audio Studio is proprietary and confidential software.
+
+Copyright (c) 2026 Professional Interactive Media Productions LLC, d/b/a PiMP
+Studios. All rights reserved. Repository access does not grant permission to
+copy, modify, publish, distribute, commercialize, or reuse project materials.
+See [LICENSE](LICENSE) for the terms governing authorized source access.
+
+Third-party components and model assets remain subject to their own licenses.
+See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ---
 

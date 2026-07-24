@@ -1,0 +1,131 @@
+PiMP Audio Studio Proprietary Source Code License
+Version 1.0 - July 24, 2026
+
+Copyright (c) 2026 Professional Interactive Media Productions LLC,
+d/b/a PiMP Studios. All rights reserved.
+
+This license applies to the PiMP Audio Studio source code, documentation,
+scripts, configuration, designs, and other materials in this repository that
+are owned by Professional Interactive Media Productions LLC (the "Owner").
+Third-party materials are governed by their own licenses as described in
+THIRD_PARTY_NOTICES.md and accompanying license files.
+
+1. PROPRIETARY AND CONFIDENTIAL MATERIALS
+
+The Materials are proprietary to the Owner and, while maintained in a private
+repository or otherwise identified as nonpublic, are confidential information.
+No open-source license or other public license is granted by this document.
+All rights not expressly granted are reserved by the Owner.
+
+2. LIMITED AUTHORIZED ACCESS
+
+The Owner may authorize a specifically identified person or organization to
+access the Materials. Unless a separate written agreement signed by the Owner
+grants broader rights, that authorization provides only a limited, revocable,
+nonexclusive, nontransferable right to access and review the Materials solely
+for the evaluation, testing, feedback, or development purpose expressly
+approved by the Owner.
+
+Authorized access does not grant any right to use the Materials in production,
+to commercialize them, or to use them for the benefit of any person or entity
+other than the Owner.
+
+3. RESTRICTIONS
+
+Except with the Owner's prior written permission, an authorized recipient may
+not:
+
+  a. copy the Materials except for temporary copies technically necessary for
+     the approved purpose;
+  b. publish, disclose, distribute, transmit, sublicense, sell, lease, or make
+     the Materials available to any third party;
+  c. modify, adapt, translate, or create derivative works from the Materials;
+  d. use the Materials, their nonpublic architecture, or other confidential
+     information to build, train, improve, or assist a competing product or
+     service;
+  e. remove or alter copyright, attribution, confidentiality, or proprietary
+     notices;
+  f. upload or submit the Materials to a public repository, code-sharing site,
+     third-party AI service, model-training service, automated code-analysis
+     service, or other external system not expressly approved by the Owner;
+  g. share repository credentials or allow another person to use the
+     recipient's access; or
+  h. attempt to obtain rights in the Materials through patent, copyright,
+     trademark, trade-secret, or other intellectual-property filings.
+
+4. CONFIDENTIALITY AND SECURITY
+
+An authorized recipient must protect the Materials using at least reasonable
+care and no less care than the recipient uses for their own similarly sensitive
+information. Access must be limited to approved accounts and devices under the
+recipient's control. The recipient must promptly notify the Owner of suspected
+loss, unauthorized access, or disclosure.
+
+Confidentiality obligations do not apply to information the recipient can show
+through written records: (a) became public without breach of these terms;
+(b) was lawfully known without a confidentiality duty before disclosure;
+(c) was independently developed without use of the Materials; or (d) was
+lawfully obtained from a third party without a confidentiality duty. If legal
+process requires disclosure, the recipient must, when legally permitted, give
+the Owner prompt notice and disclose only what is legally required.
+
+5. COPIES, RETURN, AND DELETION
+
+The Owner may revoke access at any time. Upon revocation, completion of the
+approved purpose, or the Owner's request, the recipient must stop using the
+Materials and permanently delete or return all copies under the recipient's
+control, except for a copy required by law and kept subject to these terms.
+The recipient must confirm deletion in writing upon request.
+
+6. FEEDBACK AND CONTRIBUTIONS
+
+The Owner may use general feedback and suggestions voluntarily provided about
+the Materials without restriction or compensation. Source code, documentation,
+artwork, model weights, datasets, or other copyrightable contributions are not
+accepted unless the contributor and the Owner first enter into a separate
+written contribution or intellectual-property agreement.
+
+7. THIRD-PARTY MATERIALS
+
+This license does not limit rights granted directly by third-party licensors.
+Third-party components, services, models, and datasets remain subject to their
+respective terms. Nothing in this license grants access to gated model assets,
+provider accounts, API keys, or third-party services.
+
+8. TERMINATION
+
+The limited authorization in Section 2 terminates automatically upon breach of
+these terms. Sections concerning ownership, restrictions, confidentiality,
+deletion, third-party materials, disclaimers, liability, and interpretation
+survive termination.
+
+9. NO WARRANTY
+
+THE MATERIALS ARE PROVIDED "AS IS" AND "AS AVAILABLE," WITHOUT WARRANTIES OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE, TITLE, AND NON-INFRINGEMENT. THE OWNER DOES NOT
+PROMISE THAT THE MATERIALS ARE COMPLETE, ERROR-FREE, SECURE, OR READY FOR
+PRODUCTION USE.
+
+10. LIMITATION OF LIABILITY
+
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE OWNER AND ITS MEMBERS, EMPLOYEES,
+CONTRACTORS, AND AGENTS WILL NOT BE LIABLE FOR INDIRECT, INCIDENTAL, SPECIAL,
+CONSEQUENTIAL, EXEMPLARY, OR PUNITIVE DAMAGES, OR FOR LOST DATA, REVENUE,
+PROFITS, OR BUSINESS OPPORTUNITIES ARISING FROM ACCESS TO OR USE OF THE
+MATERIALS.
+
+11. GENERAL
+
+These terms are governed by the laws of the State of Mississippi, without
+regard to conflict-of-law principles. If any provision is unenforceable, it
+will be limited to the minimum extent necessary and the remaining provisions
+will continue in effect. A waiver must be in writing and signed by the Owner.
+No failure to enforce a provision waives future enforcement.
+
+12. ACCEPTANCE
+
+Accessing, retaining, or using the Materials after receiving notice of these
+terms constitutes acceptance. A recipient who does not accept these terms must
+immediately stop accessing the repository, delete all copies, and notify the
+Owner.

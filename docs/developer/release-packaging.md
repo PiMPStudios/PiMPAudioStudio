@@ -16,14 +16,16 @@ Hardened runtime: enabled
 Sandbox: enabled
 ```
 
-The repository currently states:
+The repository is governed by:
 
 ```text
-Private repository. All rights reserved.
+PiMP Audio Studio Proprietary Source Code License, Version 1.0
 ```
 
 Do not publish source or redistributable assets as open source unless licensing
-changes.
+changes. Invited repository readers receive only the limited rights stated in
+the root `LICENSE`; use `docs/legal/source-access-acknowledgment.md` to document
+their acceptance.
 
 ## Standalone App Goal
 
@@ -46,6 +48,8 @@ Bundle:
 - Bundled user docs from `docs/user/`
 - Small templates/config files needed at runtime
 - Portable remote-worker payload as inert resources if still required for upload
+- Reviewed customer EULA and privacy policy
+- Complete third-party license and NOTICE bundle
 
 Do not bundle:
 
@@ -54,6 +58,21 @@ Do not bundle:
 - User API keys or SSH keys
 - Local training datasets
 - Remote GPU job artifacts
+
+## Legal Release Gate
+
+Before public distribution:
+
+1. Have counsel review the proprietary source license and customer EULA.
+2. Decide whether App Store distribution uses Apple's standard EULA or a
+   reviewed custom EULA; direct downloads must present equivalent reviewed
+   terms.
+3. Publish a privacy policy based on a current data-flow audit.
+4. Collect complete direct and transitive dependency notices into the app
+   bundle, including MIT copyright notices, the Apache License 2.0 text, and
+   any dependency NOTICE files.
+5. Audit every model, dataset, and remote-worker dependency independently from
+   the application source license.
 
 ## Sandboxing Notes
 
