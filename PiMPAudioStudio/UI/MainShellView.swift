@@ -12,17 +12,37 @@ struct MainShellView: View {
     @State private var selectedSidebarItem: SidebarItem = .generate
     @State private var editAudioURL: URL?
     @State private var editOriginalPrompt: String?
+    /// Right-hand inspector (pipeline / parameters / models). Mirrors the left
+    /// sidebar's show/hide affordance via the trailing toolbar control.
+    @State private var showInspector = true
 
     var body: some View {
         if !outputManager.hasValidDirectory() {
             OutputDirectoryPicker()
         } else {
+            // Two-column split (sidebar + canvas) with a dockable inspector on
+            // the trailing edge — same hide/show pattern as the leading sidebar.
             NavigationSplitView {
                 sidebar
-            } content: {
-                canvas
             } detail: {
-                inspector
+                canvas
+                    .toolbar {
+                        ToolbarItem(placement: .primaryAction) {
+                            Button {
+                                showInspector.toggle()
+                            } label: {
+                                Label(
+                                    showInspector ? "Hide Inspector" : "Show Inspector",
+                                    systemImage: "sidebar.trailing"
+                                )
+                            }
+                            .help(showInspector ? "Hide the inspector" : "Show the inspector")
+                        }
+                    }
+                    .inspector(isPresented: $showInspector) {
+                        inspector
+                            .inspectorColumnWidth(min: 220, ideal: 280, max: 420)
+                    }
             }
             .navigationSplitViewStyle(.balanced)
             .onReceive(presetStore.$presetToLoad) { preset in

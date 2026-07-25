@@ -78,7 +78,11 @@ Typical contents under the output folder include:
 
 ### Inspector
 
-The right-hand inspector exposes:
+The right-hand inspector (Pipeline / Parameters / Models) can be shown or hidden
+with the trailing toolbar control (**Show/Hide Inspector**, `sidebar.trailing`
+icon)—the same idea as collapsing the leading sidebar.
+
+It exposes:
 
 - Active pipeline (Auto / ACE-Step / Stable Audio when SFX models are ready)
 - Duration
