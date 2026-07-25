@@ -23,6 +23,111 @@ import Testing
     #expect(abs(peak - 1.0) < 0.001)
 }
 
+@Test func normalizePeakTargetsMinusOneDBFS() throws {
+    // Peak 0.5 → target -1 dBFS (~0.891)
+    let sourceSamples: [Float] = [0.5, -0.25, 0.1, -0.1]
+    let source = AudioBufferConverter.fromFloats(sourceSamples, sampleRate: 48_000, channels: 1)
+
+    let processed = try SimpleDSP.normalize(source, mode: .peak(targetDBFS: -1.0))
+    let peak = LoudnessMeter.peakDBFS(AudioBufferConverter.toFloats(processed))
+
+    #expect(abs(peak - (-1.0)) < 0.05)
+}
+
+@Test func normalizePeakScalesDownHotFiles() throws {
+    let sourceSamples: [Float] = [0.99, -0.99, 0.5, -0.5]
+    let source = AudioBufferConverter.fromFloats(sourceSamples, sampleRate: 48_000, channels: 1)
+
+    let processed = try SimpleDSP.normalize(source, mode: .peak(targetDBFS: -3.0))
+    let peak = LoudnessMeter.peakDBFS(AudioBufferConverter.toFloats(processed))
+
+    #expect(abs(peak - (-3.0)) < 0.08)
+}
+
+@Test func trimSilenceRemovesLeadingAndTrailingPadding() throws {
+    let sampleRate = 1_000
+    let channels = 1
+    // 100 silent, 200 tone, 100 silent
+    var samples = [Float](repeating: 0, count: 400)
+    for i in 100..<300 {
+        samples[i] = 0.5
+    }
+    let source = AudioBufferConverter.fromFloats(samples, sampleRate: sampleRate, channels: channels)
+
+    let processed = try SimpleDSP.trimSilence(
+        source,
+        parameters: TrimSilenceParameters(
+            thresholdDBFS: -40,
+            maxLeadingSeconds: 1,
+            maxTrailingSeconds: 1,
+            edgeFadeMilliseconds: 0
+        )
+    )
+
+    #expect(processed.frameCount == 200)
+}
+
+@Test func trimSilenceRespectsMaxLeadCap() throws {
+    let sampleRate = 100
+    var samples = [Float](repeating: 0, count: 300)
+    for i in 200..<300 {
+        samples[i] = 0.8
+    }
+    let source = AudioBufferConverter.fromFloats(samples, sampleRate: sampleRate, channels: 1)
+
+    // 2.0s of silence at start but max lead 0.5s → keep 1.5s silence + 1s tone
+    let processed = try SimpleDSP.trimSilence(
+        source,
+        parameters: TrimSilenceParameters(
+            thresholdDBFS: -40,
+            maxLeadingSeconds: 0.5,
+            maxTrailingSeconds: 1,
+            edgeFadeMilliseconds: 0
+        )
+    )
+
+    #expect(processed.frameCount == 250)
+}
+
+@Test func highPassAttenuatesNearDCContent() throws {
+    let sampleRate = 48_000
+    // Constant DC should be killed by HPF
+    let samples = [Float](repeating: 0.4, count: sampleRate / 10)
+    let source = AudioBufferConverter.fromFloats(samples, sampleRate: sampleRate, channels: 1)
+
+    let processed = try SimpleDSP.highPass(
+        source,
+        parameters: HighPassParameters(cutoffHz: 80)
+    )
+    let out = AudioBufferConverter.toFloats(processed)
+    // After settling, residual should be near zero
+    let tail = out.suffix(2_000)
+    let residual = tail.map(abs).reduce(0, +) / Float(tail.count)
+
+    #expect(residual < 0.02)
+}
+
+@Test func loudnessMeterReportsHotPeak() {
+    let samples: [Float] = [0.0, 0.5, -1.0, 0.25]
+    let peak = LoudnessMeter.peakDBFS(samples)
+    #expect(abs(peak - 0.0) < 0.01)
+}
+
+@Test func dspProcessorAppliesNormalizeParameters() throws {
+    let processor = DSPProcessor()
+    let samples: [Float] = [0.25, -0.25, 0.1, -0.1]
+    let buffer = AudioBufferConverter.fromFloats(samples, sampleRate: 48_000, channels: 1)
+
+    let result = try processor.apply(
+        effect: .normalize,
+        to: buffer,
+        target: .wholeTrack,
+        parameters: .normalize(NormalizeParameters(targetPeakDBFS: -1.0))
+    )
+    let peak = LoudnessMeter.peakDBFS(AudioBufferConverter.toFloats(result))
+    #expect(abs(peak - (-1.0)) < 0.08)
+}
+
 @Test func wsolaTimeStretchKeepsFinalWindowTailForCompressedOutput() {
     let frameCount = 8_192
     let samples = (0..<frameCount).map { index in

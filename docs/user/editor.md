@@ -53,17 +53,29 @@ empty.
 Below the AI controls, the **Effects** and **Transforms** palette applies
 deterministic DSP to the loaded buffer.
 
+### Levels
+
+Above the effects grid, Peak (sample peak dBFS) and approximate loudness
+(ungated LUFS-style readout) update for the loaded buffer. Peak near 0 dB is
+highlighted so you know the take is already hot.
+
 ### Effects
 
 | Effect | Selection required | Notes |
 | --- | --- | --- |
 | Trim to Selection | Yes | Keeps only the selected region |
 | Delete Selection | Yes | Removes the selected region |
+| Trim Silence | No | Drops quiet head/tail (threshold + max lead/trail), optional edge fades |
 | Fade In | Yes | Fade across the selection |
 | Fade Out | Yes | Fade across the selection |
-| Normalize | No | Peak or RMS-oriented normalize path |
+| Normalize | No | Peak target normalize (default **−1 dBFS**; presets −3 / −1 / 0) |
+| High-Pass | No | 2-pole high-pass to kill sub-rumble (default ~40 Hz) |
 | Parametric EQ | No | Multi-band EQ (default bands around 200 / 1200 / 8000 Hz) |
 | Reverb | No | Room / Hall / Plate style presets with decay, wet/dry, pre-delay, damping |
+
+A fuller one-shot **Polish for Keep** chain (glue compression, limiter, loudness
+targets) is planned after these building blocks; see
+`docs/superpowers/specs/2026-07-24-editor-polish-mastering.md`.
 
 ### Transforms
 
@@ -107,7 +119,8 @@ edited audio.
 
 1. Start with mild strength when inpainting vocals or dense mixes.
 2. Keep region prompts short and specific ("add muted guitar chugs").
-3. Use DSP for loudness, fades, and timing before another AI pass when possible.
+3. Use DSP for loudness, fades, and timing before another AI pass when possible —
+   Trim Silence → High-Pass → Normalize (−1 dB) is a solid keep prep.
 4. Export WAV masters before experimenting with irreversible chains.
 5. If inpaint sounds wrong, confirm the correct pipeline model is Ready and that
    the selection covers the intended bars.

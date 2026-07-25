@@ -9,6 +9,8 @@ struct DSPPaletteView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            levelMeterStrip
+
             Text("EFFECTS")
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(.secondary)
@@ -43,6 +45,40 @@ struct DSPPaletteView: View {
         }
     }
 
+    // MARK: - Level meters
+
+    @ViewBuilder
+    private var levelMeterStrip: some View {
+        if let metrics = state.levelMetrics {
+            HStack(spacing: 16) {
+                metricChip(
+                    title: "Peak",
+                    value: LoudnessMeter.formatDBFS(metrics.peakDBFS),
+                    warn: metrics.peakDBFS > -0.3
+                )
+                metricChip(
+                    title: "Loudness ≈",
+                    value: LoudnessMeter.formatLUFS(metrics.approximateLUFS),
+                    warn: false
+                )
+                Spacer()
+            }
+            .padding(10)
+            .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        }
+    }
+
+    private func metricChip(title: String, value: String, warn: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.system(size: 12, weight: .medium).monospacedDigit())
+                .foregroundStyle(warn ? Color.orange : Color.primary)
+        }
+    }
+
     // MARK: - Effect Grid
 
     private var effectGrid: some View {
@@ -50,17 +86,17 @@ struct DSPPaletteView: View {
             HStack(spacing: 6) {
                 effectButton(.trimToSelection)
                 effectButton(.deleteSelection)
-                effectButton(.normalize)
+                effectButton(.trimSilence)
             }
             HStack(spacing: 6) {
                 effectButton(.fadeIn)
                 effectButton(.fadeOut)
-                effectButton(.eq)
+                effectButton(.normalize)
             }
             HStack(spacing: 6) {
+                effectButton(.highPass)
+                effectButton(.eq)
                 effectButton(.reverb)
-                Spacer()
-                Spacer()
             }
         }
     }
@@ -112,7 +148,7 @@ struct DSPPaletteView: View {
         }
         .buttonStyle(.bordered)
         .tint(isExpanded ? accent : .gray)
-        .disabled(isDisabled)
+        .disabled(isDisabled || state.isDSPBusy)
     }
 
     private func showConfirmation(_ effect: DSPEffect) {
@@ -157,6 +193,12 @@ struct DSPPaletteView: View {
             }
 
             switch effect {
+            case .normalize:
+                NormalizeControlView(parameters: $state.normalizeParameters)
+            case .trimSilence:
+                TrimSilenceControlView(parameters: $state.trimSilenceParameters)
+            case .highPass:
+                HighPassControlView(parameters: $state.highPassParameters)
             case .eq:
                 EQControlView(parameters: $state.eqParameters)
             case .reverb:
@@ -186,7 +228,7 @@ struct DSPPaletteView: View {
                 Text("Apply to:")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Text(applyTargetLabel)
+                Text(applyTargetLabel(for: effect))
                     .font(.caption)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
@@ -196,15 +238,8 @@ struct DSPPaletteView: View {
             }
 
             Button {
-                let params: DSPParameters
-                switch effect {
-                case .eq: params = .eq(state.eqParameters)
-                case .reverb: params = .reverb(state.reverbParameters)
-                case .timeStretch: params = .timeStretch(state.timeStretchParameters)
-                case .pitchShift: params = .pitchShift(state.pitchShiftParameters)
-                default: params = .none
-                }
-                onApply(effect, params)
+                onApply(effect, parameters(for: effect))
+                showConfirmation(effect)
             } label: {
                 Text("Apply \(effect.displayName)")
                     .font(.system(size: 12, weight: .medium))
@@ -213,10 +248,27 @@ struct DSPPaletteView: View {
             }
             .buttonStyle(.borderedProminent)
             .tint(accent)
+            .disabled(state.isDSPBusy)
         }
     }
 
-    private var applyTargetLabel: String {
+    private func parameters(for effect: DSPEffect) -> DSPParameters {
+        switch effect {
+        case .normalize: return .normalize(state.normalizeParameters)
+        case .trimSilence: return .trimSilence(state.trimSilenceParameters)
+        case .highPass: return .highPass(state.highPassParameters)
+        case .eq: return .eq(state.eqParameters)
+        case .reverb: return .reverb(state.reverbParameters)
+        case .timeStretch: return .timeStretch(state.timeStretchParameters)
+        case .pitchShift: return .pitchShift(state.pitchShiftParameters)
+        default: return .none
+        }
+    }
+
+    private func applyTargetLabel(for effect: DSPEffect) -> String {
+        if effect == .trimSilence {
+            return "Whole Track"
+        }
         if state.hasSelection {
             let start = formatTime(state.selectionStart)
             let end = formatTime(state.selectionEnd)

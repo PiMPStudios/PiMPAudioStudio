@@ -9,7 +9,9 @@ Shortcuts currently focus on the **Editor**. Menu bar standard macOS shortcuts
 | --- | --- |
 | `⌘T` | Trim to selection (requires a selection) |
 | `⌘⌫` (Command-Delete) | Delete selection (requires a selection) |
-| `⌘⇧N` | Normalize whole track |
+| `⌘⇧N` | Expand Normalize panel (peak target) |
+| `⌘⇧J` | Expand Trim Silence panel |
+| `⌘⇧H` | Expand High-Pass panel |
 | `⌘⇧E` | Expand Parametric EQ panel |
 | `⌘⇧R` | Expand Reverb panel |
 

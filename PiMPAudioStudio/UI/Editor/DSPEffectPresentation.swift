@@ -23,9 +23,9 @@ enum DSPEffectCategory {
 extension DSPEffect {
     var category: DSPEffectCategory {
         switch self {
-        case .trimToSelection, .deleteSelection, .fadeIn, .fadeOut, .normalize:
+        case .trimToSelection, .deleteSelection, .fadeIn, .fadeOut, .normalize, .trimSilence:
             return .edit
-        case .eq:
+        case .highPass, .eq:
             return .spectral
         case .reverb:
             return .spatial
@@ -41,6 +41,8 @@ extension DSPEffect {
         case .fadeIn: return "arrow.up.right"
         case .fadeOut: return "arrow.down.right"
         case .normalize: return "gauge"
+        case .trimSilence: return "timeline.selection"
+        case .highPass: return "waveform.badge.minus"
         case .eq: return "slider.horizontal.3"
         case .reverb: return "waveform.path"
         case .timeStretch: return "timer"

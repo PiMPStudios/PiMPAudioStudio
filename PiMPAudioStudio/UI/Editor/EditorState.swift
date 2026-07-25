@@ -53,6 +53,15 @@ class EditorState: ObservableObject {
     @Published var audioBuffer: AudioBuffer?
     @Published var timeStretchParameters: TimeStretchParameters = .default
     @Published var pitchShiftParameters: PitchShiftParameters = .default
+    @Published var normalizeParameters: NormalizeParameters = .default
+    @Published var trimSilenceParameters: TrimSilenceParameters = .default
+    @Published var highPassParameters: HighPassParameters = .default
+
+    /// Live level readout for the loaded buffer (peak + approximate LUFS).
+    var levelMetrics: LoudnessMeter.Metrics? {
+        guard let audioBuffer else { return nil }
+        return LoudnessMeter.measure(audioBuffer)
+    }
 
     private let dspProcessor = DSPProcessor()
 
@@ -217,7 +226,10 @@ class EditorState: ObservableObject {
                     self.duration = result.duration
                     self.refreshWaveformPeaks(from: result)
 
-                    if effect == .trimToSelection || effect == .deleteSelection || effect == .timeStretch {
+                    if effect == .trimToSelection
+                        || effect == .deleteSelection
+                        || effect == .timeStretch
+                        || effect == .trimSilence {
                         self.selectionStart = 0
                         self.selectionEnd = 0
                     }

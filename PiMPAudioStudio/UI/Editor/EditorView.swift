@@ -86,7 +86,7 @@ struct EditorView: View {
 
                 Button("") {
                     if state.isLoaded {
-                        state.applyDSPEffect(.normalize)
+                        withAnimation { state.expandedEffect = .normalize }
                     }
                 }
                 .keyboardShortcut("n", modifiers: [.command, .shift])
@@ -104,6 +104,20 @@ struct EditorView: View {
                     }
                 }
                 .keyboardShortcut("r", modifiers: [.command, .shift])
+
+                Button("") {
+                    if state.isLoaded {
+                        withAnimation { state.expandedEffect = .highPass }
+                    }
+                }
+                .keyboardShortcut("h", modifiers: [.command, .shift])
+
+                Button("") {
+                    if state.isLoaded {
+                        withAnimation { state.expandedEffect = .trimSilence }
+                    }
+                }
+                .keyboardShortcut("j", modifiers: [.command, .shift])
             }
             .frame(width: 0, height: 0)
             .opacity(0)

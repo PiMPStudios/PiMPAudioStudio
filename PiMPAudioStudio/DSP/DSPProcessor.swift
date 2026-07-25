@@ -50,7 +50,39 @@ struct DSPProcessor: Sendable {
             return try SimpleDSP.fadeOut(buffer, start: start, end: end)
 
         case .normalize:
-            return try SimpleDSP.normalize(buffer)
+            let normalizeParams: NormalizeParameters
+            if case .normalize(let params) = parameters {
+                normalizeParams = params
+            } else {
+                normalizeParams = .default
+            }
+            return try processRegion(buffer, target: target) { region in
+                try SimpleDSP.normalize(
+                    region,
+                    mode: .peak(targetDBFS: normalizeParams.targetPeakDBFS)
+                )
+            }
+
+        case .trimSilence:
+            let trimParams: TrimSilenceParameters
+            if case .trimSilence(let params) = parameters {
+                trimParams = params
+            } else {
+                trimParams = .default
+            }
+            // Always whole-track: leading/trailing analysis is not selection-local.
+            return try SimpleDSP.trimSilence(buffer, parameters: trimParams)
+
+        case .highPass:
+            let highPassParams: HighPassParameters
+            if case .highPass(let params) = parameters {
+                highPassParams = params
+            } else {
+                highPassParams = .default
+            }
+            return try processRegion(buffer, target: target) { region in
+                try SimpleDSP.highPass(region, parameters: highPassParams)
+            }
 
         case .eq:
             guard case .eq(let eqParams) = parameters else {
@@ -119,6 +151,12 @@ struct DSPProcessor: Sendable {
 
         let paramLabel: String
         switch parameters {
+        case .normalize(let params):
+            paramLabel = " \(String(format: "%.1f", params.targetPeakDBFS)) dBTP"
+        case .trimSilence(let params):
+            paramLabel = " \(String(format: "%.0f", params.thresholdDBFS)) dB"
+        case .highPass(let params):
+            paramLabel = " \(String(format: "%.0f", params.cutoffHz)) Hz"
         case .timeStretch(let params):
             paramLabel = " \(String(format: "%.2f", params.rate))×"
         case .pitchShift(let params):

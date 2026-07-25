@@ -520,6 +520,17 @@ extension PiMPAudioCommandFacade {
         switch parameters {
         case .none:
             return NSNull()
+        case .normalize(let params):
+            return ["targetPeakDBFS": params.targetPeakDBFS]
+        case .trimSilence(let params):
+            return [
+                "thresholdDBFS": params.thresholdDBFS,
+                "maxLeadingSeconds": params.maxLeadingSeconds,
+                "maxTrailingSeconds": params.maxTrailingSeconds,
+                "edgeFadeMilliseconds": params.edgeFadeMilliseconds
+            ]
+        case .highPass(let params):
+            return ["cutoffHz": params.cutoffHz]
         case .eq(let params):
             return [
                 "bands": params.bands.map { band in
@@ -551,6 +562,17 @@ extension PiMPAudioCommandFacade {
         switch parameters {
         case .none:
             return [:]
+        case .normalize(let params):
+            return ["targetPeakDBFS": Double(params.targetPeakDBFS)]
+        case .trimSilence(let params):
+            return [
+                "thresholdDBFS": Double(params.thresholdDBFS),
+                "maxLeadingSeconds": Double(params.maxLeadingSeconds),
+                "maxTrailingSeconds": Double(params.maxTrailingSeconds),
+                "edgeFadeMilliseconds": Double(params.edgeFadeMilliseconds)
+            ]
+        case .highPass(let params):
+            return ["cutoffHz": Double(params.cutoffHz)]
         case .eq(let params):
             var summary: [String: Double] = [:]
             for (index, band) in params.bands.enumerated() {
@@ -731,6 +753,10 @@ extension PiMPAudioCommandFacade {
             return .fadeOut
         case "normalize", "normalise":
             return .normalize
+        case "trimsilence", "autosilence", "silencetrim":
+            return .trimSilence
+        case "highpass", "hpf", "highpassfilter":
+            return .highPass
         case "eq", "equalizer", "equaliser", "parametriceq", "parametricequalizer":
             return .eq
         case "reverb":
@@ -837,6 +863,12 @@ extension PiMPAudioCommandFacade {
             ?? [:]
 
         switch effect {
+        case .normalize:
+            return .normalize(try editorNormalizeParameters(parameterArguments, fallback: topLevel))
+        case .trimSilence:
+            return .trimSilence(try editorTrimSilenceParameters(parameterArguments, fallback: topLevel))
+        case .highPass:
+            return .highPass(try editorHighPassParameters(parameterArguments, fallback: topLevel))
         case .eq:
             return .eq(try editorEQParameters(parameterArguments, fallback: topLevel))
         case .reverb:
@@ -845,9 +877,81 @@ extension PiMPAudioCommandFacade {
             return .timeStretch(try editorTimeStretchParameters(parameterArguments, fallback: topLevel))
         case .pitchShift:
             return .pitchShift(try editorPitchShiftParameters(parameterArguments, fallback: topLevel))
-        case .trimToSelection, .deleteSelection, .fadeIn, .fadeOut, .normalize:
+        case .trimToSelection, .deleteSelection, .fadeIn, .fadeOut:
             return .none
         }
+    }
+
+    func editorNormalizeParameters(
+        _ parameters: [String: Any],
+        fallback: [String: Any]
+    ) throws -> NormalizeParameters {
+        let raw = parameters["targetPeakDBFS"]
+            ?? parameters["targetPeak"]
+            ?? parameters["peakDB"]
+            ?? fallback["targetPeakDBFS"]
+            ?? fallback["targetPeak"]
+        guard let raw else { return .default }
+        guard let value = doubleValue(raw) else {
+            throw PiMPAudioCommandFacadeError.invalidDSPParameters("Normalize targetPeakDBFS must be a number.")
+        }
+        let peak = Float(value)
+        guard NormalizeParameters.allowedRange.contains(peak) else {
+            throw PiMPAudioCommandFacadeError.invalidDSPParameters(
+                "Normalize targetPeakDBFS must be between \(NormalizeParameters.allowedRange.lowerBound) and \(NormalizeParameters.allowedRange.upperBound)."
+            )
+        }
+        return NormalizeParameters(targetPeakDBFS: peak)
+    }
+
+    func editorTrimSilenceParameters(
+        _ parameters: [String: Any],
+        fallback: [String: Any]
+    ) throws -> TrimSilenceParameters {
+        var result = TrimSilenceParameters.default
+        if let threshold = doubleValue(
+            parameters["thresholdDBFS"] ?? parameters["threshold"] ?? fallback["thresholdDBFS"]
+        ) {
+            result.thresholdDBFS = Float(threshold)
+        }
+        if let maxLead = doubleValue(
+            parameters["maxLeadingSeconds"] ?? parameters["maxLead"] ?? fallback["maxLeadingSeconds"]
+        ) {
+            result.maxLeadingSeconds = Float(max(0, maxLead))
+        }
+        if let maxTrail = doubleValue(
+            parameters["maxTrailingSeconds"] ?? parameters["maxTrail"] ?? fallback["maxTrailingSeconds"]
+        ) {
+            result.maxTrailingSeconds = Float(max(0, maxTrail))
+        }
+        if let fadeMs = doubleValue(
+            parameters["edgeFadeMilliseconds"] ?? parameters["fadeMs"] ?? fallback["edgeFadeMilliseconds"]
+        ) {
+            result.edgeFadeMilliseconds = Float(max(0, fadeMs))
+        }
+        return result
+    }
+
+    func editorHighPassParameters(
+        _ parameters: [String: Any],
+        fallback: [String: Any]
+    ) throws -> HighPassParameters {
+        let raw = parameters["cutoffHz"]
+            ?? parameters["cutoff"]
+            ?? parameters["frequency"]
+            ?? fallback["cutoffHz"]
+            ?? fallback["cutoff"]
+        guard let raw else { return .default }
+        guard let value = doubleValue(raw) else {
+            throw PiMPAudioCommandFacadeError.invalidDSPParameters("High-pass cutoffHz must be a number.")
+        }
+        let cutoff = Float(value)
+        guard HighPassParameters.allowedRange.contains(cutoff) else {
+            throw PiMPAudioCommandFacadeError.invalidDSPParameters(
+                "High-pass cutoffHz must be between \(HighPassParameters.allowedRange.lowerBound) and \(HighPassParameters.allowedRange.upperBound)."
+            )
+        }
+        return HighPassParameters(cutoffHz: cutoff)
     }
 
     func editorEQParameters(

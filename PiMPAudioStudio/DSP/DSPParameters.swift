@@ -25,6 +25,8 @@ enum DSPEffect: String, CaseIterable, Sendable {
     case fadeIn
     case fadeOut
     case normalize
+    case trimSilence
+    case highPass
     case eq
     case reverb
     case timeStretch
@@ -32,9 +34,9 @@ enum DSPEffect: String, CaseIterable, Sendable {
 
     var requiresParameters: Bool {
         switch self {
-        case .trimToSelection, .deleteSelection, .fadeIn, .fadeOut, .normalize:
+        case .trimToSelection, .deleteSelection, .fadeIn, .fadeOut:
             return false
-        case .eq, .reverb, .timeStretch, .pitchShift:
+        case .normalize, .trimSilence, .highPass, .eq, .reverb, .timeStretch, .pitchShift:
             return true
         }
     }
@@ -43,7 +45,7 @@ enum DSPEffect: String, CaseIterable, Sendable {
         switch self {
         case .trimToSelection, .deleteSelection, .fadeIn, .fadeOut:
             return true
-        case .normalize, .eq, .reverb, .timeStretch, .pitchShift:
+        case .normalize, .trimSilence, .highPass, .eq, .reverb, .timeStretch, .pitchShift:
             return false
         }
     }
@@ -55,6 +57,8 @@ enum DSPEffect: String, CaseIterable, Sendable {
         case .fadeIn: return "Fade In"
         case .fadeOut: return "Fade Out"
         case .normalize: return "Normalize"
+        case .trimSilence: return "Trim Silence"
+        case .highPass: return "High-Pass"
         case .eq: return "Parametric EQ"
         case .reverb: return "Reverb"
         case .timeStretch: return "Time Stretch"
@@ -81,6 +85,9 @@ enum ApplyTarget: Equatable, Sendable {
 
 enum DSPParameters: Equatable, Sendable {
     case none
+    case normalize(NormalizeParameters)
+    case trimSilence(TrimSilenceParameters)
+    case highPass(HighPassParameters)
     case eq(EQParameters)
     case reverb(ReverbParameters)
     case timeStretch(TimeStretchParameters)
@@ -149,11 +156,54 @@ struct PitchShiftParameters: Equatable, Sendable {
     static let `default` = PitchShiftParameters(pitch: 0)
 }
 
+// MARK: - Normalize
+
+/// Peak-target normalize (default −1 dBFS headroom) or RMS target.
+struct NormalizeParameters: Equatable, Sendable {
+    /// Peak target in dBFS. `0` is full scale; recommended polish defaults are −1 or −3.
+    var targetPeakDBFS: Float
+
+    static let `default` = NormalizeParameters(targetPeakDBFS: -1.0)
+    static let minusThree = NormalizeParameters(targetPeakDBFS: -3.0)
+    static let fullScale = NormalizeParameters(targetPeakDBFS: 0.0)
+
+    static let allowedRange: ClosedRange<Float> = -12...0
+}
+
+struct TrimSilenceParameters: Equatable, Sendable {
+    /// Level below which leading/trailing frames count as silence (dBFS).
+    var thresholdDBFS: Float
+    /// Maximum seconds to remove from the start.
+    var maxLeadingSeconds: Float
+    /// Maximum seconds to remove from the end.
+    var maxTrailingSeconds: Float
+    /// Linear edge fade after trim (milliseconds). `0` disables fades.
+    var edgeFadeMilliseconds: Float
+
+    static let `default` = TrimSilenceParameters(
+        thresholdDBFS: -50,
+        maxLeadingSeconds: 5,
+        maxTrailingSeconds: 5,
+        edgeFadeMilliseconds: 30
+    )
+}
+
+struct HighPassParameters: Equatable, Sendable {
+    /// Butterworth-ish 2-pole cutoff in Hz.
+    var cutoffHz: Float
+
+    static let `default` = HighPassParameters(cutoffHz: 40)
+    static let allowedRange: ClosedRange<Float> = 20...200
+}
+
 // MARK: - NormalizeMode
 
 enum NormalizeMode: Equatable {
-    case peak
+    /// Scale so the sample peak reaches `targetDBFS` (clamped to full scale).
+    case peak(targetDBFS: Float)
     case rms(targetDB: Float)
+
+    static let peakDefault = NormalizeMode.peak(targetDBFS: -1.0)
 }
 
 // MARK: - ExportFormat

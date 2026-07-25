@@ -7,6 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		03CA9F8D0A5B433EA85377EC /* LoudnessMeter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CB76285CCBF4B6EB7E2A61E /* LoudnessMeter.swift */; };
+		EAA04F66C6B24C438EFD4F03 /* NormalizeControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAE76BE2C3E3457988E2B791 /* NormalizeControlView.swift */; };
+		847831F5CD954416B35ED32C /* TrimSilenceControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C5F5E02F4DD44C18B10E261 /* TrimSilenceControlView.swift */; };
+		94A09C869C0E47CFB7895DEA /* HighPassControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC1E63063E074330A13DD4AA /* HighPassControlView.swift */; };
 		02E720C4E915E4FC5E80E083 /* AdapterStackManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 170EDAB12E02A75BD53997D2 /* AdapterStackManager.swift */; };
 		02E87C9D466A616553A78B5F /* DSPParameters.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AC731FD1A3D2361C508EC75 /* DSPParameters.swift */; };
 		03BFFDD33F2CE2AAD253E055 /* MLX in Frameworks */ = {isa = PBXBuildFile; productRef = D9661A97DE1522B5DE5D2159 /* MLX */; };
@@ -142,6 +146,10 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		4CB76285CCBF4B6EB7E2A61E /* LoudnessMeter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoudnessMeter.swift; sourceTree = "<group>"; };
+		CAE76BE2C3E3457988E2B791 /* NormalizeControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NormalizeControlView.swift; sourceTree = "<group>"; };
+		3C5F5E02F4DD44C18B10E261 /* TrimSilenceControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrimSilenceControlView.swift; sourceTree = "<group>"; };
+		DC1E63063E074330A13DD4AA /* HighPassControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HighPassControlView.swift; sourceTree = "<group>"; };
 		0112B72B90B6F4C1FD66A04C /* CommunityBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommunityBrowserView.swift; sourceTree = "<group>"; };
 		0258ADFE79C7081A0E21313D /* PitchShiftControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PitchShiftControlView.swift; sourceTree = "<group>"; };
 		0289E58F6A0E77CDC343102A /* AdapterStackView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdapterStackView.swift; sourceTree = "<group>"; };
@@ -308,6 +316,7 @@
 				3E2C75542C334C8CE58E25CF /* LPCFormantShifter.swift */,
 				86E9FD577ED231C6654F4B3D /* Resampler.swift */,
 				74C37138F6C7BE12E3F7715E /* SimpleDSP.swift */,
+				4CB76285CCBF4B6EB7E2A61E /* LoudnessMeter.swift */,
 				E0BAE2D98D7CB4D300D75CCF /* WSOLAProcessor.swift */,
 			);
 			path = DSP;
@@ -432,6 +441,9 @@
 			children = (
 				BA6CFDF5DC1AD54EF27BA05D /* DSPEffectPresentation.swift */,
 				07F5FC8C81BD5A3CE53323A6 /* DSPPaletteView.swift */,
+				DC1E63063E074330A13DD4AA /* HighPassControlView.swift */,
+				3C5F5E02F4DD44C18B10E261 /* TrimSilenceControlView.swift */,
+				CAE76BE2C3E3457988E2B791 /* NormalizeControlView.swift */,
 				A76327519B864619ABEF9DD6 /* EditorControlsBar.swift */,
 				B15E2041665BE5622151912D /* EditorPromptArea.swift */,
 				97FD0BB7B9F19C6BD8C4E549 /* EditorState.swift */,
@@ -654,6 +666,9 @@
 				A8972C66FD839E9B148C733A /* CoverSongCoordinator.swift in Sources */,
 				F3965955A26D543BF964A9EB /* DSPEffectPresentation.swift in Sources */,
 				80E9ECE6088D9C10C861C072 /* DSPPaletteView.swift in Sources */,
+				94A09C869C0E47CFB7895DEA /* HighPassControlView.swift in Sources */,
+				847831F5CD954416B35ED32C /* TrimSilenceControlView.swift in Sources */,
+				EAA04F66C6B24C438EFD4F03 /* NormalizeControlView.swift in Sources */,
 				02E87C9D466A616553A78B5F /* DSPParameters.swift in Sources */,
 				6C58B852AD2E5FF841A34E0B /* DSPProcessor.swift in Sources */,
 				0DBC488CDA268BAC26F86953 /* DatasetReviewView.swift in Sources */,
@@ -730,6 +745,7 @@
 				B98CC5CDDB4DCE8AB0D2B427 /* SFXGenerationService.swift in Sources */,
 				42F7C25DED41A07CD77F2476 /* SFXModelManager.swift in Sources */,
 				76641356B5E98E279811359B /* SimpleDSP.swift in Sources */,
+				03CA9F8D0A5B433EA85377EC /* LoudnessMeter.swift in Sources */,
 				7DA9CFAF67A7E0F061366D4C /* SourceSeparationService.swift in Sources */,
 				0AAEA9E6935219F3863CB856 /* TimeStretchControlView.swift in Sources */,
 				2A32415EAAA5EC43FAC0FAAA /* TrainingDatasetPackageEditor.swift in Sources */,
