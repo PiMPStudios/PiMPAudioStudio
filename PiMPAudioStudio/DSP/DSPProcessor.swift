@@ -117,6 +117,16 @@ struct DSPProcessor: Sendable {
                 try DynamicsProcessor.aimLoudness(region, parameters: loudnessParams)
             }
 
+        case .polishForKeep:
+            let recipe: PolishForKeepRecipe
+            if case .polishForKeep(let params) = parameters {
+                recipe = params
+            } else {
+                recipe = .default
+            }
+            // Always whole-track; chain is not selection-local.
+            return try PolishForKeepProcessor.apply(buffer, recipe: recipe)
+
         case .eq:
             guard case .eq(let eqParams) = parameters else {
                 throw ProcessingError.missingParameters(effect.displayName)
@@ -196,6 +206,8 @@ struct DSPProcessor: Sendable {
             paramLabel = " \(String(format: "%.1f", params.ceilingDBFS)) dB"
         case .loudness(let params):
             paramLabel = " \(String(format: "%.0f", params.targetLUFS)) LUFS"
+        case .polishForKeep(let recipe):
+            paramLabel = " \(recipe.target.displayName)"
         case .timeStretch(let params):
             paramLabel = " \(String(format: "%.2f", params.rate))×"
         case .pitchShift(let params):

@@ -11,6 +11,24 @@ struct DSPPaletteView: View {
         VStack(alignment: .leading, spacing: 12) {
             levelMeterStrip
 
+            PolishForKeepView(state: state) {
+                state.applyPolishForKeep()
+            }
+
+            if state.polishAppliedConfirmation {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                    Text("Polish applied — one undo reverts the full chain")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .transition(.opacity)
+            }
+
+            Divider()
+                .padding(.vertical, 2)
+
             Text("EFFECTS")
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(.secondary)

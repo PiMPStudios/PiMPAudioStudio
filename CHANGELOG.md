@@ -8,6 +8,7 @@ All notable changes to PiMP Audio Studio are documented here.
 
 ### Added
 
+- **Editor Polish for Keep (P2)** — one-shot whole-track polish above the Effects palette: Target (Streaming / Louder / Gentle), Tone, Glue, Space, and trim/fade, applied as a single undoable chain (trim → HPF → tone → glue → space → loudness/limit).
 - **Editor polish dynamics (P1)** — Effects add stereo-linked **Compress** (Light/Medium glue), **Limit** (Streaming −1 dB / Louder −0.5 dB ceilings), and **Loudness** staging (aim ~−14 or ~−10 LUFS then limit), so keep-ready takes can be evened and leveled without leaving the app.
 - **Editor polish building blocks (P0)** — Effects now include peak-target **Normalize** (default −1 dBFS headroom, −3 / 0 presets), **Trim Silence** (threshold + max lead/trail + edge fades), and **High-Pass** (~40 Hz default), plus live Peak / approximate LUFS meters above the palette so kept takes can be cleaned without slamming to full scale.
 - **Proprietary licensing foundation** — added an explicit proprietary source-code license and confidentiality terms for invited repository readers, a source-access acknowledgment template, contribution restrictions, third-party dependency notices, and a clearly marked customer EULA draft plus release legal checklist.

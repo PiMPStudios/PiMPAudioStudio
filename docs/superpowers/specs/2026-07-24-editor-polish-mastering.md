@@ -1,6 +1,6 @@
 # Editor Polish / Light Mastering — Design Spec
 
-**Status:** P0 + P1 implemented; P2 (one-shot Polish for Keep) not started  
+**Status:** P0 + P1 + P2 implemented (one-shot Polish for Keep)  
 **Date:** 2026-07-24  
 **Related:** Phase 7 DSP (`2026-05-06-phase7-dsp-audio-editor.md`), Phase 8
 transforms, `docs/user/editor.md`
@@ -316,4 +316,6 @@ high threshold), MCP later.
   approximate LUFS meters, MCP effect names, unit tests.
 - **P1 shipped:** Compress (glue), Limit (ceiling), Loudness (target LUFS +
   limit), dynamics UI presets, MCP parameters, unit tests.
-- Next slice when prioritized: **P2** one-shot **Polish for Keep** chain UI.
+- **P2 shipped:** one-shot **Polish for Keep** panel + chain processor, single
+  undo, MCP effect `polish` / `polishForKeep`, unit tests. Preview-slice audition
+  remains optional future work.

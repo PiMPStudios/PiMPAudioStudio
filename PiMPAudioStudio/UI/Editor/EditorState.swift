@@ -59,6 +59,9 @@ class EditorState: ObservableObject {
     @Published var compressorParameters: CompressorParameters = .default
     @Published var limiterParameters: LimiterParameters = .default
     @Published var loudnessParameters: LoudnessParameters = .default
+    @Published var polishRecipe: PolishForKeepRecipe = .default
+    /// Brief confirmation after one-shot polish applies.
+    @Published var polishAppliedConfirmation = false
 
     /// Live level readout for the loaded buffer (peak + approximate LUFS).
     var levelMetrics: LoudnessMeter.Metrics? {
@@ -182,6 +185,61 @@ class EditorState: ObservableObject {
     }
 
     // MARK: - DSP Operations
+
+    /// One-shot keep polish (trim → HPF → tone → glue → space → loudness/limit) as a single undo step.
+    func applyPolishForKeep() {
+        guard let buffer = audioBuffer else { return }
+        guard !isDSPBusy, !isProcessing else { return }
+
+        let recipe = polishRecipe
+        dspTask?.cancel()
+        isDSPBusy = true
+        operationErrorMessage = nil
+        polishAppliedConfirmation = false
+
+        dspTask = Task { [weak self] in
+            defer {
+                Task { @MainActor [weak self] in
+                    self?.isDSPBusy = false
+                }
+            }
+
+            do {
+                let result = try await Task.detached(priority: .userInitiated) {
+                    try PolishForKeepProcessor.apply(buffer, recipe: recipe)
+                }.value
+
+                guard !Task.isCancelled else { return }
+
+                await MainActor.run { [weak self] in
+                    guard let self else { return }
+                    self.pushUndoSnapshot(buffer)
+                    self.redoStack.removeAll()
+                    self.canUndo = true
+                    self.canRedo = false
+
+                    self.invalidatePreviewPlayer()
+                    self.audioBuffer = result
+                    self.duration = result.duration
+                    self.refreshWaveformPeaks(from: result)
+                    self.selectionStart = 0
+                    self.selectionEnd = 0
+                    self.polishAppliedConfirmation = true
+                }
+
+                try? await Task.sleep(for: .milliseconds(800))
+                await MainActor.run { [weak self] in
+                    self?.polishAppliedConfirmation = false
+                }
+            } catch is CancellationError {
+                return
+            } catch {
+                await MainActor.run { [weak self] in
+                    self?.operationErrorMessage = Self.errorMessage(for: error)
+                }
+            }
+        }
+    }
 
     /// Applies a DSP effect off the main actor so long tracks do not freeze the UI.
     func applyDSPEffect(_ effect: DSPEffect, parameters: DSPParameters = .none) {

@@ -204,6 +204,76 @@ import Foundation
     #expect(peak <= -0.9)
 }
 
+@Test func polishForKeepGentleLeavesPeakHeadroom() throws {
+    let sampleRate = 48_000
+    // Hot signal with silent pads
+    var samples = [Float](repeating: 0, count: sampleRate / 2)
+    for i in (sampleRate / 10)..<(sampleRate / 2 - sampleRate / 20) {
+        samples[i] = 0.95 * sin(Float(i) * 0.08)
+    }
+    let source = AudioBufferConverter.fromFloats(samples, sampleRate: sampleRate, channels: 1)
+
+    let polished = try PolishForKeepProcessor.apply(
+        source,
+        recipe: PolishForKeepRecipe(
+            target: .gentle,
+            tone: .neutral,
+            glue: .off,
+            space: .off,
+            trimSilenceAndFades: true
+        )
+    )
+
+    #expect(polished.frameCount < source.frameCount)
+    let peak = LoudnessMeter.peakDBFS(AudioBufferConverter.toFloats(polished))
+    #expect(abs(peak - (-3.0)) < 0.25)
+}
+
+@Test func polishForKeepStreamingLimitsPeak() throws {
+    let samples = (0..<8_000).map { i -> Float in
+        0.6 * sin(Float(i) * 0.07)
+    }
+    let source = AudioBufferConverter.fromFloats(samples, sampleRate: 48_000, channels: 1)
+
+    let polished = try PolishForKeepProcessor.apply(
+        source,
+        recipe: PolishForKeepRecipe(
+            target: .streaming,
+            tone: .brighter,
+            glue: .light,
+            space: .off,
+            trimSilenceAndFades: false
+        )
+    )
+    let peak = LoudnessMeter.peakDBFS(AudioBufferConverter.toFloats(polished))
+    #expect(peak <= -0.9)
+}
+
+@Test func polishForKeepViaDSPProcessor() throws {
+    let processor = DSPProcessor()
+    let samples = (0..<4_000).map { i -> Float in
+        0.4 * sin(Float(i) * 0.05)
+    }
+    let source = AudioBufferConverter.fromFloats(samples, sampleRate: 48_000, channels: 1)
+
+    let result = try processor.apply(
+        effect: .polishForKeep,
+        to: source,
+        target: .wholeTrack,
+        parameters: .polishForKeep(.default)
+    )
+    #expect(result.frameCount > 0)
+    let peak = LoudnessMeter.peakDBFS(AudioBufferConverter.toFloats(result))
+    #expect(peak <= -0.9)
+}
+
+@Test func polishForKeepToneEQOnlyWhenNotNeutral() {
+    #expect(PolishForKeepProcessor.toneEQParameters(for: .neutral) == nil)
+    #expect(PolishForKeepProcessor.toneEQParameters(for: .brighter) != nil)
+    #expect(PolishForKeepProcessor.compressorParameters(for: .off) == nil)
+    #expect(PolishForKeepProcessor.compressorParameters(for: .light) != nil)
+}
+
 @Test func wsolaTimeStretchKeepsFinalWindowTailForCompressedOutput() {
     let frameCount = 8_192
     let samples = (0..<frameCount).map { index in

@@ -55,9 +55,26 @@ deterministic DSP to the loaded buffer.
 
 ### Levels
 
-Above the effects grid, Peak (sample peak dBFS) and approximate loudness
+Above the polish panel, Peak (sample peak dBFS) and approximate loudness
 (ungated LUFS-style readout) update for the loaded buffer. Peak near 0 dB is
 highlighted so you know the take is already hot.
+
+### Polish for Keep
+
+One-shot keep prep above the Effects grid. Picks a **Target** (Streaming /
+Louder / Gentle), optional **Tone**, **Glue**, and **Space**, then runs:
+
+trim silence → high-pass → mild tone EQ → glue compress → subtle reverb →
+loudness aim + limit (or −3 dB peak normalize for Gentle).
+
+Apply is **whole track** and a **single undo** reverts the full chain. Individual
+Effects below remain available for finer control.
+
+| Target | Intent |
+| --- | --- |
+| Streaming | ≈ −14 LUFS, −1 dB ceiling (default) |
+| Louder | ≈ −10 LUFS, −0.5 dB ceiling |
+| Gentle | Clean edges + −3 dB peak headroom (no aggressive loudness push) |
 
 ### Effects
 
@@ -76,8 +93,8 @@ highlighted so you know the take is already hot.
 | Parametric EQ | No | Multi-band EQ (default bands around 200 / 1200 / 8000 Hz) |
 | Reverb | No | Room / Hall / Plate style presets with decay, wet/dry, pre-delay, damping |
 
-**Dynamics keep path:** Compress (Light) → Loudness (Streaming) or Limit alone.
-A one-shot **Polish for Keep** chain is still planned (P2); see
+**Recommended keep path:** use **Polish for Keep** (Streaming, Light glue), or
+run Compress → Loudness manually from Effects. Design notes:
 `docs/superpowers/specs/2026-07-24-editor-polish-mastering.md`.
 
 ### Transforms
@@ -122,9 +139,9 @@ edited audio.
 
 1. Start with mild strength when inpainting vocals or dense mixes.
 2. Keep region prompts short and specific ("add muted guitar chugs").
-3. Use DSP for loudness, fades, and timing before another AI pass when possible —
-   Trim Silence → High-Pass → Compress (Light) → Loudness (Streaming) is a
-   solid keep prep; use Normalize (−1 dB) when you only need headroom.
+3. Prefer **Polish for Keep** for a one-click keep prep; use individual Effects
+   when you need finer control. Normalize (−1 dB) alone is enough when you only
+   need headroom.
 4. Export WAV masters before experimenting with irreversible chains.
 5. If inpaint sounds wrong, confirm the correct pipeline model is Ready and that
    the selection covers the intended bars.

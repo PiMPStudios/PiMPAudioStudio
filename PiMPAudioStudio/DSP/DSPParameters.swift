@@ -30,6 +30,7 @@ enum DSPEffect: String, CaseIterable, Sendable {
     case compress
     case limit
     case loudness
+    case polishForKeep
     case eq
     case reverb
     case timeStretch
@@ -40,7 +41,7 @@ enum DSPEffect: String, CaseIterable, Sendable {
         case .trimToSelection, .deleteSelection, .fadeIn, .fadeOut:
             return false
         case .normalize, .trimSilence, .highPass, .compress, .limit, .loudness,
-             .eq, .reverb, .timeStretch, .pitchShift:
+             .polishForKeep, .eq, .reverb, .timeStretch, .pitchShift:
             return true
         }
     }
@@ -50,7 +51,7 @@ enum DSPEffect: String, CaseIterable, Sendable {
         case .trimToSelection, .deleteSelection, .fadeIn, .fadeOut:
             return true
         case .normalize, .trimSilence, .highPass, .compress, .limit, .loudness,
-             .eq, .reverb, .timeStretch, .pitchShift:
+             .polishForKeep, .eq, .reverb, .timeStretch, .pitchShift:
             return false
         }
     }
@@ -67,6 +68,7 @@ enum DSPEffect: String, CaseIterable, Sendable {
         case .compress: return "Compress"
         case .limit: return "Limit"
         case .loudness: return "Loudness"
+        case .polishForKeep: return "Polish for Keep"
         case .eq: return "Parametric EQ"
         case .reverb: return "Reverb"
         case .timeStretch: return "Time Stretch"
@@ -99,6 +101,7 @@ enum DSPParameters: Equatable, Sendable {
     case compress(CompressorParameters)
     case limit(LimiterParameters)
     case loudness(LoudnessParameters)
+    case polishForKeep(PolishForKeepRecipe)
     case eq(EQParameters)
     case reverb(ReverbParameters)
     case timeStretch(TimeStretchParameters)

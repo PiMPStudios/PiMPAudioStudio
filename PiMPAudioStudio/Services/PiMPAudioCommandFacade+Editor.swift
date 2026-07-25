@@ -551,6 +551,14 @@ extension PiMPAudioCommandFacade {
                 "ceilingDBFS": params.ceilingDBFS,
                 "maxBoostDB": params.maxBoostDB
             ]
+        case .polishForKeep(let recipe):
+            return [
+                "target": recipe.target.rawValue,
+                "tone": recipe.tone.rawValue,
+                "glue": recipe.glue.rawValue,
+                "space": recipe.space.rawValue,
+                "trimSilenceAndFades": recipe.trimSilenceAndFades
+            ]
         case .eq(let params):
             return [
                 "bands": params.bands.map { band in
@@ -612,6 +620,13 @@ extension PiMPAudioCommandFacade {
                 "targetLUFS": Double(params.targetLUFS),
                 "ceilingDBFS": Double(params.ceilingDBFS),
                 "maxBoostDB": Double(params.maxBoostDB)
+            ]
+        case .polishForKeep(let recipe):
+            return [
+                "trimSilenceAndFades": recipe.trimSilenceAndFades ? 1 : 0,
+                "targetStreaming": recipe.target == .streaming ? 1 : 0,
+                "targetLouder": recipe.target == .louder ? 1 : 0,
+                "targetGentle": recipe.target == .gentle ? 1 : 0
             ]
         case .eq(let params):
             var summary: [String: Double] = [:]
@@ -803,6 +818,8 @@ extension PiMPAudioCommandFacade {
             return .limit
         case "loudness", "loudnessstage", "lufs", "aimloudness":
             return .loudness
+        case "polish", "polishforkeep", "keep", "master":
+            return .polishForKeep
         case "eq", "equalizer", "equaliser", "parametriceq", "parametricequalizer":
             return .eq
         case "reverb":
@@ -921,6 +938,8 @@ extension PiMPAudioCommandFacade {
             return .limit(try editorLimiterParameters(parameterArguments, fallback: topLevel))
         case .loudness:
             return .loudness(try editorLoudnessParameters(parameterArguments, fallback: topLevel))
+        case .polishForKeep:
+            return .polishForKeep(try editorPolishForKeepParameters(parameterArguments, fallback: topLevel))
         case .eq:
             return .eq(try editorEQParameters(parameterArguments, fallback: topLevel))
         case .reverb:
@@ -996,6 +1015,80 @@ extension PiMPAudioCommandFacade {
             result.releaseMilliseconds = Float(max(1, v))
         }
         return result
+    }
+
+    func editorPolishForKeepParameters(
+        _ parameters: [String: Any],
+        fallback: [String: Any]
+    ) throws -> PolishForKeepRecipe {
+        var recipe = PolishForKeepRecipe.default
+
+        if let targetRaw = stringValue(parameters["target"] ?? fallback["target"])?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() {
+            switch targetRaw {
+            case "streaming", "stream": recipe.target = .streaming
+            case "louder", "loud", "club": recipe.target = .louder
+            case "gentle", "soft", "headroom": recipe.target = .gentle
+            default:
+                throw PiMPAudioCommandFacadeError.invalidDSPParameters(
+                    "Polish target must be streaming, louder, or gentle."
+                )
+            }
+        }
+
+        if let toneRaw = stringValue(parameters["tone"] ?? fallback["tone"])?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() {
+            switch toneRaw {
+            case "neutral": recipe.tone = .neutral
+            case "brighter", "bright": recipe.tone = .brighter
+            case "darker", "dark": recipe.tone = .darker
+            default:
+                throw PiMPAudioCommandFacadeError.invalidDSPParameters(
+                    "Polish tone must be neutral, brighter, or darker."
+                )
+            }
+        }
+
+        if let glueRaw = stringValue(parameters["glue"] ?? fallback["glue"])?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() {
+            switch glueRaw {
+            case "off", "none", "0": recipe.glue = .off
+            case "light", "soft": recipe.glue = .light
+            case "medium", "med": recipe.glue = .medium
+            default:
+                throw PiMPAudioCommandFacadeError.invalidDSPParameters(
+                    "Polish glue must be off, light, or medium."
+                )
+            }
+        }
+
+        if let spaceRaw = stringValue(parameters["space"] ?? fallback["space"])?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() {
+            switch spaceRaw {
+            case "off", "none", "0": recipe.space = .off
+            case "room": recipe.space = .room
+            case "hall": recipe.space = .hall
+            default:
+                throw PiMPAudioCommandFacadeError.invalidDSPParameters(
+                    "Polish space must be off, room, or hall."
+                )
+            }
+        }
+
+        if let trim = boolValue(
+            parameters["trimSilence"]
+                ?? parameters["trimSilenceAndFades"]
+                ?? parameters["trim"]
+                ?? fallback["trimSilence"]
+        ) {
+            recipe.trimSilenceAndFades = trim
+        }
+
+        return recipe
     }
 
     func editorLoudnessParameters(
