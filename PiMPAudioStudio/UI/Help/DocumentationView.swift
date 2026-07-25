@@ -34,7 +34,7 @@ struct DocumentationView: View {
                     ContentUnavailableView(
                         "Help Unavailable",
                         systemImage: "book.closed",
-                        description: Text("User documentation was not found in the app bundle. Run Scripts/sync-user-help.sh and rebuild.")
+                        description: Text("User documentation was not found in the app bundle. Rebuild so the Sync User Help Docs phase can copy docs/user.")
                     )
                 } else {
                     Section("Topics") {

@@ -2,8 +2,8 @@ import Foundation
 
 /// Offline user documentation loaded from the app bundle (`Resources/Help`).
 ///
-/// Authoring source of truth remains `docs/user/`; `Scripts/sync-user-help.sh`
-/// (and the target Copy Help script phase) keep the bundle in sync.
+/// Authoring source of truth remains `docs/user/`; the target **Sync User Help
+/// Docs** build phase copies pages into the app bundle on every build.
 struct HelpPage: Identifiable, Hashable, Sendable {
     /// File stem, e.g. `getting-started`.
     var id: String { fileName }

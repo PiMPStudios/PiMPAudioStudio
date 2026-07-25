@@ -72,7 +72,6 @@ Presentation:
 
 | Mechanism | Role |
 | --- | --- |
-| `Scripts/sync-user-help.sh` | Optional local sync into a Resources tree |
 | Xcode **Sync User Help Docs** script phase | Copies `docs/user/*.md` → app bundle `Help/` on every build |
 | `project.yml` `preBuildScripts` | Same intent when regenerating the project with XcodeGen |
 
