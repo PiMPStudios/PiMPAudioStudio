@@ -1,4 +1,5 @@
 import Testing
+import Foundation
 @testable import PiMPAudioStudio
 
 @Test func normalizeRMSScalesBufferToTargetDBFS() throws {
@@ -126,6 +127,81 @@ import Testing
     )
     let peak = LoudnessMeter.peakDBFS(AudioBufferConverter.toFloats(result))
     #expect(abs(peak - (-1.0)) < 0.08)
+}
+
+@Test func compressorGainReductionIsNegativeAboveThreshold() {
+    let gr = DynamicsProcessor.gainReductionDB(
+        levelDB: -6,
+        thresholdDB: -18,
+        ratio: 4,
+        kneeDB: 0
+    )
+    // 12 dB over threshold at 4:1 → GR = 12 * (1/4 - 1) = -9
+    #expect(abs(gr - (-9.0)) < 0.01)
+}
+
+@Test func compressorDoesNotReduceBelowThreshold() {
+    let gr = DynamicsProcessor.gainReductionDB(
+        levelDB: -24,
+        thresholdDB: -18,
+        ratio: 4,
+        kneeDB: 0
+    )
+    #expect(abs(gr) < 0.001)
+}
+
+@Test func limiterEnforcesCeiling() throws {
+    let samples: [Float] = [0.99, -0.99, 0.5, -0.5]
+    let source = AudioBufferConverter.fromFloats(samples, sampleRate: 48_000, channels: 1)
+    let limited = try DynamicsProcessor.limit(
+        source,
+        parameters: LimiterParameters(ceilingDBFS: -1.0, releaseMilliseconds: 20)
+    )
+    let peak = LoudnessMeter.peakDBFS(AudioBufferConverter.toFloats(limited))
+    #expect(peak <= -0.95)
+}
+
+@Test func loudnessStagingRaisesQuietMaterial() throws {
+    // Quiet tone
+    let samples = (0..<4_800).map { i -> Float in
+        0.02 * sin(Float(i) * 0.05)
+    }
+    let source = AudioBufferConverter.fromFloats(samples, sampleRate: 48_000, channels: 1)
+    let before = LoudnessMeter.approximateLUFS(AudioBufferConverter.toFloats(source))
+
+    let staged = try DynamicsProcessor.aimLoudness(
+        source,
+        parameters: LoudnessParameters(targetLUFS: -14, ceilingDBFS: -1.0, maxBoostDB: 24)
+    )
+    let after = LoudnessMeter.approximateLUFS(AudioBufferConverter.toFloats(staged))
+    let peak = LoudnessMeter.peakDBFS(AudioBufferConverter.toFloats(staged))
+
+    #expect(after > before + 3)
+    #expect(peak <= -0.9)
+}
+
+@Test func compressThenLimitPipelineViaProcessor() throws {
+    let processor = DSPProcessor()
+    let samples = (0..<2_000).map { i -> Float in
+        let t = Float(i)
+        return 0.7 * sin(t * 0.1) + 0.2 * sin(t * 0.03)
+    }
+    let source = AudioBufferConverter.fromFloats(samples, sampleRate: 48_000, channels: 1)
+
+    let compressed = try processor.apply(
+        effect: .compress,
+        to: source,
+        target: .wholeTrack,
+        parameters: .compress(.light)
+    )
+    let limited = try processor.apply(
+        effect: .limit,
+        to: compressed,
+        target: .wholeTrack,
+        parameters: .limit(.streaming)
+    )
+    let peak = LoudnessMeter.peakDBFS(AudioBufferConverter.toFloats(limited))
+    #expect(peak <= -0.9)
 }
 
 @Test func wsolaTimeStretchKeepsFinalWindowTailForCompressedOutput() {

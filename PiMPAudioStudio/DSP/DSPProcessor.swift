@@ -84,6 +84,39 @@ struct DSPProcessor: Sendable {
                 try SimpleDSP.highPass(region, parameters: highPassParams)
             }
 
+        case .compress:
+            let compressParams: CompressorParameters
+            if case .compress(let params) = parameters {
+                compressParams = params
+            } else {
+                compressParams = .default
+            }
+            return try processRegion(buffer, target: target) { region in
+                try DynamicsProcessor.compress(region, parameters: compressParams)
+            }
+
+        case .limit:
+            let limitParams: LimiterParameters
+            if case .limit(let params) = parameters {
+                limitParams = params
+            } else {
+                limitParams = .default
+            }
+            return try processRegion(buffer, target: target) { region in
+                try DynamicsProcessor.limit(region, parameters: limitParams)
+            }
+
+        case .loudness:
+            let loudnessParams: LoudnessParameters
+            if case .loudness(let params) = parameters {
+                loudnessParams = params
+            } else {
+                loudnessParams = .default
+            }
+            return try processRegion(buffer, target: target) { region in
+                try DynamicsProcessor.aimLoudness(region, parameters: loudnessParams)
+            }
+
         case .eq:
             guard case .eq(let eqParams) = parameters else {
                 throw ProcessingError.missingParameters(effect.displayName)
@@ -157,6 +190,12 @@ struct DSPProcessor: Sendable {
             paramLabel = " \(String(format: "%.0f", params.thresholdDBFS)) dB"
         case .highPass(let params):
             paramLabel = " \(String(format: "%.0f", params.cutoffHz)) Hz"
+        case .compress(let params):
+            paramLabel = " \(String(format: "%.1f", params.ratio)):1"
+        case .limit(let params):
+            paramLabel = " \(String(format: "%.1f", params.ceilingDBFS)) dB"
+        case .loudness(let params):
+            paramLabel = " \(String(format: "%.0f", params.targetLUFS)) LUFS"
         case .timeStretch(let params):
             paramLabel = " \(String(format: "%.2f", params.rate))×"
         case .pitchShift(let params):

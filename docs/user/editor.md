@@ -70,11 +70,14 @@ highlighted so you know the take is already hot.
 | Fade Out | Yes | Fade across the selection |
 | Normalize | No | Peak target normalize (default **−1 dBFS**; presets −3 / −1 / 0) |
 | High-Pass | No | 2-pole high-pass to kill sub-rumble (default ~40 Hz) |
+| Compress | No | Stereo-linked glue compressor (Light / Medium presets) |
+| Limit | No | Peak limiter with Streaming (−1 dB) / Louder (−0.5 dB) ceilings |
+| Loudness | No | Aim approximate LUFS then limit (Streaming −14 / Louder −10) |
 | Parametric EQ | No | Multi-band EQ (default bands around 200 / 1200 / 8000 Hz) |
 | Reverb | No | Room / Hall / Plate style presets with decay, wet/dry, pre-delay, damping |
 
-A fuller one-shot **Polish for Keep** chain (glue compression, limiter, loudness
-targets) is planned after these building blocks; see
+**Dynamics keep path:** Compress (Light) → Loudness (Streaming) or Limit alone.
+A one-shot **Polish for Keep** chain is still planned (P2); see
 `docs/superpowers/specs/2026-07-24-editor-polish-mastering.md`.
 
 ### Transforms
@@ -120,7 +123,8 @@ edited audio.
 1. Start with mild strength when inpainting vocals or dense mixes.
 2. Keep region prompts short and specific ("add muted guitar chugs").
 3. Use DSP for loudness, fades, and timing before another AI pass when possible —
-   Trim Silence → High-Pass → Normalize (−1 dB) is a solid keep prep.
+   Trim Silence → High-Pass → Compress (Light) → Loudness (Streaming) is a
+   solid keep prep; use Normalize (−1 dB) when you only need headroom.
 4. Export WAV masters before experimenting with irreversible chains.
 5. If inpaint sounds wrong, confirm the correct pipeline model is Ready and that
    the selection covers the intended bars.

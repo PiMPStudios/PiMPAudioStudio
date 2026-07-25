@@ -8,6 +8,7 @@ All notable changes to PiMP Audio Studio are documented here.
 
 ### Added
 
+- **Editor polish dynamics (P1)** — Effects add stereo-linked **Compress** (Light/Medium glue), **Limit** (Streaming −1 dB / Louder −0.5 dB ceilings), and **Loudness** staging (aim ~−14 or ~−10 LUFS then limit), so keep-ready takes can be evened and leveled without leaving the app.
 - **Editor polish building blocks (P0)** — Effects now include peak-target **Normalize** (default −1 dBFS headroom, −3 / 0 presets), **Trim Silence** (threshold + max lead/trail + edge fades), and **High-Pass** (~40 Hz default), plus live Peak / approximate LUFS meters above the palette so kept takes can be cleaned without slamming to full scale.
 - **Proprietary licensing foundation** — added an explicit proprietary source-code license and confidentiality terms for invited repository readers, a source-access acknowledgment template, contribution restrictions, third-party dependency notices, and a clearly marked customer EULA draft plus release legal checklist.
 - **MCP bind address and port are configurable in Settings** — choose localhost (`127.0.0.1`) or all interfaces (`0.0.0.0`) and any port in `1024`–`65535` (default `38765`); the server restarts when those settings change, LAN mode auto-enables a bearer token and shows a suggested network endpoint, and docs were updated for the new bind/port options.

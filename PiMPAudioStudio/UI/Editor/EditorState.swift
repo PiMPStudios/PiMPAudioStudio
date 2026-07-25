@@ -56,6 +56,9 @@ class EditorState: ObservableObject {
     @Published var normalizeParameters: NormalizeParameters = .default
     @Published var trimSilenceParameters: TrimSilenceParameters = .default
     @Published var highPassParameters: HighPassParameters = .default
+    @Published var compressorParameters: CompressorParameters = .default
+    @Published var limiterParameters: LimiterParameters = .default
+    @Published var loudnessParameters: LoudnessParameters = .default
 
     /// Live level readout for the loaded buffer (peak + approximate LUFS).
     var levelMetrics: LoudnessMeter.Metrics? {

@@ -531,6 +531,26 @@ extension PiMPAudioCommandFacade {
             ]
         case .highPass(let params):
             return ["cutoffHz": params.cutoffHz]
+        case .compress(let params):
+            return [
+                "thresholdDBFS": params.thresholdDBFS,
+                "ratio": params.ratio,
+                "attackMilliseconds": params.attackMilliseconds,
+                "releaseMilliseconds": params.releaseMilliseconds,
+                "kneeDB": params.kneeDB,
+                "makeupGainDB": params.makeupGainDB
+            ]
+        case .limit(let params):
+            return [
+                "ceilingDBFS": params.ceilingDBFS,
+                "releaseMilliseconds": params.releaseMilliseconds
+            ]
+        case .loudness(let params):
+            return [
+                "targetLUFS": params.targetLUFS,
+                "ceilingDBFS": params.ceilingDBFS,
+                "maxBoostDB": params.maxBoostDB
+            ]
         case .eq(let params):
             return [
                 "bands": params.bands.map { band in
@@ -573,6 +593,26 @@ extension PiMPAudioCommandFacade {
             ]
         case .highPass(let params):
             return ["cutoffHz": Double(params.cutoffHz)]
+        case .compress(let params):
+            return [
+                "thresholdDBFS": Double(params.thresholdDBFS),
+                "ratio": Double(params.ratio),
+                "attackMilliseconds": Double(params.attackMilliseconds),
+                "releaseMilliseconds": Double(params.releaseMilliseconds),
+                "kneeDB": Double(params.kneeDB),
+                "makeupGainDB": Double(params.makeupGainDB)
+            ]
+        case .limit(let params):
+            return [
+                "ceilingDBFS": Double(params.ceilingDBFS),
+                "releaseMilliseconds": Double(params.releaseMilliseconds)
+            ]
+        case .loudness(let params):
+            return [
+                "targetLUFS": Double(params.targetLUFS),
+                "ceilingDBFS": Double(params.ceilingDBFS),
+                "maxBoostDB": Double(params.maxBoostDB)
+            ]
         case .eq(let params):
             var summary: [String: Double] = [:]
             for (index, band) in params.bands.enumerated() {
@@ -757,6 +797,12 @@ extension PiMPAudioCommandFacade {
             return .trimSilence
         case "highpass", "hpf", "highpassfilter":
             return .highPass
+        case "compress", "compressor", "glue":
+            return .compress
+        case "limit", "limiter", "brickwall":
+            return .limit
+        case "loudness", "loudnessstage", "lufs", "aimloudness":
+            return .loudness
         case "eq", "equalizer", "equaliser", "parametriceq", "parametricequalizer":
             return .eq
         case "reverb":
@@ -869,6 +915,12 @@ extension PiMPAudioCommandFacade {
             return .trimSilence(try editorTrimSilenceParameters(parameterArguments, fallback: topLevel))
         case .highPass:
             return .highPass(try editorHighPassParameters(parameterArguments, fallback: topLevel))
+        case .compress:
+            return .compress(try editorCompressorParameters(parameterArguments, fallback: topLevel))
+        case .limit:
+            return .limit(try editorLimiterParameters(parameterArguments, fallback: topLevel))
+        case .loudness:
+            return .loudness(try editorLoudnessParameters(parameterArguments, fallback: topLevel))
         case .eq:
             return .eq(try editorEQParameters(parameterArguments, fallback: topLevel))
         case .reverb:
@@ -880,6 +932,102 @@ extension PiMPAudioCommandFacade {
         case .trimToSelection, .deleteSelection, .fadeIn, .fadeOut:
             return .none
         }
+    }
+
+    func editorCompressorParameters(
+        _ parameters: [String: Any],
+        fallback: [String: Any]
+    ) throws -> CompressorParameters {
+        var result = CompressorParameters.default
+        if let preset = stringValue(parameters["preset"] ?? fallback["preset"])?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() {
+            switch preset {
+            case "light", "glue": result = .light
+            case "medium", "med": result = .medium
+            default: break
+            }
+        }
+        if let v = doubleValue(parameters["thresholdDBFS"] ?? parameters["threshold"] ?? fallback["thresholdDBFS"]) {
+            result.thresholdDBFS = Float(v)
+        }
+        if let v = doubleValue(parameters["ratio"] ?? fallback["ratio"]) {
+            result.ratio = Float(max(1.001, v))
+        }
+        if let v = doubleValue(parameters["attackMilliseconds"] ?? parameters["attack"] ?? fallback["attackMilliseconds"]) {
+            result.attackMilliseconds = Float(max(0.1, v))
+        }
+        if let v = doubleValue(parameters["releaseMilliseconds"] ?? parameters["release"] ?? fallback["releaseMilliseconds"]) {
+            result.releaseMilliseconds = Float(max(1, v))
+        }
+        if let v = doubleValue(parameters["kneeDB"] ?? parameters["knee"] ?? fallback["kneeDB"]) {
+            result.kneeDB = Float(max(0, v))
+        }
+        if let v = doubleValue(parameters["makeupGainDB"] ?? parameters["makeup"] ?? fallback["makeupGainDB"]) {
+            result.makeupGainDB = Float(v)
+        }
+        return result
+    }
+
+    func editorLimiterParameters(
+        _ parameters: [String: Any],
+        fallback: [String: Any]
+    ) throws -> LimiterParameters {
+        var result = LimiterParameters.default
+        if let preset = stringValue(parameters["preset"] ?? fallback["preset"])?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() {
+            switch preset {
+            case "streaming", "stream": result = .streaming
+            case "louder", "loud", "club": result = .louder
+            default: break
+            }
+        }
+        if let v = doubleValue(parameters["ceilingDBFS"] ?? parameters["ceiling"] ?? fallback["ceilingDBFS"]) {
+            let ceiling = Float(v)
+            guard LimiterParameters.ceilingRange.contains(ceiling) else {
+                throw PiMPAudioCommandFacadeError.invalidDSPParameters(
+                    "Limiter ceilingDBFS must be between \(LimiterParameters.ceilingRange.lowerBound) and \(LimiterParameters.ceilingRange.upperBound)."
+                )
+            }
+            result.ceilingDBFS = ceiling
+        }
+        if let v = doubleValue(parameters["releaseMilliseconds"] ?? parameters["release"] ?? fallback["releaseMilliseconds"]) {
+            result.releaseMilliseconds = Float(max(1, v))
+        }
+        return result
+    }
+
+    func editorLoudnessParameters(
+        _ parameters: [String: Any],
+        fallback: [String: Any]
+    ) throws -> LoudnessParameters {
+        var result = LoudnessParameters.default
+        if let preset = stringValue(parameters["preset"] ?? fallback["preset"])?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() {
+            switch preset {
+            case "streaming", "stream": result = .streaming
+            case "louder", "loud", "club": result = .louder
+            default: break
+            }
+        }
+        if let v = doubleValue(parameters["targetLUFS"] ?? parameters["target"] ?? fallback["targetLUFS"]) {
+            let target = Float(v)
+            guard LoudnessParameters.targetRange.contains(target) else {
+                throw PiMPAudioCommandFacadeError.invalidDSPParameters(
+                    "Loudness targetLUFS must be between \(LoudnessParameters.targetRange.lowerBound) and \(LoudnessParameters.targetRange.upperBound)."
+                )
+            }
+            result.targetLUFS = target
+        }
+        if let v = doubleValue(parameters["ceilingDBFS"] ?? parameters["ceiling"] ?? fallback["ceilingDBFS"]) {
+            result.ceilingDBFS = Float(v)
+        }
+        if let v = doubleValue(parameters["maxBoostDB"] ?? parameters["maxBoost"] ?? fallback["maxBoostDB"]) {
+            result.maxBoostDB = Float(max(0, v))
+        }
+        return result
     }
 
     func editorNormalizeParameters(

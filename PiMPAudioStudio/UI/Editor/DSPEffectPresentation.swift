@@ -7,6 +7,7 @@ import SwiftUI
 enum DSPEffectCategory {
     case edit
     case spectral
+    case dynamics
     case spatial
     case transform
 
@@ -14,6 +15,7 @@ enum DSPEffectCategory {
         switch self {
         case .edit: return .mint
         case .spectral: return .blue
+        case .dynamics: return .orange
         case .spatial: return .purple
         case .transform: return .indigo
         }
@@ -27,6 +29,8 @@ extension DSPEffect {
             return .edit
         case .highPass, .eq:
             return .spectral
+        case .compress, .limit, .loudness:
+            return .dynamics
         case .reverb:
             return .spatial
         case .timeStretch, .pitchShift:
@@ -43,6 +47,9 @@ extension DSPEffect {
         case .normalize: return "gauge"
         case .trimSilence: return "timeline.selection"
         case .highPass: return "waveform.badge.minus"
+        case .compress: return "waveform.path.ecg"
+        case .limit: return "arrow.down.to.line"
+        case .loudness: return "speaker.wave.3"
         case .eq: return "slider.horizontal.3"
         case .reverb: return "waveform.path"
         case .timeStretch: return "timer"

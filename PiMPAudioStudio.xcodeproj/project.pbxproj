@@ -7,6 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		69CFE19538DE4DBABF8B133F /* DynamicsProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78A1598379BE4D1E9F3252DF /* DynamicsProcessor.swift */; };
+		88B8CB85D95441DB84F9E6CF /* CompressorControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EB7BD41CDF74F4A9C5A5844 /* CompressorControlView.swift */; };
+		D7B1E1F8B83F4E1091FE8E02 /* LimiterControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 759C97F05E584243B3FF1ED7 /* LimiterControlView.swift */; };
+		5329D0196564440B92AE25F7 /* LoudnessControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDB511675BD1401E9F99388D /* LoudnessControlView.swift */; };
 		03CA9F8D0A5B433EA85377EC /* LoudnessMeter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CB76285CCBF4B6EB7E2A61E /* LoudnessMeter.swift */; };
 		EAA04F66C6B24C438EFD4F03 /* NormalizeControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAE76BE2C3E3457988E2B791 /* NormalizeControlView.swift */; };
 		847831F5CD954416B35ED32C /* TrimSilenceControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C5F5E02F4DD44C18B10E261 /* TrimSilenceControlView.swift */; };
@@ -146,6 +150,10 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		78A1598379BE4D1E9F3252DF /* DynamicsProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicsProcessor.swift; sourceTree = "<group>"; };
+		6EB7BD41CDF74F4A9C5A5844 /* CompressorControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompressorControlView.swift; sourceTree = "<group>"; };
+		759C97F05E584243B3FF1ED7 /* LimiterControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LimiterControlView.swift; sourceTree = "<group>"; };
+		BDB511675BD1401E9F99388D /* LoudnessControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoudnessControlView.swift; sourceTree = "<group>"; };
 		4CB76285CCBF4B6EB7E2A61E /* LoudnessMeter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoudnessMeter.swift; sourceTree = "<group>"; };
 		CAE76BE2C3E3457988E2B791 /* NormalizeControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NormalizeControlView.swift; sourceTree = "<group>"; };
 		3C5F5E02F4DD44C18B10E261 /* TrimSilenceControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrimSilenceControlView.swift; sourceTree = "<group>"; };
@@ -317,6 +325,7 @@
 				86E9FD577ED231C6654F4B3D /* Resampler.swift */,
 				74C37138F6C7BE12E3F7715E /* SimpleDSP.swift */,
 				4CB76285CCBF4B6EB7E2A61E /* LoudnessMeter.swift */,
+				78A1598379BE4D1E9F3252DF /* DynamicsProcessor.swift */,
 				E0BAE2D98D7CB4D300D75CCF /* WSOLAProcessor.swift */,
 			);
 			path = DSP;
@@ -441,6 +450,9 @@
 			children = (
 				BA6CFDF5DC1AD54EF27BA05D /* DSPEffectPresentation.swift */,
 				07F5FC8C81BD5A3CE53323A6 /* DSPPaletteView.swift */,
+				BDB511675BD1401E9F99388D /* LoudnessControlView.swift */,
+				759C97F05E584243B3FF1ED7 /* LimiterControlView.swift */,
+				6EB7BD41CDF74F4A9C5A5844 /* CompressorControlView.swift */,
 				DC1E63063E074330A13DD4AA /* HighPassControlView.swift */,
 				3C5F5E02F4DD44C18B10E261 /* TrimSilenceControlView.swift */,
 				CAE76BE2C3E3457988E2B791 /* NormalizeControlView.swift */,
@@ -666,6 +678,9 @@
 				A8972C66FD839E9B148C733A /* CoverSongCoordinator.swift in Sources */,
 				F3965955A26D543BF964A9EB /* DSPEffectPresentation.swift in Sources */,
 				80E9ECE6088D9C10C861C072 /* DSPPaletteView.swift in Sources */,
+				5329D0196564440B92AE25F7 /* LoudnessControlView.swift in Sources */,
+				D7B1E1F8B83F4E1091FE8E02 /* LimiterControlView.swift in Sources */,
+				88B8CB85D95441DB84F9E6CF /* CompressorControlView.swift in Sources */,
 				94A09C869C0E47CFB7895DEA /* HighPassControlView.swift in Sources */,
 				847831F5CD954416B35ED32C /* TrimSilenceControlView.swift in Sources */,
 				EAA04F66C6B24C438EFD4F03 /* NormalizeControlView.swift in Sources */,
@@ -746,6 +761,7 @@
 				42F7C25DED41A07CD77F2476 /* SFXModelManager.swift in Sources */,
 				76641356B5E98E279811359B /* SimpleDSP.swift in Sources */,
 				03CA9F8D0A5B433EA85377EC /* LoudnessMeter.swift in Sources */,
+				69CFE19538DE4DBABF8B133F /* DynamicsProcessor.swift in Sources */,
 				7DA9CFAF67A7E0F061366D4C /* SourceSeparationService.swift in Sources */,
 				0AAEA9E6935219F3863CB856 /* TimeStretchControlView.swift in Sources */,
 				2A32415EAAA5EC43FAC0FAAA /* TrainingDatasetPackageEditor.swift in Sources */,

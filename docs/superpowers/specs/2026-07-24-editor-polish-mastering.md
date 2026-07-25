@@ -1,6 +1,6 @@
 # Editor Polish / Light Mastering — Design Spec
 
-**Status:** P0 implemented (building blocks); P1–P2 not started  
+**Status:** P0 + P1 implemented; P2 (one-shot Polish for Keep) not started  
 **Date:** 2026-07-24  
 **Related:** Phase 7 DSP (`2026-05-06-phase7-dsp-audio-editor.md`), Phase 8
 transforms, `docs/user/editor.md`
@@ -312,6 +312,8 @@ high threshold), MCP later.
 
 ## Implementation notes
 
-- **P0 shipped** in-app: peak-target Normalize, Trim Silence, High-Pass, Peak +
+- **P0 shipped:** peak-target Normalize, Trim Silence, High-Pass, Peak +
   approximate LUFS meters, MCP effect names, unit tests.
-- Next slice when prioritized: **P1** glue compressor + limiter + loudness aim.
+- **P1 shipped:** Compress (glue), Limit (ceiling), Loudness (target LUFS +
+  limit), dynamics UI presets, MCP parameters, unit tests.
+- Next slice when prioritized: **P2** one-shot **Polish for Keep** chain UI.

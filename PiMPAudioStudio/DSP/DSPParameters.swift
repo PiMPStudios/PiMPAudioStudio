@@ -27,6 +27,9 @@ enum DSPEffect: String, CaseIterable, Sendable {
     case normalize
     case trimSilence
     case highPass
+    case compress
+    case limit
+    case loudness
     case eq
     case reverb
     case timeStretch
@@ -36,7 +39,8 @@ enum DSPEffect: String, CaseIterable, Sendable {
         switch self {
         case .trimToSelection, .deleteSelection, .fadeIn, .fadeOut:
             return false
-        case .normalize, .trimSilence, .highPass, .eq, .reverb, .timeStretch, .pitchShift:
+        case .normalize, .trimSilence, .highPass, .compress, .limit, .loudness,
+             .eq, .reverb, .timeStretch, .pitchShift:
             return true
         }
     }
@@ -45,7 +49,8 @@ enum DSPEffect: String, CaseIterable, Sendable {
         switch self {
         case .trimToSelection, .deleteSelection, .fadeIn, .fadeOut:
             return true
-        case .normalize, .trimSilence, .highPass, .eq, .reverb, .timeStretch, .pitchShift:
+        case .normalize, .trimSilence, .highPass, .compress, .limit, .loudness,
+             .eq, .reverb, .timeStretch, .pitchShift:
             return false
         }
     }
@@ -59,6 +64,9 @@ enum DSPEffect: String, CaseIterable, Sendable {
         case .normalize: return "Normalize"
         case .trimSilence: return "Trim Silence"
         case .highPass: return "High-Pass"
+        case .compress: return "Compress"
+        case .limit: return "Limit"
+        case .loudness: return "Loudness"
         case .eq: return "Parametric EQ"
         case .reverb: return "Reverb"
         case .timeStretch: return "Time Stretch"
@@ -88,6 +96,9 @@ enum DSPParameters: Equatable, Sendable {
     case normalize(NormalizeParameters)
     case trimSilence(TrimSilenceParameters)
     case highPass(HighPassParameters)
+    case compress(CompressorParameters)
+    case limit(LimiterParameters)
+    case loudness(LoudnessParameters)
     case eq(EQParameters)
     case reverb(ReverbParameters)
     case timeStretch(TimeStretchParameters)
@@ -194,6 +205,81 @@ struct HighPassParameters: Equatable, Sendable {
 
     static let `default` = HighPassParameters(cutoffHz: 40)
     static let allowedRange: ClosedRange<Float> = 20...200
+}
+
+// MARK: - Dynamics (P1)
+
+struct CompressorParameters: Equatable, Sendable {
+    /// Threshold in dBFS. Signal above this is reduced.
+    var thresholdDBFS: Float
+    /// Compression ratio (e.g. 3 = 3:1).
+    var ratio: Float
+    /// Attack time in milliseconds.
+    var attackMilliseconds: Float
+    /// Release time in milliseconds.
+    var releaseMilliseconds: Float
+    /// Soft-knee width in dB (0 = hard knee).
+    var kneeDB: Float
+    /// Makeup gain in dB applied after compression.
+    var makeupGainDB: Float
+
+    static let light = CompressorParameters(
+        thresholdDBFS: -18,
+        ratio: 2.5,
+        attackMilliseconds: 15,
+        releaseMilliseconds: 120,
+        kneeDB: 6,
+        makeupGainDB: 2
+    )
+
+    static let medium = CompressorParameters(
+        thresholdDBFS: -16,
+        ratio: 3.5,
+        attackMilliseconds: 10,
+        releaseMilliseconds: 100,
+        kneeDB: 4,
+        makeupGainDB: 3
+    )
+
+    static let `default` = light
+}
+
+struct LimiterParameters: Equatable, Sendable {
+    /// Output ceiling in dBFS (sample peak).
+    var ceilingDBFS: Float
+    /// Release time in milliseconds.
+    var releaseMilliseconds: Float
+
+    static let streaming = LimiterParameters(ceilingDBFS: -1.0, releaseMilliseconds: 50)
+    static let louder = LimiterParameters(ceilingDBFS: -0.5, releaseMilliseconds: 40)
+    static let `default` = streaming
+
+    static let ceilingRange: ClosedRange<Float> = -6...0
+}
+
+struct LoudnessParameters: Equatable, Sendable {
+    /// Approximate target loudness (ungated LUFS-style, same as meter).
+    var targetLUFS: Float
+    /// Peak ceiling enforced after gain (via limiter).
+    var ceilingDBFS: Float
+    /// Maximum upward gain in dB (safety).
+    var maxBoostDB: Float
+
+    static let streaming = LoudnessParameters(
+        targetLUFS: -14,
+        ceilingDBFS: -1.0,
+        maxBoostDB: 18
+    )
+
+    static let louder = LoudnessParameters(
+        targetLUFS: -10,
+        ceilingDBFS: -0.5,
+        maxBoostDB: 20
+    )
+
+    static let `default` = streaming
+
+    static let targetRange: ClosedRange<Float> = -24...(-6)
 }
 
 // MARK: - NormalizeMode

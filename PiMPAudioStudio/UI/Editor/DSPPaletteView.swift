@@ -98,6 +98,11 @@ struct DSPPaletteView: View {
                 effectButton(.eq)
                 effectButton(.reverb)
             }
+            HStack(spacing: 6) {
+                effectButton(.compress)
+                effectButton(.limit)
+                effectButton(.loudness)
+            }
         }
     }
 
@@ -199,6 +204,12 @@ struct DSPPaletteView: View {
                 TrimSilenceControlView(parameters: $state.trimSilenceParameters)
             case .highPass:
                 HighPassControlView(parameters: $state.highPassParameters)
+            case .compress:
+                CompressorControlView(parameters: $state.compressorParameters)
+            case .limit:
+                LimiterControlView(parameters: $state.limiterParameters)
+            case .loudness:
+                LoudnessControlView(parameters: $state.loudnessParameters)
             case .eq:
                 EQControlView(parameters: $state.eqParameters)
             case .reverb:
@@ -257,6 +268,9 @@ struct DSPPaletteView: View {
         case .normalize: return .normalize(state.normalizeParameters)
         case .trimSilence: return .trimSilence(state.trimSilenceParameters)
         case .highPass: return .highPass(state.highPassParameters)
+        case .compress: return .compress(state.compressorParameters)
+        case .limit: return .limit(state.limiterParameters)
+        case .loudness: return .loudness(state.loudnessParameters)
         case .eq: return .eq(state.eqParameters)
         case .reverb: return .reverb(state.reverbParameters)
         case .timeStretch: return .timeStretch(state.timeStretchParameters)
