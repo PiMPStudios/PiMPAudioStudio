@@ -4,9 +4,8 @@ PiMP Audio Studio's public docs should not depend on users having the source
 repository. When the app is distributed as a signed `.app` or `.dmg`, user docs
 need to be bundled or reachable from inside the app.
 
-Code wiring for a Documentation/Help menu is intentionally **not** part of the
-docs-only preparation work. This page describes the intended integration once
-product decides on presentation.
+**Shipped (MVP):** offline Help window + menu, bundling `docs/user` Markdown
+into the app at build time.
 
 ## Canonical Sources
 
@@ -46,37 +45,38 @@ PiMP Audio Studio.app/Contents/Resources/Help/
 Optional later: ship a subset of developer docs under a separate
 `Resources/DeveloperHelp/` only in internal builds.
 
-## UI Options (Undecided)
+## Shipped UI
 
-Any of these can consume the same Markdown source:
+| Piece | Location |
+| --- | --- |
+| Help menu | **Help → PiMP Audio Studio Help** (`⌘?`) |
+| Shortcuts jump | **Help → Keyboard Shortcuts** |
+| Window | `WindowGroup` id `documentation` → `DocumentationView` |
+| Catalog | `HelpCatalog` loads `Bundle.main/.../Help/*.md` |
+| Search | Sidebar searchable filter over titles + body |
 
-1. **Help menu** — standard macOS Help book / custom Help window
-2. **Documentation menu** — top-level menu beside Help
-3. **In-app browser** — SwiftUI Markdown renderer with TOC + search
-4. **Hybrid** — offline bundle + online docs site
+Presentation:
 
-Recommended Help view behaviors:
+- Left: TOC (prefer links from `README.md`, then defaults, then leftovers)
+- Right: SwiftUI Markdown (`AttributedString`)
+- Offline only for the MVP (no online site yet)
 
-- Render bundled Markdown offline
-- Table of contents from `docs/user/README.md`
-- Search titles and body text
-- "Copy Diagnostics Info" on troubleshooting pages
-- Do not require the git checkout for normal help
+## Build System
 
-## Build System Options
+| Mechanism | Role |
+| --- | --- |
+| `Scripts/sync-user-help.sh` | Optional local sync into a Resources tree |
+| Xcode **Sync User Help Docs** script phase | Copies `docs/user/*.md` → app bundle `Help/` on every build |
+| `project.yml` `preBuildScripts` | Same intent when regenerating the project with XcodeGen |
 
-Good first implementation:
+DEBUG builds fall back to the repo `docs/user` path if the bundle folder is
+missing, so Help still works when iterating without a clean install.
 
-1. Add `PiMPAudioStudio/Resources/Help/`.
-2. Sync from `docs/user/` via script.
-3. Register as target resources in `project.yml`.
-4. Render in a SwiftUI window.
+### Better release follow-ups
 
-Better release implementation:
-
-1. Keep `docs/user/` as sole authoring source.
-2. CI fails if bundled Help is stale versus `docs/user/`.
-3. Release checklist verifies Help opens offline.
+1. CI fails if Help is empty after build.
+2. Release checklist verifies Help opens offline on a clean machine.
+3. Optional online docs site + hybrid “Open online…” later.
 
 ## Writing Rules For Bundled Docs
 

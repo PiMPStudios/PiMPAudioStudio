@@ -21,6 +21,22 @@ targets:
     type: application
     platform: macOS
     sources: [PiMPAudioStudio]
+    # Offline user help: copy docs/user/*.md into the app bundle as Help/.
+    preBuildScripts:
+      - name: Sync User Help Docs
+        script: |
+          set -euo pipefail
+          SRC="${SRCROOT}/docs/user"
+          DST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/Help"
+          if [[ ! -d "$SRC" ]]; then
+            echo "warning: missing user docs at $SRC" >&2
+            exit 0
+          fi
+          mkdir -p "$DST"
+          rm -f "$DST"/*.md
+          cp "$SRC"/*.md "$DST/"
+          echo "note: synced $(ls -1 "$DST"/*.md | wc -l | tr -d ' ') help page(s) into app bundle"
+        basedOnDependencyAnalysis: false
     dependencies:
       - package: PiMPAudioCore
       - package: mlx-swift

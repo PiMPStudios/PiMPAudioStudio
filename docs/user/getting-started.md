@@ -41,6 +41,13 @@ Settings -> Models
 
 See [First Launch And Model Setup](model-setup.md).
 
+## Help And Documentation
+
+Open **Help → PiMP Audio Studio Help** (or press `⌘?`) for the offline user
+manual shipped inside the app. Topics match the guides under this documentation
+set (Generate, Editor, History, Training, MCP, troubleshooting, and more).
+**Help → Keyboard Shortcuts** jumps straight to the shortcuts page.
+
 ## Choose An Output Directory
 
 Before the main workspace opens, the app asks for an output directory. This is

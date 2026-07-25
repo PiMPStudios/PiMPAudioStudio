@@ -8,6 +8,7 @@ All notable changes to PiMP Audio Studio are documented here.
 
 ### Added
 
+- **In-app Help from bundled user docs** — **Help → PiMP Audio Studio Help** (`⌘?`) opens an offline documentation window with a topic list, Markdown rendering, and search. Build copies `docs/user/*.md` into the app bundle as `Help/`; DEBUG falls back to the repo docs path when needed.
 - **Generate Prompt and Lyrics fields are vertically resizable** — drag the grip under each editor to grow or shrink height only (width stays full); sizes persist across launches.
 - **Trailing inspector can be hidden like the sidebar** — the right-hand Pipeline / Parameters / Models panel is a dockable inspector with a toolbar Show/Hide control (`sidebar.trailing`), matching the leading sidebar collapse pattern.
 - **History Select can reopen a take in Generate or Edit** — with exactly one row selected, **Open in Generate** restores prompt/lyrics/seed/duration/guidance/pipeline and adapter stack (trace-enriched when available) on the Generate page, and **Edit** loads the audio into the Editor. Both actions are also on the row context menu.

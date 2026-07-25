@@ -135,6 +135,9 @@ struct PiMPAudioStudioApp: App {
         }
         .windowStyle(.titleBar)
         .defaultSize(width: 1200, height: 800)
+        .commands {
+            HelpCommands()
+        }
 
         WindowGroup("Generation Analyzer", id: "generationAnalyzer") {
             GenerationAnalyzerView()
@@ -143,6 +146,11 @@ struct PiMPAudioStudioApp: App {
                 .environmentObject(playerService)
         }
         .defaultSize(width: 860, height: 640)
+
+        WindowGroup("PiMP Audio Studio Help", id: "documentation") {
+            DocumentationView()
+        }
+        .defaultSize(width: 960, height: 700)
 
         Settings {
             TabView {

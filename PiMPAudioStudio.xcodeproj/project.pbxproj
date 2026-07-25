@@ -7,6 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		475B8EDE49A34369A3EEB216 /* HelpCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96740B96EE09456FB6FAEC27 /* HelpCatalogTests.swift */; };
+		312B850948534C9AB9237CC0 /* HelpCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC1B223217D449D98E0157E6 /* HelpCommands.swift */; };
+		F565F6CDD1D74BD8B1665A3B /* DocumentationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90FBA55A8C3C424D9F8492F6 /* DocumentationView.swift */; };
+		126809FBFB774C73B992861B /* HelpCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50679720A2084E4EBF21A882 /* HelpCatalog.swift */; };
 		D2E3F4A5B6471890ABCDEF01 /* VerticalResizeGrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1D2E3F4A5B6471890ABCDEF /* VerticalResizeGrip.swift */; };
 		BDF9939619E64836870C2445 /* HistoryEntry+GenerateRestore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5743E40B45E46F89175EF80 /* HistoryEntry+GenerateRestore.swift */; };
 		02E720C4E915E4FC5E80E083 /* AdapterStackManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 170EDAB12E02A75BD53997D2 /* AdapterStackManager.swift */; };
@@ -156,6 +160,10 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		96740B96EE09456FB6FAEC27 /* HelpCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelpCatalogTests.swift; sourceTree = "<group>"; };
+		DC1B223217D449D98E0157E6 /* HelpCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelpCommands.swift; sourceTree = "<group>"; };
+		90FBA55A8C3C424D9F8492F6 /* DocumentationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentationView.swift; sourceTree = "<group>"; };
+		50679720A2084E4EBF21A882 /* HelpCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelpCatalog.swift; sourceTree = "<group>"; };
 		C1D2E3F4A5B6471890ABCDEF /* VerticalResizeGrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VerticalResizeGrip.swift; sourceTree = "<group>"; };
 		A5743E40B45E46F89175EF80 /* HistoryEntry+GenerateRestore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HistoryEntry+GenerateRestore.swift"; sourceTree = "<group>"; };
 		0112B72B90B6F4C1FD66A04C /* CommunityBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommunityBrowserView.swift; sourceTree = "<group>"; };
@@ -316,6 +324,15 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		6300713C91FA4564A8C88154 /* Help */ = {
+			isa = PBXGroup;
+			children = (
+				90FBA55A8C3C424D9F8492F6 /* DocumentationView.swift */,
+				DC1B223217D449D98E0157E6 /* HelpCommands.swift */,
+			);
+			path = Help;
+			sourceTree = "<group>";
+		};
 		07F1AF0444206A2766B37E6B /* Generate */ = {
 			isa = PBXGroup;
 			children = (
@@ -373,6 +390,7 @@
 				DA120575D5C225BFB3148920 /* EditorService.swift */,
 				D259CCEA17A9820A3167836A /* GenerationService.swift */,
 				14DF3990C64F292DEA3A1EE5 /* HistoryStore.swift */,
+				50679720A2084E4EBF21A882 /* HelpCatalog.swift */,
 				BABE791CEF9D675C31B253AD /* IntentRouter.swift */,
 				CBD3412753A08FF586208464 /* LLMModelManager.swift */,
 				C2586CD181CDD97D6353D448 /* LocalDatasetEnrichmentService.swift */,
@@ -534,6 +552,7 @@
 		BCF1D1C2EC45A86E42B910B8 /* UI */ = {
 			isa = PBXGroup;
 			children = (
+				6300713C91FA4564A8C88154 /* Help */,
 				AF1B0EC010DA54932CEC58BA /* FirstLaunchView.swift */,
 				E0F6B989A5E86CCFA2D0415D /* MainShellView.swift */,
 				9529CD3E0E3A3E3F080BF226 /* Components */,
@@ -566,6 +585,7 @@
 			isa = PBXGroup;
 			children = (
 				41A93059238ED07185F25CF5 /* AppStateTests.swift */,
+				96740B96EE09456FB6FAEC27 /* HelpCatalogTests.swift */,
 				54540F1B0DDF28D75FB0BF77 /* DSPTests.swift */,
 				FC09327803C8A79922A3B4F2 /* HistoryStoreTests.swift */,
 				ED4AC7C94D81749A9705316C /* ProviderAccessStoreTests.swift */,
@@ -581,6 +601,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 1127102C3D42AF0372ADB672 /* Build configuration list for PBXNativeTarget "PiMPAudioStudio" */;
 			buildPhases = (
+				A39B48F3644142E79E60731A /* Sync User Help Docs */,
 				4DEF366694A95ACD88B82332 /* Sources */,
 				91E5BD096F55D84951B7CB80 /* Frameworks */,
 			);
@@ -658,12 +679,35 @@
 		};
 /* End PBXProject section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		A39B48F3644142E79E60731A /* Sync User Help Docs */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Sync User Help Docs";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -euo pipefail\nSRC=\"${SRCROOT}/docs/user\"\nDST=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/Help\"\nif [ ! -d \"$SRC\" ]; then\n  echo \"warning: missing user docs at $SRC\" >&2\n  exit 0\nfi\nmkdir -p \"$DST\"\nrm -f \"$DST\"/*.md\ncp \"$SRC\"/*.md \"$DST\"/\necho \"note: synced $(ls -1 \"$DST\"/*.md | wc -l | tr -d ' ') help page(s) into app bundle\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		2BCFB7F4F4DBBB74BCF2D354 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 				247E8913C3C2CC1E309EA7A2 /* AppStateTests.swift in Sources */,
+				475B8EDE49A34369A3EEB216 /* HelpCatalogTests.swift in Sources */,
 				6A145594A7A4945ED4CD19F2 /* DSPTests.swift in Sources */,
 				2D8016252183EB12AD027E62 /* HistoryStoreTests.swift in Sources */,
 				7A7B53861467729A61453BBC /* ProviderAccessStoreTests.swift in Sources */,
@@ -727,6 +771,7 @@
 				BDF9939619E64836870C2445 /* HistoryEntry+GenerateRestore.swift in Sources */,
 				51FE470CF2AB778783784315 /* HistoryListView.swift in Sources */,
 				68DACFCA368B411E0CB322F5 /* HistoryStore.swift in Sources */,
+				126809FBFB774C73B992861B /* HelpCatalog.swift in Sources */,
 				4FBA8122499600CE9E2A1338 /* HuggingFaceImportSheet.swift in Sources */,
 				426ADA63B84A17049FBFC180 /* IntelligenceSettingsView.swift in Sources */,
 				044DD3512D53A2C5A383B5A2 /* IntentRouter.swift in Sources */,
@@ -746,6 +791,8 @@
 				B1DAB4DFA5D6049A759C40E2 /* LyricWriterManager.swift in Sources */,
 				5E713D888FCE546BB2CEC0B5 /* MCPSettingsView.swift in Sources */,
 				0D1F79C398325EF7C39B58FD /* MainShellView.swift in Sources */,
+				312B850948534C9AB9237CC0 /* HelpCommands.swift in Sources */,
+				F565F6CDD1D74BD8B1665A3B /* DocumentationView.swift in Sources */,
 				84A6DC12829EC57B2B79F640 /* MergeSheet.swift in Sources */,
 				2F1C42C138556EABC9B8738D /* ModelsSettingsView.swift in Sources */,
 				7E919392938570D265359757 /* NormalizeControlView.swift in Sources */,
