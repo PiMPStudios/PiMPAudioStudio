@@ -60,14 +60,20 @@ class EditorState: ObservableObject {
     @Published var limiterParameters: LimiterParameters = .default
     @Published var loudnessParameters: LoudnessParameters = .default
     @Published var polishRecipe: PolishForKeepRecipe = .default
+    @Published var softGateParameters: SoftGateParameters = .default
     /// Brief confirmation after one-shot polish applies.
     @Published var polishAppliedConfirmation = false
-
-    /// Live level readout for the loaded buffer (peak + approximate LUFS).
-    var levelMetrics: LoudnessMeter.Metrics? {
-        guard let audioBuffer else { return nil }
-        return LoudnessMeter.measure(audioBuffer)
+    /// When true, editor preview playback folds stereo to mono (does not edit the buffer).
+    @Published var previewInMono = false {
+        didSet {
+            if oldValue != previewInMono {
+                invalidatePreviewPlayer()
+            }
+        }
     }
+
+    /// Cached level readout; refreshed when the loaded buffer changes.
+    @Published private(set) var levelMetrics: LoudnessMeter.Metrics?
 
     private let dspProcessor = DSPProcessor()
 
@@ -78,6 +84,7 @@ class EditorState: ObservableObject {
     private var previewTimer: Timer?
     private var previewFileURL: URL?
     private var peakComputationTask: Task<Void, Never>?
+    private var metricsTask: Task<Void, Never>?
 
     // DSP undo/redo — stores raw AudioBuffer snapshots.
     // AI inpainting also pushes here (via saveUndoSnapshot) so both paths
@@ -90,8 +97,27 @@ class EditorState: ObservableObject {
     deinit {
         previewTimer?.invalidate()
         peakComputationTask?.cancel()
+        metricsTask?.cancel()
         if let previewFileURL {
             try? FileManager.default.removeItem(at: previewFileURL)
+        }
+    }
+
+    /// Recompute peak / true-peak / LUFS off the main actor when the buffer changes.
+    func refreshLevelMetrics() {
+        metricsTask?.cancel()
+        guard let buffer = audioBuffer else {
+            levelMetrics = nil
+            return
+        }
+        metricsTask = Task { [weak self] in
+            let metrics = await Task.detached(priority: .utility) {
+                LoudnessMeter.measure(buffer)
+            }.value
+            guard !Task.isCancelled else { return }
+            await MainActor.run { [weak self] in
+                self?.levelMetrics = metrics
+            }
         }
     }
 
@@ -222,6 +248,7 @@ class EditorState: ObservableObject {
                     self.audioBuffer = result
                     self.duration = result.duration
                     self.refreshWaveformPeaks(from: result)
+                    self.refreshLevelMetrics()
                     self.selectionStart = 0
                     self.selectionEnd = 0
                     self.polishAppliedConfirmation = true
@@ -286,6 +313,7 @@ class EditorState: ObservableObject {
                     self.audioBuffer = result
                     self.duration = result.duration
                     self.refreshWaveformPeaks(from: result)
+                    self.refreshLevelMetrics()
 
                     if effect == .trimToSelection
                         || effect == .deleteSelection
@@ -326,6 +354,7 @@ class EditorState: ObservableObject {
         audioBuffer = previous
         duration = previous.duration
         refreshWaveformPeaks(from: previous)
+        refreshLevelMetrics()
         canUndo = !undoStack.isEmpty
         canRedo = !redoStack.isEmpty
     }
@@ -339,6 +368,7 @@ class EditorState: ObservableObject {
         audioBuffer = next
         duration = next.duration
         refreshWaveformPeaks(from: next)
+        refreshLevelMetrics()
         canUndo = !undoStack.isEmpty
         canRedo = !redoStack.isEmpty
     }
@@ -403,7 +433,10 @@ class EditorState: ObservableObject {
     private func ensurePreviewPlayer() {
         guard previewPlayer == nil, let buffer = audioBuffer else { return }
         do {
-            let fileURL = try makePreviewWAVFile(from: buffer)
+            let playbackBuffer = previewInMono && buffer.channels >= 2
+                ? LoudnessMeter.foldToMono(buffer)
+                : buffer
+            let fileURL = try makePreviewWAVFile(from: playbackBuffer)
             previewFileURL = fileURL
             previewPlayer = try AVAudioPlayer(contentsOf: fileURL, fileTypeHint: AVFileType.wav.rawValue)
             previewPlayer?.prepareToPlay()

@@ -1,6 +1,6 @@
 # Editor Polish / Light Mastering — Design Spec
 
-**Status:** P0 + P1 + P2 implemented (one-shot Polish for Keep)  
+**Status:** P0–P3 implemented (polish building blocks, dynamics, one-shot Keep, meters/mono/gate)  
 **Date:** 2026-07-24  
 **Related:** Phase 7 DSP (`2026-05-06-phase7-dsp-audio-editor.md`), Phase 8
 transforms, `docs/user/editor.md`
@@ -319,3 +319,6 @@ high threshold), MCP later.
 - **P2 shipped:** one-shot **Polish for Keep** panel + chain processor, single
   undo, MCP effect `polish` / `polishForKeep`, unit tests. Preview-slice audition
   remains optional future work.
+- **P3 shipped:** true-peak estimate + mono peak meters, mono preview toggle
+  (playback fold only), soft gate effect with gentle defaults, cached level
+  metrics. Stereo width still deferred.

@@ -55,9 +55,17 @@ deterministic DSP to the loaded buffer.
 
 ### Levels
 
-Above the polish panel, Peak (sample peak dBFS) and approximate loudness
-(ungated LUFS-style readout) update for the loaded buffer. Peak near 0 dB is
-highlighted so you know the take is already hot.
+Above the polish panel, meters update when the buffer changes:
+
+| Readout | Meaning |
+| --- | --- |
+| Peak | Sample peak (dBFS) |
+| True peak ≈ | 4× oversampled peak estimate (catches many intersample peaks) |
+| Loudness ≈ | Ungated LUFS-style aim (not broadcast certification) |
+| Mono peak | Peak of (L+R)/2 on stereo — cancellation cue |
+
+On stereo files, **Preview mono** folds L+R for playback only (does not edit the
+buffer). Use it to check mono compatibility before export.
 
 ### Polish for Keep
 
@@ -90,6 +98,7 @@ Effects below remain available for finer control.
 | Compress | No | Stereo-linked glue compressor (Light / Medium presets) |
 | Limit | No | Peak limiter with Streaming (−1 dB) / Louder (−0.5 dB) ceilings |
 | Loudness | No | Aim approximate LUFS then limit (Streaming −14 / Louder −10) |
+| Soft Gate | No | Gentle downward expander for noise floor (easy to overuse — keep Gentle) |
 | Parametric EQ | No | Multi-band EQ (default bands around 200 / 1200 / 8000 Hz) |
 | Reverb | No | Room / Hall / Plate style presets with decay, wet/dry, pre-delay, damping |
 

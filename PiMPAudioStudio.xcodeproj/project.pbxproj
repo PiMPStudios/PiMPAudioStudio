@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		E2DB2CE91A23482C95A33368 /* SoftGateControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D66561F70240435781A36FAD /* SoftGateControlView.swift */; };
 		C48BAEF6406B406D988FD610 /* PolishForKeep.swift in Sources */ = {isa = PBXBuildFile; fileRef = 605A32744B9B40EB9AB67590 /* PolishForKeep.swift */; };
 		42D9DBA8BD6B4621AA5D7A2C /* PolishForKeepView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002D1E444257457A90EFFFD4 /* PolishForKeepView.swift */; };
 		69CFE19538DE4DBABF8B133F /* DynamicsProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78A1598379BE4D1E9F3252DF /* DynamicsProcessor.swift */; };
@@ -152,6 +153,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		D66561F70240435781A36FAD /* SoftGateControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SoftGateControlView.swift; sourceTree = "<group>"; };
 		605A32744B9B40EB9AB67590 /* PolishForKeep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PolishForKeep.swift; sourceTree = "<group>"; };
 		002D1E444257457A90EFFFD4 /* PolishForKeepView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PolishForKeepView.swift; sourceTree = "<group>"; };
 		78A1598379BE4D1E9F3252DF /* DynamicsProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicsProcessor.swift; sourceTree = "<group>"; };
@@ -455,6 +457,7 @@
 			children = (
 				BA6CFDF5DC1AD54EF27BA05D /* DSPEffectPresentation.swift */,
 				07F5FC8C81BD5A3CE53323A6 /* DSPPaletteView.swift */,
+				D66561F70240435781A36FAD /* SoftGateControlView.swift */,
 				002D1E444257457A90EFFFD4 /* PolishForKeepView.swift */,
 				BDB511675BD1401E9F99388D /* LoudnessControlView.swift */,
 				759C97F05E584243B3FF1ED7 /* LimiterControlView.swift */,
@@ -684,6 +687,7 @@
 				A8972C66FD839E9B148C733A /* CoverSongCoordinator.swift in Sources */,
 				F3965955A26D543BF964A9EB /* DSPEffectPresentation.swift in Sources */,
 				80E9ECE6088D9C10C861C072 /* DSPPaletteView.swift in Sources */,
+				E2DB2CE91A23482C95A33368 /* SoftGateControlView.swift in Sources */,
 				42D9DBA8BD6B4621AA5D7A2C /* PolishForKeepView.swift in Sources */,
 				5329D0196564440B92AE25F7 /* LoudnessControlView.swift in Sources */,
 				D7B1E1F8B83F4E1091FE8E02 /* LimiterControlView.swift in Sources */,

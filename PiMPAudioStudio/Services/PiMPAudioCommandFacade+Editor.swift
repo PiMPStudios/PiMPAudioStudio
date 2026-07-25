@@ -551,6 +551,14 @@ extension PiMPAudioCommandFacade {
                 "ceilingDBFS": params.ceilingDBFS,
                 "maxBoostDB": params.maxBoostDB
             ]
+        case .softGate(let params):
+            return [
+                "thresholdDBFS": params.thresholdDBFS,
+                "ratio": params.ratio,
+                "attackMilliseconds": params.attackMilliseconds,
+                "releaseMilliseconds": params.releaseMilliseconds,
+                "rangeDB": params.rangeDB
+            ]
         case .polishForKeep(let recipe):
             return [
                 "target": recipe.target.rawValue,
@@ -620,6 +628,14 @@ extension PiMPAudioCommandFacade {
                 "targetLUFS": Double(params.targetLUFS),
                 "ceilingDBFS": Double(params.ceilingDBFS),
                 "maxBoostDB": Double(params.maxBoostDB)
+            ]
+        case .softGate(let params):
+            return [
+                "thresholdDBFS": Double(params.thresholdDBFS),
+                "ratio": Double(params.ratio),
+                "attackMilliseconds": Double(params.attackMilliseconds),
+                "releaseMilliseconds": Double(params.releaseMilliseconds),
+                "rangeDB": Double(params.rangeDB)
             ]
         case .polishForKeep(let recipe):
             return [
@@ -818,6 +834,8 @@ extension PiMPAudioCommandFacade {
             return .limit
         case "loudness", "loudnessstage", "lufs", "aimloudness":
             return .loudness
+        case "softgate", "gate", "expander", "noisegate":
+            return .softGate
         case "polish", "polishforkeep", "keep", "master":
             return .polishForKeep
         case "eq", "equalizer", "equaliser", "parametriceq", "parametricequalizer":
@@ -938,6 +956,8 @@ extension PiMPAudioCommandFacade {
             return .limit(try editorLimiterParameters(parameterArguments, fallback: topLevel))
         case .loudness:
             return .loudness(try editorLoudnessParameters(parameterArguments, fallback: topLevel))
+        case .softGate:
+            return .softGate(try editorSoftGateParameters(parameterArguments, fallback: topLevel))
         case .polishForKeep:
             return .polishForKeep(try editorPolishForKeepParameters(parameterArguments, fallback: topLevel))
         case .eq:
@@ -1013,6 +1033,43 @@ extension PiMPAudioCommandFacade {
         }
         if let v = doubleValue(parameters["releaseMilliseconds"] ?? parameters["release"] ?? fallback["releaseMilliseconds"]) {
             result.releaseMilliseconds = Float(max(1, v))
+        }
+        return result
+    }
+
+    func editorSoftGateParameters(
+        _ parameters: [String: Any],
+        fallback: [String: Any]
+    ) throws -> SoftGateParameters {
+        var result = SoftGateParameters.default
+        if let preset = stringValue(parameters["preset"] ?? fallback["preset"])?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() {
+            switch preset {
+            case "gentle", "default", "safe": result = .gentle
+            default: break
+            }
+        }
+        if let v = doubleValue(parameters["thresholdDBFS"] ?? parameters["threshold"] ?? fallback["thresholdDBFS"]) {
+            let threshold = Float(v)
+            guard SoftGateParameters.thresholdRange.contains(threshold) else {
+                throw PiMPAudioCommandFacadeError.invalidDSPParameters(
+                    "Soft gate thresholdDBFS must be between \(SoftGateParameters.thresholdRange.lowerBound) and \(SoftGateParameters.thresholdRange.upperBound)."
+                )
+            }
+            result.thresholdDBFS = threshold
+        }
+        if let v = doubleValue(parameters["ratio"] ?? fallback["ratio"]) {
+            result.ratio = Float(max(1.001, v))
+        }
+        if let v = doubleValue(parameters["attackMilliseconds"] ?? parameters["attack"] ?? fallback["attackMilliseconds"]) {
+            result.attackMilliseconds = Float(max(0.1, v))
+        }
+        if let v = doubleValue(parameters["releaseMilliseconds"] ?? parameters["release"] ?? fallback["releaseMilliseconds"]) {
+            result.releaseMilliseconds = Float(max(1, v))
+        }
+        if let v = doubleValue(parameters["rangeDB"] ?? parameters["range"] ?? fallback["rangeDB"]) {
+            result.rangeDB = Float(max(0, v))
         }
         return result
     }

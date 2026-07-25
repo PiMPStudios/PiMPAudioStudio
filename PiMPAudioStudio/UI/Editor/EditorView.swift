@@ -280,6 +280,7 @@ struct EditorView: View {
                     state.sampleRate = buffer.sampleRate
                     state.duration = buffer.duration
                     state.refreshWaveformPeaks(from: buffer, clearExisting: true)
+                    state.refreshLevelMetrics()
                     state.isLoaded = true
                     state.selectionStart = 0
                     state.selectionEnd = 0
@@ -365,6 +366,7 @@ struct EditorView: View {
             state.audioBuffer = newBuffer
             state.duration = newBuffer.duration
             state.refreshWaveformPeaks(from: newBuffer)
+            state.refreshLevelMetrics()
         }
     }
 

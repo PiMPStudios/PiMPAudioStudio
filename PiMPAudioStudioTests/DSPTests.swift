@@ -114,6 +114,80 @@ import Foundation
     #expect(abs(peak - 0.0) < 0.01)
 }
 
+@Test func truePeakEstimateIsAtLeastSamplePeak() {
+    // Alternating extremes can produce higher intersample estimates
+    let samples: [Float] = [0.9, -0.9, 0.9, -0.9, 0.9, -0.9]
+    let samplePeak = LoudnessMeter.peakDBFS(samples)
+    let truePeak = LoudnessMeter.truePeakDBFS(samples, channels: 1)
+    #expect(truePeak + 0.001 >= samplePeak)
+}
+
+@Test func monoPeakReflectsMidChannel() {
+    // Out-of-phase stereo: sample peaks high, mono mid cancels
+    let samples: [Float] = [
+        0.8, -0.8,
+        0.8, -0.8,
+        0.8, -0.8,
+        0.8, -0.8,
+    ]
+    let monoPeak = LoudnessMeter.monoPeakDBFS(samples, channels: 2)
+    #expect(monoPeak < -40)
+}
+
+@Test func foldToMonoAveragesLeftAndRight() {
+    let samples: [Float] = [0.5, 0.3, 0.0, 1.0]
+    let stereo = AudioBufferConverter.fromFloats(samples, sampleRate: 48_000, channels: 2)
+    let mono = LoudnessMeter.foldToMono(stereo)
+    #expect(mono.channels == 1)
+    #expect(mono.frameCount == 2)
+    let out = AudioBufferConverter.toFloats(mono)
+    #expect(abs(out[0] - 0.4) < 0.01)
+    #expect(abs(out[1] - 0.5) < 0.01)
+}
+
+@Test func softGateExpansionReducesBelowThreshold() {
+    let gr = DynamicsProcessor.expansionGainReductionDB(
+        levelDB: -60,
+        thresholdDB: -48,
+        ratio: 2,
+        rangeDB: 24
+    )
+    // 12 dB under at 2:1 → GR = -12 * (1 - 0.5) = -6
+    #expect(abs(gr - (-6.0)) < 0.01)
+}
+
+@Test func softGateDoesNotExpandAboveThreshold() {
+    let gr = DynamicsProcessor.expansionGainReductionDB(
+        levelDB: -30,
+        thresholdDB: -48,
+        ratio: 2,
+        rangeDB: 12
+    )
+    #expect(abs(gr) < 0.001)
+}
+
+@Test func softGateAttenuatesQuietTail() throws {
+    var samples = [Float](repeating: 0.5, count: 1_000)
+    samples.append(contentsOf: [Float](repeating: 0.01, count: 2_000))
+    let source = AudioBufferConverter.fromFloats(samples, sampleRate: 48_000, channels: 1)
+
+    let gated = try DynamicsProcessor.softGate(
+        source,
+        parameters: SoftGateParameters(
+            thresholdDBFS: -30,
+            ratio: 4,
+            attackMilliseconds: 1,
+            releaseMilliseconds: 20,
+            rangeDB: 24
+        )
+    )
+    let out = AudioBufferConverter.toFloats(gated)
+    let quietTail = out.suffix(500).map(abs).reduce(0, +) / 500
+    let loudHead = out.prefix(200).map(abs).reduce(0, +) / 200
+    #expect(quietTail < 0.01)
+    #expect(loudHead > 0.3)
+}
+
 @Test func dspProcessorAppliesNormalizeParameters() throws {
     let processor = DSPProcessor()
     let samples: [Float] = [0.25, -0.25, 0.1, -0.1]

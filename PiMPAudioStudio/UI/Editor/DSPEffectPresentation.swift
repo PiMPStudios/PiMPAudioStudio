@@ -29,7 +29,7 @@ extension DSPEffect {
             return .edit
         case .highPass, .eq:
             return .spectral
-        case .compress, .limit, .loudness, .polishForKeep:
+        case .compress, .limit, .loudness, .softGate, .polishForKeep:
             return .dynamics
         case .reverb:
             return .spatial
@@ -50,6 +50,7 @@ extension DSPEffect {
         case .compress: return "waveform.path.ecg"
         case .limit: return "arrow.down.to.line"
         case .loudness: return "speaker.wave.3"
+        case .softGate: return "door.left.hand.closed"
         case .polishForKeep: return "sparkles"
         case .eq: return "slider.horizontal.3"
         case .reverb: return "waveform.path"

@@ -169,6 +169,85 @@ enum DynamicsProcessor {
         )
     }
 
+    // MARK: - Soft gate (downward expander)
+
+    /// Stereo-linked downward expander: reduces gain when the envelope is below threshold.
+    /// Caps attenuation with `rangeDB` so full mixes are harder to destroy.
+    static func softGate(
+        _ buffer: AudioBuffer,
+        parameters: SoftGateParameters = .default
+    ) throws -> AudioBuffer {
+        var floats = AudioBufferConverter.toFloats(buffer)
+        guard !floats.isEmpty else { throw DynamicsError.bufferEmpty }
+
+        let channels = max(buffer.channels, 1)
+        let frameCount = floats.count / channels
+        let sampleRate = max(Float(buffer.sampleRate), 1)
+        let threshold = parameters.thresholdDBFS
+        let ratio = max(parameters.ratio, 1.001)
+        let range = max(parameters.rangeDB, 0)
+
+        let attackCoef = envelopeCoefficient(
+            timeMilliseconds: max(parameters.attackMilliseconds, 0.1),
+            sampleRate: sampleRate
+        )
+        let releaseCoef = envelopeCoefficient(
+            timeMilliseconds: max(parameters.releaseMilliseconds, 1),
+            sampleRate: sampleRate
+        )
+
+        var envelopeDB: Float = -120
+        for frame in 0..<frameCount {
+            var peak: Float = 0
+            let base = frame * channels
+            for ch in 0..<channels {
+                peak = max(peak, abs(floats[base + ch]))
+            }
+            let inputDB = peak > 1e-10 ? 20.0 * log10(peak) : -120
+
+            // Open quickly on rising signal (attack), close slowly into silence (release).
+            if inputDB > envelopeDB {
+                envelopeDB = attackCoef * envelopeDB + (1 - attackCoef) * inputDB
+            } else {
+                envelopeDB = releaseCoef * envelopeDB + (1 - releaseCoef) * inputDB
+            }
+
+            let grDB = expansionGainReductionDB(
+                levelDB: envelopeDB,
+                thresholdDB: threshold,
+                ratio: ratio,
+                rangeDB: range
+            )
+            let gain = pow(10.0, grDB / 20.0)
+            for ch in 0..<channels {
+                floats[base + ch] *= gain
+            }
+        }
+
+        return AudioBufferConverter.fromFloats(
+            floats,
+            sampleRate: buffer.sampleRate,
+            channels: buffer.channels
+        )
+    }
+
+    /// Expansion GR in dB (negative or zero) when level is below threshold.
+    static func expansionGainReductionDB(
+        levelDB: Float,
+        thresholdDB: Float,
+        ratio: Float,
+        rangeDB: Float
+    ) -> Float {
+        let under = thresholdDB - levelDB
+        guard under > 0 else { return 0 }
+        let safeRatio = max(ratio, 1.001)
+        // Extra attenuation beyond the under-threshold distance: under * (1 - 1/ratio)
+        var gr = -under * (1.0 - 1.0 / safeRatio)
+        let minGR = -max(rangeDB, 0)
+        if gr < minGR { gr = minGR }
+        return gr
+    }
+
     // MARK: - Helpers
 
     /// Soft-knee compressor gain reduction in dB (negative or zero).

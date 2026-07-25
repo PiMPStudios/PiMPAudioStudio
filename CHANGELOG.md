@@ -8,6 +8,7 @@ All notable changes to PiMP Audio Studio are documented here.
 
 ### Added
 
+- **Editor polish confidence meters and soft gate (P3)** — level strip adds true-peak estimate and mono peak, stereo **Preview mono** (playback-only fold), cached metrics after buffer changes, and a careful **Soft Gate** expander for light noise-floor cleanup.
 - **Editor Polish for Keep (P2)** — one-shot whole-track polish above the Effects palette: Target (Streaming / Louder / Gentle), Tone, Glue, Space, and trim/fade, applied as a single undoable chain (trim → HPF → tone → glue → space → loudness/limit).
 - **Editor polish dynamics (P1)** — Effects add stereo-linked **Compress** (Light/Medium glue), **Limit** (Streaming −1 dB / Louder −0.5 dB ceilings), and **Loudness** staging (aim ~−14 or ~−10 LUFS then limit), so keep-ready takes can be evened and leveled without leaving the app.
 - **Editor polish building blocks (P0)** — Effects now include peak-target **Normalize** (default −1 dBFS headroom, −3 / 0 presets), **Trim Silence** (threshold + max lead/trail + edge fades), and **High-Pass** (~40 Hz default), plus live Peak / approximate LUFS meters above the palette so kept takes can be cleaned without slamming to full scale.

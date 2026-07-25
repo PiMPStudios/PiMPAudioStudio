@@ -68,18 +68,42 @@ struct DSPPaletteView: View {
     @ViewBuilder
     private var levelMeterStrip: some View {
         if let metrics = state.levelMetrics {
-            HStack(spacing: 16) {
-                metricChip(
-                    title: "Peak",
-                    value: LoudnessMeter.formatDBFS(metrics.peakDBFS),
-                    warn: metrics.peakDBFS > -0.3
-                )
-                metricChip(
-                    title: "Loudness ≈",
-                    value: LoudnessMeter.formatLUFS(metrics.approximateLUFS),
-                    warn: false
-                )
-                Spacer()
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 14) {
+                    metricChip(
+                        title: "Peak",
+                        value: LoudnessMeter.formatDBFS(metrics.peakDBFS),
+                        warn: metrics.peakDBFS > -0.3
+                    )
+                    metricChip(
+                        title: "True peak ≈",
+                        value: LoudnessMeter.formatDBFS(metrics.truePeakDBFS),
+                        warn: metrics.truePeakDBFS > -0.1
+                    )
+                    metricChip(
+                        title: "Loudness ≈",
+                        value: LoudnessMeter.formatLUFS(metrics.approximateLUFS),
+                        warn: false
+                    )
+                    if let monoPeak = metrics.monoPeakDBFS {
+                        metricChip(
+                            title: "Mono peak",
+                            value: LoudnessMeter.formatDBFS(monoPeak),
+                            warn: monoPeak > -0.3
+                        )
+                    }
+                    Spacer(minLength: 0)
+                }
+
+                if metrics.isStereo {
+                    Toggle(isOn: $state.previewInMono) {
+                        Text("Preview mono (sum L+R — check compatibility, does not edit)")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                    }
+                    .toggleStyle(.switch)
+                    .controlSize(.mini)
+                }
             }
             .padding(10)
             .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
@@ -120,6 +144,11 @@ struct DSPPaletteView: View {
                 effectButton(.compress)
                 effectButton(.limit)
                 effectButton(.loudness)
+            }
+            HStack(spacing: 6) {
+                effectButton(.softGate)
+                Spacer()
+                Spacer()
             }
         }
     }
@@ -228,6 +257,8 @@ struct DSPPaletteView: View {
                 LimiterControlView(parameters: $state.limiterParameters)
             case .loudness:
                 LoudnessControlView(parameters: $state.loudnessParameters)
+            case .softGate:
+                SoftGateControlView(parameters: $state.softGateParameters)
             case .eq:
                 EQControlView(parameters: $state.eqParameters)
             case .reverb:
@@ -289,6 +320,7 @@ struct DSPPaletteView: View {
         case .compress: return .compress(state.compressorParameters)
         case .limit: return .limit(state.limiterParameters)
         case .loudness: return .loudness(state.loudnessParameters)
+        case .softGate: return .softGate(state.softGateParameters)
         case .eq: return .eq(state.eqParameters)
         case .reverb: return .reverb(state.reverbParameters)
         case .timeStretch: return .timeStretch(state.timeStretchParameters)

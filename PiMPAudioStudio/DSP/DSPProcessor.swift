@@ -117,6 +117,17 @@ struct DSPProcessor: Sendable {
                 try DynamicsProcessor.aimLoudness(region, parameters: loudnessParams)
             }
 
+        case .softGate:
+            let gateParams: SoftGateParameters
+            if case .softGate(let params) = parameters {
+                gateParams = params
+            } else {
+                gateParams = .default
+            }
+            return try processRegion(buffer, target: target) { region in
+                try DynamicsProcessor.softGate(region, parameters: gateParams)
+            }
+
         case .polishForKeep:
             let recipe: PolishForKeepRecipe
             if case .polishForKeep(let params) = parameters {
@@ -206,6 +217,8 @@ struct DSPProcessor: Sendable {
             paramLabel = " \(String(format: "%.1f", params.ceilingDBFS)) dB"
         case .loudness(let params):
             paramLabel = " \(String(format: "%.0f", params.targetLUFS)) LUFS"
+        case .softGate(let params):
+            paramLabel = " \(String(format: "%.0f", params.thresholdDBFS)) dB"
         case .polishForKeep(let recipe):
             paramLabel = " \(recipe.target.displayName)"
         case .timeStretch(let params):

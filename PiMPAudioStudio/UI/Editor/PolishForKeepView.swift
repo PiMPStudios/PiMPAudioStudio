@@ -12,6 +12,10 @@ struct PolishForKeepView: View {
 
             if let metrics = state.levelMetrics {
                 meterRow(metrics)
+            } else {
+                Text("Measuring levels…")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
             }
 
             pickerRow(
@@ -97,7 +101,7 @@ struct PolishForKeepView: View {
     }
 
     private func meterRow(_ metrics: LoudnessMeter.Metrics) -> some View {
-        HStack(spacing: 16) {
+        HStack(spacing: 14) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Peak")
                     .font(.system(size: 9, weight: .semibold))
@@ -105,6 +109,14 @@ struct PolishForKeepView: View {
                 Text(LoudnessMeter.formatDBFS(metrics.peakDBFS))
                     .font(.system(size: 12, weight: .medium).monospacedDigit())
                     .foregroundStyle(metrics.peakDBFS > -0.3 ? Color.orange : Color.primary)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text("True peak ≈")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Text(LoudnessMeter.formatDBFS(metrics.truePeakDBFS))
+                    .font(.system(size: 12, weight: .medium).monospacedDigit())
+                    .foregroundStyle(metrics.truePeakDBFS > -0.1 ? Color.orange : Color.primary)
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text("Loudness ≈")

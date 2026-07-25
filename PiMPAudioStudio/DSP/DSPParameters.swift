@@ -30,6 +30,7 @@ enum DSPEffect: String, CaseIterable, Sendable {
     case compress
     case limit
     case loudness
+    case softGate
     case polishForKeep
     case eq
     case reverb
@@ -41,7 +42,7 @@ enum DSPEffect: String, CaseIterable, Sendable {
         case .trimToSelection, .deleteSelection, .fadeIn, .fadeOut:
             return false
         case .normalize, .trimSilence, .highPass, .compress, .limit, .loudness,
-             .polishForKeep, .eq, .reverb, .timeStretch, .pitchShift:
+             .softGate, .polishForKeep, .eq, .reverb, .timeStretch, .pitchShift:
             return true
         }
     }
@@ -51,7 +52,7 @@ enum DSPEffect: String, CaseIterable, Sendable {
         case .trimToSelection, .deleteSelection, .fadeIn, .fadeOut:
             return true
         case .normalize, .trimSilence, .highPass, .compress, .limit, .loudness,
-             .polishForKeep, .eq, .reverb, .timeStretch, .pitchShift:
+             .softGate, .polishForKeep, .eq, .reverb, .timeStretch, .pitchShift:
             return false
         }
     }
@@ -68,6 +69,7 @@ enum DSPEffect: String, CaseIterable, Sendable {
         case .compress: return "Compress"
         case .limit: return "Limit"
         case .loudness: return "Loudness"
+        case .softGate: return "Soft Gate"
         case .polishForKeep: return "Polish for Keep"
         case .eq: return "Parametric EQ"
         case .reverb: return "Reverb"
@@ -101,6 +103,7 @@ enum DSPParameters: Equatable, Sendable {
     case compress(CompressorParameters)
     case limit(LimiterParameters)
     case loudness(LoudnessParameters)
+    case softGate(SoftGateParameters)
     case polishForKeep(PolishForKeepRecipe)
     case eq(EQParameters)
     case reverb(ReverbParameters)
@@ -283,6 +286,33 @@ struct LoudnessParameters: Equatable, Sendable {
     static let `default` = streaming
 
     static let targetRange: ClosedRange<Float> = -24...(-6)
+}
+
+/// Downward expander for light noise-floor cleanup. Easy to overuse on full mixes —
+/// defaults stay gentle (high threshold floor, modest ratio, limited range).
+struct SoftGateParameters: Equatable, Sendable {
+    /// Below this level (dBFS), expansion begins.
+    var thresholdDBFS: Float
+    /// Expansion ratio (e.g. 2 = 2:1 downward expand).
+    var ratio: Float
+    /// Attack in ms (how fast gate opens when signal returns).
+    var attackMilliseconds: Float
+    /// Release in ms (how fast gate closes into silence).
+    var releaseMilliseconds: Float
+    /// Maximum extra attenuation in dB (caps how deep the gate goes).
+    var rangeDB: Float
+
+    static let gentle = SoftGateParameters(
+        thresholdDBFS: -48,
+        ratio: 2.0,
+        attackMilliseconds: 5,
+        releaseMilliseconds: 80,
+        rangeDB: 12
+    )
+
+    static let `default` = gentle
+
+    static let thresholdRange: ClosedRange<Float> = -70...(-24)
 }
 
 // MARK: - NormalizeMode
