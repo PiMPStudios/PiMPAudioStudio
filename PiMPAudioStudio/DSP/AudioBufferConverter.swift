@@ -28,7 +28,7 @@ struct AudioBufferConverter {
         }
         var floats = [Float](repeating: 0, count: int16Count)
         vDSP.convertElements(of: int16Samples, to: &floats)
-        var scale: Float = 1.0 / 32768.0
+        var scale = 1.0 / fullScale
         vDSP_vsmul(floats, 1, &scale, &floats, 1, vDSP_Length(int16Count))
         return floats
     }
@@ -40,11 +40,13 @@ struct AudioBufferConverter {
         vDSP_vclip(clamped, 1, &low, &high, &clamped, 1, vDSP_Length(samples.count))
 
         var scaled = [Float](repeating: 0, count: samples.count)
-        var scale: Float = 32767.0
+        var scale = fullScale
         vDSP_vsmul(clamped, 1, &scale, &scaled, 1, vDSP_Length(samples.count))
 
         var int16Samples = [Int16](repeating: 0, count: samples.count)
-        vDSP_vfix16(scaled, 1, &int16Samples, 1, vDSP_Length(samples.count))
+        // Round, not truncate: `vDSP_vfix16` truncates toward zero, which loses a
+        // full LSB on every conversion and biases the signal toward silence.
+        vDSP_vfixr16(scaled, 1, &int16Samples, 1, vDSP_Length(samples.count))
 
         let data = int16Samples.withUnsafeBufferPointer { ptr in
             Data(buffer: ptr)
@@ -52,24 +54,37 @@ struct AudioBufferConverter {
         return AudioBuffer(data: data, sampleRate: sampleRate, channels: channels)
     }
 
+    /// Shared Int16 ↔ float scale.
+    ///
+    /// Deliberately symmetric: decoding with 1/32768 and re-encoding with 32767 meant
+    /// a pure round-trip attenuated slightly and, combined with truncation, could not
+    /// reproduce its own input. With one factor both ways `i → float → i` is exact, so
+    /// a DSP stage that changes nothing really does change nothing. The cost is that
+    /// the single most-negative code (−32768) clamps to −32767.
+    private static let fullScale: Float = 32_767.0
+
     static func toPCMBuffer(_ buffer: AudioBuffer) throws -> AVAudioPCMBuffer {
+        try toPCMBuffer(FloatAudio(buffer))
+    }
+
+    static func toPCMBuffer(_ audio: FloatAudio) throws -> AVAudioPCMBuffer {
         guard let format = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
-            sampleRate: Double(buffer.sampleRate),
-            channels: AVAudioChannelCount(buffer.channels),
+            sampleRate: Double(audio.sampleRate),
+            channels: AVAudioChannelCount(audio.channels),
             interleaved: false
         ) else {
             throw ConversionError.bufferCreationFailed
         }
 
-        let frameCount = AVAudioFrameCount(buffer.frameCount)
+        let frameCount = AVAudioFrameCount(audio.frameCount)
         guard let pcmBuffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else {
             throw ConversionError.bufferCreationFailed
         }
         pcmBuffer.frameLength = frameCount
 
-        let floats = toFloats(buffer)
-        let channels = buffer.channels
+        let floats = audio.samples
+        let channels = audio.channels
 
         if channels == 1 {
             floats.withUnsafeBufferPointer { src in
@@ -114,6 +129,10 @@ struct AudioBufferConverter {
     }
 
     static func fromPCMBuffer(_ pcmBuffer: AVAudioPCMBuffer) -> AudioBuffer {
+        floatAudio(from: pcmBuffer).toAudioBuffer()
+    }
+
+    static func floatAudio(from pcmBuffer: AVAudioPCMBuffer) -> FloatAudio {
         let frameCount = Int(pcmBuffer.frameLength)
         let channels = Int(pcmBuffer.format.channelCount)
         let totalSamples = frameCount * channels
@@ -133,6 +152,10 @@ struct AudioBufferConverter {
             }
         }
 
-        return fromFloats(interleaved, sampleRate: Int(pcmBuffer.format.sampleRate), channels: channels)
+        return FloatAudio(
+            samples: interleaved,
+            sampleRate: Int(pcmBuffer.format.sampleRate),
+            channels: channels
+        )
     }
 }

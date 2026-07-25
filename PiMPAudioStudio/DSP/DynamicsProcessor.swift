@@ -2,6 +2,9 @@ import Foundation
 import Accelerate
 
 /// Stereo-linked glue compressor, peak limiter, and loudness staging for editor polish P1.
+///
+/// Every stage has a `FloatAudio` core so chains can stay in float end to end; the
+/// `AudioBuffer` overloads are thin wrappers for single-effect applies.
 enum DynamicsProcessor {
     enum DynamicsError: LocalizedError {
         case bufferEmpty
@@ -16,17 +19,24 @@ enum DynamicsProcessor {
 
     // MARK: - Compress
 
-    /// Feed-forward peak compressor with soft knee; stereo channels share one gain envelope.
     static func compress(
         _ buffer: AudioBuffer,
         parameters: CompressorParameters = .default
     ) throws -> AudioBuffer {
-        var floats = AudioBufferConverter.toFloats(buffer)
-        guard !floats.isEmpty else { throw DynamicsError.bufferEmpty }
+        try compress(FloatAudio(buffer), parameters: parameters).toAudioBuffer()
+    }
 
-        let channels = max(buffer.channels, 1)
-        let frameCount = floats.count / channels
-        let sampleRate = max(Float(buffer.sampleRate), 1)
+    /// Feed-forward peak compressor with soft knee; stereo channels share one gain envelope.
+    static func compress(
+        _ audio: FloatAudio,
+        parameters: CompressorParameters = .default
+    ) throws -> FloatAudio {
+        guard !audio.isEmpty else { throw DynamicsError.bufferEmpty }
+
+        var floats = audio.samples
+        let channels = audio.channels
+        let frameCount = audio.frameCount
+        let sampleRate = max(Float(audio.sampleRate), 1)
         let threshold = parameters.thresholdDBFS
         let ratio = max(parameters.ratio, 1.001)
         let knee = max(parameters.kneeDB, 0)
@@ -68,26 +78,29 @@ enum DynamicsProcessor {
             }
         }
 
-        return AudioBufferConverter.fromFloats(
-            floats,
-            sampleRate: buffer.sampleRate,
-            channels: buffer.channels
-        )
+        return audio.replacingSamples(floats)
     }
 
     // MARK: - Limit
 
-    /// Peak limiter toward a ceiling with fast attack and configurable release.
     static func limit(
         _ buffer: AudioBuffer,
         parameters: LimiterParameters = .default
     ) throws -> AudioBuffer {
-        var floats = AudioBufferConverter.toFloats(buffer)
-        guard !floats.isEmpty else { throw DynamicsError.bufferEmpty }
+        try limit(FloatAudio(buffer), parameters: parameters).toAudioBuffer()
+    }
 
-        let channels = max(buffer.channels, 1)
-        let frameCount = floats.count / channels
-        let sampleRate = max(Float(buffer.sampleRate), 1)
+    /// Peak limiter toward a ceiling with fast attack and configurable release.
+    static func limit(
+        _ audio: FloatAudio,
+        parameters: LimiterParameters = .default
+    ) throws -> FloatAudio {
+        guard !audio.isEmpty else { throw DynamicsError.bufferEmpty }
+
+        var floats = audio.samples
+        let channels = audio.channels
+        let frameCount = audio.frameCount
+        let sampleRate = max(Float(audio.sampleRate), 1)
         let ceilingDB = min(max(parameters.ceilingDBFS, -24), 0)
         let ceilingLinear = pow(10.0, ceilingDB / 20.0)
 
@@ -125,24 +138,32 @@ enum DynamicsProcessor {
             }
         }
 
-        return AudioBufferConverter.fromFloats(
-            floats,
-            sampleRate: buffer.sampleRate,
-            channels: buffer.channels
-        )
+        return audio.replacingSamples(floats)
     }
 
     // MARK: - Loudness staging
 
-    /// Gain toward a target approximate LUFS, then limit to a peak ceiling.
     static func aimLoudness(
         _ buffer: AudioBuffer,
         parameters: LoudnessParameters = .default
     ) throws -> AudioBuffer {
-        var floats = AudioBufferConverter.toFloats(buffer)
-        guard !floats.isEmpty else { throw DynamicsError.bufferEmpty }
+        try aimLoudness(FloatAudio(buffer), parameters: parameters).toAudioBuffer()
+    }
 
-        let current = LoudnessMeter.approximateLUFS(floats)
+    /// Gain toward a target approximate LUFS, then limit to a peak ceiling.
+    ///
+    /// Gain and limiting happen in one float pass on purpose. Quantizing the boosted
+    /// signal to Int16 first would clamp it at ±1.0, so the limiter would only ever
+    /// see an already flat-topped waveform and would then dutifully scale that
+    /// distortion down to the ceiling.
+    static func aimLoudness(
+        _ audio: FloatAudio,
+        parameters: LoudnessParameters = .default
+    ) throws -> FloatAudio {
+        guard !audio.isEmpty else { throw DynamicsError.bufferEmpty }
+
+        var floats = audio.samples
+        let current = LoudnessMeter.approximateLUFS(floats, channels: audio.channels)
         let target = min(max(parameters.targetLUFS, -70), 0)
         var deltaDB = target - current
         let maxBoost = max(parameters.maxBoostDB, 0)
@@ -155,13 +176,8 @@ enum DynamicsProcessor {
             vDSP_vsmul(floats, 1, &scale, &floats, 1, vDSP_Length(floats.count))
         }
 
-        let gained = AudioBufferConverter.fromFloats(
-            floats,
-            sampleRate: buffer.sampleRate,
-            channels: buffer.channels
-        )
         return try limit(
-            gained,
+            audio.replacingSamples(floats),
             parameters: LimiterParameters(
                 ceilingDBFS: parameters.ceilingDBFS,
                 releaseMilliseconds: 50
@@ -171,18 +187,25 @@ enum DynamicsProcessor {
 
     // MARK: - Soft gate (downward expander)
 
-    /// Stereo-linked downward expander: reduces gain when the envelope is below threshold.
-    /// Caps attenuation with `rangeDB` so full mixes are harder to destroy.
     static func softGate(
         _ buffer: AudioBuffer,
         parameters: SoftGateParameters = .default
     ) throws -> AudioBuffer {
-        var floats = AudioBufferConverter.toFloats(buffer)
-        guard !floats.isEmpty else { throw DynamicsError.bufferEmpty }
+        try softGate(FloatAudio(buffer), parameters: parameters).toAudioBuffer()
+    }
 
-        let channels = max(buffer.channels, 1)
-        let frameCount = floats.count / channels
-        let sampleRate = max(Float(buffer.sampleRate), 1)
+    /// Stereo-linked downward expander: reduces gain when the envelope is below threshold.
+    /// Caps attenuation with `rangeDB` so full mixes are harder to destroy.
+    static func softGate(
+        _ audio: FloatAudio,
+        parameters: SoftGateParameters = .default
+    ) throws -> FloatAudio {
+        guard !audio.isEmpty else { throw DynamicsError.bufferEmpty }
+
+        var floats = audio.samples
+        let channels = audio.channels
+        let frameCount = audio.frameCount
+        let sampleRate = max(Float(audio.sampleRate), 1)
         let threshold = parameters.thresholdDBFS
         let ratio = max(parameters.ratio, 1.001)
         let range = max(parameters.rangeDB, 0)
@@ -224,11 +247,7 @@ enum DynamicsProcessor {
             }
         }
 
-        return AudioBufferConverter.fromFloats(
-            floats,
-            sampleRate: buffer.sampleRate,
-            channels: buffer.channels
-        )
+        return audio.replacingSamples(floats)
     }
 
     /// Expansion GR in dB (negative or zero) when level is below threshold.

@@ -1141,6 +1141,8 @@ extension PiMPAudioCommandFacade {
                 ?? parameters["trimSilenceAndFades"]
                 ?? parameters["trim"]
                 ?? fallback["trimSilence"]
+                ?? fallback["trimSilenceAndFades"]
+                ?? fallback["trim"]
         ) {
             recipe.trimSilenceAndFades = trim
         }
@@ -1172,7 +1174,13 @@ extension PiMPAudioCommandFacade {
             result.targetLUFS = target
         }
         if let v = doubleValue(parameters["ceilingDBFS"] ?? parameters["ceiling"] ?? fallback["ceilingDBFS"]) {
-            result.ceilingDBFS = Float(v)
+            let ceiling = Float(v)
+            guard LimiterParameters.ceilingRange.contains(ceiling) else {
+                throw PiMPAudioCommandFacadeError.invalidDSPParameters(
+                    "Loudness ceilingDBFS must be between \(LimiterParameters.ceilingRange.lowerBound) and \(LimiterParameters.ceilingRange.upperBound)."
+                )
+            }
+            result.ceilingDBFS = ceiling
         }
         if let v = doubleValue(parameters["maxBoostDB"] ?? parameters["maxBoost"] ?? fallback["maxBoostDB"]) {
             result.maxBoostDB = Float(max(0, v))

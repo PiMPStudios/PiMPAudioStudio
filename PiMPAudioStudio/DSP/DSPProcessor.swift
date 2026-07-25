@@ -206,7 +206,7 @@ struct DSPProcessor: Sendable {
         let paramLabel: String
         switch parameters {
         case .normalize(let params):
-            paramLabel = " \(String(format: "%.1f", params.targetPeakDBFS)) dBTP"
+            paramLabel = " \(String(format: "%.1f", params.targetPeakDBFS)) dBFS"
         case .trimSilence(let params):
             paramLabel = " \(String(format: "%.0f", params.thresholdDBFS)) dB"
         case .highPass(let params):

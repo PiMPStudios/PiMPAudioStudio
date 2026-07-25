@@ -60,8 +60,8 @@ Above the polish panel, meters update when the buffer changes:
 | Readout | Meaning |
 | --- | --- |
 | Peak | Sample peak (dBFS) |
-| True peak ≈ | 4× oversampled peak estimate (catches many intersample peaks) |
-| Loudness ≈ | Ungated LUFS-style aim (not broadcast certification) |
+| True peak ≈ | 4× polyphase sinc-oversampled peak estimate — surfaces intersample peaks that sample peak cannot see |
+| Loudness ≈ | Ungated LUFS-style aim with BS.1770 channel summation, no K-weighting (not broadcast certification) |
 | Mono peak | Peak of (L+R)/2 on stereo — cancellation cue |
 
 On stereo files, **Preview mono** folds L+R for playback only (does not edit the

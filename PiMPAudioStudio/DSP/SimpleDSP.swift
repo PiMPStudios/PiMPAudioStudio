@@ -99,32 +99,41 @@ struct SimpleDSP {
         return AudioBufferConverter.fromFloats(floats, sampleRate: buffer.sampleRate, channels: buffer.channels)
     }
 
-    /// Normalize peak to a headroom target (default −1 dBFS) or scale by RMS.
     static func normalize(
         _ buffer: AudioBuffer,
         mode: NormalizeMode = .peakDefault
     ) throws -> AudioBuffer {
-        var floats = AudioBufferConverter.toFloats(buffer)
-        guard !floats.isEmpty else { throw DSPError.bufferEmpty }
+        try normalize(FloatAudio(buffer), mode: mode).toAudioBuffer()
+    }
+
+    /// Normalize peak to a headroom target (default −1 dBFS) or scale by RMS.
+    static func normalize(
+        _ audio: FloatAudio,
+        mode: NormalizeMode = .peakDefault
+    ) throws -> FloatAudio {
+        guard !audio.isEmpty else { throw DSPError.bufferEmpty }
+        var floats = audio.samples
 
         switch mode {
         case .peak(let targetDBFS):
             var peak: Float = 0
             vDSP_maxmgv(floats, 1, &peak, vDSP_Length(floats.count))
-            guard peak > 0.000_001 else { return buffer }
+            guard peak > 0.000_001 else { return audio }
 
+            // Target is clamped at or below full scale, so `targetLinear / peak` is
+            // already the safe scale — no separate clip guard is needed.
             let clampedTargetDB = min(max(targetDBFS, -120), 0)
             let targetLinear = pow(10.0, clampedTargetDB / 20.0)
-            var scale = min(targetLinear / peak, 1.0 / peak)
+            var scale = targetLinear / peak
             // Avoid no-op numerical noise when already on target.
-            if abs(scale - 1.0) < 0.000_5 { return buffer }
+            if abs(scale - 1.0) < 0.000_5 { return audio }
             vDSP_vsmul(floats, 1, &scale, &floats, 1, vDSP_Length(floats.count))
 
         case .rms(let targetDB):
-            guard targetDB.isFinite else { return buffer }
+            guard targetDB.isFinite else { return audio }
 
             let currentRMS = rmsAmplitude(floats)
-            guard currentRMS > 0.000_001 else { return buffer }
+            guard currentRMS > 0.000_001 else { return audio }
 
             let targetRMS = pow(10.0, targetDB / 20.0)
             var peak: Float = 0
@@ -134,44 +143,42 @@ struct SimpleDSP {
             vDSP_vsmul(floats, 1, &scale, &floats, 1, vDSP_Length(floats.count))
         }
 
-        return AudioBufferConverter.fromFloats(floats, sampleRate: buffer.sampleRate, channels: buffer.channels)
+        return audio.replacingSamples(floats)
     }
 
-    /// Remove leading/trailing silence and optionally apply short edge fades.
     static func trimSilence(
         _ buffer: AudioBuffer,
         parameters: TrimSilenceParameters = .default
     ) throws -> AudioBuffer {
-        let floats = AudioBufferConverter.toFloats(buffer)
-        guard !floats.isEmpty else { throw DSPError.bufferEmpty }
+        try trimSilence(FloatAudio(buffer), parameters: parameters).toAudioBuffer()
+    }
 
-        let channels = max(buffer.channels, 1)
-        let frameCount = floats.count / channels
-        guard frameCount > 1 else { return buffer }
+    /// Remove leading/trailing silence and optionally apply short edge fades.
+    static func trimSilence(
+        _ audio: FloatAudio,
+        parameters: TrimSilenceParameters = .default
+    ) throws -> FloatAudio {
+        guard !audio.isEmpty else { throw DSPError.bufferEmpty }
+
+        let channels = audio.channels
+        let frameCount = audio.frameCount
+        guard frameCount > 1 else { return audio }
 
         let thresholdLinear = pow(10.0, min(parameters.thresholdDBFS, 0) / 20.0)
-        let maxLeadFrames = max(0, Int(Double(parameters.maxLeadingSeconds) * Double(buffer.sampleRate)))
-        let maxTrailFrames = max(0, Int(Double(parameters.maxTrailingSeconds) * Double(buffer.sampleRate)))
+        let maxLeadFrames = max(0, Int(Double(parameters.maxLeadingSeconds) * Double(audio.sampleRate)))
+        let maxTrailFrames = max(0, Int(Double(parameters.maxTrailingSeconds) * Double(audio.sampleRate)))
 
         var firstSound = 0
-        while firstSound < frameCount {
-            if framePeak(floats, frame: firstSound, channels: channels) >= thresholdLinear {
-                break
-            }
+        while firstSound < frameCount, audio.framePeak(firstSound) < thresholdLinear {
             firstSound += 1
         }
 
-        var lastSound = frameCount - 1
-        while lastSound > firstSound {
-            if framePeak(floats, frame: lastSound, channels: channels) >= thresholdLinear {
-                break
-            }
-            lastSound -= 1
-        }
-
         // Entire buffer below threshold — keep as-is (avoid erasing quiet pads).
-        if firstSound >= frameCount {
-            return buffer
+        if firstSound >= frameCount { return audio }
+
+        var lastSound = frameCount - 1
+        while lastSound > firstSound, audio.framePeak(lastSound) < thresholdLinear {
+            lastSound -= 1
         }
 
         let leadTrim = min(firstSound, maxLeadFrames)
@@ -179,40 +186,60 @@ struct SimpleDSP {
         let trailTrim = min(max(0, trailCandidate), maxTrailFrames)
         let keepStart = leadTrim
         let keepEnd = frameCount - trailTrim
-        guard keepStart < keepEnd else { return buffer }
+        guard keepStart < keepEnd else { return audio }
 
-        if keepStart == 0, keepEnd == frameCount, parameters.edgeFadeMilliseconds <= 0 {
-            return buffer
-        }
+        // Frame-indexed slice: the old path round-tripped frame → seconds → frame
+        // through `trimToSelection`, which could drift a frame on rounding.
+        var result = (keepStart == 0 && keepEnd == frameCount)
+            ? audio
+            : audio.frames(keepStart, keepEnd)
 
-        let startTime = Double(keepStart) / Double(buffer.sampleRate)
-        let endTime = Double(keepEnd) / Double(buffer.sampleRate)
-        var result = try trimToSelection(buffer, start: startTime, end: endTime)
-
-        let fadeSeconds = max(0, Double(parameters.edgeFadeMilliseconds) / 1_000.0)
-        if fadeSeconds > 0, result.duration > fadeSeconds * 2 {
-            result = try fadeIn(result, start: 0, end: fadeSeconds)
-            let fadeStart = max(0, result.duration - fadeSeconds)
-            result = try fadeOut(result, start: fadeStart, end: result.duration)
+        let fadeFrames = Int(
+            (Double(max(0, parameters.edgeFadeMilliseconds)) / 1_000.0) * Double(audio.sampleRate)
+        )
+        if fadeFrames > 0, result.frameCount > fadeFrames * 2 {
+            applyLinearFade(
+                &result.samples,
+                channels: channels,
+                startFrame: 0,
+                frameCount: fadeFrames,
+                from: 0,
+                to: 1
+            )
+            applyLinearFade(
+                &result.samples,
+                channels: channels,
+                startFrame: result.frameCount - fadeFrames,
+                frameCount: fadeFrames,
+                from: 1,
+                to: 0
+            )
         }
 
         return result
     }
 
-    /// 2-pole high-pass filter (Butterworth Q ≈ 0.707), per channel.
     static func highPass(
         _ buffer: AudioBuffer,
         parameters: HighPassParameters = .default
     ) throws -> AudioBuffer {
-        var floats = AudioBufferConverter.toFloats(buffer)
-        guard !floats.isEmpty else { throw DSPError.bufferEmpty }
+        try highPass(FloatAudio(buffer), parameters: parameters).toAudioBuffer()
+    }
 
-        let sampleRate = Float(max(buffer.sampleRate, 1))
+    /// 2-pole high-pass filter (Butterworth Q ≈ 0.707), per channel.
+    static func highPass(
+        _ audio: FloatAudio,
+        parameters: HighPassParameters = .default
+    ) throws -> FloatAudio {
+        guard !audio.isEmpty else { throw DSPError.bufferEmpty }
+
+        var floats = audio.samples
+        let sampleRate = Float(max(audio.sampleRate, 1))
         let nyquist = sampleRate * 0.49
         let cutoff = min(max(parameters.cutoffHz, 5), nyquist)
         let coeffs = butterworthHighPassCoefficients(cutoffHz: cutoff, sampleRate: sampleRate)
-        let channels = max(buffer.channels, 1)
-        let frameCount = floats.count / channels
+        let channels = audio.channels
+        let frameCount = audio.frameCount
 
         for ch in 0..<channels {
             var x1: Float = 0
@@ -232,7 +259,36 @@ struct SimpleDSP {
             }
         }
 
-        return AudioBufferConverter.fromFloats(floats, sampleRate: buffer.sampleRate, channels: buffer.channels)
+        return audio.replacingSamples(floats)
+    }
+
+    /// Linear gain ramp over `frameCount` frames, applied identically to every channel.
+    static func applyLinearFade(
+        _ samples: inout [Float],
+        channels: Int,
+        startFrame: Int,
+        frameCount: Int,
+        from startGain: Float,
+        to endGain: Float
+    ) {
+        guard frameCount > 0, channels > 0 else { return }
+        let totalFrames = samples.count / channels
+        let first = max(0, startFrame)
+        let last = min(totalFrames, startFrame + frameCount)
+        guard first < last else { return }
+
+        var ramp = [Float](repeating: 0, count: frameCount)
+        var startVal = startGain
+        var endVal = endGain
+        vDSP_vgen(&startVal, &endVal, &ramp, 1, vDSP_Length(frameCount))
+
+        for frame in first..<last {
+            let gain = ramp[frame - startFrame]
+            let base = frame * channels
+            for ch in 0..<channels {
+                samples[base + ch] *= gain
+            }
+        }
     }
 
     // MARK: - Filter helpers
@@ -267,15 +323,6 @@ struct SimpleDSP {
             a1: Float(a1 / a0),
             a2: Float(a2 / a0)
         )
-    }
-
-    private static func framePeak(_ floats: [Float], frame: Int, channels: Int) -> Float {
-        var peak: Float = 0
-        let base = frame * channels
-        for ch in 0..<channels {
-            peak = max(peak, abs(floats[base + ch]))
-        }
-        return peak
     }
 
     // MARK: - Helpers

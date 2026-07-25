@@ -322,3 +322,31 @@ high threshold), MCP later.
 - **P3 shipped:** true-peak estimate + mono peak meters, mono preview toggle
   (playback fold only), soft gate effect with gentle defaults, cached level
   metrics. Stereo width still deferred.
+
+### Deliberate deviations from this spec
+
+- **Space runs before loudness/limit, not after.** The chain above lists optional
+  reverb as step 8. Running it after the limiter would put unlimited wet signal
+  past the ceiling, so the implementation applies it at step 5.5 — after glue,
+  before the gain stage. Do not "fix" it back.
+
+### Post-review corrections (2026-07-24)
+
+Review of the shipped P0–P3 work found four defects; all are fixed:
+
+1. **Loudness staging clipped before it limited.** `aimLoudness` quantized the
+   boosted signal to Int16 (clamping at ±1.0) and only then ran the limiter, so
+   the limiter saw an already flat-topped waveform and scaled that distortion to
+   the ceiling. Gain and limiting now happen in one float pass.
+2. **The chain requantized between every stage.** `PolishForKeepProcessor` now
+   runs on `FloatAudio` end to end and converts once, as this spec's technical
+   notes always intended. Every stage (`SimpleDSP`, `DynamicsProcessor`,
+   `AVAudioEngineDSP`) gained a float core with the `AudioBuffer` entry point as
+   a wrapper.
+3. **True peak was linear interpolation**, which by construction can never exceed
+   `max(|a|, |b|)` — the readout was mathematically identical to sample peak.
+   Replaced with a 4× polyphase windowed-sinc bank, block-pruned by the kernel's
+   L1 bound (~0.09 s worst case on a 5-minute stereo master).
+4. **Approximate LUFS averaged channels instead of summing them**, reading
+   correlated stereo 3.01 dB low and over-boosting every stereo track by that
+   much. Now follows BS.1770 channel summation (still no K-weighting).

@@ -8,6 +8,16 @@ struct DSPPaletteView: View {
     @State private var confirmationTask: Task<Void, Never>?
 
     var body: some View {
+        paletteContent
+            // Confirm the finished apply, not the button press — a long track keeps
+            // processing well after the tap, and a failed apply must not show a check.
+            .onChange(of: state.lastCompletedApply) { _, completed in
+                guard let completed else { return }
+                showConfirmation(completed.effect)
+            }
+    }
+
+    private var paletteContent: some View {
         VStack(alignment: .leading, spacing: 12) {
             levelMeterStrip
 
@@ -173,7 +183,6 @@ struct DSPPaletteView: View {
                 }
             } else {
                 onApply(effect, .none)
-                showConfirmation(effect)
             }
         } label: {
             VStack(spacing: 3) {
@@ -299,7 +308,6 @@ struct DSPPaletteView: View {
 
             Button {
                 onApply(effect, parameters(for: effect))
-                showConfirmation(effect)
             } label: {
                 Text("Apply \(effect.displayName)")
                     .font(.system(size: 12, weight: .medium))

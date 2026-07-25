@@ -2,6 +2,13 @@ import SwiftUI
 import AVFoundation
 import PiMPAudioCore
 
+/// Identifies a finished DSP apply. The token makes two consecutive applies of the
+/// same effect distinguishable so the UI can react to each one.
+struct CompletedDSPApply: Equatable {
+    let effect: DSPEffect
+    let token: Int
+}
+
 @MainActor
 class EditorState: ObservableObject {
     @Published var editMode: EditMode = .inpaint
@@ -63,6 +70,9 @@ class EditorState: ObservableObject {
     @Published var softGateParameters: SoftGateParameters = .default
     /// Brief confirmation after one-shot polish applies.
     @Published var polishAppliedConfirmation = false
+    /// Set when a DSP apply actually finishes, so the palette confirms real results
+    /// instead of flashing a checkmark the moment the button is pressed.
+    @Published private(set) var lastCompletedApply: CompletedDSPApply?
     /// When true, editor preview playback folds stereo to mono (does not edit the buffer).
     @Published var previewInMono = false {
         didSet {
@@ -85,6 +95,8 @@ class EditorState: ObservableObject {
     private var previewFileURL: URL?
     private var peakComputationTask: Task<Void, Never>?
     private var metricsTask: Task<Void, Never>?
+    /// Distinguishes consecutive applies of the same effect for `lastCompletedApply`.
+    private var applyToken = 0
 
     // DSP undo/redo — stores raw AudioBuffer snapshots.
     // AI inpainting also pushes here (via saveUndoSnapshot) so both paths
@@ -322,6 +334,12 @@ class EditorState: ObservableObject {
                         self.selectionStart = 0
                         self.selectionEnd = 0
                     }
+
+                    self.applyToken += 1
+                    self.lastCompletedApply = CompletedDSPApply(
+                        effect: effect,
+                        token: self.applyToken
+                    )
                 }
             } catch is CancellationError {
                 return

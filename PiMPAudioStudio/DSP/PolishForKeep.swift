@@ -86,14 +86,27 @@ enum PolishForKeepProcessor {
         }
     }
 
-    /// Chain order: trim → HPF → tone EQ → glue → subtle space → loudness/limit or gentle peak.
     static func apply(
         _ buffer: AudioBuffer,
         recipe: PolishForKeepRecipe = .default
     ) throws -> AudioBuffer {
         guard buffer.frameCount > 0 else { throw PolishError.bufferEmpty }
+        return try apply(FloatAudio(buffer), recipe: recipe).toAudioBuffer()
+    }
 
-        var current = buffer
+    /// Chain order: trim → HPF → tone EQ → glue → subtle space → loudness/limit or gentle peak.
+    ///
+    /// The whole chain runs in float and quantizes once, in the `AudioBuffer` overload
+    /// above. Requantizing between stages would clip every intermediate overshoot —
+    /// compressor makeup gain, filter ringing, the reverb wet sum, the loudness boost —
+    /// at ±1.0 before the limiter ever got a chance to catch them.
+    static func apply(
+        _ audio: FloatAudio,
+        recipe: PolishForKeepRecipe = .default
+    ) throws -> FloatAudio {
+        guard audio.frameCount > 0 else { throw PolishError.bufferEmpty }
+
+        var current = audio
 
         if recipe.trimSilenceAndFades {
             current = try SimpleDSP.trimSilence(
@@ -124,7 +137,9 @@ enum PolishForKeepProcessor {
             current = try DynamicsProcessor.compress(current, parameters: compressor)
         }
 
-        // Space before loudness/limit so wet peaks are still controlled.
+        // Space before loudness/limit so wet peaks are still controlled. This is a
+        // deliberate reordering of the spec's step 8 — running reverb after the
+        // limiter would put unlimited wet signal past the ceiling.
         if let reverb = reverbParameters(for: recipe.space) {
             current = try AVAudioEngineDSP.applyReverb(
                 to: current,

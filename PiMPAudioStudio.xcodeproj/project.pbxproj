@@ -7,17 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		E2DB2CE91A23482C95A33368 /* SoftGateControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D66561F70240435781A36FAD /* SoftGateControlView.swift */; };
-		C48BAEF6406B406D988FD610 /* PolishForKeep.swift in Sources */ = {isa = PBXBuildFile; fileRef = 605A32744B9B40EB9AB67590 /* PolishForKeep.swift */; };
-		42D9DBA8BD6B4621AA5D7A2C /* PolishForKeepView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002D1E444257457A90EFFFD4 /* PolishForKeepView.swift */; };
-		69CFE19538DE4DBABF8B133F /* DynamicsProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78A1598379BE4D1E9F3252DF /* DynamicsProcessor.swift */; };
-		88B8CB85D95441DB84F9E6CF /* CompressorControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EB7BD41CDF74F4A9C5A5844 /* CompressorControlView.swift */; };
-		D7B1E1F8B83F4E1091FE8E02 /* LimiterControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 759C97F05E584243B3FF1ED7 /* LimiterControlView.swift */; };
-		5329D0196564440B92AE25F7 /* LoudnessControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDB511675BD1401E9F99388D /* LoudnessControlView.swift */; };
-		03CA9F8D0A5B433EA85377EC /* LoudnessMeter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CB76285CCBF4B6EB7E2A61E /* LoudnessMeter.swift */; };
-		EAA04F66C6B24C438EFD4F03 /* NormalizeControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAE76BE2C3E3457988E2B791 /* NormalizeControlView.swift */; };
-		847831F5CD954416B35ED32C /* TrimSilenceControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C5F5E02F4DD44C18B10E261 /* TrimSilenceControlView.swift */; };
-		94A09C869C0E47CFB7895DEA /* HighPassControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC1E63063E074330A13DD4AA /* HighPassControlView.swift */; };
 		02E720C4E915E4FC5E80E083 /* AdapterStackManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 170EDAB12E02A75BD53997D2 /* AdapterStackManager.swift */; };
 		02E87C9D466A616553A78B5F /* DSPParameters.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AC731FD1A3D2361C508EC75 /* DSPParameters.swift */; };
 		03BFFDD33F2CE2AAD253E055 /* MLX in Frameworks */ = {isa = PBXBuildFile; productRef = D9661A97DE1522B5DE5D2159 /* MLX */; };
@@ -27,6 +16,7 @@
 		0AAEA9E6935219F3863CB856 /* TimeStretchControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89A033EBCC29848A6AB1942E /* TimeStretchControlView.swift */; };
 		0B105D46D136DC341A6DFE59 /* ClaudeLyricWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09418DA54941FA46831381B3 /* ClaudeLyricWriter.swift */; };
 		0B13254EA89B5392E9A9CAC1 /* EditorControlsBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A76327519B864619ABEF9DD6 /* EditorControlsBar.swift */; };
+		0B8B1B3E4188CDC626BDDCBB /* TrimSilenceControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A28F09B76DE01CB91D39E735 /* TrimSilenceControlView.swift */; };
 		0D1F79C398325EF7C39B58FD /* MainShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0F6B989A5E86CCFA2D0415D /* MainShellView.swift */; };
 		0DBC488CDA268BAC26F86953 /* DatasetReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C79807A5A367107A18B34BEE /* DatasetReviewView.swift */; };
 		15AB20E0214EA2D3CC895660 /* EditorWaveformView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDCC7827664FE7A88713A8B7 /* EditorWaveformView.swift */; };
@@ -40,7 +30,9 @@
 		21D9E164686EDEC6F50942C3 /* LPCFormantShifter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E2C75542C334C8CE58E25CF /* LPCFormantShifter.swift */; };
 		224B3F038602937C957191AA /* PresetsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B91DD7107732DDBD6E33025 /* PresetsView.swift */; };
 		247E8913C3C2CC1E309EA7A2 /* AppStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41A93059238ED07185F25CF5 /* AppStateTests.swift */; };
+		25085D1E6D5FD5FEFFA045B3 /* FloatAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28BE238FA17E1269CEE8C37F /* FloatAudio.swift */; };
 		268C9C568C839392FB08C1D7 /* TrainingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDAC58AA87C490C06725C8E0 /* TrainingService.swift */; };
+		27C01F6886C43D83A748A9EC /* DynamicsProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DAF4A2D0864140F65FCD2B3 /* DynamicsProcessor.swift */; };
 		2A32415EAAA5EC43FAC0FAAA /* TrainingDatasetPackageEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 801F725A93F45D28B64D2BC5 /* TrainingDatasetPackageEditor.swift */; };
 		2D8016252183EB12AD027E62 /* HistoryStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC09327803C8A79922A3B4F2 /* HistoryStoreTests.swift */; };
 		2F1C42C138556EABC9B8738D /* ModelsSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0ECE7DFBAAFB9CB5FB304F7E /* ModelsSettingsView.swift */; };
@@ -79,6 +71,7 @@
 		7B6CFE439B669FBC583FB990 /* GenerationPreset.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47EED7870B5DC4BB1B4785C1 /* GenerationPreset.swift */; };
 		7CAE001CD378550D5C10FFE3 /* MLXNN in Frameworks */ = {isa = PBXBuildFile; productRef = F2617C3869BA9ABCCC55CD83 /* MLXNN */; };
 		7DA9CFAF67A7E0F061366D4C /* SourceSeparationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 394C36D243808316A9A70117 /* SourceSeparationService.swift */; };
+		7E919392938570D265359757 /* NormalizeControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE03BBBC3FFF3ED880D73C5A /* NormalizeControlView.swift */; };
 		800488AC6B61AE45396C8D6D /* LocalFilesImportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED69726963E9E51F4E929435 /* LocalFilesImportSheet.swift */; };
 		80E9ECE6088D9C10C861C072 /* DSPPaletteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07F5FC8C81BD5A3CE53323A6 /* DSPPaletteView.swift */; };
 		826B37BED332D91C3DAEC15D /* XAILyricWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18C68CE5111CC93295CD7ADF /* XAILyricWriter.swift */; };
@@ -90,10 +83,13 @@
 		88199EF4E35EDE360F3EB179 /* PiMPAudioCommandFacade+RemoteJobs.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8E45FD26F8223B24DC871EB /* PiMPAudioCommandFacade+RemoteJobs.swift */; };
 		89F4DFFD187D886658A57440 /* PiMPAudioCommandFacade.swift in Sources */ = {isa = PBXBuildFile; fileRef = D86270EFEFBCD098089A4A29 /* PiMPAudioCommandFacade.swift */; };
 		8BD6918D0C3D269DAFF24309 /* LocalDatasetEnrichmentService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2586CD181CDD97D6353D448 /* LocalDatasetEnrichmentService.swift */; };
+		8D6E99DE0A481374AF3CF272 /* PolishForKeepView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBDE9936A43B4E62D8586389 /* PolishForKeepView.swift */; };
 		92928B1D3C508CAC75377CAB /* EditorService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA120575D5C225BFB3148920 /* EditorService.swift */; };
 		934D522A5C33A28BF6C4B12F /* EQControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B9B61DDF5146616CE91EE57 /* EQControlView.swift */; };
+		9481A9404EA165C2BBA0A080 /* HighPassControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AEA4C0CBB759687EE3234B5 /* HighPassControlView.swift */; };
 		A0112DDB7421E4BA5D99EA02 /* EditorPromptArea.swift in Sources */ = {isa = PBXBuildFile; fileRef = B15E2041665BE5622151912D /* EditorPromptArea.swift */; };
 		A179EBA24885EAFBF2173798 /* LocalLyricWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9833CA38211A8C643BAE09B /* LocalLyricWriter.swift */; };
+		A42ED2C855216146D717B0FD /* PolishForKeep.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EA79FAC5CA3501EF464A0CC /* PolishForKeep.swift */; };
 		A6248C2C27E12041F92176DD /* OutputDirectoryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3924B1206C20610914243DAB /* OutputDirectoryManager.swift */; };
 		A8972C66FD839E9B148C733A /* CoverSongCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CED922964E51FCBD115D467 /* CoverSongCoordinator.swift */; };
 		AC01F1A2679689242F452C5D /* LoRACoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9393D7D26AFD717C9B830A10 /* LoRACoordinator.swift */; };
@@ -108,6 +104,7 @@
 		BA1DFB141168AD67A6579F8A /* ReverbControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C8BC398F0D28BB81BCFE15B /* ReverbControlView.swift */; };
 		BAB9F41373E0AC3D8082158D /* PEFTKeyRemapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09875B08861E528C4612B08D /* PEFTKeyRemapper.swift */; };
 		BE4B9A171D99A4F9B34545CC /* EditorToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAEBC0221FBFBE74FC50074F /* EditorToolbar.swift */; };
+		C0577498FCC5EC89E6051916 /* LoudnessControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 723081ECD48403AA0419AB97 /* LoudnessControlView.swift */; };
 		C0BA58D97F2340A272150F99 /* PlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76C7EFFB4E31713C69470685 /* PlayerView.swift */; };
 		C6BEA7A4401319AC6C4201E9 /* TrainingSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EEFBDC4E18557553BEABBA7 /* TrainingSheet.swift */; };
 		C6CF263F4D8D0E2E27FB4CE0 /* GenerationAnalyzerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A600FB041528B3B4F141941 /* GenerationAnalyzerView.swift */; };
@@ -121,6 +118,7 @@
 		D7171847A5705B83ED02A22C /* HistoryEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A7E845F117460DE0679EC50 /* HistoryEntry.swift */; };
 		D8B6ACBCAC1ED37E25662676 /* EditorState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97FD0BB7B9F19C6BD8C4E549 /* EditorState.swift */; };
 		D9AE0EF6495F640487BF297A /* PiMPAudioCore in Frameworks */ = {isa = PBXBuildFile; productRef = EAC1BF7776E5AE15D22FF8BA /* PiMPAudioCore */; };
+		DA05D343F8DDECCA41A95846 /* CompressorControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67107DCC744E7FEF4067A950 /* CompressorControlView.swift */; };
 		DA48A4D833CC79D1815CB890 /* YouTubeImportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 571F4E36A931A0AB27761F6E /* YouTubeImportSheet.swift */; };
 		DD2870044DB10DAAE27B7895 /* MLX in Frameworks */ = {isa = PBXBuildFile; productRef = 28DE1D2B81644C7206C96A3D /* MLX */; };
 		E133F6EE78ED39C41C86D3AE /* GeminiLyricWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD51955FCB857FA6EED59A02 /* GeminiLyricWriter.swift */; };
@@ -130,8 +128,10 @@
 		E9A54C2C33832A121DCFEE1D /* OpenAILyricWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 527FF7C333039F09DDAFD004 /* OpenAILyricWriter.swift */; };
 		EA1DB745567420036A4D5D03 /* APIKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3747A32ED0DA7C80736A0625 /* APIKeyStore.swift */; };
 		EA1E6832453976AD680F7B96 /* PiMPAudioCommandFacade+Resources.swift in Sources */ = {isa = PBXBuildFile; fileRef = 519F17EA3A81614AFA7C1649 /* PiMPAudioCommandFacade+Resources.swift */; };
+		EBBC109AECA795ECCD299E15 /* LimiterControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47328D90E74CE886B33081A6 /* LimiterControlView.swift */; };
 		F08B1A427042D36F1F029C28 /* EditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3D980E94EAEFD25B9B9FE25 /* EditorView.swift */; };
 		F3965955A26D543BF964A9EB /* DSPEffectPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA6CFDF5DC1AD54EF27BA05D /* DSPEffectPresentation.swift */; };
+		F4104F2D2CEB1697868B72AE /* LoudnessMeter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A10AA02FBAFB7F1B3DE7B05 /* LoudnessMeter.swift */; };
 		F60961C7902C664688989A30 /* RunPodServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0C92036F078AF469DFB2533 /* RunPodServiceTests.swift */; };
 		F68777438E3B033AF10A1E46 /* ACEStepGenerationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23E3669212635DA76F1F31BB /* ACEStepGenerationService.swift */; };
 		F9F62614EF9238A108984C92 /* AudioFileLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1922ED80936C6D49A9DBE3AF /* AudioFileLoader.swift */; };
@@ -139,6 +139,7 @@
 		FC750274876E372D2770EF16 /* AudioPlayerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDAD1DFCE24C8AC8940CB518 /* AudioPlayerService.swift */; };
 		FC945D0A45F7DAB3A4BB6D5D /* PiMPAudioCommandFacade+Training.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FD4AC7DB697F3ACB20931D7 /* PiMPAudioCommandFacade+Training.swift */; };
 		FE965D44AE928FE34232F2DA /* PiMPAudioCommandFacade+Types.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3307D429864D5D5CE1809024 /* PiMPAudioCommandFacade+Types.swift */; };
+		FEE98FE9724D7918CA6E7D46 /* SoftGateControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17B921D17A4C5DE340BCF880 /* SoftGateControlView.swift */; };
 		FFC8C8D96CC6842FF023CAC6 /* PiMPAudioCommandFacade+Generation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EFFCF4B91A3FC2C3F0FC103 /* PiMPAudioCommandFacade+Generation.swift */; };
 /* End PBXBuildFile section */
 
@@ -153,17 +154,6 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		D66561F70240435781A36FAD /* SoftGateControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SoftGateControlView.swift; sourceTree = "<group>"; };
-		605A32744B9B40EB9AB67590 /* PolishForKeep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PolishForKeep.swift; sourceTree = "<group>"; };
-		002D1E444257457A90EFFFD4 /* PolishForKeepView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PolishForKeepView.swift; sourceTree = "<group>"; };
-		78A1598379BE4D1E9F3252DF /* DynamicsProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicsProcessor.swift; sourceTree = "<group>"; };
-		6EB7BD41CDF74F4A9C5A5844 /* CompressorControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompressorControlView.swift; sourceTree = "<group>"; };
-		759C97F05E584243B3FF1ED7 /* LimiterControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LimiterControlView.swift; sourceTree = "<group>"; };
-		BDB511675BD1401E9F99388D /* LoudnessControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoudnessControlView.swift; sourceTree = "<group>"; };
-		4CB76285CCBF4B6EB7E2A61E /* LoudnessMeter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoudnessMeter.swift; sourceTree = "<group>"; };
-		CAE76BE2C3E3457988E2B791 /* NormalizeControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NormalizeControlView.swift; sourceTree = "<group>"; };
-		3C5F5E02F4DD44C18B10E261 /* TrimSilenceControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrimSilenceControlView.swift; sourceTree = "<group>"; };
-		DC1E63063E074330A13DD4AA /* HighPassControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HighPassControlView.swift; sourceTree = "<group>"; };
 		0112B72B90B6F4C1FD66A04C /* CommunityBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommunityBrowserView.swift; sourceTree = "<group>"; };
 		0258ADFE79C7081A0E21313D /* PitchShiftControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PitchShiftControlView.swift; sourceTree = "<group>"; };
 		0289E58F6A0E77CDC343102A /* AdapterStackView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdapterStackView.swift; sourceTree = "<group>"; };
@@ -181,12 +171,15 @@
 		15F85488EBD4AE107FD29266 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		170EDAB12E02A75BD53997D2 /* AdapterStackManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdapterStackManager.swift; sourceTree = "<group>"; };
 		170F4A62CC218DA23066DBFA /* ProviderAccessStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderAccessStore.swift; sourceTree = "<group>"; };
+		17B921D17A4C5DE340BCF880 /* SoftGateControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SoftGateControlView.swift; sourceTree = "<group>"; };
 		18C68CE5111CC93295CD7ADF /* XAILyricWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XAILyricWriter.swift; sourceTree = "<group>"; };
 		1922ED80936C6D49A9DBE3AF /* AudioFileLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioFileLoader.swift; sourceTree = "<group>"; };
 		1B9B61DDF5146616CE91EE57 /* EQControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EQControlView.swift; sourceTree = "<group>"; };
 		1FD4AC7DB697F3ACB20931D7 /* PiMPAudioCommandFacade+Training.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PiMPAudioCommandFacade+Training.swift"; sourceTree = "<group>"; };
 		237C151BAB3460455E69B2E2 /* AVAudioEngineDSP.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AVAudioEngineDSP.swift; sourceTree = "<group>"; };
 		23E3669212635DA76F1F31BB /* ACEStepGenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ACEStepGenerationService.swift; sourceTree = "<group>"; };
+		28BE238FA17E1269CEE8C37F /* FloatAudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatAudio.swift; sourceTree = "<group>"; };
+		2AEA4C0CBB759687EE3234B5 /* HighPassControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HighPassControlView.swift; sourceTree = "<group>"; };
 		2C8BC398F0D28BB81BCFE15B /* ReverbControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReverbControlView.swift; sourceTree = "<group>"; };
 		2CED922964E51FCBD115D467 /* CoverSongCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverSongCoordinator.swift; sourceTree = "<group>"; };
 		2D8EB60B0CF7EDDFCCDBDC10 /* PiMPAudioMCPToolCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiMPAudioMCPToolCatalog.swift; sourceTree = "<group>"; };
@@ -198,11 +191,14 @@
 		38D9EDCE18703E06F880DE57 /* LyricWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricWriter.swift; sourceTree = "<group>"; };
 		3924B1206C20610914243DAB /* OutputDirectoryManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutputDirectoryManager.swift; sourceTree = "<group>"; };
 		394C36D243808316A9A70117 /* SourceSeparationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceSeparationService.swift; sourceTree = "<group>"; };
+		3A10AA02FBAFB7F1B3DE7B05 /* LoudnessMeter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoudnessMeter.swift; sourceTree = "<group>"; };
+		3DAF4A2D0864140F65FCD2B3 /* DynamicsProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicsProcessor.swift; sourceTree = "<group>"; };
 		3E2C75542C334C8CE58E25CF /* LPCFormantShifter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LPCFormantShifter.swift; sourceTree = "<group>"; };
 		3EEFBDC4E18557553BEABBA7 /* TrainingSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingSheet.swift; sourceTree = "<group>"; };
 		41A93059238ED07185F25CF5 /* AppStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStateTests.swift; sourceTree = "<group>"; };
 		4331AE5019A96224C031C32B /* LiveGenerationTrace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveGenerationTrace.swift; sourceTree = "<group>"; };
 		4627645D8B5AC0E1C1109CB9 /* AddModelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddModelView.swift; sourceTree = "<group>"; };
+		47328D90E74CE886B33081A6 /* LimiterControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LimiterControlView.swift; sourceTree = "<group>"; };
 		47EED7870B5DC4BB1B4785C1 /* GenerationPreset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationPreset.swift; sourceTree = "<group>"; };
 		4A7E845F117460DE0679EC50 /* HistoryEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryEntry.swift; sourceTree = "<group>"; };
 		4B91DD7107732DDBD6E33025 /* PresetsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetsView.swift; sourceTree = "<group>"; };
@@ -217,10 +213,13 @@
 		54540F1B0DDF28D75FB0BF77 /* DSPTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DSPTests.swift; sourceTree = "<group>"; };
 		571F4E36A931A0AB27761F6E /* YouTubeImportSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouTubeImportSheet.swift; sourceTree = "<group>"; };
 		5837185DAC23502A0971293B /* PiMPAudioCommandFacade+Editor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PiMPAudioCommandFacade+Editor.swift"; sourceTree = "<group>"; };
+		5EA79FAC5CA3501EF464A0CC /* PolishForKeep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PolishForKeep.swift; sourceTree = "<group>"; };
 		62DF9DA9C0DC84D0C3CCAE0F /* PiMPAudioCommandFacade+MCPExtensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PiMPAudioCommandFacade+MCPExtensions.swift"; sourceTree = "<group>"; };
+		67107DCC744E7FEF4067A950 /* CompressorControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompressorControlView.swift; sourceTree = "<group>"; };
 		6A600FB041528B3B4F141941 /* GenerationAnalyzerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationAnalyzerView.swift; sourceTree = "<group>"; };
 		6F8CB5A74714F176FCF6989C /* AdapterRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdapterRegistry.swift; sourceTree = "<group>"; };
 		6FB702EAAC8A01AD7E5D790A /* YouTubeDatasetBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouTubeDatasetBuilder.swift; sourceTree = "<group>"; };
+		723081ECD48403AA0419AB97 /* LoudnessControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoudnessControlView.swift; sourceTree = "<group>"; };
 		74C37138F6C7BE12E3F7715E /* SimpleDSP.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimpleDSP.swift; sourceTree = "<group>"; };
 		76C7EFFB4E31713C69470685 /* PlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerView.swift; sourceTree = "<group>"; };
 		7AC731FD1A3D2361C508EC75 /* DSPParameters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DSPParameters.swift; sourceTree = "<group>"; };
@@ -242,6 +241,7 @@
 		9E9D5E74344ECD70EDE5DD2F /* GenerationTraceComparator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationTraceComparator.swift; sourceTree = "<group>"; };
 		9F022A9AD7928468C806ACE5 /* MCPSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MCPSettingsView.swift; sourceTree = "<group>"; };
 		A0C92036F078AF469DFB2533 /* RunPodServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunPodServiceTests.swift; sourceTree = "<group>"; };
+		A28F09B76DE01CB91D39E735 /* TrimSilenceControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrimSilenceControlView.swift; sourceTree = "<group>"; };
 		A76327519B864619ABEF9DD6 /* EditorControlsBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorControlsBar.swift; sourceTree = "<group>"; };
 		A8AB5D51C2A7489C08F838AA /* GenerationParameters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationParameters.swift; sourceTree = "<group>"; };
 		A98FE13318125AE341A28854 /* GenerationRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationRequest.swift; sourceTree = "<group>"; };
@@ -270,10 +270,12 @@
 		DA120575D5C225BFB3148920 /* EditorService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorService.swift; sourceTree = "<group>"; };
 		DA8B8FFF44362F04A4369E81 /* RunPodService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunPodService.swift; sourceTree = "<group>"; };
 		DAEBC0221FBFBE74FC50074F /* EditorToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorToolbar.swift; sourceTree = "<group>"; };
+		DE03BBBC3FFF3ED880D73C5A /* NormalizeControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NormalizeControlView.swift; sourceTree = "<group>"; };
 		DF5C8822A6F0B121B6259586 /* CommunityService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommunityService.swift; sourceTree = "<group>"; };
 		E0BAE2D98D7CB4D300D75CCF /* WSOLAProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WSOLAProcessor.swift; sourceTree = "<group>"; };
 		E0F6B989A5E86CCFA2D0415D /* MainShellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainShellView.swift; sourceTree = "<group>"; };
 		E3D2834B74CF98F9E5E1D54C /* OutputDirectoryPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutputDirectoryPicker.swift; sourceTree = "<group>"; };
+		EBDE9936A43B4E62D8586389 /* PolishForKeepView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PolishForKeepView.swift; sourceTree = "<group>"; };
 		EC75490F20431028EE7D22E5 /* GenerationMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationMode.swift; sourceTree = "<group>"; };
 		ED1388985C0184792CDC8821 /* LyricWriterManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricWriterManager.swift; sourceTree = "<group>"; };
 		ED4AC7C94D81749A9705316C /* ProviderAccessStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderAccessStoreTests.swift; sourceTree = "<group>"; };
@@ -327,12 +329,13 @@
 				237C151BAB3460455E69B2E2 /* AVAudioEngineDSP.swift */,
 				7AC731FD1A3D2361C508EC75 /* DSPParameters.swift */,
 				7AD283BC85D582825E3DBDE3 /* DSPProcessor.swift */,
+				3DAF4A2D0864140F65FCD2B3 /* DynamicsProcessor.swift */,
+				28BE238FA17E1269CEE8C37F /* FloatAudio.swift */,
+				3A10AA02FBAFB7F1B3DE7B05 /* LoudnessMeter.swift */,
 				3E2C75542C334C8CE58E25CF /* LPCFormantShifter.swift */,
+				5EA79FAC5CA3501EF464A0CC /* PolishForKeep.swift */,
 				86E9FD577ED231C6654F4B3D /* Resampler.swift */,
 				74C37138F6C7BE12E3F7715E /* SimpleDSP.swift */,
-				4CB76285CCBF4B6EB7E2A61E /* LoudnessMeter.swift */,
-				78A1598379BE4D1E9F3252DF /* DynamicsProcessor.swift */,
-				605A32744B9B40EB9AB67590 /* PolishForKeep.swift */,
 				E0BAE2D98D7CB4D300D75CCF /* WSOLAProcessor.swift */,
 			);
 			path = DSP;
@@ -455,16 +458,9 @@
 		8E0BB73B0062712B09D0E316 /* Editor */ = {
 			isa = PBXGroup;
 			children = (
+				67107DCC744E7FEF4067A950 /* CompressorControlView.swift */,
 				BA6CFDF5DC1AD54EF27BA05D /* DSPEffectPresentation.swift */,
 				07F5FC8C81BD5A3CE53323A6 /* DSPPaletteView.swift */,
-				D66561F70240435781A36FAD /* SoftGateControlView.swift */,
-				002D1E444257457A90EFFFD4 /* PolishForKeepView.swift */,
-				BDB511675BD1401E9F99388D /* LoudnessControlView.swift */,
-				759C97F05E584243B3FF1ED7 /* LimiterControlView.swift */,
-				6EB7BD41CDF74F4A9C5A5844 /* CompressorControlView.swift */,
-				DC1E63063E074330A13DD4AA /* HighPassControlView.swift */,
-				3C5F5E02F4DD44C18B10E261 /* TrimSilenceControlView.swift */,
-				CAE76BE2C3E3457988E2B791 /* NormalizeControlView.swift */,
 				A76327519B864619ABEF9DD6 /* EditorControlsBar.swift */,
 				B15E2041665BE5622151912D /* EditorPromptArea.swift */,
 				97FD0BB7B9F19C6BD8C4E549 /* EditorState.swift */,
@@ -472,9 +468,16 @@
 				B3D980E94EAEFD25B9B9FE25 /* EditorView.swift */,
 				CDCC7827664FE7A88713A8B7 /* EditorWaveformView.swift */,
 				1B9B61DDF5146616CE91EE57 /* EQControlView.swift */,
+				2AEA4C0CBB759687EE3234B5 /* HighPassControlView.swift */,
+				47328D90E74CE886B33081A6 /* LimiterControlView.swift */,
+				723081ECD48403AA0419AB97 /* LoudnessControlView.swift */,
+				DE03BBBC3FFF3ED880D73C5A /* NormalizeControlView.swift */,
 				0258ADFE79C7081A0E21313D /* PitchShiftControlView.swift */,
+				EBDE9936A43B4E62D8586389 /* PolishForKeepView.swift */,
 				2C8BC398F0D28BB81BCFE15B /* ReverbControlView.swift */,
+				17B921D17A4C5DE340BCF880 /* SoftGateControlView.swift */,
 				89A033EBCC29848A6AB1942E /* TimeStretchControlView.swift */,
+				A28F09B76DE01CB91D39E735 /* TrimSilenceControlView.swift */,
 			);
 			path = Editor;
 			sourceTree = "<group>";
@@ -684,21 +687,15 @@
 				0B105D46D136DC341A6DFE59 /* ClaudeLyricWriter.swift in Sources */,
 				B3CEBFB093C63C4ED5A84A00 /* CommunityBrowserView.swift in Sources */,
 				48C1D4CCBB95609618A4C90A /* CommunityService.swift in Sources */,
+				DA05D343F8DDECCA41A95846 /* CompressorControlView.swift in Sources */,
 				A8972C66FD839E9B148C733A /* CoverSongCoordinator.swift in Sources */,
 				F3965955A26D543BF964A9EB /* DSPEffectPresentation.swift in Sources */,
 				80E9ECE6088D9C10C861C072 /* DSPPaletteView.swift in Sources */,
-				E2DB2CE91A23482C95A33368 /* SoftGateControlView.swift in Sources */,
-				42D9DBA8BD6B4621AA5D7A2C /* PolishForKeepView.swift in Sources */,
-				5329D0196564440B92AE25F7 /* LoudnessControlView.swift in Sources */,
-				D7B1E1F8B83F4E1091FE8E02 /* LimiterControlView.swift in Sources */,
-				88B8CB85D95441DB84F9E6CF /* CompressorControlView.swift in Sources */,
-				94A09C869C0E47CFB7895DEA /* HighPassControlView.swift in Sources */,
-				847831F5CD954416B35ED32C /* TrimSilenceControlView.swift in Sources */,
-				EAA04F66C6B24C438EFD4F03 /* NormalizeControlView.swift in Sources */,
 				02E87C9D466A616553A78B5F /* DSPParameters.swift in Sources */,
 				6C58B852AD2E5FF841A34E0B /* DSPProcessor.swift in Sources */,
 				0DBC488CDA268BAC26F86953 /* DatasetReviewView.swift in Sources */,
 				E4B50AF1D03F696914736797 /* DownloadProgressRow.swift in Sources */,
+				27C01F6886C43D83A748A9EC /* DynamicsProcessor.swift in Sources */,
 				934D522A5C33A28BF6C4B12F /* EQControlView.swift in Sources */,
 				0B13254EA89B5392E9A9CAC1 /* EditorControlsBar.swift in Sources */,
 				A0112DDB7421E4BA5D99EA02 /* EditorPromptArea.swift in Sources */,
@@ -708,6 +705,7 @@
 				F08B1A427042D36F1F029C28 /* EditorView.swift in Sources */,
 				15AB20E0214EA2D3CC895660 /* EditorWaveformView.swift in Sources */,
 				1995A54E6A36DE64E1F0C1CB /* FirstLaunchView.swift in Sources */,
+				25085D1E6D5FD5FEFFA045B3 /* FloatAudio.swift in Sources */,
 				E133F6EE78ED39C41C86D3AE /* GeminiLyricWriter.swift in Sources */,
 				FA7854B193DBBAF8A5822061 /* GenerateView.swift in Sources */,
 				C6CF263F4D8D0E2E27FB4CE0 /* GenerationAnalyzerView.swift in Sources */,
@@ -718,6 +716,7 @@
 				B73BF0DF0C9E9C17F5B9129E /* GenerationService.swift in Sources */,
 				5CE03EB345AC6B066A1F8E93 /* GenerationState.swift in Sources */,
 				86BBD017EB5D967B8A836829 /* GenerationTraceComparator.swift in Sources */,
+				9481A9404EA165C2BBA0A080 /* HighPassControlView.swift in Sources */,
 				D7171847A5705B83ED02A22C /* HistoryEntry.swift in Sources */,
 				51FE470CF2AB778783784315 /* HistoryListView.swift in Sources */,
 				68DACFCA368B411E0CB322F5 /* HistoryStore.swift in Sources */,
@@ -726,6 +725,7 @@
 				044DD3512D53A2C5A383B5A2 /* IntentRouter.swift in Sources */,
 				3B86830BFEE0E9AEF02DD0E3 /* LLMModelManager.swift in Sources */,
 				21D9E164686EDEC6F50942C3 /* LPCFormantShifter.swift in Sources */,
+				EBBC109AECA795ECCD299E15 /* LimiterControlView.swift in Sources */,
 				D4B8839DE8DCEC1070FEFACF /* LiveGenerationTrace.swift in Sources */,
 				AC01F1A2679689242F452C5D /* LoRACoordinator.swift in Sources */,
 				8BD6918D0C3D269DAFF24309 /* LocalDatasetEnrichmentService.swift in Sources */,
@@ -733,12 +733,15 @@
 				800488AC6B61AE45396C8D6D /* LocalFilesImportSheet.swift in Sources */,
 				A179EBA24885EAFBF2173798 /* LocalLyricWriter.swift in Sources */,
 				6112443B71FD5B84457AB980 /* LossCurveView.swift in Sources */,
+				C0577498FCC5EC89E6051916 /* LoudnessControlView.swift in Sources */,
+				F4104F2D2CEB1697868B72AE /* LoudnessMeter.swift in Sources */,
 				182238F80E3D42B8629B61FC /* LyricWriter.swift in Sources */,
 				B1DAB4DFA5D6049A759C40E2 /* LyricWriterManager.swift in Sources */,
 				5E713D888FCE546BB2CEC0B5 /* MCPSettingsView.swift in Sources */,
 				0D1F79C398325EF7C39B58FD /* MainShellView.swift in Sources */,
 				84A6DC12829EC57B2B79F640 /* MergeSheet.swift in Sources */,
 				2F1C42C138556EABC9B8738D /* ModelsSettingsView.swift in Sources */,
+				7E919392938570D265359757 /* NormalizeControlView.swift in Sources */,
 				E9A54C2C33832A121DCFEE1D /* OpenAILyricWriter.swift in Sources */,
 				A6248C2C27E12041F92176DD /* OutputDirectoryManager.swift in Sources */,
 				07669B652228A1D5565052CF /* OutputDirectoryPicker.swift in Sources */,
@@ -759,6 +762,8 @@
 				057FB5A3410F8551F372E358 /* PiMPAudioStudioApp.swift in Sources */,
 				CA2D2590A6B840D225550B6E /* PitchShiftControlView.swift in Sources */,
 				C0BA58D97F2340A272150F99 /* PlayerView.swift in Sources */,
+				A42ED2C855216146D717B0FD /* PolishForKeep.swift in Sources */,
+				8D6E99DE0A481374AF3CF272 /* PolishForKeepView.swift in Sources */,
 				B74E748568EE1F1412B8070C /* PresetStore.swift in Sources */,
 				224B3F038602937C957191AA /* PresetsView.swift in Sources */,
 				82C5CACCA1E0384CBBC325C0 /* PromptEnhancer.swift in Sources */,
@@ -771,9 +776,7 @@
 				B98CC5CDDB4DCE8AB0D2B427 /* SFXGenerationService.swift in Sources */,
 				42F7C25DED41A07CD77F2476 /* SFXModelManager.swift in Sources */,
 				76641356B5E98E279811359B /* SimpleDSP.swift in Sources */,
-				03CA9F8D0A5B433EA85377EC /* LoudnessMeter.swift in Sources */,
-				69CFE19538DE4DBABF8B133F /* DynamicsProcessor.swift in Sources */,
-				C48BAEF6406B406D988FD610 /* PolishForKeep.swift in Sources */,
+				FEE98FE9724D7918CA6E7D46 /* SoftGateControlView.swift in Sources */,
 				7DA9CFAF67A7E0F061366D4C /* SourceSeparationService.swift in Sources */,
 				0AAEA9E6935219F3863CB856 /* TimeStretchControlView.swift in Sources */,
 				2A32415EAAA5EC43FAC0FAAA /* TrainingDatasetPackageEditor.swift in Sources */,
@@ -781,6 +784,7 @@
 				6D493886A691119BFC271CE6 /* TrainingManifest.swift in Sources */,
 				268C9C568C839392FB08C1D7 /* TrainingService.swift in Sources */,
 				C6BEA7A4401319AC6C4201E9 /* TrainingSheet.swift in Sources */,
+				0B8B1B3E4188CDC626BDDCBB /* TrimSilenceControlView.swift in Sources */,
 				C81C2E0DD27E3B4C15A74216 /* WSOLAProcessor.swift in Sources */,
 				833A72E4C259BA4E7BBBD617 /* WaveformView.swift in Sources */,
 				826B37BED332D91C3DAEC15D /* XAILyricWriter.swift in Sources */,

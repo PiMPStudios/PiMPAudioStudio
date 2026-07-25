@@ -19,11 +19,15 @@ struct AVAudioEngineDSP {
     // MARK: - EQ
 
     static func applyEQ(to buffer: AudioBuffer, parameters: EQParameters, target: ApplyTarget) throws -> AudioBuffer {
+        try applyEQ(to: FloatAudio(buffer), parameters: parameters, target: target).toAudioBuffer()
+    }
+
+    static func applyEQ(to audio: FloatAudio, parameters: EQParameters, target: ApplyTarget) throws -> FloatAudio {
         switch target {
         case .wholeTrack:
-            return try applyEQToBuffer(buffer, parameters: parameters)
+            return try applyEQToBuffer(audio, parameters: parameters)
         case .selection(let start, let end):
-            return try applyToRegion(buffer, start: start, end: end) { region in
+            return try applyToRegion(audio, start: start, end: end) { region in
                 try applyEQToBuffer(region, parameters: parameters)
             }
         }
@@ -35,8 +39,8 @@ struct AVAudioEngineDSP {
         return min(max(Float(bandwidth), 0.05), 5.0)
     }
 
-    private static func applyEQToBuffer(_ buffer: AudioBuffer, parameters: EQParameters) throws -> AudioBuffer {
-        let pcmBuffer = try AudioBufferConverter.toPCMBuffer(buffer)
+    private static func applyEQToBuffer(_ audio: FloatAudio, parameters: EQParameters) throws -> FloatAudio {
+        let pcmBuffer = try AudioBufferConverter.toPCMBuffer(audio)
         let format = pcmBuffer.format
 
         let engine = AVAudioEngine()
@@ -96,17 +100,21 @@ struct AVAudioEngineDSP {
         outputBuffer.frameLength = framesRendered
 
         engine.stop()
-        return AudioBufferConverter.fromPCMBuffer(outputBuffer)
+        return AudioBufferConverter.floatAudio(from: outputBuffer)
     }
 
     // MARK: - Reverb
 
     static func applyReverb(to buffer: AudioBuffer, parameters: ReverbParameters, target: ApplyTarget) throws -> AudioBuffer {
+        try applyReverb(to: FloatAudio(buffer), parameters: parameters, target: target).toAudioBuffer()
+    }
+
+    static func applyReverb(to audio: FloatAudio, parameters: ReverbParameters, target: ApplyTarget) throws -> FloatAudio {
         switch target {
         case .wholeTrack:
-            return try applyReverbToBuffer(buffer, parameters: parameters)
+            return try applyReverbToBuffer(audio, parameters: parameters)
         case .selection(let start, let end):
-            return try applyToRegion(buffer, start: start, end: end) { region in
+            return try applyToRegion(audio, start: start, end: end) { region in
                 try applyReverbToBuffer(region, parameters: parameters)
             }
         }
@@ -133,14 +141,14 @@ struct AVAudioEngineDSP {
         return maxCutoff * pow(minCutoff / maxCutoff, clampedDamping)
     }
 
-    private static func applyReverbToBuffer(_ buffer: AudioBuffer, parameters: ReverbParameters) throws -> AudioBuffer {
-        let pcmBuffer = try AudioBufferConverter.toPCMBuffer(buffer)
+    private static func applyReverbToBuffer(_ audio: FloatAudio, parameters: ReverbParameters) throws -> FloatAudio {
+        let pcmBuffer = try AudioBufferConverter.toPCMBuffer(audio)
         let format = pcmBuffer.format
         let wetDryMix = min(max(parameters.wetDryMix, 0), 1)
-        guard wetDryMix > 0 else { return buffer }
+        guard wetDryMix > 0 else { return audio }
 
-        let tailFrames = AVAudioFrameCount(reverbTailFrameCount(parameters: parameters, sampleRate: buffer.sampleRate))
-        let preDelayFrames = AVAudioFrameCount(reverbPreDelayFrameCount(parameters: parameters, sampleRate: buffer.sampleRate))
+        let tailFrames = AVAudioFrameCount(reverbTailFrameCount(parameters: parameters, sampleRate: audio.sampleRate))
+        let preDelayFrames = AVAudioFrameCount(reverbPreDelayFrameCount(parameters: parameters, sampleRate: audio.sampleRate))
         let totalFrames = pcmBuffer.frameLength + tailFrames
         let wetInput = try delayedWetInputBuffer(
             source: pcmBuffer,
@@ -167,7 +175,7 @@ struct AVAudioEngineDSP {
             }
         }
 
-        return AudioBufferConverter.fromPCMBuffer(outputBuffer)
+        return AudioBufferConverter.floatAudio(from: outputBuffer)
     }
 
     private static func renderWetReverbBuffer(
@@ -328,33 +336,34 @@ struct AVAudioEngineDSP {
     // MARK: - Region Splicing
 
     private static func applyToRegion(
-        _ buffer: AudioBuffer,
+        _ audio: FloatAudio,
         start: TimeInterval,
         end: TimeInterval,
-        transform: (AudioBuffer) throws -> AudioBuffer
-    ) throws -> AudioBuffer {
-        let bytesPerSample = MemoryLayout<Int16>.size
-        let startSample = SimpleDSP.sampleIndex(time: start, sampleRate: buffer.sampleRate, channels: buffer.channels)
+        transform: (FloatAudio) throws -> FloatAudio
+    ) throws -> FloatAudio {
+        let startSample = min(
+            SimpleDSP.sampleIndex(time: start, sampleRate: audio.sampleRate, channels: audio.channels),
+            audio.samples.count
+        )
         let endSample = min(
-            SimpleDSP.sampleIndex(time: end, sampleRate: buffer.sampleRate, channels: buffer.channels),
-            buffer.data.count / bytesPerSample
+            max(
+                SimpleDSP.sampleIndex(time: end, sampleRate: audio.sampleRate, channels: audio.channels),
+                startSample
+            ),
+            audio.samples.count
         )
 
-        let startByte = startSample * bytesPerSample
-        let endByte = endSample * bytesPerSample
+        let region = audio.replacingSamples(Array(audio.samples[startSample..<endSample]))
+        let processed = try transform(region)
 
-        let regionData = Data(buffer.data[startByte..<endByte])
-        let regionBuffer = AudioBuffer(data: regionData, sampleRate: buffer.sampleRate, channels: buffer.channels)
-
-        let processed = try transform(regionBuffer)
-
-        var result = Data()
-        result.append(buffer.data[0..<startByte])
-        result.append(processed.data)
-        if endByte < buffer.data.count {
-            result.append(buffer.data[endByte...])
+        var result = [Float]()
+        result.reserveCapacity(startSample + processed.samples.count + (audio.samples.count - endSample))
+        result.append(contentsOf: audio.samples[0..<startSample])
+        result.append(contentsOf: processed.samples)
+        if endSample < audio.samples.count {
+            result.append(contentsOf: audio.samples[endSample...])
         }
 
-        return AudioBuffer(data: result, sampleRate: buffer.sampleRate, channels: buffer.channels)
+        return audio.replacingSamples(result)
     }
 }
