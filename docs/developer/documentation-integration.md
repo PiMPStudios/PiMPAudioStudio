@@ -58,8 +58,15 @@ Optional later: ship a subset of developer docs under a separate
 Presentation:
 
 - Left: TOC (prefer links from `README.md`, then defaults, then leftovers)
-- Right: SwiftUI Markdown (`AttributedString`)
+- Right: block Markdown via `HelpMarkdown` + `MarkdownDocumentView` (headings,
+  paragraphs with soft-wrap join, lists, fenced code, tables, thematic breaks;
+  inline bold/code/links via `AttributedString` inline syntax)
+- Leading H1 matching the page title is dropped so the nav title is not doubled
+- Relative `*.md` links navigate within Help; other URLs open normally
 - Offline only for the MVP (no online site yet)
+
+> Note: A single `Text(AttributedString(markdown: fullDocument))` collapses all
+> blocks into one run with no spacing — do not use that for multi-section pages.
 
 ## Build System
 

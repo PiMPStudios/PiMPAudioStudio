@@ -7,12 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		475B8EDE49A34369A3EEB216 /* HelpCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96740B96EE09456FB6FAEC27 /* HelpCatalogTests.swift */; };
-		312B850948534C9AB9237CC0 /* HelpCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC1B223217D449D98E0157E6 /* HelpCommands.swift */; };
-		F565F6CDD1D74BD8B1665A3B /* DocumentationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90FBA55A8C3C424D9F8492F6 /* DocumentationView.swift */; };
-		126809FBFB774C73B992861B /* HelpCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50679720A2084E4EBF21A882 /* HelpCatalog.swift */; };
-		D2E3F4A5B6471890ABCDEF01 /* VerticalResizeGrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1D2E3F4A5B6471890ABCDEF /* VerticalResizeGrip.swift */; };
-		BDF9939619E64836870C2445 /* HistoryEntry+GenerateRestore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5743E40B45E46F89175EF80 /* HistoryEntry+GenerateRestore.swift */; };
 		02E720C4E915E4FC5E80E083 /* AdapterStackManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 170EDAB12E02A75BD53997D2 /* AdapterStackManager.swift */; };
 		02E87C9D466A616553A78B5F /* DSPParameters.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AC731FD1A3D2361C508EC75 /* DSPParameters.swift */; };
 		03BFFDD33F2CE2AAD253E055 /* MLX in Frameworks */ = {isa = PBXBuildFile; productRef = D9661A97DE1522B5DE5D2159 /* MLX */; };
@@ -45,6 +39,7 @@
 		3050218A23B1C42D2673D2CF /* AVAudioEngineDSP.swift in Sources */ = {isa = PBXBuildFile; fileRef = 237C151BAB3460455E69B2E2 /* AVAudioEngineDSP.swift */; };
 		35A8431CF3F97F38D8D57008 /* LocalFilesDatasetBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02E0B44958599CDF0454AA68 /* LocalFilesDatasetBuilder.swift */; };
 		35DA28D5ED241444FCEAE850 /* MCP in Frameworks */ = {isa = PBXBuildFile; productRef = 11A516B809189B1B73BD3830 /* MCP */; };
+		37AB8581B7B818729ECBB75D /* DocumentationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C14C1DC9357DA5101595366 /* DocumentationView.swift */; };
 		3B86830BFEE0E9AEF02DD0E3 /* LLMModelManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBD3412753A08FF586208464 /* LLMModelManager.swift */; };
 		426ADA63B84A17049FBFC180 /* IntelligenceSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC20CE008F4C1F291CCCEB31 /* IntelligenceSettingsView.swift */; };
 		428F31BF21440674F8DB5F0C /* TrainingDatasetPackageWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0D7B640C60A10C22AC67066 /* TrainingDatasetPackageWriter.swift */; };
@@ -52,6 +47,8 @@
 		42FC4070C660ED8FCA70FD74 /* MLXOptimizers in Frameworks */ = {isa = PBXBuildFile; productRef = 7D6EDE7F0F2BCDE990F4D2D9 /* MLXOptimizers */; };
 		43CAE063EC828BBD6491854F /* PiMPAudioMCPHTTPServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B373E9E4DB92E73B9133D5B1 /* PiMPAudioMCPHTTPServer.swift */; };
 		48C1D4CCBB95609618A4C90A /* CommunityService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF5C8822A6F0B121B6259586 /* CommunityService.swift */; };
+		49633C7A37C890E4E53AAA4D /* HelpCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45224EFE14D95483A27A456F /* HelpCatalog.swift */; };
+		4A43C9A0C8825145128E61E6 /* HelpCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CFFA68388157FA2475CF632 /* HelpCommands.swift */; };
 		4C3DF5AE0DB4BB5075B15825 /* AppRuntimeIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 127582913C97D8C75CF1450A /* AppRuntimeIdentity.swift */; };
 		4FBA8122499600CE9E2A1338 /* HuggingFaceImportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D278A4F69183EB5824B0863 /* HuggingFaceImportSheet.swift */; };
 		51446D34E426AC6B093619AD /* RunPodService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA8B8FFF44362F04A4369E81 /* RunPodService.swift */; };
@@ -77,6 +74,7 @@
 		7B6CFE439B669FBC583FB990 /* GenerationPreset.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47EED7870B5DC4BB1B4785C1 /* GenerationPreset.swift */; };
 		7CAE001CD378550D5C10FFE3 /* MLXNN in Frameworks */ = {isa = PBXBuildFile; productRef = F2617C3869BA9ABCCC55CD83 /* MLXNN */; };
 		7DA9CFAF67A7E0F061366D4C /* SourceSeparationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 394C36D243808316A9A70117 /* SourceSeparationService.swift */; };
+		7DC4A61254AB08776F11163C /* VerticalResizeGrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = D52420D8AD6B1F6F20F7A696 /* VerticalResizeGrip.swift */; };
 		7E919392938570D265359757 /* NormalizeControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE03BBBC3FFF3ED880D73C5A /* NormalizeControlView.swift */; };
 		800488AC6B61AE45396C8D6D /* LocalFilesImportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED69726963E9E51F4E929435 /* LocalFilesImportSheet.swift */; };
 		80E9ECE6088D9C10C861C072 /* DSPPaletteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07F5FC8C81BD5A3CE53323A6 /* DSPPaletteView.swift */; };
@@ -96,6 +94,7 @@
 		A0112DDB7421E4BA5D99EA02 /* EditorPromptArea.swift in Sources */ = {isa = PBXBuildFile; fileRef = B15E2041665BE5622151912D /* EditorPromptArea.swift */; };
 		A179EBA24885EAFBF2173798 /* LocalLyricWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9833CA38211A8C643BAE09B /* LocalLyricWriter.swift */; };
 		A42ED2C855216146D717B0FD /* PolishForKeep.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EA79FAC5CA3501EF464A0CC /* PolishForKeep.swift */; };
+		A47F801A3E1ECCFBE169636E /* HelpMarkdown.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86A612BA135384CE56DA089A /* HelpMarkdown.swift */; };
 		A6248C2C27E12041F92176DD /* OutputDirectoryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3924B1206C20610914243DAB /* OutputDirectoryManager.swift */; };
 		A8972C66FD839E9B148C733A /* CoverSongCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CED922964E51FCBD115D467 /* CoverSongCoordinator.swift */; };
 		AC01F1A2679689242F452C5D /* LoRACoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9393D7D26AFD717C9B830A10 /* LoRACoordinator.swift */; };
@@ -110,6 +109,7 @@
 		BA1DFB141168AD67A6579F8A /* ReverbControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C8BC398F0D28BB81BCFE15B /* ReverbControlView.swift */; };
 		BAB9F41373E0AC3D8082158D /* PEFTKeyRemapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09875B08861E528C4612B08D /* PEFTKeyRemapper.swift */; };
 		BE4B9A171D99A4F9B34545CC /* EditorToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAEBC0221FBFBE74FC50074F /* EditorToolbar.swift */; };
+		C056312BF8606F0AE748EC75 /* HelpCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8647D443A3226AAC594A4F5 /* HelpCatalogTests.swift */; };
 		C0577498FCC5EC89E6051916 /* LoudnessControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 723081ECD48403AA0419AB97 /* LoudnessControlView.swift */; };
 		C0BA58D97F2340A272150F99 /* PlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76C7EFFB4E31713C69470685 /* PlayerView.swift */; };
 		C6BEA7A4401319AC6C4201E9 /* TrainingSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EEFBDC4E18557553BEABBA7 /* TrainingSheet.swift */; };
@@ -144,6 +144,7 @@
 		FA7854B193DBBAF8A5822061 /* GenerateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331B6BA9555DFC16D57A8D16 /* GenerateView.swift */; };
 		FC750274876E372D2770EF16 /* AudioPlayerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDAD1DFCE24C8AC8940CB518 /* AudioPlayerService.swift */; };
 		FC945D0A45F7DAB3A4BB6D5D /* PiMPAudioCommandFacade+Training.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FD4AC7DB697F3ACB20931D7 /* PiMPAudioCommandFacade+Training.swift */; };
+		FCF0FB8BBAD690C977018371 /* HistoryEntry+GenerateRestore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 043236E0E9C0422FD75B1369 /* HistoryEntry+GenerateRestore.swift */; };
 		FE965D44AE928FE34232F2DA /* PiMPAudioCommandFacade+Types.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3307D429864D5D5CE1809024 /* PiMPAudioCommandFacade+Types.swift */; };
 		FEE98FE9724D7918CA6E7D46 /* SoftGateControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17B921D17A4C5DE340BCF880 /* SoftGateControlView.swift */; };
 		FFC8C8D96CC6842FF023CAC6 /* PiMPAudioCommandFacade+Generation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EFFCF4B91A3FC2C3F0FC103 /* PiMPAudioCommandFacade+Generation.swift */; };
@@ -160,16 +161,11 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		96740B96EE09456FB6FAEC27 /* HelpCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelpCatalogTests.swift; sourceTree = "<group>"; };
-		DC1B223217D449D98E0157E6 /* HelpCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelpCommands.swift; sourceTree = "<group>"; };
-		90FBA55A8C3C424D9F8492F6 /* DocumentationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentationView.swift; sourceTree = "<group>"; };
-		50679720A2084E4EBF21A882 /* HelpCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelpCatalog.swift; sourceTree = "<group>"; };
-		C1D2E3F4A5B6471890ABCDEF /* VerticalResizeGrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VerticalResizeGrip.swift; sourceTree = "<group>"; };
-		A5743E40B45E46F89175EF80 /* HistoryEntry+GenerateRestore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HistoryEntry+GenerateRestore.swift"; sourceTree = "<group>"; };
 		0112B72B90B6F4C1FD66A04C /* CommunityBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommunityBrowserView.swift; sourceTree = "<group>"; };
 		0258ADFE79C7081A0E21313D /* PitchShiftControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PitchShiftControlView.swift; sourceTree = "<group>"; };
 		0289E58F6A0E77CDC343102A /* AdapterStackView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdapterStackView.swift; sourceTree = "<group>"; };
 		02E0B44958599CDF0454AA68 /* LocalFilesDatasetBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalFilesDatasetBuilder.swift; sourceTree = "<group>"; };
+		043236E0E9C0422FD75B1369 /* HistoryEntry+GenerateRestore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HistoryEntry+GenerateRestore.swift"; sourceTree = "<group>"; };
 		07F5FC8C81BD5A3CE53323A6 /* DSPPaletteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DSPPaletteView.swift; sourceTree = "<group>"; };
 		08280CE82EED7121DD142A12 /* LossCurveView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LossCurveView.swift; sourceTree = "<group>"; };
 		09418DA54941FA46831381B3 /* ClaudeLyricWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeLyricWriter.swift; sourceTree = "<group>"; };
@@ -187,6 +183,8 @@
 		18C68CE5111CC93295CD7ADF /* XAILyricWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XAILyricWriter.swift; sourceTree = "<group>"; };
 		1922ED80936C6D49A9DBE3AF /* AudioFileLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioFileLoader.swift; sourceTree = "<group>"; };
 		1B9B61DDF5146616CE91EE57 /* EQControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EQControlView.swift; sourceTree = "<group>"; };
+		1C14C1DC9357DA5101595366 /* DocumentationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentationView.swift; sourceTree = "<group>"; };
+		1CFFA68388157FA2475CF632 /* HelpCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelpCommands.swift; sourceTree = "<group>"; };
 		1FD4AC7DB697F3ACB20931D7 /* PiMPAudioCommandFacade+Training.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PiMPAudioCommandFacade+Training.swift"; sourceTree = "<group>"; };
 		237C151BAB3460455E69B2E2 /* AVAudioEngineDSP.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AVAudioEngineDSP.swift; sourceTree = "<group>"; };
 		23E3669212635DA76F1F31BB /* ACEStepGenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ACEStepGenerationService.swift; sourceTree = "<group>"; };
@@ -209,6 +207,7 @@
 		3EEFBDC4E18557553BEABBA7 /* TrainingSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingSheet.swift; sourceTree = "<group>"; };
 		41A93059238ED07185F25CF5 /* AppStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStateTests.swift; sourceTree = "<group>"; };
 		4331AE5019A96224C031C32B /* LiveGenerationTrace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveGenerationTrace.swift; sourceTree = "<group>"; };
+		45224EFE14D95483A27A456F /* HelpCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelpCatalog.swift; sourceTree = "<group>"; };
 		4627645D8B5AC0E1C1109CB9 /* AddModelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddModelView.swift; sourceTree = "<group>"; };
 		47328D90E74CE886B33081A6 /* LimiterControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LimiterControlView.swift; sourceTree = "<group>"; };
 		47EED7870B5DC4BB1B4785C1 /* GenerationPreset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationPreset.swift; sourceTree = "<group>"; };
@@ -242,6 +241,7 @@
 		7F318EE06916402DA1BE7B5A /* PiMPAudioStudioTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PiMPAudioStudioTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		7F5D080E857CAB3EBCD872F5 /* PiMPAudioMCPServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiMPAudioMCPServer.swift; sourceTree = "<group>"; };
 		801F725A93F45D28B64D2BC5 /* TrainingDatasetPackageEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingDatasetPackageEditor.swift; sourceTree = "<group>"; };
+		86A612BA135384CE56DA089A /* HelpMarkdown.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelpMarkdown.swift; sourceTree = "<group>"; };
 		86E9FD577ED231C6654F4B3D /* Resampler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Resampler.swift; sourceTree = "<group>"; };
 		89A033EBCC29848A6AB1942E /* TimeStretchControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimeStretchControlView.swift; sourceTree = "<group>"; };
 		8F7645D3E144BF07A7F8334C /* RunPodLifecyclePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunPodLifecyclePanel.swift; sourceTree = "<group>"; };
@@ -271,12 +271,14 @@
 		BDAC58AA87C490C06725C8E0 /* TrainingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingService.swift; sourceTree = "<group>"; };
 		C2586CD181CDD97D6353D448 /* LocalDatasetEnrichmentService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalDatasetEnrichmentService.swift; sourceTree = "<group>"; };
 		C79807A5A367107A18B34BEE /* DatasetReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatasetReviewView.swift; sourceTree = "<group>"; };
+		C8647D443A3226AAC594A4F5 /* HelpCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelpCatalogTests.swift; sourceTree = "<group>"; };
 		CBD3412753A08FF586208464 /* LLMModelManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMModelManager.swift; sourceTree = "<group>"; };
 		CC20CE008F4C1F291CCCEB31 /* IntelligenceSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntelligenceSettingsView.swift; sourceTree = "<group>"; };
 		CD51955FCB857FA6EED59A02 /* GeminiLyricWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeminiLyricWriter.swift; sourceTree = "<group>"; };
 		CDCC7827664FE7A88713A8B7 /* EditorWaveformView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorWaveformView.swift; sourceTree = "<group>"; };
 		D259CCEA17A9820A3167836A /* GenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationService.swift; sourceTree = "<group>"; };
 		D33155AB9C847F52FEB43199 /* PiMPAudioCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = PiMPAudioCore; path = PiMPAudioCore; sourceTree = SOURCE_ROOT; };
+		D52420D8AD6B1F6F20F7A696 /* VerticalResizeGrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VerticalResizeGrip.swift; sourceTree = "<group>"; };
 		D86270EFEFBCD098089A4A29 /* PiMPAudioCommandFacade.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiMPAudioCommandFacade.swift; sourceTree = "<group>"; };
 		D9833CA38211A8C643BAE09B /* LocalLyricWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLyricWriter.swift; sourceTree = "<group>"; };
 		DA120575D5C225BFB3148920 /* EditorService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorService.swift; sourceTree = "<group>"; };
@@ -324,15 +326,6 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		6300713C91FA4564A8C88154 /* Help */ = {
-			isa = PBXGroup;
-			children = (
-				90FBA55A8C3C424D9F8492F6 /* DocumentationView.swift */,
-				DC1B223217D449D98E0157E6 /* HelpCommands.swift */,
-			);
-			path = Help;
-			sourceTree = "<group>";
-		};
 		07F1AF0444206A2766B37E6B /* Generate */ = {
 			isa = PBXGroup;
 			children = (
@@ -341,6 +334,15 @@
 				6A600FB041528B3B4F141941 /* GenerationAnalyzerView.swift */,
 			);
 			path = Generate;
+			sourceTree = "<group>";
+		};
+		08F37D68272EC8CE745ECEDB /* Help */ = {
+			isa = PBXGroup;
+			children = (
+				1C14C1DC9357DA5101595366 /* DocumentationView.swift */,
+				1CFFA68388157FA2475CF632 /* HelpCommands.swift */,
+			);
+			path = Help;
 			sourceTree = "<group>";
 		};
 		0E2B0F4A395B8945C99F7841 /* DSP */ = {
@@ -389,8 +391,9 @@
 				2CED922964E51FCBD115D467 /* CoverSongCoordinator.swift */,
 				DA120575D5C225BFB3148920 /* EditorService.swift */,
 				D259CCEA17A9820A3167836A /* GenerationService.swift */,
+				45224EFE14D95483A27A456F /* HelpCatalog.swift */,
+				86A612BA135384CE56DA089A /* HelpMarkdown.swift */,
 				14DF3990C64F292DEA3A1EE5 /* HistoryStore.swift */,
-				50679720A2084E4EBF21A882 /* HelpCatalog.swift */,
 				BABE791CEF9D675C31B253AD /* IntentRouter.swift */,
 				CBD3412753A08FF586208464 /* LLMModelManager.swift */,
 				C2586CD181CDD97D6353D448 /* LocalDatasetEnrichmentService.swift */,
@@ -513,8 +516,8 @@
 				B4F7666A5DAAC6A25C563792 /* HistoryListView.swift */,
 				E3D2834B74CF98F9E5E1D54C /* OutputDirectoryPicker.swift */,
 				76C7EFFB4E31713C69470685 /* PlayerView.swift */,
+				D52420D8AD6B1F6F20F7A696 /* VerticalResizeGrip.swift */,
 				15E5A1DDB5948E297A67C5B9 /* WaveformView.swift */,
-				C1D2E3F4A5B6471890ABCDEF /* VerticalResizeGrip.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -543,7 +546,7 @@
 				514E3F918492C3A0CCF277BC /* GenerationState.swift */,
 				9E9D5E74344ECD70EDE5DD2F /* GenerationTraceComparator.swift */,
 				4A7E845F117460DE0679EC50 /* HistoryEntry.swift */,
-				A5743E40B45E46F89175EF80 /* HistoryEntry+GenerateRestore.swift */,
+				043236E0E9C0422FD75B1369 /* HistoryEntry+GenerateRestore.swift */,
 				4331AE5019A96224C031C32B /* LiveGenerationTrace.swift */,
 			);
 			path = Models;
@@ -552,12 +555,12 @@
 		BCF1D1C2EC45A86E42B910B8 /* UI */ = {
 			isa = PBXGroup;
 			children = (
-				6300713C91FA4564A8C88154 /* Help */,
 				AF1B0EC010DA54932CEC58BA /* FirstLaunchView.swift */,
 				E0F6B989A5E86CCFA2D0415D /* MainShellView.swift */,
 				9529CD3E0E3A3E3F080BF226 /* Components */,
 				8E0BB73B0062712B09D0E316 /* Editor */,
 				07F1AF0444206A2766B37E6B /* Generate */,
+				08F37D68272EC8CE745ECEDB /* Help */,
 				D74176ACE0CD92DAD490A1E5 /* Presets */,
 				8DF172785CB59AB3EBEB56F4 /* Settings */,
 				3655A297A8C9249E8D5761FA /* Training */,
@@ -585,8 +588,8 @@
 			isa = PBXGroup;
 			children = (
 				41A93059238ED07185F25CF5 /* AppStateTests.swift */,
-				96740B96EE09456FB6FAEC27 /* HelpCatalogTests.swift */,
 				54540F1B0DDF28D75FB0BF77 /* DSPTests.swift */,
+				C8647D443A3226AAC594A4F5 /* HelpCatalogTests.swift */,
 				FC09327803C8A79922A3B4F2 /* HistoryStoreTests.swift */,
 				ED4AC7C94D81749A9705316C /* ProviderAccessStoreTests.swift */,
 				A0C92036F078AF469DFB2533 /* RunPodServiceTests.swift */,
@@ -601,7 +604,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 1127102C3D42AF0372ADB672 /* Build configuration list for PBXNativeTarget "PiMPAudioStudio" */;
 			buildPhases = (
-				A39B48F3644142E79E60731A /* Sync User Help Docs */,
+				2BC8D8B9C1A7AC43BBC40F95 /* Sync User Help Docs */,
 				4DEF366694A95ACD88B82332 /* Sources */,
 				91E5BD096F55D84951B7CB80 /* Frameworks */,
 			);
@@ -680,7 +683,7 @@
 /* End PBXProject section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		A39B48F3644142E79E60731A /* Sync User Help Docs */ = {
+		2BC8D8B9C1A7AC43BBC40F95 /* Sync User Help Docs */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
@@ -697,7 +700,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -euo pipefail\nSRC=\"${SRCROOT}/docs/user\"\nDST=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/Help\"\nif [ ! -d \"$SRC\" ]; then\n  echo \"warning: missing user docs at $SRC\" >&2\n  exit 0\nfi\nmkdir -p \"$DST\"\nrm -f \"$DST\"/*.md\ncp \"$SRC\"/*.md \"$DST\"/\necho \"note: synced $(ls -1 \"$DST\"/*.md | wc -l | tr -d ' ') help page(s) into app bundle\"\n";
+			shellScript = "set -euo pipefail\nSRC=\"${SRCROOT}/docs/user\"\nDST=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/Help\"\nif [[ ! -d \"$SRC\" ]]; then\n  echo \"warning: missing user docs at $SRC\" >&2\n  exit 0\nfi\nmkdir -p \"$DST\"\nrm -f \"$DST\"/*.md\ncp \"$SRC\"/*.md \"$DST/\"\necho \"note: synced $(ls -1 \"$DST\"/*.md | wc -l | tr -d ' ') help page(s) into app bundle\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -707,8 +710,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				247E8913C3C2CC1E309EA7A2 /* AppStateTests.swift in Sources */,
-				475B8EDE49A34369A3EEB216 /* HelpCatalogTests.swift in Sources */,
 				6A145594A7A4945ED4CD19F2 /* DSPTests.swift in Sources */,
+				C056312BF8606F0AE748EC75 /* HelpCatalogTests.swift in Sources */,
 				2D8016252183EB12AD027E62 /* HistoryStoreTests.swift in Sources */,
 				7A7B53861467729A61453BBC /* ProviderAccessStoreTests.swift in Sources */,
 				F60961C7902C664688989A30 /* RunPodServiceTests.swift in Sources */,
@@ -744,6 +747,7 @@
 				02E87C9D466A616553A78B5F /* DSPParameters.swift in Sources */,
 				6C58B852AD2E5FF841A34E0B /* DSPProcessor.swift in Sources */,
 				0DBC488CDA268BAC26F86953 /* DatasetReviewView.swift in Sources */,
+				37AB8581B7B818729ECBB75D /* DocumentationView.swift in Sources */,
 				E4B50AF1D03F696914736797 /* DownloadProgressRow.swift in Sources */,
 				27C01F6886C43D83A748A9EC /* DynamicsProcessor.swift in Sources */,
 				934D522A5C33A28BF6C4B12F /* EQControlView.swift in Sources */,
@@ -766,12 +770,14 @@
 				B73BF0DF0C9E9C17F5B9129E /* GenerationService.swift in Sources */,
 				5CE03EB345AC6B066A1F8E93 /* GenerationState.swift in Sources */,
 				86BBD017EB5D967B8A836829 /* GenerationTraceComparator.swift in Sources */,
+				49633C7A37C890E4E53AAA4D /* HelpCatalog.swift in Sources */,
+				4A43C9A0C8825145128E61E6 /* HelpCommands.swift in Sources */,
+				A47F801A3E1ECCFBE169636E /* HelpMarkdown.swift in Sources */,
 				9481A9404EA165C2BBA0A080 /* HighPassControlView.swift in Sources */,
+				FCF0FB8BBAD690C977018371 /* HistoryEntry+GenerateRestore.swift in Sources */,
 				D7171847A5705B83ED02A22C /* HistoryEntry.swift in Sources */,
-				BDF9939619E64836870C2445 /* HistoryEntry+GenerateRestore.swift in Sources */,
 				51FE470CF2AB778783784315 /* HistoryListView.swift in Sources */,
 				68DACFCA368B411E0CB322F5 /* HistoryStore.swift in Sources */,
-				126809FBFB774C73B992861B /* HelpCatalog.swift in Sources */,
 				4FBA8122499600CE9E2A1338 /* HuggingFaceImportSheet.swift in Sources */,
 				426ADA63B84A17049FBFC180 /* IntelligenceSettingsView.swift in Sources */,
 				044DD3512D53A2C5A383B5A2 /* IntentRouter.swift in Sources */,
@@ -791,8 +797,6 @@
 				B1DAB4DFA5D6049A759C40E2 /* LyricWriterManager.swift in Sources */,
 				5E713D888FCE546BB2CEC0B5 /* MCPSettingsView.swift in Sources */,
 				0D1F79C398325EF7C39B58FD /* MainShellView.swift in Sources */,
-				312B850948534C9AB9237CC0 /* HelpCommands.swift in Sources */,
-				F565F6CDD1D74BD8B1665A3B /* DocumentationView.swift in Sources */,
 				84A6DC12829EC57B2B79F640 /* MergeSheet.swift in Sources */,
 				2F1C42C138556EABC9B8738D /* ModelsSettingsView.swift in Sources */,
 				7E919392938570D265359757 /* NormalizeControlView.swift in Sources */,
@@ -839,9 +843,9 @@
 				268C9C568C839392FB08C1D7 /* TrainingService.swift in Sources */,
 				C6BEA7A4401319AC6C4201E9 /* TrainingSheet.swift in Sources */,
 				0B8B1B3E4188CDC626BDDCBB /* TrimSilenceControlView.swift in Sources */,
+				7DC4A61254AB08776F11163C /* VerticalResizeGrip.swift in Sources */,
 				C81C2E0DD27E3B4C15A74216 /* WSOLAProcessor.swift in Sources */,
 				833A72E4C259BA4E7BBBD617 /* WaveformView.swift in Sources */,
-				D2E3F4A5B6471890ABCDEF01 /* VerticalResizeGrip.swift in Sources */,
 				826B37BED332D91C3DAEC15D /* XAILyricWriter.swift in Sources */,
 				1A76C731707C7C8E9AAB6003 /* YouTubeDatasetBuilder.swift in Sources */,
 				DA48A4D833CC79D1815CB890 /* YouTubeImportSheet.swift in Sources */,

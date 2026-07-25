@@ -6,6 +6,10 @@ All notable changes to PiMP Audio Studio are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Help window Markdown layout** — user docs no longer render as a single run-on wall of text. Pages parse into block layout (headings, lists, tables, fenced code, spacing) with inline bold/code/links; internal `.md` links jump between Help topics.
+
 ### Added
 
 - **In-app Help from bundled user docs** — **Help → PiMP Audio Studio Help** (`⌘?`) opens an offline documentation window with a topic list, Markdown rendering, and search. Build copies `docs/user/*.md` into the app bundle as `Help/`; DEBUG falls back to the repo docs path when needed.
