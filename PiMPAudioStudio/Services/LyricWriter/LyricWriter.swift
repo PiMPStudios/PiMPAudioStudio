@@ -329,12 +329,17 @@ enum LyricCLIFailureDetail {
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
 
+        // Pass 1: prefer structured JSON "message" fields (Grok/Codex style) from any
+        // stream. Do not return a plain stderr first-line until every candidate has been
+        // checked for JSON — otherwise "Error: …" on stderr masks a cleaner stdout JSON body.
         for candidate in candidates {
-            // Prefer JSON "message" fields (Grok/Codex style), including pretty-printed blobs.
             if let message = firstJSONMessage(in: candidate) {
                 return message
             }
+        }
 
+        // Pass 2: first non-empty line (stderr first, then stdout).
+        for candidate in candidates {
             let firstLine = candidate
                 .components(separatedBy: .newlines)
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }

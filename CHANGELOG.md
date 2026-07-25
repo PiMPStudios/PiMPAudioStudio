@@ -56,6 +56,7 @@ All notable changes to PiMP Audio Studio are documented here.
 
 ### Fixed
 
+- **CLI lyric failure messages prefer JSON over stderr prefixes** — when a provider writes a structured `{"message":…}` body on stdout and a plain `Error: …` line on stderr, the UI now surfaces the JSON message instead of the noisier stderr first line.
 - **Editor polish no longer clips before it limits** — the Loudness stage (and both loud Polish for Keep targets) quantized the boosted signal to 16-bit before running the limiter, so peaks were hard clipped at full scale and the limiter merely scaled that distortion down to the ceiling. Gain and limiting now happen in a single float pass, and the whole Polish for Keep chain stays in float from first stage to last instead of requantizing between every step.
 - **True-peak readout now actually measures true peak** — the estimate used linear interpolation, which can never exceed the larger of its two neighbouring samples, so the readout was mathematically identical to sample peak on every signal. Replaced with a 4× polyphase windowed-sinc bank that surfaces real intersample peaks.
 - **Approximate LUFS no longer reads stereo 3 dB low** — the meter averaged power across channels where BS.1770 sums it, so every stereo track was measured quiet and the loudness stage over-boosted it by ~3 dB. Streaming/Louder targets now land where they claim.
