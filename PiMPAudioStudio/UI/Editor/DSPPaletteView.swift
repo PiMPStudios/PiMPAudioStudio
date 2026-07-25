@@ -133,41 +133,36 @@ struct DSPPaletteView: View {
 
     // MARK: - Effect Grid
 
+    /// Three equal columns so a final orphan (Soft Gate) stays left-aligned at ⅓ width
+    /// instead of stretching full-bleed when placeholders are Spacers.
+    private static let paletteColumns = [
+        GridItem(.flexible(), spacing: 6),
+        GridItem(.flexible(), spacing: 6),
+        GridItem(.flexible(), spacing: 6),
+    ]
+
     private var effectGrid: some View {
-        VStack(spacing: 6) {
-            HStack(spacing: 6) {
-                effectButton(.trimToSelection)
-                effectButton(.deleteSelection)
-                effectButton(.trimSilence)
-            }
-            HStack(spacing: 6) {
-                effectButton(.fadeIn)
-                effectButton(.fadeOut)
-                effectButton(.normalize)
-            }
-            HStack(spacing: 6) {
-                effectButton(.highPass)
-                effectButton(.eq)
-                effectButton(.reverb)
-            }
-            HStack(spacing: 6) {
-                effectButton(.compress)
-                effectButton(.limit)
-                effectButton(.loudness)
-            }
-            HStack(spacing: 6) {
-                effectButton(.softGate)
-                Spacer()
-                Spacer()
-            }
+        LazyVGrid(columns: Self.paletteColumns, spacing: 6) {
+            effectButton(.trimToSelection)
+            effectButton(.deleteSelection)
+            effectButton(.trimSilence)
+            effectButton(.fadeIn)
+            effectButton(.fadeOut)
+            effectButton(.normalize)
+            effectButton(.highPass)
+            effectButton(.eq)
+            effectButton(.reverb)
+            effectButton(.compress)
+            effectButton(.limit)
+            effectButton(.loudness)
+            effectButton(.softGate)
         }
     }
 
     private var transformGrid: some View {
-        HStack(spacing: 6) {
+        LazyVGrid(columns: Self.paletteColumns, spacing: 6) {
             effectButton(.timeStretch)
             effectButton(.pitchShift)
-            Spacer()
         }
     }
 
