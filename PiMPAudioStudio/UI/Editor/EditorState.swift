@@ -85,7 +85,16 @@ class EditorState: ObservableObject {
     /// Cached level readout; refreshed when the loaded buffer changes.
     @Published private(set) var levelMetrics: LoudnessMeter.Metrics?
 
+    /// Bumps whenever the working PCM buffer changes from load / DSP / undo /
+    /// AI apply. EditorView uses this to know when to re-sync the coordinator
+    /// without re-encoding on every Inpaint of an unchanged buffer.
+    private(set) var bufferRevision: Int = 0
+
     private let dspProcessor = DSPProcessor()
+
+    func noteBufferMutation() {
+        bufferRevision &+= 1
+    }
 
     // MARK: - Preview playback
     @Published var isPlayingPreview = false
@@ -274,6 +283,7 @@ class EditorState: ObservableObject {
                     self.invalidatePreviewPlayer()
                     self.audioBuffer = result
                     self.duration = result.duration
+                    self.noteBufferMutation()
                     self.refreshWaveformPeaks(from: result)
                     self.refreshLevelMetrics()
                     self.selectionStart = 0
@@ -339,6 +349,7 @@ class EditorState: ObservableObject {
                     self.invalidatePreviewPlayer()
                     self.audioBuffer = result
                     self.duration = result.duration
+                    self.noteBufferMutation()
                     self.refreshWaveformPeaks(from: result)
                     self.refreshLevelMetrics()
 
@@ -386,6 +397,7 @@ class EditorState: ObservableObject {
         invalidatePreviewPlayer()
         audioBuffer = previous
         duration = previous.duration
+        noteBufferMutation()
         refreshWaveformPeaks(from: previous)
         refreshLevelMetrics()
         canUndo = !undoStack.isEmpty
@@ -400,6 +412,7 @@ class EditorState: ObservableObject {
         invalidatePreviewPlayer()
         audioBuffer = next
         duration = next.duration
+        noteBufferMutation()
         refreshWaveformPeaks(from: next)
         refreshLevelMetrics()
         canUndo = !undoStack.isEmpty
@@ -601,6 +614,7 @@ class EditorState: ObservableObject {
             state.selectionEnd = 0
             state.resetUndoHistory()
             state.invalidatePreviewPlayer()
+            state.noteBufferMutation()
             // Peaks/metrics schedule their own deferred publishes when ready.
             state.refreshWaveformPeaks(from: buffer, clearExisting: true)
             state.refreshLevelMetrics()

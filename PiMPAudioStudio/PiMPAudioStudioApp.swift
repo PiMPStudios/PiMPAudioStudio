@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import MLX
 import PiMPAudioCore
 
 @main
@@ -233,6 +234,12 @@ final class AppServices: ObservableObject {
         self.currentOutputManager = outputManager
         self.currentDirectory = outputManager.directory
         self.traceMonitor = GenerationTraceMonitor()
+
+        // Cap MLX's recycled GPU free-list. Without this, a single full-track VAE
+        // encode can leave 40–50 GiB of `cache` memory charged to the process on a
+        // 64 GB Mac (see Diagnostics editor/loadAudio). Active weights/tensors are
+        // unaffected — only unused allocator pool size is limited.
+        Memory.cacheLimit = 4 * 1024 * 1024 * 1024
 
         // Create shared ML actors once. Weights are loaded lazily on first use,
         // so this is cheap at launch. The editor and generation service both hold

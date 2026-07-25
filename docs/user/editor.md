@@ -20,6 +20,11 @@ with a file URL and optional original prompt.
 
 Until audio is loaded, the canvas shows an empty state.
 
+Opening a file (including **History → Edit**) loads audio for playback and DSP
+only. Full-track VAE encoding for Inpaint/Repaint runs on the **first AI edit**,
+so polish-only sessions stay light on memory. If the app still feels heavy after
+a long Generate session, use **Settings → Models → Release Memory**.
+
 ## Edit Modes
 
 The toolbar mode picker switches between:

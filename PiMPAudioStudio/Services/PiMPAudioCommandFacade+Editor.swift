@@ -1688,7 +1688,7 @@ extension PiMPAudioCommandFacade {
                 "tool": "load_editor_audio",
                 "operationKind": "editor.loadAudio",
                 "status": "implemented",
-                "description": "Load a local audio file into the editor coordinator and encode editable latents."
+                "description": "Load a local audio file into the editor coordinator. VAE latents are encoded lazily on the first AI edit."
             ],
             [
                 "id": "inpaint",

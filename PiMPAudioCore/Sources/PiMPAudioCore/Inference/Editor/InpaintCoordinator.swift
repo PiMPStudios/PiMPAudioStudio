@@ -93,111 +93,170 @@ public actor InpaintCoordinator {
 
     // MARK: - Load
 
+    /// Store PCM for the editor **without** VAE-encoding.
+    ///
+    /// Full-track ACE encode used to run here and routinely left 40–50 GiB of
+    /// MLX GPU cache resident after History → Edit / Open (see Diagnostics
+    /// `editor/loadAudio/end`). Latents are built lazily on the first AI edit
+    /// via ``ensureACELatents`` / SAO encode in ``runEdit``.
     public func loadAudio(
         samples: MLXArray,
         sampleRate: Int,
         precision: Precision = .float32
     ) async throws -> AudioLoadResult {
-        self.sampleRate = sampleRate
-        let numSamples = samples.shape[1]
-        self.totalDuration = Double(numSamples) / Double(sampleRate)
         AudioDiagnostics.memory("editor/loadAudio/begin")
-        AudioDiagnostics.note(
-            "editor/loadAudio/config",
-            "samplesShape=\(samples.shape) sampleRate=\(sampleRate) duration=\(totalDuration) precision=\(precision)"
+        let result = adoptSourceAudio(
+            samples: samples,
+            sampleRate: sampleRate,
+            tag: "editor/loadAudio",
+            precision: precision
         )
-        AudioDiagnostics.tensor("editor/loadAudio/samples", samples)
-
-        let latents = try await vaeActor.encodeMean(audio: samples, precision: precision)
-        self.currentLatents = latents
-        self.currentAudio = samples
-        self.latentFrames = latents.shape[1]
-        AudioDiagnostics.tensor("editor/loadAudio/aceLatents", latents)
-
-        // Also eagerly encode SAO latents if the SFX VAE is already loaded.
-        // If it isn't, SAO inpainting will encode lazily on first request.
-        self.sfxCurrentLatents = nil
-        self.sfxLatentFrames   = 0
-        if let sfxVAE = sfxVAEActor, await sfxVAE.isLoaded {
-            if let sfxLat = try? await sfxVAE.encodeMean(audio: samples) {
-                self.sfxCurrentLatents = sfxLat
-                self.sfxLatentFrames   = sfxLat.shape[1]
-                AudioDiagnostics.tensor("editor/loadAudio/sfxLatents", sfxLat)
-            } else {
-                AudioDiagnostics.note("editor/loadAudio/sfxLatents", "encode failed")
-            }
-        } else {
-            AudioDiagnostics.note("editor/loadAudio/sfxLatents", "sfxVAE not loaded")
-        }
-
         let initialSnapshot = EditSnapshot(
             description: "Original",
             audioData: Data(),
             latents: nil
         )
         historyManager.push(initialSnapshot)
-
-        let result = AudioLoadResult(
-            duration: totalDuration,
-            sampleRate: sampleRate,
-            latentFrames: latentFrames
+        AudioDiagnostics.note(
+            "editor/loadAudio/deferredEncode",
+            "latentFrames=0 (VAE encode deferred until first Inpaint/Repaint)"
         )
         AudioDiagnostics.memory("editor/loadAudio/end")
         return result
     }
 
-    /// Replace the currently loaded audio with an edited buffer and refresh the
-    /// editable latent cache so subsequent AI edits operate on the new audio.
+    /// Replace the working PCM buffer after DSP (or a UI buffer sync).
+    ///
+    /// Does **not** re-encode latents — that was a second 20–50 GiB cache hit
+    /// after polish. Existing latents are invalidated; the next AI edit encodes.
     public func replaceAudio(
         samples: MLXArray,
         sampleRate: Int,
         description: String,
         precision: Precision = .float32
     ) async throws -> AudioLoadResult {
-        self.sampleRate = sampleRate
-        let numSamples = samples.shape[1]
-        self.totalDuration = Double(numSamples) / Double(sampleRate)
         AudioDiagnostics.memory("editor/replaceAudio/begin")
         AudioDiagnostics.note(
             "editor/replaceAudio/config",
-            "description=\(description) samplesShape=\(samples.shape) sampleRate=\(sampleRate) duration=\(totalDuration) precision=\(precision)"
+            "description=\(description) samplesShape=\(samples.shape) sampleRate=\(sampleRate)"
         )
-        AudioDiagnostics.tensor("editor/replaceAudio/samples", samples)
-
-        let latents = try await vaeActor.encodeMean(audio: samples, precision: precision)
-        self.currentLatents = latents
-        self.currentAudio = samples
-        self.latentFrames = latents.shape[1]
-        AudioDiagnostics.tensor("editor/replaceAudio/aceLatents", latents)
-
-        self.sfxCurrentLatents = nil
-        self.sfxLatentFrames = 0
-        if let sfxVAE = sfxVAEActor, await sfxVAE.isLoaded {
-            if let sfxLat = try? await sfxVAE.encodeMean(audio: samples) {
-                self.sfxCurrentLatents = sfxLat
-                self.sfxLatentFrames = sfxLat.shape[1]
-                AudioDiagnostics.tensor("editor/replaceAudio/sfxLatents", sfxLat)
-            } else {
-                AudioDiagnostics.note("editor/replaceAudio/sfxLatents", "encode failed")
-            }
-        } else {
-            AudioDiagnostics.note("editor/replaceAudio/sfxLatents", "sfxVAE not loaded")
-        }
-
+        let result = adoptSourceAudio(
+            samples: samples,
+            sampleRate: sampleRate,
+            tag: "editor/replaceAudio",
+            precision: precision
+        )
         let snapshot = EditSnapshot(
             description: description,
             audioData: Data(),
             latents: nil
         )
         historyManager.push(snapshot)
-
-        let result = AudioLoadResult(
-            duration: totalDuration,
-            sampleRate: sampleRate,
-            latentFrames: latentFrames
+        AudioDiagnostics.note(
+            "editor/replaceAudio/deferredEncode",
+            "latents invalidated; encode deferred until next AI edit"
         )
         AudioDiagnostics.memory("editor/replaceAudio/end")
         return result
+    }
+
+    /// Push the latest UI buffer into the coordinator without recording history
+    /// (e.g. before Inpaint after local DSP). Invalidates latents if PCM changed.
+    public func syncSourceAudio(
+        samples: MLXArray,
+        sampleRate: Int
+    ) {
+        AudioDiagnostics.memory("editor/syncSourceAudio/begin")
+        _ = adoptSourceAudio(
+            samples: samples,
+            sampleRate: sampleRate,
+            tag: "editor/syncSourceAudio",
+            precision: .float32
+        )
+        AudioDiagnostics.memory("editor/syncSourceAudio/end")
+    }
+
+    /// Store PCM, drop any cached latents, flush MLX free-list.
+    @discardableResult
+    private func adoptSourceAudio(
+        samples: MLXArray,
+        sampleRate: Int,
+        tag: String,
+        precision: Precision
+    ) -> AudioLoadResult {
+        _ = precision // reserved for future quantized sample paths
+        self.sampleRate = sampleRate
+        let numSamples = samples.shape[1]
+        self.totalDuration = Double(numSamples) / Double(sampleRate)
+        AudioDiagnostics.note(
+            "\(tag)/config",
+            "samplesShape=\(samples.shape) sampleRate=\(sampleRate) duration=\(totalDuration)"
+        )
+        AudioDiagnostics.tensor("\(tag)/samples", samples)
+
+        self.currentAudio = samples
+        // Drop prior latent caches so the next AI edit encodes this buffer.
+        self.currentLatents = nil
+        self.latentFrames = 0
+        self.sfxCurrentLatents = nil
+        self.sfxLatentFrames = 0
+        Self.flushMLXCache(tag: "\(tag)/afterAdopt")
+
+        return AudioLoadResult(
+            duration: totalDuration,
+            sampleRate: sampleRate,
+            latentFrames: 0
+        )
+    }
+
+    /// ACE latents for the current PCM, encoding only if missing.
+    private func ensureACELatents(precision: Precision) async throws -> MLXArray {
+        if let existing = currentLatents {
+            return existing
+        }
+        guard let audio = currentAudio else {
+            throw InpaintCoordinatorError.noSourceAudio
+        }
+        AudioDiagnostics.memory("editor/ensureACELatents/begin")
+        let latents = try await vaeActor.encodeMean(audio: audio, precision: precision)
+        self.currentLatents = latents
+        self.latentFrames = latents.shape[1]
+        AudioDiagnostics.tensor("editor/ensureACELatents/aceLatents", latents)
+        Self.flushMLXCache(tag: "editor/ensureACELatents/afterEncode")
+        AudioDiagnostics.memory("editor/ensureACELatents/end")
+        return latents
+    }
+
+    /// SAO latents for the current PCM, encoding only if missing.
+    private func ensureSFXLatents() async throws -> MLXArray {
+        if let existing = sfxCurrentLatents {
+            return existing
+        }
+        guard let sfxVAE = sfxVAEActor else {
+            throw InpaintCoordinatorError.sfxVAEUnavailable
+        }
+        guard let audio = currentAudio else {
+            throw InpaintCoordinatorError.noSourceAudio
+        }
+        AudioDiagnostics.memory("editor/ensureSFXLatents/begin")
+        let sfxLat = try await sfxVAE.encodeMean(audio: audio)
+        sfxCurrentLatents = sfxLat
+        sfxLatentFrames = sfxLat.shape[1]
+        AudioDiagnostics.tensor("editor/ensureSFXLatents/sfxLatents", sfxLat)
+        Self.flushMLXCache(tag: "editor/ensureSFXLatents/afterEncode")
+        AudioDiagnostics.memory("editor/ensureSFXLatents/end")
+        return sfxLat
+    }
+
+    /// Return MLX's free-list to the OS so one VAE encode does not park 40–50 GiB.
+    private static func flushMLXCache(tag: String) {
+        let before = Memory.snapshot()
+        Memory.clearCache()
+        let after = Memory.snapshot()
+        AudioDiagnostics.note(
+            tag,
+            "clearCache active=\(after.activeMemory) cacheBefore=\(before.cacheMemory) cacheAfter=\(after.cacheMemory)"
+        )
     }
 
     // MARK: - Edit
@@ -270,40 +329,39 @@ public actor InpaintCoordinator {
 
         switch request.pipeline {
         case .stableAudio:
-            guard let sfxVAE = sfxVAEActor else {
+            guard sfxVAEActor != nil else {
                 continuation.yield(.failed("Stable Audio VAE not available"))
                 continuation.finish()
                 return
             }
-            // Lazily encode SAO latents on first SAO inpaint (or after an
-            // ACE-Step edit invalidated them).
-            if let existing = sfxCurrentLatents {
-                workingLatents = existing
-                workingFrames  = sfxLatentFrames
-            } else {
-                guard let audio = currentAudio else {
-                    continuation.yield(.failed("No source audio to encode"))
-                    continuation.finish()
-                    return
-                }
-                try Task.checkCancellation()
-                let sfxLat = try await sfxVAE.encodeMean(audio: audio)
-                sfxCurrentLatents = sfxLat
-                sfxLatentFrames   = sfxLat.shape[1]
-                workingLatents    = sfxLat
-                workingFrames     = sfxLat.shape[1]
+            // Lazily encode SAO latents on first SAO inpaint (or after PCM change).
+            try Task.checkCancellation()
+            continuation.yield(.encoding)
+            do {
+                let sfxLat = try await ensureSFXLatents()
+                workingLatents = sfxLat
+                workingFrames = sfxLatentFrames
+            } catch {
+                continuation.yield(.failed(error.localizedDescription))
+                continuation.finish()
+                return
             }
             workingHop = SoundFXPipeline.hopLength
 
         case .aceStep, .auto:
-            guard let aceLatents = currentLatents else {
-                continuation.yield(.failed("ACE-Step latents not available"))
+            // Lazily encode ACE latents on first AI edit (not on file open).
+            try Task.checkCancellation()
+            continuation.yield(.encoding)
+            do {
+                let aceLatents = try await ensureACELatents(precision: .float32)
+                workingLatents = aceLatents
+                workingFrames = latentFrames
+            } catch {
+                continuation.yield(.failed(error.localizedDescription))
                 continuation.finish()
                 return
             }
-            workingLatents = aceLatents
-            workingFrames  = latentFrames
-            workingHop     = Self.aceStepHopSize
+            workingHop = Self.aceStepHopSize
         }
         AudioDiagnostics.note(
             "editor/edit/resolvedPipeline",
@@ -323,7 +381,6 @@ public actor InpaintCoordinator {
 
         AudioDiagnostics.tensor("editor/edit/mask", mask)
 
-        continuation.yield(.encoding)
         try Task.checkCancellation()
 
         // ── Diffusion ─────────────────────────────────────────────────────────
@@ -525,6 +582,9 @@ public actor InpaintCoordinator {
         )
         historyManager.push(snapshot)
 
+        // Drop encode/decode scratch so Active+Cache does not keep climbing after each edit.
+        Self.flushMLXCache(tag: "editor/edit/afterComplete")
+
         continuation.yield(.complete)
         continuation.finish()
         AudioDiagnostics.memory("editor/edit/end")
@@ -545,6 +605,22 @@ public actor InpaintCoordinator {
         case .repaint:
             let prompt = String(request.regionPrompt.prefix(40))
             return "Repaint \u{2014} \(prompt)"
+        }
+    }
+}
+
+// MARK: - Errors
+
+public enum InpaintCoordinatorError: Error, LocalizedError, Sendable {
+    case noSourceAudio
+    case sfxVAEUnavailable
+
+    public var errorDescription: String? {
+        switch self {
+        case .noSourceAudio:
+            return "No source audio to encode for AI edit."
+        case .sfxVAEUnavailable:
+            return "Stable Audio VAE not available."
         }
     }
 }

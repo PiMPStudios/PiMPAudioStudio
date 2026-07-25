@@ -22,6 +22,8 @@ struct EditorView: View {
     @EnvironmentObject private var editorService: EditorService
     @EnvironmentObject private var sfxModelManager: SFXModelManager
     @State private var exportErrorMessage: String?
+    /// Last `EditorState.bufferRevision` pushed to the inpaint coordinator.
+    @State private var lastSyncedBufferRevision: Int = -1
 
     var preloadedAudioURL: URL?
     var preloadedPrompt: String?
@@ -288,7 +290,9 @@ struct EditorView: View {
                     state.applyLoadedBuffer(buffer, fileName: fileName)
                 }
 
-                // VAE-encode into the coordinator so inpainting has a starting latent.
+                // Store PCM only — full-track VAE encode is deferred until first
+                // Inpaint/Repaint so History → Edit / polish does not park 40–50 GiB
+                // of MLX GPU cache (see Diagnostics editor/loadAudio).
                 guard let coordinator = editorService.coordinator else {
                     await MainActor.run {
                         state.deferUIUpdate { editor in
@@ -311,7 +315,7 @@ struct EditorView: View {
                     await MainActor.run {
                         state.deferUIUpdate { editor in
                             editor.operationErrorMessage =
-                                "Audio opened for playback, but AI edit prep failed: \(error.localizedDescription)"
+                                "Audio opened for playback, but editor prep failed: \(error.localizedDescription)"
                         }
                     }
                 }
@@ -349,6 +353,16 @@ struct EditorView: View {
         state.progress = .buildingMask
 
         Task { @MainActor in
+            // If local DSP/load changed PCM since last sync, push it so AI encodes
+            // the polished buffer. Skip when unchanged so iterative Inpaint reuses latents.
+            if state.bufferRevision != lastSyncedBufferRevision, let buffer = state.audioBuffer {
+                let mlx = await Task.detached(priority: .userInitiated) {
+                    AudioBufferConverter.toMLXArray(buffer)
+                }.value
+                await coordinator.syncSourceAudio(samples: mlx, sampleRate: buffer.sampleRate)
+                lastSyncedBufferRevision = state.bufferRevision
+            }
+
             var succeeded = false
             for await progress in await coordinator.edit(request: request) {
                 state.progress = progress
@@ -372,6 +386,8 @@ struct EditorView: View {
             )
             state.audioBuffer = newBuffer
             state.duration = newBuffer.duration
+            state.noteBufferMutation()
+            lastSyncedBufferRevision = state.bufferRevision
             state.refreshWaveformPeaks(from: newBuffer)
             state.refreshLevelMetrics()
         }

@@ -332,7 +332,10 @@ extension PiMPAudioCommandFacade {
 
             updateOperationProgress(
                 id: id,
-                progress: editorLoadProgressPayload(stage: "encodingLatents", message: "Encoding editor latents.")
+                progress: editorLoadProgressPayload(
+                    stage: "loadingAudio",
+                    message: "Loading editor audio (VAE encode deferred until AI edit)."
+                )
             )
             let loadResult = try await coordinator.loadAudio(
                 samples: samples,
@@ -608,7 +611,10 @@ extension PiMPAudioCommandFacade {
             try Task.checkCancellation()
             updateOperationProgress(
                 id: id,
-                progress: editorDSPProgressPayload(stage: "encodingLatents", message: "Encoding edited audio latents.")
+                progress: editorDSPProgressPayload(
+                    stage: "updatingAudio",
+                    message: "Updating editor audio (VAE encode deferred until AI edit)."
+                )
             )
             let loadResult = try await coordinator.replaceAudio(
                 samples: editedSamples,

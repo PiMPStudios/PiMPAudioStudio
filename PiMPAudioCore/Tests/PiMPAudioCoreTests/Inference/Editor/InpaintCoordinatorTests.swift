@@ -113,13 +113,35 @@ struct InpaintCoordinatorTests {
         #expect(edits[0].description == "Original")
     }
 
-    // MARK: 5 — latentFrames round-trip
+    // MARK: 5 — deferred encode (no VAE on load)
 
-    @Test("loadAudio returns a non-zero latentFrames value")
-    func loadAudioLatentFrames() async throws {
+    @Test("loadAudio defers VAE encode and reports zero latentFrames")
+    func loadAudioDefersVAEEncode() async throws {
         let coordinator = makeCoordinator()
         let samples = MLXArray.zeros([1, 44100 * 2, 2])  // 2 seconds
         let result = try await coordinator.loadAudio(samples: samples, sampleRate: 44100)
-        #expect(result.latentFrames > 0)
+        // Full-track encode is deferred until first AI edit so Open/History→Edit
+        // does not park multi-tens-of-GB of MLX GPU cache.
+        #expect(result.latentFrames == 0)
+        let hasLoaded = await coordinator.hasLoadedAudio
+        #expect(hasLoaded == true)
+    }
+
+    @Test("replaceAudio invalidates latents without re-encoding")
+    func replaceAudioDoesNotEncode() async throws {
+        let coordinator = makeCoordinator()
+        let samples = MLXArray.zeros([1, 44100, 2])
+        _ = try await coordinator.loadAudio(samples: samples, sampleRate: 44100)
+        let replaced = MLXArray.zeros([1, 44100 * 2, 2])
+        let result = try await coordinator.replaceAudio(
+            samples: replaced,
+            sampleRate: 44100,
+            description: "Normalize"
+        )
+        #expect(result.latentFrames == 0)
+        #expect(abs(result.duration - 2.0) < 0.001)
+        let audio = await coordinator.getCurrentAudio()
+        #expect(audio != nil)
+        #expect(audio?.shape[1] == 44100 * 2)
     }
 }
