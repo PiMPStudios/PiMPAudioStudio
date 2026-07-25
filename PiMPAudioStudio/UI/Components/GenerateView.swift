@@ -33,6 +33,8 @@ struct GenerateView: View {
     @State private var activeDiTModelSpec: ModelSpec?
     @AppStorage(AppUserDefaultsKeys.selectedAdapterID) private var persistedAdapterID: String = ""
     @AppStorage(AppUserDefaultsKeys.selectedAdapterStrength) private var persistedAdapterStrength: Double = 1.0
+    @AppStorage(AppUserDefaultsKeys.generatePromptEditorHeight) private var promptEditorHeight: Double = 80
+    @AppStorage(AppUserDefaultsKeys.generateLyricsEditorHeight) private var lyricsEditorHeight: Double = 120
 
     // Cover song
     @State private var sourceAudioURL: URL? = nil
@@ -40,6 +42,9 @@ struct GenerateView: View {
     @State private var showingAudioImporter: Bool = false
     @State private var isDropTargeted: Bool = false
     @State private var sourceAudioImportError: String?
+
+    private static let promptEditorHeightRange: ClosedRange<Double> = 60...800
+    private static let lyricsEditorHeightRange: ClosedRange<Double> = 80...900
 
     var body: some View {
         ScrollView {
@@ -180,10 +185,12 @@ struct GenerateView: View {
                 .disabled(!promptEnhancer.isAvailable || promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || promptEnhancer.isEnhancing)
                 .help("Enhance prompt")
             }
-            TextEditor(text: $promptText)
-                .font(.body)
-                .frame(minHeight: 60, maxHeight: 100)
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(.quaternary))
+            resizableTextEditor(
+                text: $promptText,
+                height: $promptEditorHeight,
+                range: Self.promptEditorHeightRange,
+                disabled: false
+            )
         }
     }
 
@@ -216,17 +223,45 @@ struct GenerateView: View {
                     }
                 }
             }
-            TextEditor(text: $lyricsText)
-                .font(.body)
-                .frame(minHeight: 80, maxHeight: 120)
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(.quaternary))
-                .disabled(lyricWriterManager.isWriting)
+            resizableTextEditor(
+                text: $lyricsText,
+                height: $lyricsEditorHeight,
+                range: Self.lyricsEditorHeightRange,
+                disabled: lyricWriterManager.isWriting
+            )
             if let message = lyricWriterManager.lastError {
                 Label(message, systemImage: "exclamationmark.triangle")
                     .font(.caption)
                     .foregroundStyle(.red)
             }
         }
+    }
+
+    /// Text field with a bottom grip for vertical-only resize (width stays full).
+    private func resizableTextEditor(
+        text: Binding<String>,
+        height: Binding<Double>,
+        range: ClosedRange<Double>,
+        disabled: Bool
+    ) -> some View {
+        VStack(spacing: 0) {
+            TextEditor(text: text)
+                .font(.body)
+                .frame(height: CGFloat(clampedHeight(height.wrappedValue, in: range)))
+                .disabled(disabled)
+                .scrollContentBackground(.hidden)
+
+            VerticalResizeGrip(height: height, range: range)
+        }
+        .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(.quaternary))
+        .onAppear {
+            height.wrappedValue = clampedHeight(height.wrappedValue, in: range)
+        }
+    }
+
+    private func clampedHeight(_ value: Double, in range: ClosedRange<Double>) -> Double {
+        min(max(value, range.lowerBound), range.upperBound)
     }
 
     private var sourceAudioSection: some View {

@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		D2E3F4A5B6471890ABCDEF01 /* VerticalResizeGrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1D2E3F4A5B6471890ABCDEF /* VerticalResizeGrip.swift */; };
 		BDF9939619E64836870C2445 /* HistoryEntry+GenerateRestore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5743E40B45E46F89175EF80 /* HistoryEntry+GenerateRestore.swift */; };
 		02E720C4E915E4FC5E80E083 /* AdapterStackManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 170EDAB12E02A75BD53997D2 /* AdapterStackManager.swift */; };
 		02E87C9D466A616553A78B5F /* DSPParameters.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AC731FD1A3D2361C508EC75 /* DSPParameters.swift */; };
@@ -155,6 +156,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		C1D2E3F4A5B6471890ABCDEF /* VerticalResizeGrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VerticalResizeGrip.swift; sourceTree = "<group>"; };
 		A5743E40B45E46F89175EF80 /* HistoryEntry+GenerateRestore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HistoryEntry+GenerateRestore.swift"; sourceTree = "<group>"; };
 		0112B72B90B6F4C1FD66A04C /* CommunityBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommunityBrowserView.swift; sourceTree = "<group>"; };
 		0258ADFE79C7081A0E21313D /* PitchShiftControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PitchShiftControlView.swift; sourceTree = "<group>"; };
@@ -494,6 +496,7 @@
 				E3D2834B74CF98F9E5E1D54C /* OutputDirectoryPicker.swift */,
 				76C7EFFB4E31713C69470685 /* PlayerView.swift */,
 				15E5A1DDB5948E297A67C5B9 /* WaveformView.swift */,
+				C1D2E3F4A5B6471890ABCDEF /* VerticalResizeGrip.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -791,6 +794,7 @@
 				0B8B1B3E4188CDC626BDDCBB /* TrimSilenceControlView.swift in Sources */,
 				C81C2E0DD27E3B4C15A74216 /* WSOLAProcessor.swift in Sources */,
 				833A72E4C259BA4E7BBBD617 /* WaveformView.swift in Sources */,
+				D2E3F4A5B6471890ABCDEF01 /* VerticalResizeGrip.swift in Sources */,
 				826B37BED332D91C3DAEC15D /* XAILyricWriter.swift in Sources */,
 				1A76C731707C7C8E9AAB6003 /* YouTubeDatasetBuilder.swift in Sources */,
 				DA48A4D833CC79D1815CB890 /* YouTubeImportSheet.swift in Sources */,

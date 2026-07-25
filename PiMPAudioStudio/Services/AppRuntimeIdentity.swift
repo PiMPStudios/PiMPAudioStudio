@@ -47,6 +47,10 @@ enum AppUserDefaultsKeys {
     static let selectedAdapterStrength = AppRuntimeIdentity.defaultsKey("selectedAdapterStrength")
     static let legacySelectedAdapterStrength = "selectedAdapterStrength"
 
+    /// Generate page Prompt / Lyrics editor heights (points), vertical resize only.
+    static let generatePromptEditorHeight = AppRuntimeIdentity.defaultsKey("generate.promptEditorHeight")
+    static let generateLyricsEditorHeight = AppRuntimeIdentity.defaultsKey("generate.lyricsEditorHeight")
+
     /// JSON array of `{ "id": String, "strength": Double }` for multi-adapter stacks.
     static let selectedAdapterStack = AppRuntimeIdentity.defaultsKey("selectedAdapterStack")
 
