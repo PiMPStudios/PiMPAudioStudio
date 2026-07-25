@@ -6,6 +6,13 @@ All notable changes to PiMP Audio Studio are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **AUDIODIAG log retention** — the Diagnostics folder auto-prunes old
+  `PiMPAudioStudio-AUDIODIAG-*.log` files on launch and when a new log opens
+  (14 days / 40 files / 64 MB caps; active log kept). **Generate → Advanced →
+  Clean logs** runs the same cleanup on demand.
+
 ### Fixed
 
 - **Editor open no longer parks ~40–50 GB of MLX GPU cache** — History → Edit / Open store PCM only; full-track ACE VAE encode runs on first Inpaint/Repaint. DSP `replaceAudio` invalidates latents without re-encoding. `Memory.clearCache()` after encode/decode and a 4 GiB `Memory.cacheLimit` keep the free-list from filling unified memory. Diagnostics had shown cold `editor/loadAudio` ending at ~0.4 GiB active but ~45 GiB cache.

@@ -27,6 +27,7 @@ struct GenerateView: View {
     @State private var advancedExpanded: Bool = false
     @AppStorage(AppUserDefaultsKeys.audioDebugVerbose) private var audioDebugVerbose: Bool = false
     @State private var audioDebugLogPath: String?
+    @State private var diagnosticsPruneMessage: String?
     @State private var modeSelection: ModeSelection = .auto
     @State private var selectedAdapterID: String?
     @State private var activeDiTModelID: String?
@@ -731,7 +732,20 @@ struct GenerateView: View {
                         .lineLimit(1)
                         .truncationMode(.middle)
                         .help(audioDebugLogPath ?? AppStorageLocations.diagnosticsDirectory.path)
+                    Button("Clean logs") {
+                        cleanDiagnosticsLogs()
+                    }
+                    .buttonStyle(.borderless)
+                    .controlSize(.mini)
+                    .help(
+                        "Delete old AUDIODIAG logs (keeps last 14 days, 40 files, 64 MB; never the active log). Also runs automatically on launch."
+                    )
                     Spacer()
+                }
+                if let diagnosticsPruneMessage {
+                    Text(diagnosticsPruneMessage)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
                 }
             }
             .padding(.top, 8)
@@ -841,6 +855,23 @@ struct GenerateView: View {
         audioDebugLogPath = AudioDiagnostics.activeLogFileURL?.path
             ?? AudioDiagnostics.configuredLogDirectoryURL?.path
             ?? AppStorageLocations.diagnosticsDirectory.path
+    }
+
+    private func cleanDiagnosticsLogs() {
+        let result = AudioDiagnostics.pruneLogFiles(
+            in: AppStorageLocations.diagnosticsDirectory
+        )
+        if result.deletedCount == 0 {
+            diagnosticsPruneMessage =
+                "Diagnostics already clean (\(result.remainingCount) log\(result.remainingCount == 1 ? "" : "s"))."
+        } else {
+            let freed = ByteCountFormatter.string(
+                fromByteCount: Int64(result.deletedBytes),
+                countStyle: .file
+            )
+            diagnosticsPruneMessage =
+                "Removed \(result.deletedCount) old log\(result.deletedCount == 1 ? "" : "s") (\(freed)); \(result.remainingCount) kept."
+        }
     }
 
     private func restorePersistedAdapterSelection() {

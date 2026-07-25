@@ -32,6 +32,18 @@ PiMPAudioStudio-AUDIODIAG-2026-07-01_12-00-00-000-ABCDEF12.log
 
 The Generate view also shows the active log path beside the diagnostics toggle.
 
+### Log retention
+
+The app prunes AUDIODIAG logs automatically on launch (and when a new log file
+opens). Defaults:
+
+- keep logs from the last **14 days**
+- keep at most **40** files
+- keep at most about **64 MB** total
+- never delete the **currently active** log
+
+Use **Generate → Advanced → Clean logs** to run the same cleanup immediately.
+
 ## What To Capture
 
 ### Generation issues
