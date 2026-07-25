@@ -31,6 +31,9 @@ When Auto is selected, the UI shows the detected mode, for example
 - **Lyrics** — optional structured lyrics for vocal generations. Leave empty for
   instrumental-style prompts.
 
+Drag the small grip under each box to resize **height only** (width stays full).
+Heights are remembered between launches.
+
 Helpful actions on the Generate page (when Intelligence is configured):
 
 - **Enhance** — rewrites or strengthens the prompt through the local LLM or
