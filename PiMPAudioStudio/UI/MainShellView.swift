@@ -54,9 +54,14 @@ struct MainShellView: View {
                 selectedSidebarItem = .generate
             }
             .onReceive(NotificationCenter.default.publisher(for: .navigateToEditor)) { notification in
-                if let url = notification.userInfo?["url"] as? URL {
+                // Defer past the History button's update pass so we don't publish
+                // shell @State mid-body (triggers SwiftUI "Publishing changes…" warnings).
+                let url = notification.userInfo?["url"] as? URL
+                let prompt = notification.userInfo?["prompt"] as? String
+                guard let url else { return }
+                DispatchQueue.main.async {
                     editAudioURL = url
-                    editOriginalPrompt = notification.userInfo?["prompt"] as? String
+                    editOriginalPrompt = prompt
                     selectedSidebarItem = .edit
                 }
             }

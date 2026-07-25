@@ -115,11 +115,24 @@ class EditorState: ObservableObject {
         }
     }
 
+    /// Hop to the *next* main runloop turn before mutating `@Published` state.
+    ///
+    /// `Task { @MainActor }` / `MainActor.run` can still execute on the current
+    /// tick while SwiftUI is evaluating body, which triggers:
+    /// "Publishing changes from within view updates is not allowed".
+    /// `DispatchQueue.main.async` always defers (same pattern as AppState download progress).
+    func deferUIUpdate(_ body: @escaping @MainActor (EditorState) -> Void) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            body(self)
+        }
+    }
+
     /// Recompute peak / true-peak / LUFS off the main actor when the buffer changes.
     func refreshLevelMetrics() {
         metricsTask?.cancel()
         guard let buffer = audioBuffer else {
-            levelMetrics = nil
+            deferUIUpdate { $0.levelMetrics = nil }
             return
         }
         metricsTask = Task { [weak self] in
@@ -127,8 +140,8 @@ class EditorState: ObservableObject {
                 LoudnessMeter.measure(buffer)
             }.value
             guard !Task.isCancelled else { return }
-            await MainActor.run { [weak self] in
-                self?.levelMetrics = metrics
+            self?.deferUIUpdate { state in
+                state.levelMetrics = metrics
             }
         }
     }
@@ -559,7 +572,7 @@ class EditorState: ObservableObject {
 
     func refreshWaveformPeaks(from buffer: AudioBuffer, clearExisting: Bool = false) {
         if clearExisting {
-            waveformPeaks = []
+            deferUIUpdate { $0.waveformPeaks = [] }
         }
         peakComputationTask?.cancel()
         peakComputationTask = Task { [weak self, buffer] in
@@ -567,7 +580,28 @@ class EditorState: ObservableObject {
                 Self.computePeaks(from: buffer)
             }.value
             guard !Task.isCancelled else { return }
-            self?.waveformPeaks = peaks
+            self?.deferUIUpdate { state in
+                state.waveformPeaks = peaks
+            }
+        }
+    }
+
+    /// Apply a freshly decoded buffer on the next runloop tick (History → Edit / Open).
+    func applyLoadedBuffer(_ buffer: AudioBuffer, fileName: String) {
+        deferUIUpdate { state in
+            state.fileName = fileName
+            state.operationErrorMessage = nil
+            state.audioBuffer = buffer
+            state.sampleRate = buffer.sampleRate
+            state.duration = buffer.duration
+            state.isLoaded = true
+            state.selectionStart = 0
+            state.selectionEnd = 0
+            state.resetUndoHistory()
+            state.invalidatePreviewPlayer()
+            // Peaks/metrics schedule their own deferred publishes when ready.
+            state.refreshWaveformPeaks(from: buffer, clearExisting: true)
+            state.refreshLevelMetrics()
         }
     }
 

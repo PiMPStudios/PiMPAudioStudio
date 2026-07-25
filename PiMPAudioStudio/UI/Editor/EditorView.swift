@@ -61,11 +61,17 @@ struct EditorView: View {
             }
         }
         .onAppear {
-            if let url = preloadedAudioURL {
-                loadFromURL(url)
-            }
-            if let prompt = preloadedPrompt {
-                state.originalPrompt = prompt
+            // Defer so History → Edit (view identity change + onAppear) does not
+            // publish EditorState during the current SwiftUI update pass.
+            let url = preloadedAudioURL
+            let prompt = preloadedPrompt
+            DispatchQueue.main.async {
+                if let prompt {
+                    state.originalPrompt = prompt
+                }
+                if let url {
+                    loadFromURL(url)
+                }
             }
         }
         .background {
@@ -246,9 +252,12 @@ struct EditorView: View {
 
     private func loadFromURL(_ url: URL) {
         let fileName = url.lastPathComponent
-        state.fileName = fileName
-        state.operationErrorMessage = nil
-        state.isLoaded = false
+        // Show empty state while decoding without racing the appear pass.
+        state.deferUIUpdate { editor in
+            editor.fileName = fileName
+            editor.operationErrorMessage = nil
+            editor.isLoaded = false
+        }
 
         // Decode the file off the main actor — long WAVs can be multi-GB.
         Task {
@@ -276,22 +285,16 @@ struct EditorView: View {
             switch loadResult {
             case .success(let buffer):
                 await MainActor.run {
-                    state.audioBuffer = buffer
-                    state.sampleRate = buffer.sampleRate
-                    state.duration = buffer.duration
-                    state.refreshWaveformPeaks(from: buffer, clearExisting: true)
-                    state.refreshLevelMetrics()
-                    state.isLoaded = true
-                    state.selectionStart = 0
-                    state.selectionEnd = 0
-                    state.resetUndoHistory()
+                    state.applyLoadedBuffer(buffer, fileName: fileName)
                 }
 
                 // VAE-encode into the coordinator so inpainting has a starting latent.
                 guard let coordinator = editorService.coordinator else {
                     await MainActor.run {
-                        state.operationErrorMessage =
-                            "Audio opened for playback, but the editor pipeline is not ready for AI edits."
+                        state.deferUIUpdate { editor in
+                            editor.operationErrorMessage =
+                                "Audio opened for playback, but the editor pipeline is not ready for AI edits."
+                        }
                     }
                     return
                 }
@@ -306,16 +309,20 @@ struct EditorView: View {
                     )
                 } catch {
                     await MainActor.run {
-                        state.operationErrorMessage =
-                            "Audio opened for playback, but AI edit prep failed: \(error.localizedDescription)"
+                        state.deferUIUpdate { editor in
+                            editor.operationErrorMessage =
+                                "Audio opened for playback, but AI edit prep failed: \(error.localizedDescription)"
+                        }
                     }
                 }
 
             case .failure(let error):
                 await MainActor.run {
-                    state.isLoaded = false
-                    state.operationErrorMessage =
-                        "Could not load \(fileName): \(error.localizedDescription)"
+                    state.deferUIUpdate { editor in
+                        editor.isLoaded = false
+                        editor.operationErrorMessage =
+                            "Could not load \(fileName): \(error.localizedDescription)"
+                    }
                 }
             }
         }

@@ -113,9 +113,9 @@ struct EditorToolbar: View {
     }
 
     private func clampPipelineIfNeeded() {
-        if !isStableAudioReady && state.pipeline == .stableAudio {
-            state.pipeline = .auto
-        }
+        guard !isStableAudioReady, state.pipeline == .stableAudio else { return }
+        // Defer: onAppear/onChange can run during a view update.
+        state.deferUIUpdate { $0.pipeline = .auto }
     }
 
     private var formattedDuration: String {
