@@ -74,6 +74,11 @@ struct GenerateView: View {
             applyPreset(preset)
             presetStore.presetToLoad = nil
         }
+        .onReceive(presetStore.$historyRestore) { restore in
+            guard let restore else { return }
+            applyHistoryRestore(restore)
+            presetStore.historyRestore = nil
+        }
         .onReceive(NotificationCenter.default.publisher(for: .mcpAdapterSelectionDidChange)) { notification in
             applyAdapterSelection(notification)
         }
@@ -986,5 +991,19 @@ struct GenerateView: View {
         generationParameters.guidanceScale = preset.guidanceScale
         generationParameters.guidancePreset = preset.guidancePreset
         generationParameters.pipelineOverride = preset.pipelineOverride
+    }
+
+    /// History open: apply knobs then rebuild the full adapter stack when present.
+    private func applyHistoryRestore(_ restore: HistoryGenerateRestore) {
+        applyPreset(restore.preset)
+        if restore.adapterStack.isEmpty {
+            return
+        }
+        let notification = Notification(
+            name: .adapterSelectionDidChange,
+            object: nil,
+            userInfo: ["adapters": restore.adapterStack]
+        )
+        applyAdapterSelection(notification)
     }
 }

@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		BDF9939619E64836870C2445 /* HistoryEntry+GenerateRestore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5743E40B45E46F89175EF80 /* HistoryEntry+GenerateRestore.swift */; };
 		02E720C4E915E4FC5E80E083 /* AdapterStackManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 170EDAB12E02A75BD53997D2 /* AdapterStackManager.swift */; };
 		02E87C9D466A616553A78B5F /* DSPParameters.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AC731FD1A3D2361C508EC75 /* DSPParameters.swift */; };
 		03BFFDD33F2CE2AAD253E055 /* MLX in Frameworks */ = {isa = PBXBuildFile; productRef = D9661A97DE1522B5DE5D2159 /* MLX */; };
@@ -154,6 +155,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		A5743E40B45E46F89175EF80 /* HistoryEntry+GenerateRestore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HistoryEntry+GenerateRestore.swift"; sourceTree = "<group>"; };
 		0112B72B90B6F4C1FD66A04C /* CommunityBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommunityBrowserView.swift; sourceTree = "<group>"; };
 		0258ADFE79C7081A0E21313D /* PitchShiftControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PitchShiftControlView.swift; sourceTree = "<group>"; };
 		0289E58F6A0E77CDC343102A /* AdapterStackView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdapterStackView.swift; sourceTree = "<group>"; };
@@ -520,6 +522,7 @@
 				514E3F918492C3A0CCF277BC /* GenerationState.swift */,
 				9E9D5E74344ECD70EDE5DD2F /* GenerationTraceComparator.swift */,
 				4A7E845F117460DE0679EC50 /* HistoryEntry.swift */,
+				A5743E40B45E46F89175EF80 /* HistoryEntry+GenerateRestore.swift */,
 				4331AE5019A96224C031C32B /* LiveGenerationTrace.swift */,
 			);
 			path = Models;
@@ -718,6 +721,7 @@
 				86BBD017EB5D967B8A836829 /* GenerationTraceComparator.swift in Sources */,
 				9481A9404EA165C2BBA0A080 /* HighPassControlView.swift in Sources */,
 				D7171847A5705B83ED02A22C /* HistoryEntry.swift in Sources */,
+				BDF9939619E64836870C2445 /* HistoryEntry+GenerateRestore.swift in Sources */,
 				51FE470CF2AB778783784315 /* HistoryListView.swift in Sources */,
 				68DACFCA368B411E0CB322F5 /* HistoryStore.swift in Sources */,
 				4FBA8122499600CE9E2A1338 /* HuggingFaceImportSheet.swift in Sources */,

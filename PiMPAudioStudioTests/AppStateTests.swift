@@ -3399,6 +3399,113 @@ private extension DatasetAnnotationTask {
     }
 }
 
+@Test func historyEntryBuildsGeneratePresetFromTrace() {
+    let entry = HistoryEntry(
+        id: UUID(),
+        createdAt: Date(),
+        prompt: "rainy guitar blues",
+        lyrics: "[Verse]\nhello",
+        duration: 120,
+        seed: 42,
+        method: "ode",
+        guidanceScale: 7.5,
+        precision: "float32",
+        fileName: "test.wav",
+        traceFileName: "test.trace.json",
+        pipeline: "aceStep",
+        originalPrompt: "thin seed",
+        modelCategory: "aceStepDiT",
+        modelID: "ace-step-dit-xl-sft",
+        modelName: "XL SFT",
+        supportingModels: nil,
+        adapters: [
+            HistoryAdapterSnapshot(
+                id: "my-lora",
+                name: "My LoRA",
+                weight: 0.35,
+                source: "imported",
+                rank: 64,
+                baseModelID: "ace-step-dit-xl-sft"
+            )
+        ],
+        listeningNote: nil,
+        isPreferred: nil
+    )
+    let request = GenerationTraceRequestSnapshot(
+        duration: 120,
+        seed: 42,
+        method: "ode",
+        guidanceScale: 6.5,
+        guidancePreset: "constant",
+        guidancePresetName: "Constant",
+        cfgIntervalStart: 0,
+        cfgIntervalEnd: 1,
+        precision: "float32",
+        stepsOverride: 75,
+        shiftOverride: 1.0,
+        resolvedMode: "music",
+        pipelineOverride: "aceStep",
+        coverStrength: 0.55,
+        referenceAudioFileName: nil
+    )
+    let trace = GenerationTrace(
+        historyEntryID: entry.id,
+        createdAt: entry.createdAt,
+        audioFileName: entry.fileName,
+        traceFileName: entry.traceFileName!,
+        pipeline: "aceStep",
+        prompt: entry.prompt,
+        originalPrompt: entry.originalPrompt,
+        lyrics: entry.lyrics,
+        request: request,
+        primaryModel: nil,
+        supportingModels: [],
+        adapters: entry.adapters ?? [],
+        featureFlags: GenerationTraceFeatureFlags(
+            lmThinkingEnabled: false,
+            cotMetadataEnabled: false,
+            cotCaptionEnabled: false,
+            dcwEnabled: false
+        ),
+        timing: GenerationTraceTimingSnapshot(
+            diffusionTime: 1,
+            perStepTime: 0.1,
+            totalTime: 2
+        ),
+        audio: GenerationTraceAudioSnapshot(
+            sampleRate: 48_000,
+            duration: 120,
+            sampleShape: [2, 1],
+            absMean: 0.1,
+            absMax: 0.9,
+            waveformPeaks: [],
+            perSecondAbsMean: [],
+            perSecondAbsMax: []
+        ),
+        listeningNote: nil,
+        isPreferred: nil
+    )
+
+    let preset = entry.asGenerationPreset(trace: trace)
+    #expect(preset.prompt == "rainy guitar blues")
+    #expect(preset.lyrics.contains("hello"))
+    #expect(preset.seedText == "42")
+    #expect(preset.duration == 120)
+    #expect(preset.guidanceScale == 6.5)
+    #expect(preset.guidancePreset == .constant)
+    #expect(preset.stepsOverride == "75")
+    #expect(preset.shiftOverride == 1.0)
+    #expect(preset.mode == .music)
+    #expect(preset.pipelineOverride == .aceStep)
+    #expect(preset.adapterID == "my-lora")
+    #expect(abs(preset.adapterStrength - 0.35) < 0.001)
+    #expect(abs(preset.coverStrength - 0.55) < 0.001)
+
+    let stack = entry.adapterStackPayload(trace: trace)
+    #expect(stack.count == 1)
+    #expect(stack[0]["id"] as? String == "my-lora")
+}
+
 @Test func lyricCLIFailureDetailPrefersJSONMessage() {
     let result = ProviderCommandResult(
         command: "grok",

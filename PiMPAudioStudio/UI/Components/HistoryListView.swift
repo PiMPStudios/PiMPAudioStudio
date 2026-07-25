@@ -5,6 +5,7 @@ struct HistoryListView: View {
     @EnvironmentObject private var playerService: AudioPlayerService
     @EnvironmentObject private var trainingService: TrainingService
     @EnvironmentObject private var traceMonitor: GenerationTraceMonitor
+    @EnvironmentObject private var presetStore: PresetStore
     @Environment(\.openWindow) private var openWindow
 
     @State private var isSelecting = false
@@ -48,6 +49,23 @@ struct HistoryListView: View {
             if !historyStore.entries.isEmpty {
                 if isSelecting {
                     if !selectedIDs.isEmpty {
+                        if selectedIDs.count == 1 {
+                            Button("Open in Generate") {
+                                openSelectedInGenerate()
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.mini)
+                            .help("Reload this take’s prompt, seed, guidance, and adapters into Generate for a quick tweak")
+
+                            Button("Edit") {
+                                openSelectedInEditor()
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.mini)
+                            .help("Load this take into the Editor for polish and DSP")
+                            .disabled(!canOpenSelectedInEditor)
+                        }
+
                         if selectedIDs.count == 2 {
                             Button("Compare") {
                                 compareSelected()
@@ -180,6 +198,16 @@ struct HistoryListView: View {
             }
         }
 
+        Button("Open in Generate") {
+            openInGenerate(entry)
+        }
+
+        if (try? historyStore.fileURL(for: entry)) != nil {
+            Button("Edit") {
+                openInEditor(entry)
+            }
+        }
+
         if canAnalyze(entry) {
             Button("Analyze Trace") {
                 analyzeTrace(for: entry)
@@ -253,6 +281,55 @@ struct HistoryListView: View {
         let entries = selectedEntries
         guard entries.count == 2 else { return false }
         return entries.allSatisfy { historyStore.traceURL(for: $0) != nil }
+    }
+
+    private var canOpenSelectedInEditor: Bool {
+        guard let entry = selectedEntries.first, selectedEntries.count == 1 else { return false }
+        return (try? historyStore.fileURL(for: entry)) != nil
+    }
+
+    private func openSelectedInGenerate() {
+        guard selectedIDs.count == 1, let entry = selectedEntries.first else { return }
+        openInGenerate(entry)
+        isSelecting = false
+        selectedIDs.removeAll()
+    }
+
+    private func openSelectedInEditor() {
+        guard selectedIDs.count == 1, let entry = selectedEntries.first else { return }
+        openInEditor(entry)
+        isSelecting = false
+        selectedIDs.removeAll()
+    }
+
+    private func openInGenerate(_ entry: HistoryEntry) {
+        let trace = try? historyStore.loadTrace(for: entry)
+        let preset = entry.asGenerationPreset(
+            name: "From History",
+            trace: trace
+        )
+        let stack = entry.adapterStackPayload(trace: trace)
+        // Navigate to Generate and restore knobs + adapter stack (see GenerateView).
+        presetStore.historyRestore = HistoryGenerateRestore(
+            preset: preset,
+            adapterStack: stack
+        )
+    }
+
+    private func openInEditor(_ entry: HistoryEntry) {
+        guard let url = try? historyStore.fileURL(for: entry) else {
+            traceErrorMessage = HistoryStoreError.invalidFileName(entry.fileName).localizedDescription
+            return
+        }
+        playerService.pause()
+        NotificationCenter.default.post(
+            name: .navigateToEditor,
+            object: nil,
+            userInfo: [
+                "url": url,
+                "prompt": entry.originalPrompt ?? entry.prompt,
+            ]
+        )
     }
 
     private func compareSelected() {

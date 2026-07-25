@@ -8,6 +8,7 @@ All notable changes to PiMP Audio Studio are documented here.
 
 ### Added
 
+- **History Select can reopen a take in Generate or Edit** — with exactly one row selected, **Open in Generate** restores prompt/lyrics/seed/duration/guidance/pipeline and adapter stack (trace-enriched when available) on the Generate page, and **Edit** loads the audio into the Editor. Both actions are also on the row context menu.
 - **Editor polish confidence meters and soft gate (P3)** — level strip adds true-peak estimate and mono peak, stereo **Preview mono** (playback-only fold), cached metrics after buffer changes, and a careful **Soft Gate** expander for light noise-floor cleanup.
 - **Editor Polish for Keep (P2)** — one-shot whole-track polish above the Effects palette: Target (Streaming / Louder / Gentle), Tone, Glue, Space, and trim/fade, applied as a single undoable chain (trim → HPF → tone → glue → space → loudness/limit).
 - **Editor polish dynamics (P1)** — Effects add stereo-linked **Compress** (Light/Medium glue), **Limit** (Streaming −1 dB / Louder −0.5 dB ceilings), and **Loudness** staging (aim ~−14 or ~−10 LUFS then limit), so keep-ready takes can be evened and leveled without leaving the app.

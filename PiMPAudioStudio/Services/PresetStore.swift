@@ -1,5 +1,12 @@
 import Foundation
 
+/// Pending History → Generate restore (settings + adapter stack).
+struct HistoryGenerateRestore {
+    let preset: GenerationPreset
+    /// Adapter stack payloads for `applyAdapterSelection` (`id` + `weight`).
+    let adapterStack: [[String: Any]]
+}
+
 /// Manages CRUD operations for saved generation presets.
 ///
 /// Presets are stored as individual JSON files in
@@ -11,6 +18,10 @@ final class PresetStore: ObservableObject {
     /// Set this to trigger a preset load in GenerateView.
     /// GenerateView clears it after applying.
     @Published var presetToLoad: GenerationPreset?
+
+    /// Set this to restore a History take into Generate (prompt, knobs, adapters).
+    /// GenerateView clears it after applying.
+    @Published var historyRestore: HistoryGenerateRestore?
 
     static var presetsDirectory: URL {
         AppStorageLocations.presetsDirectory

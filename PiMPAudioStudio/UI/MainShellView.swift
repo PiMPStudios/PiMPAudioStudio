@@ -29,6 +29,10 @@ struct MainShellView: View {
                 guard preset != nil else { return }
                 selectedSidebarItem = .generate
             }
+            .onReceive(presetStore.$historyRestore) { restore in
+                guard restore != nil else { return }
+                selectedSidebarItem = .generate
+            }
             .onReceive(NotificationCenter.default.publisher(for: .navigateToEditor)) { notification in
                 if let url = notification.userInfo?["url"] as? URL {
                     editAudioURL = url
@@ -102,7 +106,9 @@ struct MainShellView: View {
         case .generate:
             GenerateView()
         case .edit:
+            // Force a fresh EditorView when the preloaded URL changes so History → Edit reloads.
             EditorView(preloadedAudioURL: editAudioURL, preloadedPrompt: editOriginalPrompt)
+                .id(editAudioURL?.path ?? "editor-empty")
         case .datasets:
             BuildDatasetsView()
         case .training:

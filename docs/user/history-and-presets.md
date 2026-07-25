@@ -22,11 +22,17 @@ Click **Select**, then choose one or more rows:
 
 | Action | Requirement | Purpose |
 | --- | --- | --- |
+| Open in Generate | Exactly one selected | Reloads prompt, lyrics, seed, duration, guidance, pipeline, and adapters into Generate for a quick tweak |
+| Edit | Exactly one selected with audio | Loads the take into the Editor for polish / DSP |
 | Compare | Exactly two selected takes with traces | Opens A/B / Trace Compare |
 | Train LoRA | One or more selected | Opens the training sheet with those takes |
 | Export… | One or more selected | Copies selected audio to a folder you choose |
 | Delete | One or more selected | Removes selected audio + trace sidecars only |
 | Done | — | Leaves select mode |
+
+**Open in Generate** prefers the sibling `.trace.json` when present so guidance
+preset, steps, and related knobs match the original run as closely as possible.
+Row context menus also offer **Open in Generate** and **Edit**.
 
 **Delete All** clears the entire History list (destructive).
 
