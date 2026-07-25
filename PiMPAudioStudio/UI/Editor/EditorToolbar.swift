@@ -11,6 +11,10 @@ struct EditorToolbar: View {
     let onUndo: () -> Void
     let onRedo: () -> Void
 
+    /// Local drafts so mode/pipeline pickers don't publish `EditorState` mid-update.
+    @State private var editMode: EditMode = .inpaint
+    @State private var pipeline: PipelineChoice = .auto
+
     var body: some View {
         HStack(spacing: 12) {
             Button(action: onOpen) {
@@ -43,7 +47,7 @@ struct EditorToolbar: View {
             Spacer()
 
             if state.isLoaded {
-                Picker("Mode", selection: $state.editMode) {
+                Picker("Mode", selection: $editMode) {
                     Text("Inpaint").tag(EditMode.inpaint)
                     Text("Repaint").tag(EditMode.repaint)
                 }
@@ -54,7 +58,7 @@ struct EditorToolbar: View {
                 Divider().frame(height: 20)
 
                 VStack(alignment: .trailing, spacing: 2) {
-                    Picker("Pipeline", selection: $state.pipeline) {
+                    Picker("Pipeline", selection: $pipeline) {
                         ForEach(availablePipelines, id: \.self) { choice in
                             Text(choice.displayName).tag(choice)
                         }
@@ -92,9 +96,27 @@ struct EditorToolbar: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .background(.ultraThinMaterial)
-        .onAppear { clampPipelineIfNeeded() }
+        .onAppear {
+            editMode = state.editMode
+            pipeline = state.pipeline
+            clampPipelineIfNeeded()
+        }
         .onChange(of: isStableAudioReady) { _, _ in
             clampPipelineIfNeeded()
+        }
+        .onChange(of: state.editMode) { _, newValue in
+            if editMode != newValue { editMode = newValue }
+        }
+        .onChange(of: state.pipeline) { _, newValue in
+            if pipeline != newValue { pipeline = newValue }
+        }
+        .onChange(of: editMode) { _, newValue in
+            guard state.editMode != newValue else { return }
+            state.deferUIUpdate { $0.editMode = newValue }
+        }
+        .onChange(of: pipeline) { _, newValue in
+            guard state.pipeline != newValue else { return }
+            state.deferUIUpdate { $0.pipeline = newValue }
         }
     }
 
@@ -113,7 +135,9 @@ struct EditorToolbar: View {
     }
 
     private func clampPipelineIfNeeded() {
-        guard !isStableAudioReady, state.pipeline == .stableAudio else { return }
+        let current = pipeline == .stableAudio ? pipeline : state.pipeline
+        guard !isStableAudioReady, current == .stableAudio else { return }
+        pipeline = .auto
         // Defer: onAppear/onChange can run during a view update.
         state.deferUIUpdate { $0.pipeline = .auto }
     }

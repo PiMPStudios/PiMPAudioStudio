@@ -21,8 +21,8 @@ struct DSPPaletteView: View {
         VStack(alignment: .leading, spacing: 12) {
             levelMeterStrip
 
-            PolishForKeepView(state: state) {
-                state.applyPolishForKeep()
+            PolishForKeepView(state: state) { recipe in
+                state.applyPolishForKeep(recipe)
             }
 
             if state.polishAppliedConfirmation {

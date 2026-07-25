@@ -2,9 +2,14 @@ import SwiftUI
 
 struct PolishForKeepView: View {
     @ObservedObject var state: EditorState
-    let onApply: () -> Void
+    /// Receives the recipe to apply (local draft, not a mid-gesture `@Published` write).
+    let onApply: (PolishForKeepRecipe) -> Void
 
     private let accent = Color.orange
+
+    /// Local draft so segmented pickers update immediately without publishing
+    /// `EditorState` during the control's view-update pass (avoids 1×N observer warnings).
+    @State private var recipe: PolishForKeepRecipe = .default
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -20,33 +25,33 @@ struct PolishForKeepView: View {
 
             pickerRow(
                 title: "Target",
-                selection: $state.polishRecipe.target,
+                selection: $recipe.target,
                 options: PolishForKeepRecipe.Target.allCases
             ) { $0.displayName }
 
-            Text(state.polishRecipe.target.detail)
+            Text(recipe.target.detail)
                 .font(.system(size: 10))
                 .foregroundStyle(.tertiary)
 
             pickerRow(
                 title: "Tone",
-                selection: $state.polishRecipe.tone,
+                selection: $recipe.tone,
                 options: PolishForKeepRecipe.Tone.allCases
             ) { $0.displayName }
 
             pickerRow(
                 title: "Glue",
-                selection: $state.polishRecipe.glue,
+                selection: $recipe.glue,
                 options: PolishForKeepRecipe.Glue.allCases
             ) { $0.displayName }
 
             pickerRow(
                 title: "Space",
-                selection: $state.polishRecipe.space,
+                selection: $recipe.space,
                 options: PolishForKeepRecipe.Space.allCases
             ) { $0.displayName }
 
-            Toggle(isOn: $state.polishRecipe.trimSilenceAndFades) {
+            Toggle(isOn: $recipe.trimSilenceAndFades) {
                 Text("Trim silence & fade edges")
                     .font(.caption)
             }
@@ -66,7 +71,7 @@ struct PolishForKeepView: View {
             }
 
             Button {
-                onApply()
+                onApply(recipe)
             } label: {
                 Text("Apply Polish for Keep")
                     .font(.system(size: 12, weight: .semibold))
@@ -85,6 +90,19 @@ struct PolishForKeepView: View {
         .padding(12)
         .background(accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(accent.opacity(0.25), lineWidth: 1))
+        .onAppear {
+            recipe = state.polishRecipe
+        }
+        .onChange(of: state.polishRecipe) { _, newValue in
+            if recipe != newValue {
+                recipe = newValue
+            }
+        }
+        .onChange(of: recipe) { _, newValue in
+            guard state.polishRecipe != newValue else { return }
+            // Publish on the next runloop tick — not during the picker update pass.
+            state.deferUIUpdate { $0.polishRecipe = newValue }
+        }
     }
 
     private var header: some View {

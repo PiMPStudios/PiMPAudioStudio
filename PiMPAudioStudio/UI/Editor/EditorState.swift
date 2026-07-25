@@ -238,11 +238,13 @@ class EditorState: ObservableObject {
     // MARK: - DSP Operations
 
     /// One-shot keep polish (trim → HPF → tone → glue → space → loudness/limit) as a single undo step.
-    func applyPolishForKeep() {
+    /// - Parameter recipe: Optional override (e.g. Polish panel local draft). Defaults to `polishRecipe`.
+    func applyPolishForKeep(_ recipe: PolishForKeepRecipe? = nil) {
         guard let buffer = audioBuffer else { return }
         guard !isDSPBusy, !isProcessing else { return }
 
-        let recipe = polishRecipe
+        let resolved = recipe ?? polishRecipe
+        polishRecipe = resolved
         dspTask?.cancel()
         isDSPBusy = true
         operationErrorMessage = nil
@@ -257,7 +259,7 @@ class EditorState: ObservableObject {
 
             do {
                 let result = try await Task.detached(priority: .userInitiated) {
-                    try PolishForKeepProcessor.apply(buffer, recipe: recipe)
+                    try PolishForKeepProcessor.apply(buffer, recipe: resolved)
                 }.value
 
                 guard !Task.isCancelled else { return }
