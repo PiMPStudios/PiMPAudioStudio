@@ -1,0 +1,13 @@
+# Committed for local/CI use. Not enforced in CI yet — formatting the
+# existing 90k-line tree is a dedicated pass. Run:
+#   swiftformat --config .swiftformat PiMPAudioStudio PiMPAudioCore
+--swiftversion 5.10
+--indent 4
+--maxwidth 120
+--wraparguments before-first
+--wrapparameters before-first
+--wrapcollections before-first
+--trimwhitespace always
+--stripunusedargs closure-only
+--disable wrapMultilineStatementBraces
+--exclude .build,DerivedData,Vendor,Spikes

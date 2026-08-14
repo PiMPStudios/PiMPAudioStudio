@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  remote-worker:
+    name: Remote worker (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/ruff-action@v3
+        with:
+          src: remote-worker
+          args: check --config remote-worker/ruff.toml
+
+  pimpaudiocore:
+    name: PiMPAudioCore tests (serial)
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+      - name: Run PiMPAudioCore tests serially
+        run: scripts/test-pimpaudiocore-serial.sh
+
+  app-tests:
+    name: App unit tests
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+      - name: Test PiMPAudioStudio
+        run: |
+          set -euo pipefail
+          xcodebuild test \
+            -scheme PiMPAudioStudio \
+            -destination 'platform=macOS' \
+            -only-testing:PiMPAudioStudioTests \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_IDENTITY=""

@@ -5,6 +5,11 @@ import MLXOptimizers
 import MLXRandom
 
 /// A single training sample: preprocessed latent and conditioning data.
+///
+/// `@unchecked Sendable` is intentional: `MLXArray` is a value type over shared
+/// GPU buffers and is not formally Sendable. Samples are created on the training
+/// actor, then handed to trainer methods that also run under that isolation.
+/// Do not pass a `TrainingSample` to concurrent tasks that mutate the same arrays.
 public struct TrainingSample: @unchecked Sendable {
     /// Clean latent from VAE encoder [1, frames, channels].
     public let latent: MLXArray

@@ -27,7 +27,9 @@ Persisted keys (app defaults namespace):
 
 `MCPHTTPServer` accepts `bindHost` + `port`. Binding `0.0.0.0` relaxes Origin
 checks for LAN browser clients and auto-enables the bearer token from Settings.
-Changing bind/port restarts a running server.
+Changing bind/port restarts a running server. Token compare is constant-time.
+Responses (including SSE) advertise `Connection: close` because the server
+closes the socket after the body.
 
 ## Code Map
 

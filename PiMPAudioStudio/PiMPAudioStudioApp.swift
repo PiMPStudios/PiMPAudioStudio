@@ -97,25 +97,6 @@ struct PiMPAudioStudioApp: App {
                     promptEnhancer.updateLLM(llm)
                     lyricWriterManager.updateLLM(llm)
                 }
-                // Evict the LLM after prompt enhancement completes.
-                // The enhanced text is already in the prompt field by the time
-                // this fires (onReceive dispatches on the next run loop tick),
-                // so the result is preserved. The LLM is no longer needed until
-                // the user types a new prompt and clicks Enhance again.
-                .onReceive(promptEnhancer.$isEnhancing) { isEnhancing in
-                    guard !isEnhancing, modelManager.llmActor != nil else { return }
-                    modelManager.evict()
-                    modelManager.reload()
-                }
-                // Evict the LLM after lyric writing completes.
-                // The lyrics are already streamed into the text field by the time
-                // this fires. Memory returns to baseline before the user clicks
-                // Generate, so DiT + VAE load into full headroom.
-                .onReceive(lyricWriterManager.$isWriting) { isWriting in
-                    guard !isWriting, modelManager.llmActor != nil else { return }
-                    modelManager.evict()
-                    modelManager.reload()
-                }
                 .onAppear {
                     intentRouter.updateLLM(modelManager.llmActor)
                     promptEnhancer.updateLLM(modelManager.llmActor)
@@ -218,6 +199,7 @@ final class AppServices: ObservableObject {
     private let diffusionActor: DiffusionActor
     private let conditioningActor: ConditioningActor
     private let commandFacade: PiMPAudioCommandFacade
+    private let llmMemoryCoordinator = LLMMemoryCoordinator()
 
     init(
         sfxModelManager: SFXModelManager,
@@ -247,12 +229,8 @@ final class AppServices: ObservableObject {
         let vae = VAEActor()
         let dit = DiTActor(config: .v15Base)
         let diffusion = DiffusionActor(dit: dit)
-        let conditioning: ConditioningActor
-        do {
-            conditioning = try ConditioningActor.stub()
-        } catch {
-            fatalError("Failed to create stub ConditioningActor at launch: \(error)")
-        }
+        // In-memory stub tokenizer — cannot fail (no disk / sandbox path).
+        let conditioning = ConditioningActor.stub()
         self.vaeActor = vae
         self.diffusionActor = diffusion
         self.conditioningActor = conditioning
@@ -308,6 +286,11 @@ final class AppServices: ObservableObject {
         self.trainingService.generationService = generationService
         self.generationService = generationService
         facade.configure(generationService: generationService)
+        llmMemoryCoordinator.start(
+            promptEnhancer: promptEnhancer,
+            lyricWriterManager: lyricWriterManager,
+            modelManager: llmManager
+        )
     }
 
     /// Rebuilds `historyStore` and `generationService` when the output directory

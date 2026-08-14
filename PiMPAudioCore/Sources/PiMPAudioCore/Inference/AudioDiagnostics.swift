@@ -22,10 +22,8 @@ public enum AudioDiagnostics {
     private static let fileSink = AudioDiagnosticsFileSink()
 
     public static var isEnabled: Bool {
-        let enabled = UserDefaults.standard.bool(forKey: userDefaultsKey) ||
+        UserDefaults.standard.bool(forKey: userDefaultsKey) ||
             UserDefaults.standard.bool(forKey: legacyUserDefaultsKey)
-        fileSink.setEnabled(enabled)
-        return enabled
     }
 
     public static var activeLogFileURL: URL? {
@@ -269,6 +267,8 @@ public enum AudioDiagnostics {
 
     private static func emit(_ line: String) {
         logger.info("\(line, privacy: .public)")
+        // Open the file sink only when actually emitting — not on every isEnabled read.
+        fileSink.setEnabled(true)
         fileSink.write(line)
     }
 

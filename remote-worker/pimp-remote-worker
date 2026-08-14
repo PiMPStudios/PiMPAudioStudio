@@ -19,7 +19,9 @@ from typing import Any
 
 VERSION = "0.1.0"
 DEFAULT_WORKDIR = Path("/workspace/pimp-remote-worker")
-MAX_TRAINING_SECONDS = 240.0
+MAX_CLIP_DURATION_SECONDS = 240.0
+# Deprecated alias — this is per-clip ACE duration, not a wall-clock training budget.
+MAX_TRAINING_SECONDS = MAX_CLIP_DURATION_SECONDS
 
 
 def preferred_worker_python(workdir: Path) -> Path:
@@ -652,10 +654,10 @@ class RemoteWorker:
             raise ValueError(
                 f"Package-v2 asset {asset_id} training_range exceeds its source_range"
             )
-        if end - start > MAX_TRAINING_SECONDS + 0.001:
+        if end - start > MAX_CLIP_DURATION_SECONDS + 0.001:
             raise ValueError(
                 f"Package-v2 asset {asset_id} training_range exceeds ACE-Step's "
-                f"{int(MAX_TRAINING_SECONDS)} second limit"
+                f"{int(MAX_CLIP_DURATION_SECONDS)} second limit"
             )
 
     def make_sidestep_dataset(self) -> dict[str, Any]:
@@ -1140,7 +1142,7 @@ except Exception as exc:
         ace_dir, checkpoints, python = self.env_paths()
         train_py = ace_dir / "train.py"
         configured_max_duration = float(
-            training.get("max_duration_seconds") or MAX_TRAINING_SECONDS
+            training.get("max_duration_seconds") or MAX_CLIP_DURATION_SECONDS
         )
         selected_durations = [
             first_number(sample.get("duration"))
@@ -1151,7 +1153,7 @@ except Exception as exc:
             default=0.0,
         )
         max_duration = int(min(
-            MAX_TRAINING_SECONDS,
+            MAX_CLIP_DURATION_SECONDS,
             max(configured_max_duration, selected_duration),
         ))
         epochs = int(training.get("epochs") or (100 if task == "train_lora" else 80))

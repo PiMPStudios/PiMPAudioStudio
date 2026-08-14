@@ -2,16 +2,15 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
-from importlib.machinery import SourceFileLoader
 import json
 import os
 import stat
 import tempfile
 import unittest
 import zipfile
+from importlib.machinery import SourceFileLoader
 from pathlib import Path
 from unittest.mock import patch
-
 
 WORKER_PATH = Path(__file__).resolve().parents[1] / "pimp-remote-worker"
 INSTALLER_PATH = Path(__file__).resolve().parents[1] / "install.sh"

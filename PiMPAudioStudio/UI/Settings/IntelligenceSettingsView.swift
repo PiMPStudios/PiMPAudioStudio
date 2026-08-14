@@ -74,7 +74,16 @@ struct IntelligenceSettingsView: View {
                         }
                     } else {
                         Button("Download") {
-                            Task { try? await modelManager.downloadModel(spec) }
+                            Task {
+                                do {
+                                    try await modelManager.downloadModel(spec)
+                                } catch {
+                                    if case .error = modelManager.downloadState {
+                                        return
+                                    }
+                                    modelManager.downloadState = .error(error.localizedDescription)
+                                }
+                            }
                         }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.small)

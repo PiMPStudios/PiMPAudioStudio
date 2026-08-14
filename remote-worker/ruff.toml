@@ -1,0 +1,15 @@
+# Lint the portable worker (single file, no .py suffix).
+target-version = "py311"
+line-length = 120
+extend-include = ["pimp-remote-worker"]
+
+[lint]
+select = ["E", "F", "W", "I", "UP"]
+ignore = [
+    "E501",  # long lines; worker is a portable single file
+]
+
+[lint.per-file-ignores]
+"pimp-remote-worker" = [
+    "E402",  # imports after runtime bootstrap
+]

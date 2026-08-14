@@ -72,6 +72,24 @@ scripts/smoke-pimpaudio-mcp.sh
 MCP smoke requires the app running with MCP enabled on the default localhost
 endpoint.
 
+## Continuous Integration
+
+GitHub Actions (`.github/workflows/ci.yml`) on `main` and pull requests:
+
+| Job | What it runs |
+| --- | --- |
+| Remote worker | `ruff check` with `remote-worker/ruff.toml` |
+| PiMPAudioCore | `scripts/test-pimpaudiocore-serial.sh` (one suite at a time — MLX GPU-state races) |
+| App tests | `xcodebuild test -scheme PiMPAudioStudio -only-testing:PiMPAudioStudioTests` |
+
+SwiftFormat config lives at `.swiftformat` for local use; it is **not** a CI gate until the tree is formatted in a dedicated pass.
+
+```bash
+ruff check remote-worker --config remote-worker/ruff.toml
+scripts/test-pimpaudiocore-serial.sh
+xcodebuild test -scheme PiMPAudioStudio -destination 'platform=macOS' -only-testing:PiMPAudioStudioTests
+```
+
 ## Practical Local Verification
 
 Before claiming a change is done:

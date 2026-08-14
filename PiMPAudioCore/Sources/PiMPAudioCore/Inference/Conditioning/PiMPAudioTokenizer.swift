@@ -107,7 +107,7 @@ public struct PiMPAudioTokenizer: Sendable {
     ///
     /// Uses an in-memory scalar encoder so structural tests do not depend on
     /// swift-transformers BPE edge cases or external checkpoint files.
-    public static func forTesting() throws -> PiMPAudioTokenizer {
+    public static func forTesting() -> PiMPAudioTokenizer {
         PiMPAudioTokenizer { text in
             text.unicodeScalars.compactMap { scalar in
                 guard !CharacterSet.whitespacesAndNewlines.contains(scalar) else { return nil }

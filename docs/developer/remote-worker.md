@@ -56,7 +56,8 @@ pimp-remote-worker doctor
 - Reject absolute/parent-relative escapes and unsafe zip members (including
   symlinks) before replace.
 - Destructive outputs cannot target package root or overlap staging unsafely.
-- Training ranges longer than ACE-Step's 240s preprocess max must be explicit
+- Training ranges longer than ACE-Step's 240s **per-clip** preprocess max
+  (`MAX_CLIP_DURATION_SECONDS` in `pimp-remote-worker`) must be explicit
   valid ranges; shorter materialization uses `ffmpeg` when needed.
 - Stem-only packages stage unique filenames to avoid `vocals.wav` collisions.
 - Commands run from a common safe root (for example `/workspace`) for ACE-Step

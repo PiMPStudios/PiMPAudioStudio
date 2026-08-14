@@ -14,6 +14,7 @@ struct YouTubeImportSheet: View {
     @State private var config = YouTubeDatasetConfig()
     @State private var editableClips: [(url: URL, caption: String)] = []
     @State private var ytDlpVersion: String?
+    @State private var captionsWriteError: String?
 
     private var ytDlpFound: Bool { ytDlpVersion != nil }
 
@@ -35,6 +36,9 @@ struct YouTubeImportSheet: View {
                         progressSection
                     case .complete:
                         resultsSection
+                    }
+                    if let captionsWriteError {
+                        errorView(captionsWriteError)
                     }
                 }
                 .padding(16)
@@ -387,8 +391,15 @@ struct YouTubeImportSheet: View {
                     .buttonStyle(.bordered)
             case .complete:
                 Button("Open in Training") {
+                    captionsWriteError = nil
                     if case .complete(let dir, _) = builder.phase {
-                        try? YouTubeDatasetBuilder.writeCaptionsFile(clips: editableClips, to: dir)
+                        do {
+                            try YouTubeDatasetBuilder.writeCaptionsFile(clips: editableClips, to: dir)
+                        } catch {
+                            captionsWriteError =
+                                "Could not write captions file: \(error.localizedDescription)"
+                            return
+                        }
                     }
                     let files = editableClips.map {
                         TrainingImportedFile(url: $0.url, description: $0.caption)

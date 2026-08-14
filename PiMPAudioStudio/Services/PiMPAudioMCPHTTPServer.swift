@@ -69,6 +69,20 @@ final class MCPHTTPServer {
         }
     }
 
+    /// Constant-time compare so LAN-exposed tokens do not leak via early exit.
+    static func tokensMatch(_ lhs: String, _ rhs: String) -> Bool {
+        let left = Array(lhs.utf8)
+        let right = Array(rhs.utf8)
+        var diff: UInt8 = left.count == right.count ? 0 : 1
+        let count = max(left.count, right.count)
+        for index in 0..<count {
+            let a = index < left.count ? left[index] : 0
+            let b = index < right.count ? right[index] : 0
+            diff |= a ^ b
+        }
+        return diff == 0
+    }
+
     func stop() {
         stateLock.lock()
         isRunning = false
@@ -288,8 +302,8 @@ final class MCPHTTPServer {
 
         let expectedToken = await tokenProvider()
         if let expectedToken, !expectedToken.isEmpty {
-            let headerToken = request.bearerToken
-            guard headerToken == expectedToken else {
+            let headerToken = request.bearerToken ?? ""
+            guard Self.tokensMatch(headerToken, expectedToken) else {
                 return .jsonError(statusCode: 401, message: "Missing or invalid MCP token")
             }
         }
@@ -498,7 +512,9 @@ private enum RawHTTPResponse {
         let headers = responseHeaders(
             contentType: contentType,
             contentLength: nil,
-            connection: "keep-alive",
+            // Stream is always followed by closeClient; advertise close so
+            // clients do not try to reuse the socket after the body.
+            connection: "close",
             extraHeaders: extraHeaders
         )
         return .stream(header: headerData(statusCode: statusCode, statusText: statusText, headers: headers), body: body)

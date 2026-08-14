@@ -552,14 +552,14 @@ extension ConditioningActor {
     /// Suitable for app launch before model weights are downloaded — all
     /// inference calls will succeed structurally but produce random outputs
     /// until `updateTokenizer(from:)` is called after model download.
-    public static func stub() throws -> ConditioningActor {
+    public static func stub() -> ConditioningActor {
         return ConditioningActor(
             vae: VAEActor(),
             qwen3: Qwen3Model(),
             conditionEncoder: ConditionEncoder(),
             lyricEncoder: LyricEncoder(),
             timbreEncoder: TimbreEncoder(),
-            tokenizer: try PiMPAudioTokenizer.forTesting()
+            tokenizer: PiMPAudioTokenizer.forTesting()
         )
     }
 }

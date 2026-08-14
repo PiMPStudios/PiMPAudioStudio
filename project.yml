@@ -11,10 +11,10 @@ packages:
     path: ./PiMPAudioCore
   mlx-swift:
     url: https://github.com/ml-explore/mlx-swift
-    from: 0.21.0
+    exactVersion: 0.31.3
   swift-sdk:
     url: https://github.com/modelcontextprotocol/swift-sdk.git
-    from: 0.12.1
+    exactVersion: 0.12.1
 
 targets:
   PiMPAudioStudio:
