@@ -2810,52 +2810,54 @@ func localDatasetEnrichmentAnalyzesTempoKeyAndMeterFromAudio(
 }
 
 @Test func localClipSamplerEvenlySpreadsLongSources() throws {
+    let totalSeconds = 90.0 * 60.0
+    let clipLength = 35.0
     let starts = LocalDatasetClipSampler.startTimes(
-        totalSeconds: 90.0 * 60.0,
-        clipLength: 35,
+        totalSeconds: totalSeconds,
+        clipLength: clipLength,
         maxClips: 8,
         mode: .evenlySpread,
         seed: 1337,
         sourceIdentifier: "long-source.wav"
     )
 
+    let first = starts.first ?? 0
+    let last = starts.last ?? 0
+    let lastAllowedStart = totalSeconds - clipLength
+    let expectedFirst = lastAllowedStart / 16.0
     #expect(starts.count == 8)
-    #expect((starts.first ?? 0) > 0)
-    #expect((starts.last ?? 0) < ((90.0 * 60.0) - 35.0))
-    #expect(abs((starts.first ?? 0) - (((90.0 * 60.0) - 35.0) / 16.0)) < 0.001)
+    #expect(first > 0)
+    #expect(last < lastAllowedStart)
+    #expect(abs(first - expectedFirst) < 0.001)
     #expect(starts[1] > starts[0])
 }
 
 @Test func localClipSamplerRandomSeedIsDeterministicAndSorted() throws {
-    let first = LocalDatasetClipSampler.startTimes(
-        totalSeconds: 90.0 * 60.0,
-        clipLength: 35,
-        maxClips: 8,
-        mode: .randomSeeded,
-        seed: 42,
-        sourceIdentifier: "long-source.wav"
-    )
-    let second = LocalDatasetClipSampler.startTimes(
-        totalSeconds: 90.0 * 60.0,
-        clipLength: 35,
-        maxClips: 8,
-        mode: .randomSeeded,
-        seed: 42,
-        sourceIdentifier: "long-source.wav"
-    )
-    let differentSeed = LocalDatasetClipSampler.startTimes(
-        totalSeconds: 90.0 * 60.0,
-        clipLength: 35,
-        maxClips: 8,
-        mode: .randomSeeded,
-        seed: 43,
-        sourceIdentifier: "long-source.wav"
-    )
+    let totalSeconds = 90.0 * 60.0
+    let clipLength = 35.0
+    func starts(seed: Int) -> [Double] {
+        LocalDatasetClipSampler.startTimes(
+            totalSeconds: totalSeconds,
+            clipLength: clipLength,
+            maxClips: 8,
+            mode: .randomSeeded,
+            seed: seed,
+            sourceIdentifier: "long-source.wav"
+        )
+    }
 
-    #expect(first == second)
-    #expect(first != differentSeed)
-    #expect(first == first.sorted())
-    #expect(first.contains { $0 > 35.0 * 8.0 })
+    let first = starts(seed: 42)
+    let second = starts(seed: 42)
+    let differentSeed = starts(seed: 43)
+    let firstMatchesSecond = first == second
+    let firstDiffersFromOtherSeed = first != differentSeed
+    let firstIsSorted = first == first.sorted()
+    let hasClipPastWindow = first.contains { start in start > clipLength * 8.0 }
+
+    #expect(firstMatchesSecond)
+    #expect(firstDiffersFromOtherSeed)
+    #expect(firstIsSorted)
+    #expect(hasClipPastWindow)
 }
 
 @Test func localDatasetPackageValidationReportsMissingClipFiles() throws {

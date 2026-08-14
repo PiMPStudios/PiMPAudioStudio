@@ -79,7 +79,7 @@ GitHub Actions (`.github/workflows/ci.yml`) on `main` and pull requests:
 | Job | What it runs |
 | --- | --- |
 | Remote worker | `ruff check` with `remote-worker/ruff.toml` |
-| PiMPAudioCore | `scripts/test-pimpaudiocore-serial.sh` (one suite at a time — MLX GPU-state races) |
+| PiMPAudioCore | `swift build --package-path PiMPAudioCore --build-tests` (compile only — SwiftPM cannot load `default.metallib` on Actions) |
 | App tests | `xcodebuild test -scheme PiMPAudioStudio -only-testing:PiMPAudioStudioTests` |
 
 macOS jobs select **Xcode 26.x** (`scripts/ci-select-xcode.sh`). The default

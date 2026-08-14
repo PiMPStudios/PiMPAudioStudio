@@ -10,7 +10,8 @@ All notable changes to PiMP Audio Studio are documented here.
 
 - **CI workflow** — GitHub Actions runs ruff on `remote-worker/`, serial
   `PiMPAudioCore` tests, and the app unit-test target on `macos-15`. macOS jobs
-  select Xcode 26.x (Swift 6.2) so vendored Demucs can resolve.
+  select Xcode 26.x (Swift 6.2) so vendored Demucs can resolve. Core CI compiles
+  tests only (`swift test` cannot load MLX `default.metallib` on Actions).
 - **MCP HTTP parser tests** — dedicated coverage for `RawHTTPRequest`
   (headers, Content-Length edges, query stripping, Origin gate, bearer token).
 - **AUDIODIAG log retention** — the Diagnostics folder auto-prunes old
