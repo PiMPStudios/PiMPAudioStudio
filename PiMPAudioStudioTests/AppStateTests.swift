@@ -1822,6 +1822,16 @@ func localDatasetEnrichmentAnalyzesTempoKeyAndMeterFromAudio(
     #expect(importedB.reshaped([-1]).asArray(Float.self).allSatisfy { abs($0 - 2.0) < 0.000_1 })
 }
 
+@Test func adapterDirectoryResolvesWhenAdaptersFolderDoesNotExistYet() throws {
+    let missingBase = FileManager.default.temporaryDirectory
+        .appendingPathComponent("missing-adapters-\(UUID().uuidString)", isDirectory: true)
+    #expect(FileManager.default.fileExists(atPath: missingBase.path(percentEncoded: false)) == false)
+
+    let url = try AdapterRegistry.adapterDirectory(id: "safe-adapter", baseDirectory: missingBase)
+    #expect(url.lastPathComponent == "safe-adapter")
+    #expect(url.deletingLastPathComponent().lastPathComponent == missingBase.lastPathComponent)
+}
+
 @Test @MainActor func localNativeAdapterFolderImportCopiesPiMPAdapter() async throws {
     let sourceDir = FileManager.default.temporaryDirectory
         .appendingPathComponent(UUID().uuidString, isDirectory: true)

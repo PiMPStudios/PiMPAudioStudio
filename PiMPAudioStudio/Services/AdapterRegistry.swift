@@ -43,7 +43,10 @@ struct AdapterRegistry {
             guard let data = try? Data(contentsOf: metadataURL),
                   let adapter = try? decoder.decode(LoRAAdapter.self, from: data),
                   let expectedDirectory = try? adapterDirectory(id: adapter.id),
-                  expectedDirectory.standardizedFileURL == itemURL.standardizedFileURL else {
+                  fileSystemPathsEqual(
+                    expectedDirectory.standardizedFileURL,
+                    itemURL.standardizedFileURL
+                  ) else {
                 continue
             }
 
@@ -69,16 +72,34 @@ struct AdapterRegistry {
         }
 
         let candidate = base.appendingPathComponent(id, isDirectory: true).standardizedFileURL
-        guard candidate.deletingLastPathComponent() == base else {
+        // Compare path strings, not URL ==. URL equality can fail on isDirectory
+        // metadata when the adapters folder does not yet exist (fresh CI / first launch).
+        guard fileSystemPathsEqual(
+            candidate.deletingLastPathComponent().standardizedFileURL,
+            base
+        ) else {
             throw AdapterError.invalidIdentifier(id)
         }
 
-        let resolvedBase = base.resolvingSymlinksInPath()
-        let resolvedCandidate = candidate.resolvingSymlinksInPath()
-        guard resolvedCandidate.deletingLastPathComponent() == resolvedBase else {
+        let resolvedBase = base.resolvingSymlinksInPath().standardizedFileURL
+        let resolvedCandidate = candidate.resolvingSymlinksInPath().standardizedFileURL
+        guard fileSystemPathsEqual(
+            resolvedCandidate.deletingLastPathComponent().standardizedFileURL,
+            resolvedBase
+        ) else {
             throw AdapterError.invalidIdentifier(id)
         }
         return candidate
+    }
+
+    private static func fileSystemPathsEqual(_ lhs: URL, _ rhs: URL) -> Bool {
+        normalizedFileSystemPath(lhs) == normalizedFileSystemPath(rhs)
+    }
+
+    private static func normalizedFileSystemPath(_ url: URL) -> String {
+        let path = url.path(percentEncoded: false)
+        guard path.count > 1 else { return path }
+        return path.hasSuffix("/") ? String(path.dropLast()) : path
     }
 
     static func normalizedIdentifier(from seed: String) -> String {
