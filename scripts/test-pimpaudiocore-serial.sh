@@ -13,6 +13,11 @@ done < <(
     | sort -u
 )
 
+if [[ ${#FILTERS[@]} -eq 0 ]]; then
+  echo "error: no PiMPAudioCoreTests filters listed (package resolve or swift test list failed)" >&2
+  exit 1
+fi
+
 for filter in "${FILTERS[@]}"; do
   printf 'Running %s\n' "$filter"
   swift test --package-path "$PACKAGE_PATH" --filter "$filter"

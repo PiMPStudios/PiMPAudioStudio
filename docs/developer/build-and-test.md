@@ -82,6 +82,10 @@ GitHub Actions (`.github/workflows/ci.yml`) on `main` and pull requests:
 | PiMPAudioCore | `scripts/test-pimpaudiocore-serial.sh` (one suite at a time — MLX GPU-state races) |
 | App tests | `xcodebuild test -scheme PiMPAudioStudio -only-testing:PiMPAudioStudioTests` |
 
+macOS jobs select **Xcode 26.x** (`scripts/ci-select-xcode.sh`). The default
+`/Applications/Xcode.app` on GitHub `macos-15` is still 16.4 / Swift 6.1, which
+cannot resolve `Vendor/demucs-mlx-swift` (`swift-tools-version: 6.2`).
+
 SwiftFormat config lives at `.swiftformat` for local use; it is **not** a CI gate until the tree is formatted in a dedicated pass.
 
 ```bash
