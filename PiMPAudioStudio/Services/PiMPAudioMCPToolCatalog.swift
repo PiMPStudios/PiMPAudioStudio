@@ -298,7 +298,7 @@ enum MCPToolCatalog {
         tool(
             name: "stop_runpod_pod",
             title: "Terminate RunPod Pod",
-            description: "Terminate/delete a RunPod pod through the same RunPodService path as the UI. Requires confirm: true or MCP form approval. This uses RunPod DELETE /pods/{podId}, not the pause/resume stop endpoint.",
+            description: "Terminate/delete a RunPod pod through the same RunPodService path as the UI. Requires confirm: true or MCP form approval. This uses RunPod DELETE /v2/pods/{id}, not a pause/resume stop action.",
             required: ["podID"],
             properties: [
                 "podID": [

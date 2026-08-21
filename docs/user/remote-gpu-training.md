@@ -53,7 +53,11 @@ Build -> Training -> Remote GPU
    - **Pull & Import** — download `remote_artifacts` and import the adapter
 10. **Terminate** the pod after artifacts are safe on your Mac.
 
-Launch is Secure Cloud only. Interruptible pricing is optional when available.
+Launch is Secure Cloud on-demand only, through RunPod REST API v2. If a
+managed SSH private key is configured, PiMP derives its public key and merges
+it into the RunPod account key set (it does not replace keys already
+registered). Upload needs the pod `RUNNING` with a direct SSH endpoint
+(`ssh.direct`).
 
 ### Template Selection
 

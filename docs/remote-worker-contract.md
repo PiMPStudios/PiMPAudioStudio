@@ -226,7 +226,7 @@ Provider adapters may store provider-specific IDs locally in PiMP Audio Studio, 
 The first RunPod integration is intentionally app-local provider control, not a package-schema change:
 
 - RunPod API keys are stored through the same Keychain-backed `APIKeyStore` path as other remote credentials, with `RUNPOD_API_KEY` as the environment fallback.
-- The Remote GPU panel can list pods, request a new pod from a template or image, and terminate pods through RunPod's REST API.
+- The Remote GPU panel can list pods, request a new pod from a template or image, and terminate pods through RunPod REST API v2 (`https://api.runpod.io/v2`).
 - In-app launches use RunPod Secure Cloud capacity only; users who need Community Cloud or other non-standard placement controls should launch those pods from the RunPod console and use the exported job package manually.
 - Pod launch is always behind a confirmation prompt because it can start billable GPU time.
 - The app can copy SSH/upload handoff commands for the most recently exported job zip.

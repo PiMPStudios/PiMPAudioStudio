@@ -21,6 +21,11 @@ All notable changes to PiMP Audio Studio are documented here.
 
 ### Changed
 
+- **RunPod control plane now uses REST API v2** — GPU catalog, official
+  templates, pod list/create/terminate, and SSH registration talk to
+  `https://api.runpod.io/v2`. GraphQL GPU listing is gone. Interruptible / spot
+  launch is removed. Launch registers the managed SSH public key by merging it
+  into the account key set.
 - **Launch no longer `fatalError`s on ConditioningActor stub** — the stub
   tokenizer is in-memory and non-throwing.
 - **LLM evict-after-enhance/write** moved from the scene body into
