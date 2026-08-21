@@ -629,87 +629,77 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
 }
 
 @Test func runPodClientListGPUTypesParsesPricingAndAvailability() async throws {
-    let transport = RunPodMockTransport(responses: [(
-        statusCode: 200,
-        data: Data("""
-        {
-          "data": {
-            "gpuTypes": [
-              {
-                "id": "NVIDIA GeForce RTX 4090",
-                "displayName": "NVIDIA GeForce RTX 4090",
-                "manufacturer": "NVIDIA",
-                "memoryInGb": 24,
-                "secureCloud": true,
-                "secureLowestPrice": {
-                  "minimumBidPrice": 0.50,
-                  "uninterruptablePrice": 0.74,
-                  "stockStatus": "Medium",
-                  "availableGpuCounts": [1, 2]
+    let transport = RunPodMockTransport(responses: [
+        (
+            statusCode: 200,
+            data: Data("""
+            {
+              "gpus": [
+                {
+                  "id": "NVIDIA GeForce RTX 4090",
+                  "name": "RTX 4090",
+                  "manufacturer": "NVIDIA",
+                  "memory": 24,
+                  "secure": true,
+                  "community": true,
+                  "price": { "secure": 0.74, "community": 0.50 },
+                  "maxCount": { "secure": 4, "community": 2 },
+                  "availability": "MEDIUM"
                 },
-                "securePrice": 0.74,
-                "secureSpotPrice": 0.50,
-                "maxGpuCount": 8,
-                "maxGpuCountSecureCloud": 4
-              },
-              {
-                "id": "NVIDIA H100 PCIe",
-                "displayName": "NVIDIA H100 PCIe",
-                "memoryInGb": 80,
-                "secureCloud": true,
-                "secureLowestPrice": {
-                  "uninterruptablePrice": 4.25,
-                  "stockStatus": "None",
-                  "availableGpuCounts": []
+                {
+                  "id": "NVIDIA H100 PCIe",
+                  "name": "H100 PCIe",
+                  "manufacturer": "NVIDIA",
+                  "memory": 80,
+                  "secure": true,
+                  "community": false,
+                  "price": { "secure": 4.25, "community": 0 },
+                  "maxCount": { "secure": 2, "community": 0 },
+                  "availability": "NONE"
                 },
-                "securePrice": 4.25,
-                "maxGpuCount": 2
-              },
-              {
-                "id": "community-only-gpu",
-                "displayName": "Community Only GPU",
-                "memoryInGb": 24,
-                "secureCloud": false
-              }
-            ],
-            "dataCenters": [
-              {
-                "id": "US-TX-1",
-                "name": "US-TX-1",
-                "location": "United States",
-                "gpuAvailability": [
-                  {
-                    "gpuTypeId": "NVIDIA GeForce RTX 4090",
-                    "displayName": "RTX 4090",
-                    "stockStatus": "Low"
-                  },
-                  {
-                    "gpuTypeId": "NVIDIA H100 PCIe",
-                    "displayName": "H100 PCIe",
-                    "stockStatus": ""
-                  }
-                ]
-              },
-              {
-                "id": "EU-RO-1",
-                "name": "EU-RO-1",
-                "location": "Europe",
-                "gpuAvailability": [
-                  {
-                    "gpuTypeId": "NVIDIA GeForce RTX 4090",
-                    "displayName": "RTX 4090",
-                    "stockStatus": "High"
-                  }
-                ]
-              }
-            ]
-          }
-        }
-        """.utf8)
-    )])
+                {
+                  "id": "community-only-gpu",
+                  "name": "Community Only",
+                  "manufacturer": "NVIDIA",
+                  "memory": 8,
+                  "secure": false,
+                  "community": true,
+                  "price": { "secure": 0, "community": 0.20 },
+                  "maxCount": { "secure": 0, "community": 1 },
+                  "availability": "HIGH"
+                }
+              ]
+            }
+            """.utf8)
+        ),
+        (
+            statusCode: 200,
+            data: Data("""
+            {
+              "dataCenters": [
+                {
+                  "id": "US-TX-1",
+                  "name": "US Texas 1",
+                  "region": "NORTH_AMERICA",
+                  "gpuAvailability": [
+                    { "id": "NVIDIA GeForce RTX 4090", "name": "RTX 4090", "availability": "LOW" }
+                  ]
+                },
+                {
+                  "id": "EU-RO-1",
+                  "name": "EU Romania 1",
+                  "region": "EUROPE",
+                  "gpuAvailability": [
+                    { "id": "NVIDIA GeForce RTX 4090", "name": "RTX 4090", "availability": "HIGH" }
+                  ]
+                }
+              ]
+            }
+            """.utf8)
+        ),
+    ])
     let client = RunPodAPIClient(
         baseURL: URL(string: "https://api.runpod.io/v2")!,
-        graphQLURL: URL(string: "https://api.runpod.io/graphql")!,
         transport: transport
     )
 
@@ -744,24 +734,21 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
     let secureDetail = rtx4090.detailLabel()
     #expect(secureDetail.contains("Secure Cloud"))
     #expect(secureDetail.contains("Medium stock"))
-    #expect(secureDetail.contains("counts 1/2"))
     #expect(secureDetail.contains("$0.74/hr"))
     #expect(!secureDetail.contains("On-demand"))
     #expect(!secureDetail.contains("Spot"))
     #expect(secureDetail.contains("up to 4 GPUs"))
 
-    let request = try #require(transport.requests.first)
-    #expect(request.httpMethod == "POST")
-    #expect(request.url?.absoluteString == "https://api.runpod.io/graphql")
-    #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer rp_test_token")
-    let bodyData = try #require(request.httpBody)
-    let body = String(data: bodyData, encoding: .utf8) ?? ""
-    #expect(body.contains("gpuTypes"))
-    #expect(body.contains("dataCenters"))
-    #expect(body.contains("gpuAvailability"))
-    #expect(body.contains("lowestPrice"))
-    #expect(body.contains("stockStatus"))
-    #expect(!body.contains("rp_test_token"))
+    #expect(transport.requests.count == 2)
+    #expect(transport.requests[0].httpMethod == "GET")
+    #expect(transport.requests[0].url?.absoluteString.contains("/v2/catalog/gpus") == true)
+    #expect(transport.requests[0].url?.absoluteString.contains("include=AVAILABILITY") == true)
+    #expect(transport.requests[0].url?.absoluteString.contains("product=POD") == true)
+    #expect(transport.requests[0].url?.absoluteString.contains("cloud=SECURE") == true)
+    #expect(transport.requests[0].value(forHTTPHeaderField: "Authorization") == "Bearer rp_test_token")
+    #expect(transport.requests[1].httpMethod == "GET")
+    #expect(transport.requests[1].url?.absoluteString.contains("/v2/catalog/datacenters") == true)
+    #expect(transport.requests[1].url?.absoluteString.contains("include=GPU_AVAILABILITY") == true)
 }
 
 @Test func runPodRegionsCoverRunPodsCurrentDatacenterPrefixes() {
@@ -783,6 +770,16 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
     #expect(RunPodRegion.oceania.includes(dataCenter("OC-AU-1")))
     #expect(!RunPodRegion.europe.includes(dataCenter("US-TX-1")))
     #expect(RunPodRegion.any.includes(dataCenter("US-TX-1")))
+
+    let iceland = RunPodDataCenter(
+        id: "IS-1",
+        name: "Iceland 1",
+        location: "Iceland",
+        region: "EUROPE",
+        gpuAvailability: []
+    )
+    #expect(RunPodRegion.europe.includes(iceland))
+    #expect(!RunPodRegion.northAmerica.includes(iceland))
 }
 
 @Test func runPodClientListOfficialPodTemplatesParsesRunPodTemplates() async throws {
@@ -1081,28 +1078,6 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
         #expect(error.localizedDescription.contains("RunPod rejected the API key"))
         #expect(error.localizedDescription.contains("generate a new key"))
         #expect(error.localizedDescription.contains("JWT expired"))
-    }
-}
-
-@Test func runPodGraphQLErrorsAreReadable() async throws {
-    let transport = RunPodMockTransport(responses: [(
-        statusCode: 200,
-        data: Data("""
-        {
-          "errors": [
-            {"message": "Unauthorized"}
-          ]
-        }
-        """.utf8)
-    )])
-    let client = RunPodAPIClient(transport: transport)
-
-    do {
-        _ = try await client.listGPUTypes(token: "bad-token")
-        Issue.record("Expected GraphQL error")
-    } catch {
-        #expect(error.localizedDescription.contains("RunPod rejected the GPU type request"))
-        #expect(error.localizedDescription.contains("Unauthorized"))
     }
 }
 

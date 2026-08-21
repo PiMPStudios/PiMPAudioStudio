@@ -1755,6 +1755,9 @@ enum RunPodRegion: String, CaseIterable, Identifiable, Sendable {
 
     func includes(_ dataCenter: RunPodDataCenter) -> Bool {
         guard self != .any else { return true }
+        if let catalogRegion = dataCenter.catalogRegion {
+            return catalogRegion == self
+        }
 
         let normalizedID = dataCenter.id.uppercased()
         switch self {
@@ -1801,7 +1804,57 @@ struct RunPodDataCenter: Identifiable, Decodable, Equatable, Sendable {
     var id: String
     var name: String
     var location: String
+    var region: String?
     var gpuAvailability: [RunPodGPUAvailability]
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case location
+        case region
+        case gpuAvailability
+    }
+
+    init(
+        id: String,
+        name: String,
+        location: String,
+        region: String? = nil,
+        gpuAvailability: [RunPodGPUAvailability]
+    ) {
+        self.id = id
+        self.name = name
+        self.location = location
+        self.region = region
+        self.gpuAvailability = gpuAvailability
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        location = try container.decodeIfPresent(String.self, forKey: .location) ?? name
+        region = try container.decodeIfPresent(String.self, forKey: .region)
+        gpuAvailability = try container.decodeIfPresent(
+            [RunPodGPUAvailability].self,
+            forKey: .gpuAvailability
+        ) ?? []
+    }
+
+    var catalogRegion: RunPodRegion? {
+        switch (region ?? "").trimmingCharacters(in: .whitespacesAndNewlines).uppercased() {
+        case "NORTH_AMERICA":
+            return .northAmerica
+        case "ASIA":
+            return .asia
+        case "EUROPE":
+            return .europe
+        case "OCEANIA":
+            return .oceania
+        default:
+            return nil
+        }
+    }
 
     func hasStock(of gpuTypeID: String) -> Bool {
         gpuAvailability.contains {
@@ -1819,8 +1872,11 @@ struct RunPodGPUAvailability: Decodable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case gpuTypeID = "gpuTypeId"
         case gpuID = "gpuId"
+        case id
         case displayName
+        case name
         case stockStatus
+        case availability
     }
 
     init(gpuTypeID: String, displayName: String, stockStatus: String) {
@@ -1832,10 +1888,17 @@ struct RunPodGPUAvailability: Decodable, Equatable, Sendable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         gpuTypeID =
-            try container.decodeIfPresent(String.self, forKey: .gpuTypeID) ??
-            container.decode(String.self, forKey: .gpuID)
-        displayName = try container.decodeIfPresent(String.self, forKey: .displayName) ?? gpuTypeID
-        stockStatus = try container.decodeIfPresent(String.self, forKey: .stockStatus) ?? ""
+            try container.decodeIfPresent(String.self, forKey: .gpuTypeID)
+            ?? container.decodeIfPresent(String.self, forKey: .gpuID)
+            ?? container.decode(String.self, forKey: .id)
+        displayName =
+            try container.decodeIfPresent(String.self, forKey: .displayName)
+            ?? container.decodeIfPresent(String.self, forKey: .name)
+            ?? gpuTypeID
+        stockStatus =
+            try container.decodeIfPresent(String.self, forKey: .stockStatus)
+            ?? container.decodeIfPresent(String.self, forKey: .availability)
+            ?? ""
     }
 
     var stockStatusValue: RunPodStockStatus {
@@ -2386,22 +2449,57 @@ struct RunPodCreatePodRequest: Encodable, Equatable, Sendable {
     var volumeMountPath: String
 }
 
-private struct RunPodGraphQLRequest: Encodable {
-    var query: String
+private struct RunPodListGPUsResponse: Decodable {
+    var gpus: [RunPodCatalogGPU]
 }
 
-private struct RunPodGraphQLResponse<Payload: Decodable>: Decodable {
-    var data: Payload?
-    var errors: [RunPodGraphQLError]?
+private struct RunPodListDataCentersResponse: Decodable {
+    var dataCenters: [RunPodDataCenter]
 }
 
-private struct RunPodGraphQLError: Decodable, Equatable {
-    var message: String
-}
+private struct RunPodCatalogGPU: Decodable {
+    var id: String
+    var name: String?
+    var manufacturer: String?
+    var memory: Int?
+    var secure: Bool?
+    var price: Price?
+    var maxCount: MaxCount?
+    var availability: String?
 
-private struct RunPodGPUTypesPayload: Decodable {
-    var gpuTypes: [RunPodGPUType]
-    var dataCenters: [RunPodDataCenter]?
+    struct Price: Decodable {
+        var secure: RunPodFlexibleDouble?
+    }
+
+    struct MaxCount: Decodable {
+        var secure: Int?
+    }
+
+    var asGPUType: RunPodGPUType {
+        RunPodGPUType(
+            id: id,
+            displayName: name,
+            manufacturer: manufacturer,
+            memoryInGb: memory,
+            secureCloud: secure,
+            secureLowestPrice: RunPodLowestPrice(
+                gpuName: name,
+                gpuTypeId: id,
+                minimumBidPrice: nil,
+                uninterruptablePrice: price?.secure,
+                stockStatus: availability,
+                availableGpuCounts: nil,
+                maxGpuCount: maxCount?.secure,
+                maxUnreservedGpuCount: nil,
+                rentedCount: nil,
+                totalCount: nil
+            ),
+            securePrice: price?.secure,
+            secureSpotPrice: nil,
+            maxGpuCount: maxCount?.secure,
+            maxGpuCountSecureCloud: maxCount?.secure
+        )
+    }
 }
 
 private struct RunPodListPodsResponse: Decodable {
@@ -2433,16 +2531,13 @@ struct URLSessionRunPodTransport: RunPodTransport {
 
 struct RunPodAPIClient {
     var baseURL: URL
-    var graphQLURL: URL
     var transport: any RunPodTransport
 
     init(
         baseURL: URL = URL(string: "https://api.runpod.io/v2")!,
-        graphQLURL: URL = URL(string: "https://api.runpod.io/graphql")!,
         transport: any RunPodTransport = URLSessionRunPodTransport()
     ) {
         self.baseURL = baseURL
-        self.graphQLURL = graphQLURL
         self.transport = transport
     }
 
@@ -2458,30 +2553,43 @@ struct RunPodAPIClient {
     }
 
     func listGPUCatalog(token: String) async throws -> RunPodGPUCatalog {
-        let body = try JSONEncoder().encode(RunPodGraphQLRequest(query: Self.gpuCatalogQuery))
-        let request = try makeGraphQLRequest(token: token, body: body)
-        let (data, response) = try await transport.data(for: request)
-        try validate(response: response, data: data)
+        let gpuRequest = try makeRequest(
+            path: "catalog/gpus",
+            method: "GET",
+            token: token,
+            queryItems: [
+                URLQueryItem(name: "include", value: "AVAILABILITY"),
+                URLQueryItem(name: "product", value: "POD"),
+                URLQueryItem(name: "cloud", value: "SECURE"),
+            ]
+        )
+        let (gpuData, gpuResponse) = try await transport.data(for: gpuRequest)
+        try validate(response: gpuResponse, data: gpuData)
 
-        let payload = try JSONDecoder().decode(RunPodGraphQLResponse<RunPodGPUTypesPayload>.self, from: data)
-        if let errors = payload.errors, !errors.isEmpty {
-            throw RunPodError.graphQLErrors(errors.map(\.message))
-        }
-        guard let data = payload.data else {
-            throw RunPodError.invalidResponse
-        }
+        let dcRequest = try makeRequest(
+            path: "catalog/datacenters",
+            method: "GET",
+            token: token,
+            queryItems: [
+                URLQueryItem(name: "include", value: "GPU_AVAILABILITY"),
+            ]
+        )
+        let (dcData, dcResponse) = try await transport.data(for: dcRequest)
+        try validate(response: dcResponse, data: dcData)
 
-        let gpuTypes = data.gpuTypes
+        let gpuTypes = try JSONDecoder().decode(RunPodListGPUsResponse.self, from: gpuData)
+            .gpus
+            .map(\.asGPUType)
             .filter { $0.secureCloud != false }
             .sorted {
                 $0.displayNameValue.localizedStandardCompare($1.displayNameValue) == .orderedAscending
             }
-        return RunPodGPUCatalog(
-            gpuTypes: gpuTypes,
-            dataCenters: (data.dataCenters ?? []).sorted {
+        let dataCenters = try JSONDecoder().decode(RunPodListDataCentersResponse.self, from: dcData)
+            .dataCenters
+            .sorted {
                 $0.id.localizedStandardCompare($1.id) == .orderedAscending
             }
-        )
+        return RunPodGPUCatalog(gpuTypes: gpuTypes, dataCenters: dataCenters)
     }
 
     func listOfficialPodTemplates(token: String) async throws -> [RunPodTemplate] {
@@ -2550,21 +2658,6 @@ struct RunPodAPIClient {
         return request
     }
 
-    private func makeGraphQLRequest(token: String, body: Data) throws -> URLRequest {
-        let trimmedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedToken.isEmpty else {
-            throw RunPodError.missingAPIKey
-        }
-
-        var request = URLRequest(url: graphQLURL)
-        request.httpMethod = "POST"
-        request.httpBody = body
-        request.setValue("Bearer \(trimmedToken)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        return request
-    }
-
     private func validate(response: HTTPURLResponse, data: Data) throws {
         guard (200..<300).contains(response.statusCode) else {
             throw RunPodError.httpStatus(response.statusCode, Self.problemDetail(from: data))
@@ -2599,55 +2692,12 @@ struct RunPodAPIClient {
         return String(data: data, encoding: .utf8)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
-
-    private static let gpuCatalogQuery = """
-    query PiMPAudioRunPodGPUCatalog {
-      gpuTypes {
-        id
-        displayName
-        manufacturer
-        memoryInGb
-        secureCloud
-        secureLowestPrice: lowestPrice(input: { gpuCount: 1, secureCloud: true }) {
-          ...RunPodLowestPriceFields
-        }
-        securePrice
-        secureSpotPrice
-        maxGpuCount
-        maxGpuCountSecureCloud
-      }
-      dataCenters {
-        id
-        name
-        location
-        gpuAvailability {
-          gpuTypeId
-          displayName
-          stockStatus
-        }
-      }
-    }
-
-    fragment RunPodLowestPriceFields on LowestPrice {
-      gpuName
-      gpuTypeId
-      minimumBidPrice
-      uninterruptablePrice
-      stockStatus
-      availableGpuCounts
-      maxGpuCount
-      maxUnreservedGpuCount
-      rentedCount
-      totalCount
-    }
-    """
 }
 
 enum RunPodError: LocalizedError, Equatable {
     case missingAPIKey
     case invalidConfiguration(String)
     case invalidResponse
-    case graphQLErrors([String])
     case httpStatus(Int, String?)
 
     var errorDescription: String? {
@@ -2658,8 +2708,6 @@ enum RunPodError: LocalizedError, Equatable {
             return message
         case .invalidResponse:
             return "RunPod returned a response PiMP Audio Studio could not read."
-        case .graphQLErrors(let messages):
-            return "RunPod rejected the GPU type request: \(Self.joinedDetails(messages))"
         case .httpStatus(let status, let body):
             return Self.message(forHTTPStatus: status, body: body)
         }
