@@ -2092,6 +2092,79 @@ struct RunPodTemplate: Identifiable, Decodable, Equatable, Sendable {
     var volumeMountPath: String?
     var ports: [String]?
 
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case imageName
+        case image
+        case category
+        case isRunpod
+        case isPublic
+        case publicFlag = "public"
+        case isServerless
+        case serverless
+        case containerDiskInGb
+        case disk
+        case volumeInGb
+        case volumeMountPath
+        case ports
+        case mounts
+    }
+
+    init(
+        id: String,
+        name: String? = nil,
+        imageName: String? = nil,
+        category: String? = nil,
+        isRunpod: Bool? = nil,
+        isPublic: Bool? = nil,
+        isServerless: Bool? = nil,
+        containerDiskInGb: Int? = nil,
+        volumeInGb: Int? = nil,
+        volumeMountPath: String? = nil,
+        ports: [String]? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.imageName = imageName
+        self.category = category
+        self.isRunpod = isRunpod
+        self.isPublic = isPublic
+        self.isServerless = isServerless
+        self.containerDiskInGb = containerDiskInGb
+        self.volumeInGb = volumeInGb
+        self.volumeMountPath = volumeMountPath
+        self.ports = ports
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decodeIfPresent(String.self, forKey: .name)
+        imageName =
+            try container.decodeIfPresent(String.self, forKey: .image)
+            ?? container.decodeIfPresent(String.self, forKey: .imageName)
+        category = try container.decodeIfPresent(String.self, forKey: .category)
+        isPublic =
+            try container.decodeIfPresent(Bool.self, forKey: .publicFlag)
+            ?? container.decodeIfPresent(Bool.self, forKey: .isPublic)
+        isServerless =
+            try container.decodeIfPresent(Bool.self, forKey: .serverless)
+            ?? container.decodeIfPresent(Bool.self, forKey: .isServerless)
+        isRunpod = try container.decodeIfPresent(Bool.self, forKey: .isRunpod) ?? true
+        containerDiskInGb =
+            try container.decodeIfPresent(Int.self, forKey: .disk)
+            ?? container.decodeIfPresent(Int.self, forKey: .containerDiskInGb)
+        if let mounts = try container.decodeIfPresent(RunPodPodMounts.self, forKey: .mounts) {
+            volumeInGb = mounts.persistent?.size
+            volumeMountPath = mounts.persistent?.path
+        } else {
+            volumeInGb = try container.decodeIfPresent(Int.self, forKey: .volumeInGb)
+            volumeMountPath = try container.decodeIfPresent(String.self, forKey: .volumeMountPath)
+        }
+        ports = try container.decodeIfPresent([String].self, forKey: .ports)
+    }
+
     var displayNameValue: String {
         let trimmed = (name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? id : trimmed
@@ -2506,6 +2579,10 @@ private struct RunPodListPodsResponse: Decodable {
     var pods: [RunPodPodSummary]
 }
 
+private struct RunPodListTemplatesResponse: Decodable {
+    var templates: [RunPodTemplate]
+}
+
 private struct RunPodProblemDetails: Decodable {
     var title: String?
     var status: Int?
@@ -2594,18 +2671,22 @@ struct RunPodAPIClient {
 
     func listOfficialPodTemplates(token: String) async throws -> [RunPodTemplate] {
         let request = try makeRequest(
-            path: "templates",
+            path: "catalog/templates",
             method: "GET",
             token: token,
             queryItems: [
-                URLQueryItem(name: "includeRunpodTemplates", value: "true"),
-                URLQueryItem(name: "includePublicTemplates", value: "false"),
-                URLQueryItem(name: "includeEndpointBoundTemplates", value: "false"),
+                URLQueryItem(name: "source", value: "official"),
             ]
         )
         let (data, response) = try await transport.data(for: request)
         try validate(response: response, data: data)
-        return try JSONDecoder().decode([RunPodTemplate].self, from: data)
+        return try JSONDecoder().decode(RunPodListTemplatesResponse.self, from: data)
+            .templates
+            .map { template in
+                var official = template
+                official.isRunpod = true
+                return official
+            }
             .filter(\.isOfficialPodTemplate)
             .sorted {
                 $0.displayNameValue.localizedStandardCompare($1.displayNameValue) == .orderedAscending

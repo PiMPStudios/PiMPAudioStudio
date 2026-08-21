@@ -786,31 +786,28 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
     let transport = RunPodMockTransport(responses: [(
         statusCode: 200,
         data: Data("""
-        [
-          {
-            "id": "runpod-pytorch-240",
-            "name": "Runpod Pytorch 2.4.0",
-            "imageName": "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04",
-            "category": "NVIDIA",
-            "isRunpod": true,
-            "isServerless": false,
-            "containerDiskInGb": 50,
-            "volumeInGb": 20,
-            "ports": ["8888/http", "22/tcp"]
-          },
-          {
-            "id": "public-template",
-            "name": "Community Template",
-            "isRunpod": false,
-            "isServerless": false
-          },
-          {
-            "id": "runpod-serverless",
-            "name": "Runpod Serverless Pytorch",
-            "isRunpod": true,
-            "isServerless": true
-          }
-        ]
+        {
+          "templates": [
+            {
+              "id": "runpod-pytorch-240",
+              "name": "Runpod Pytorch 2.4.0",
+              "image": "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04",
+              "category": "NVIDIA",
+              "public": true,
+              "serverless": false,
+              "disk": 50,
+              "ports": ["8888/http", "22/tcp"],
+              "mounts": { "persistent": { "size": 20, "path": "/workspace" } }
+            },
+            {
+              "id": "runpod-serverless",
+              "name": "Runpod Serverless Pytorch",
+              "image": "runpod/pytorch:2.4.0",
+              "public": true,
+              "serverless": true
+            }
+          ]
+        }
         """.utf8)
     )])
     let client = RunPodAPIClient(
@@ -829,7 +826,7 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
 
     let request = try #require(transport.requests.first)
     #expect(request.httpMethod == "GET")
-    #expect(request.url?.absoluteString == "https://api.runpod.io/v2/templates?includeRunpodTemplates=true&includePublicTemplates=false&includeEndpointBoundTemplates=false")
+    #expect(request.url?.absoluteString == "https://api.runpod.io/v2/catalog/templates?source=official")
     #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer rp_test_token")
 }
 
