@@ -1485,21 +1485,20 @@ struct RunPodLaunchConfiguration: Equatable, Sendable {
         let requestImageName = trimmedImageName
 
         return RunPodCreatePodRequest(
-            cloudType: "SECURE",
-            computeType: "GPU",
-            containerDiskInGb: containerDiskGB,
-            dataCenterIds: trimmedDataCenterIDs.isEmpty ? nil : trimmedDataCenterIDs,
-            dataCenterPriority: trimmedDataCenterIDs.isEmpty ? nil : "availability",
-            gpuCount: 1,
-            gpuTypeIds: [trimmedGPUType],
-            gpuTypePriority: "availability",
-            imageName: requestImageName.isEmpty ? nil : requestImageName,
-            locked: false,
             name: trimmedName.isEmpty ? "PiMP Audio Studio Remote Job" : trimmedName,
-            ports: ports,
+            cloud: "SECURE",
+            gpu: .init(
+                id: trimmedGPUType,
+                count: 1,
+                minCudaVersion: RunPodTemplate.isBlackwellGPU(trimmedGPUType) ? "12.8" : nil
+            ),
+            dataCenterIds: trimmedDataCenterIDs.isEmpty ? nil : trimmedDataCenterIDs,
+            image: requestImageName.isEmpty ? nil : requestImageName,
             templateId: requestTemplateID.isEmpty ? nil : requestTemplateID,
-            volumeInGb: volumeGB,
-            volumeMountPath: "/workspace"
+            disk: containerDiskGB,
+            ports: ports,
+            startSsh: true,
+            mounts: .init(persistent: .init(size: volumeGB, path: "/workspace"))
         )
     }
 
@@ -2277,7 +2276,7 @@ struct RunPodTemplate: Identifiable, Decodable, Equatable, Sendable {
             || normalized.contains("tesla")
     }
 
-    private static func isBlackwellGPU(_ gpuTypeValue: String) -> Bool {
+    fileprivate static func isBlackwellGPU(_ gpuTypeValue: String) -> Bool {
         let normalized = gpuTypeValue.lowercased()
         return normalized.contains("blackwell")
             || normalized.contains("geforce rtx 50")
@@ -2505,21 +2504,31 @@ struct RunPodFlexibleDouble: Codable, Equatable, Sendable {
 }
 
 struct RunPodCreatePodRequest: Encodable, Equatable, Sendable {
-    var cloudType: String
-    var computeType: String
-    var containerDiskInGb: Int
-    var dataCenterIds: [String]?
-    var dataCenterPriority: String?
-    var gpuCount: Int
-    var gpuTypeIds: [String]
-    var gpuTypePriority: String
-    var imageName: String?
-    var locked: Bool
     var name: String
-    var ports: [String]
+    var cloud: String
+    var gpu: GPU
+    var dataCenterIds: [String]?
+    var image: String?
     var templateId: String?
-    var volumeInGb: Int
-    var volumeMountPath: String
+    var disk: Int
+    var ports: [String]
+    var startSsh: Bool
+    var mounts: Mounts
+
+    struct GPU: Encodable, Equatable, Sendable {
+        var id: String
+        var count: Int
+        var minCudaVersion: String?
+    }
+
+    struct Mounts: Encodable, Equatable, Sendable {
+        var persistent: Persistent
+    }
+
+    struct Persistent: Encodable, Equatable, Sendable {
+        var size: Int
+        var path: String
+    }
 }
 
 private struct RunPodListGPUsResponse: Decodable {

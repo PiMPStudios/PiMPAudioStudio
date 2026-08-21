@@ -1013,12 +1013,24 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
     let bodyData = try #require(request.httpBody)
     let body = try #require(JSONSerialization.jsonObject(with: bodyData) as? [String: Any])
     #expect(body["templateId"] as? String == "template-123")
-    #expect(body["computeType"] as? String == "GPU")
-    #expect(body["cloudType"] as? String == "SECURE")
-    #expect(body["gpuTypeIds"] as? [String] == ["NVIDIA GeForce RTX 4090"])
+    #expect(body["cloud"] as? String == "SECURE")
+    #expect(body["startSsh"] as? Bool == true)
+    #expect(body["image"] == nil)
+    let gpu = try #require(body["gpu"] as? [String: Any])
+    #expect(gpu["id"] as? String == "NVIDIA GeForce RTX 4090")
+    #expect(gpu["count"] as? Int == 1)
+    #expect(gpu["minCudaVersion"] == nil)
     #expect(body["dataCenterIds"] as? [String] == ["US-TX-1", "US-TX-3"])
-    #expect(body["dataCenterPriority"] as? String == "availability")
-    #expect(body["volumeInGb"] as? Int == 120)
+    #expect(body["disk"] as? Int == 80)
+    let mounts = try #require(body["mounts"] as? [String: Any])
+    let persistent = try #require(mounts["persistent"] as? [String: Any])
+    #expect(persistent["size"] as? Int == 120)
+    #expect(persistent["path"] as? String == "/workspace")
+    #expect(body["ports"] as? [String] == ["22/tcp", "8888/http"])
+    #expect(body["cloudType"] == nil)
+    #expect(body["gpuTypeIds"] == nil)
+    #expect(body["interruptible"] == nil)
+    #expect(body["supportPublicIp"] == nil)
     #expect(!String(data: bodyData, encoding: .utf8)!.contains("secret-token"))
 }
 
@@ -1035,9 +1047,23 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
     let requestBody = try configuration.requestBody()
 
     #expect(requestBody.templateId == nil)
-    #expect(requestBody.imageName == "runpod/pytorch:custom")
+    #expect(requestBody.image == "runpod/pytorch:custom")
     #expect(requestBody.dataCenterIds == nil)
-    #expect(requestBody.dataCenterPriority == nil)
+    #expect(requestBody.gpu.minCudaVersion == nil)
+}
+
+@Test func runPodLaunchConfigurationSetsMinCudaVersionForBlackwellGPUs() throws {
+    let configuration = RunPodLaunchConfiguration(
+        name: "pimp-remote",
+        templateID: "template-123",
+        imageName: "",
+        gpuTypeID: "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+        containerDiskGB: 80,
+        volumeGB: 120
+    )
+
+    let requestBody = try configuration.requestBody()
+    #expect(requestBody.gpu.minCudaVersion == "12.8")
 }
 
 @Test func runPodClientDeletePodUsesDeleteEndpoint() async throws {
