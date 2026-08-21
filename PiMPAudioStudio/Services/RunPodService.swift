@@ -847,6 +847,7 @@ struct RunPodRemoteJobPlan: Sendable {
     let workerDirectoryURL: URL
     let host: String
     let port: Int
+    let username: String
     let sshKeyPath: String?
     let knownHostsPath: String
     let remoteJobKey: String
@@ -875,9 +876,7 @@ struct RunPodRemoteJobPlan: Sendable {
                 "the portable PiMP remote worker could not be found"
             )
         }
-        guard let publicIP = pod.publicIp?
-                .trimmingCharacters(in: .whitespacesAndNewlines),
-              !publicIP.isEmpty,
+        guard let publicIP = pod.sshHost,
               publicIP.rangeOfCharacter(
                 from: CharacterSet(
                     charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-"
@@ -887,6 +886,14 @@ struct RunPodRemoteJobPlan: Sendable {
               (1...65_535).contains(sshPort) else {
             throw RunPodRemoteJobError.invalidConfiguration(
                 "the pod does not expose a valid public SSH endpoint"
+            )
+        }
+        let username = pod.sshUsername
+        guard username.rangeOfCharacter(
+            from: CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._-")).inverted
+        ) == nil else {
+            throw RunPodRemoteJobError.invalidConfiguration(
+                "the pod SSH username is not usable"
             )
         }
 
@@ -905,6 +912,7 @@ struct RunPodRemoteJobPlan: Sendable {
         self.workerDirectoryURL = workerDirectoryURL
         self.host = publicIP
         self.port = sshPort
+        self.username = username
         self.sshKeyPath = expandedKey
         let knownHostsDirectory = expandedKey.map {
             URL(fileURLWithPath: $0).deletingLastPathComponent()
@@ -932,7 +940,7 @@ struct RunPodRemoteJobPlan: Sendable {
     var uploadArchiveCommand: RunPodRemoteCommand {
         scpCommand(
             source: archiveURL.path(percentEncoded: false),
-            destination: "root@\(host):/workspace/jobs/",
+            destination: "\(username)@\(host):/workspace/jobs/",
             recursive: false,
             displayName: "Upload remote job zip"
         )
@@ -941,7 +949,7 @@ struct RunPodRemoteJobPlan: Sendable {
     var uploadWorkerCommand: RunPodRemoteCommand {
         scpCommand(
             source: workerDirectoryURL.path(percentEncoded: false),
-            destination: "root@\(host):/workspace/pimp-remote-worker-src",
+            destination: "\(username)@\(host):/workspace/pimp-remote-worker-src",
             recursive: true,
             displayName: "Upload portable remote worker"
         )
@@ -1110,7 +1118,7 @@ struct RunPodRemoteJobPlan: Sendable {
 
     func pullArtifactsCommand(destinationURL: URL) -> RunPodRemoteCommand {
         scpCommand(
-            source: "root@\(host):\(remoteRoot)/pullback/remote_artifacts",
+            source: "\(username)@\(host):\(remoteRoot)/pullback/remote_artifacts",
             destination: destinationURL.path(percentEncoded: false),
             recursive: true,
             displayName: "Download remote artifacts"
@@ -1155,7 +1163,7 @@ struct RunPodRemoteJobPlan: Sendable {
         RunPodRemoteCommand(
             executableURL: URL(fileURLWithPath: "/usr/bin/ssh"),
             arguments: sshOptions
-                + ["-p", String(port), "root@\(host)", remoteCommand],
+                + ["-p", String(port), "\(username)@\(host)", remoteCommand],
             displayName: displayName
         )
     }
@@ -1508,76 +1516,78 @@ struct RunPodLaunchConfiguration: Equatable, Sendable {
     }
 }
 
+struct RunPodPodSSHEndpoint: Decodable, Equatable, Sendable {
+    var host: String
+    var port: Int
+    var username: String
+}
+
+private struct RunPodPodSSHBlock: Decodable {
+    var direct: RunPodPodSSHEndpoint?
+}
+
+private struct RunPodPodMounts: Decodable {
+    var persistent: RunPodPersistentMount?
+}
+
+private struct RunPodPersistentMount: Decodable {
+    var size: Int?
+    var path: String?
+}
+
 struct RunPodPodSummary: Identifiable, Decodable, Equatable, Sendable {
     var id: String
     var name: String?
-    var desiredStatus: String?
+    var status: String?
     var image: String?
-    var interruptible: Bool?
     var locked: Bool?
-    var costPerHr: RunPodFlexibleDouble?
-    var adjustedCostPerHr: RunPodFlexibleDouble?
+    var cost: RunPodFlexibleDouble?
     var gpu: RunPodGPU?
-    var machine: RunPodMachine?
     var gpuCount: Int?
-    var memoryInGb: Double?
-    var publicIp: String?
-    var portMappings: [String: Int]
     var ports: [String]
     var templateId: String?
-    var lastStartedAt: String?
-    var lastStatusChange: String?
     var containerDiskInGb: Int?
     var volumeInGb: Int?
     var volumeMountPath: String?
+    var sshDirect: RunPodPodSSHEndpoint?
 
     enum CodingKeys: String, CodingKey {
         case id
         case name
-        case desiredStatus
+        case status
         case image
-        case interruptible
         case locked
-        case costPerHr
-        case adjustedCostPerHr
+        case cost
         case gpu
-        case machine
         case gpuCount
-        case memoryInGb
-        case publicIp
-        case portMappings
+        case disk
+        case mounts
         case ports
-        case templateId
-        case lastStartedAt
-        case lastStatusChange
-        case containerDiskInGb
-        case volumeInGb
-        case volumeMountPath
+        case template
+        case ssh
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(String.self, forKey: .id)
         name = try container.decodeIfPresent(String.self, forKey: .name)
-        desiredStatus = try container.decodeIfPresent(String.self, forKey: .desiredStatus)
+        status = try container.decodeIfPresent(String.self, forKey: .status)
         image = try container.decodeIfPresent(String.self, forKey: .image)
-        interruptible = try container.decodeIfPresent(Bool.self, forKey: .interruptible)
         locked = try container.decodeIfPresent(Bool.self, forKey: .locked)
-        costPerHr = try container.decodeIfPresent(RunPodFlexibleDouble.self, forKey: .costPerHr)
-        adjustedCostPerHr = try container.decodeIfPresent(RunPodFlexibleDouble.self, forKey: .adjustedCostPerHr)
+        cost = try container.decodeIfPresent(RunPodFlexibleDouble.self, forKey: .cost)
         gpu = try container.decodeIfPresent(RunPodGPU.self, forKey: .gpu)
-        machine = try container.decodeIfPresent(RunPodMachine.self, forKey: .machine)
-        gpuCount = try container.decodeIfPresent(Int.self, forKey: .gpuCount)
-        memoryInGb = try container.decodeIfPresent(Double.self, forKey: .memoryInGb)
-        publicIp = try container.decodeIfPresent(String.self, forKey: .publicIp)
-        portMappings = (try? container.decode([String: Int].self, forKey: .portMappings)) ?? [:]
+        gpuCount = try container.decodeIfPresent(Int.self, forKey: .gpuCount) ?? gpu?.count
+        containerDiskInGb = try container.decodeIfPresent(Int.self, forKey: .disk)
+        if let mounts = try container.decodeIfPresent(RunPodPodMounts.self, forKey: .mounts) {
+            volumeInGb = mounts.persistent?.size
+            volumeMountPath = mounts.persistent?.path
+        } else {
+            volumeInGb = nil
+            volumeMountPath = nil
+        }
         ports = (try? container.decode([String].self, forKey: .ports)) ?? []
-        templateId = try container.decodeIfPresent(String.self, forKey: .templateId)
-        lastStartedAt = try container.decodeIfPresent(String.self, forKey: .lastStartedAt)
-        lastStatusChange = try container.decodeIfPresent(String.self, forKey: .lastStatusChange)
-        containerDiskInGb = try container.decodeIfPresent(Int.self, forKey: .containerDiskInGb)
-        volumeInGb = try container.decodeIfPresent(Int.self, forKey: .volumeInGb)
-        volumeMountPath = try container.decodeIfPresent(String.self, forKey: .volumeMountPath)
+        templateId = try container.decodeIfPresent(String.self, forKey: .template)
+        sshDirect = try container.decodeIfPresent(RunPodPodSSHBlock.self, forKey: .ssh)?.direct
     }
 
     var displayName: String {
@@ -1586,28 +1596,39 @@ struct RunPodPodSummary: Identifiable, Decodable, Equatable, Sendable {
     }
 
     var statusLabel: String {
-        desiredStatus ?? "UNKNOWN"
+        status ?? "UNKNOWN"
     }
 
     var gpuLabel: String {
-        gpu?.displayName ?? machine?.gpuDisplayName ?? machine?.gpuType?.displayName ?? "GPU"
+        gpu?.id ?? gpu?.displayName ?? "GPU"
     }
 
     var hourlyCostLabel: String? {
-        let value = adjustedCostPerHr?.value ?? costPerHr?.value
-        guard let value else { return nil }
+        guard let value = cost?.value else { return nil }
         return String(format: "$%.2f/hr", value)
     }
 
-    var sshPort: Int? {
-        portMappings["22"]
+    var sshHost: String? {
+        let trimmed = sshDirect?.host.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
     }
 
+    var sshPort: Int? {
+        sshDirect?.port
+    }
+
+    var sshUsername: String {
+        let trimmed = sshDirect?.username.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? "root" : trimmed
+    }
+
+    var publicIp: String? { sshHost }
+
     func sshCommand(sshKeyPath: String) -> String? {
-        guard let publicIp, !publicIp.isEmpty, let sshPort else { return nil }
+        guard let sshHost, let sshPort else { return nil }
         let key = sshKeyPath.trimmingCharacters(in: .whitespacesAndNewlines)
         let keyArgument = key.isEmpty ? "" : " -i \(shellPathQuoted(key))"
-        return "ssh -p \(sshPort)\(keyArgument) root@\(publicIp)"
+        return "ssh -p \(sshPort)\(keyArgument) \(sshUsername)@\(sshHost)"
     }
 
     func uploadCommand(
@@ -1616,18 +1637,18 @@ struct RunPodPodSummary: Identifiable, Decodable, Equatable, Sendable {
         workerDirectoryURL: URL? = RunPodRemoteWorkerLocator.defaultDirectoryURL()
     ) -> String? {
         guard let archiveURL,
-              let publicIp,
-              !publicIp.isEmpty,
+              let sshHost,
               let sshPort else { return nil }
         let key = sshKeyPath.trimmingCharacters(in: .whitespacesAndNewlines)
         let keyArgument = key.isEmpty ? "" : " -i \(shellPathQuoted(key))"
+        let target = "\(sshUsername)@\(sshHost)"
         let workerDirectory = shellQuoted(
             (workerDirectoryURL ?? RunPodRemoteWorkerLocator.defaultDirectoryURL())
                 .path(percentEncoded: false)
         )
-        let makeJobsDirectory = "ssh -p \(sshPort)\(keyArgument) root@\(publicIp) 'mkdir -p /workspace/jobs && rm -rf /workspace/pimp-remote-worker-src'"
-        let uploadArchive = "scp -P \(sshPort)\(keyArgument) \(shellPathQuoted(archiveURL.path(percentEncoded: false))) root@\(publicIp):/workspace/jobs/"
-        let uploadWorker = "scp -P \(sshPort)\(keyArgument) -r \"$WORKER_DIR\" root@\(publicIp):/workspace/pimp-remote-worker-src"
+        let makeJobsDirectory = "ssh -p \(sshPort)\(keyArgument) \(target) 'mkdir -p /workspace/jobs && rm -rf /workspace/pimp-remote-worker-src'"
+        let uploadArchive = "scp -P \(sshPort)\(keyArgument) \(shellPathQuoted(archiveURL.path(percentEncoded: false))) \(target):/workspace/jobs/"
+        let uploadWorker = "scp -P \(sshPort)\(keyArgument) -r \"$WORKER_DIR\" \(target):/workspace/pimp-remote-worker-src"
         return """
         (
         set -euo pipefail

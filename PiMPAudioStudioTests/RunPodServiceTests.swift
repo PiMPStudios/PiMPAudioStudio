@@ -79,10 +79,17 @@ private func runPodTestPod() throws -> RunPodPodSummary {
             {
               "id": "pod-test-123",
               "name": "pimp-test",
-              "desiredStatus": "RUNNING",
-              "publicIp": "216.81.151.42",
-              "portMappings": {"22": 11646},
-              "ports": ["22/tcp"]
+              "status": "RUNNING",
+              "ports": ["22/tcp"],
+              "ssh": {
+                "proxy": null,
+                "direct": {
+                  "host": "216.81.151.42",
+                  "port": 11646,
+                  "username": "root",
+                  "command": "ssh root@216.81.151.42 -p 11646"
+                }
+              }
             }
             """.utf8
         )
@@ -116,13 +123,19 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
             {
               "id": "abc123",
               "name": "pimp-training",
-              "desiredStatus": "RUNNING",
-              "costPerHr": "0.74",
-              "adjustedCostPerHr": 0.69,
-              "gpu": {"displayName": "NVIDIA RTX PRO 6000 Blackwell Server Edition"},
-              "publicIp": "216.81.151.42",
-              "portMappings": {"22": 11646},
-              "ports": ["22/tcp", "8888/http"]
+              "status": "RUNNING",
+              "cost": 0.69,
+              "gpu": {"id": "NVIDIA RTX PRO 6000 Blackwell Server Edition", "count": 1},
+              "ports": ["22/tcp", "8888/http"],
+              "ssh": {
+                "proxy": null,
+                "direct": {
+                  "host": "216.81.151.42",
+                  "port": 11646,
+                  "username": "root",
+                  "command": "ssh root@216.81.151.42 -p 11646"
+                }
+              }
             }
           ]
         }
@@ -139,7 +152,9 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
     #expect(pods[0].id == "abc123")
     #expect(pods[0].statusLabel == "RUNNING")
     #expect(pods[0].hourlyCostLabel == "$0.69/hr")
+    #expect(pods[0].sshHost == "216.81.151.42")
     #expect(pods[0].sshPort == 11646)
+    #expect(pods[0].sshUsername == "root")
     #expect(pods[0].sshCommand(sshKeyPath: "~/.ssh/id_ed25519") == "ssh -p 11646 -i ~/.ssh/id_ed25519 root@216.81.151.42")
 
     let archiveURL = URL(filePath: "/Users/test/Training Jobs/job one.zip")
@@ -165,6 +180,39 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
     #expect(transport.requests.first?.httpMethod == "GET")
     #expect(transport.requests.first?.url?.absoluteString == "https://api.runpod.io/v2/pods")
     #expect(transport.requests.first?.value(forHTTPHeaderField: "Authorization") == "Bearer rp_test_token")
+}
+
+@Test func runPodPodSummaryUsesSSHDirectUsername() throws {
+    let pod = try JSONDecoder().decode(
+        RunPodPodSummary.self,
+        from: Data(
+            """
+            {
+              "id": "pod-ubuntu",
+              "name": "custom-user",
+              "status": "RUNNING",
+              "ssh": {
+                "direct": {
+                  "host": "10.1.2.3",
+                  "port": 2222,
+                  "username": "ubuntu",
+                  "command": "ssh ubuntu@10.1.2.3 -p 2222"
+                }
+              }
+            }
+            """.utf8
+        )
+    )
+
+    #expect(pod.sshUsername == "ubuntu")
+    #expect(pod.sshCommand(sshKeyPath: "") == "ssh -p 2222 ubuntu@10.1.2.3")
+    let upload = try #require(pod.uploadCommand(
+        archiveURL: URL(filePath: "/tmp/job.zip"),
+        sshKeyPath: "",
+        workerDirectoryURL: URL(filePath: "/tmp/remote-worker")
+    ))
+    #expect(upload.contains("ubuntu@10.1.2.3"))
+    #expect(!upload.contains("root@10.1.2.3"))
 }
 
 @Test func runPodRemoteJobPlanUsesArgumentArraysAndScopedRemotePaths() throws {
@@ -941,8 +989,7 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
         {
           "id": "newpod",
           "name": "pimp-remote",
-          "desiredStatus": "RUNNING",
-          "portMappings": {}
+          "status": "PROVISIONING"
         }
         """.utf8)
     )])
