@@ -176,6 +176,7 @@ final class RunPodService: ObservableObject {
 
         do {
             note("launch/begin", configuration.diagnosticsSummary)
+            try await ensureLaunchSSHKey(token: token, configuration: configuration)
             let pod = try await client.createPod(token: token, configuration: configuration)
             upsert(pod)
             note("launch/success", pod.diagnosticsSummary)
@@ -187,6 +188,22 @@ final class RunPodService: ObservableObject {
             lastError = RunPodError.userFacingMessage(for: error)
             return nil
         }
+    }
+
+    private func ensureLaunchSSHKey(
+        token: String,
+        configuration: RunPodLaunchConfiguration
+    ) async throws {
+        guard let rawPath = configuration.sshPrivateKeyPath?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !rawPath.isEmpty,
+              let keyURL = RunPodSSHKeyStore.configuredPrivateKeyURL(for: rawPath),
+              FileManager.default.fileExists(atPath: keyURL.path(percentEncoded: false)) else {
+            return
+        }
+
+        let publicKey = try RunPodSSHKeyStore.derivePublicKey(fromPrivateKeyAt: keyURL)
+        try await client.ensureAccountSSHKey(token: token, publicKey: publicKey)
     }
 
     func terminatePod(id: String) async {
@@ -730,6 +747,7 @@ protocol RunPodRemoteCommandExecuting: Sendable {
 enum RunPodSSHKeyStoreError: LocalizedError {
     case invalidPrivateKey
     case keyTooLarge
+    case cannotDerivePublicKey
 
     var errorDescription: String? {
         switch self {
@@ -737,7 +755,27 @@ enum RunPodSSHKeyStoreError: LocalizedError {
             return "Choose an SSH private key, not a public key or another file."
         case .keyTooLarge:
             return "The selected SSH private key is unexpectedly large."
+        case .cannotDerivePublicKey:
+            return "Could not derive an SSH public key from the selected private key. Use an unencrypted key, or register the public key in the RunPod console."
         }
+    }
+}
+
+enum RunPodSSHPublicKey {
+    static func fingerprint(_ line: String) -> String {
+        let parts = line.split(whereSeparator: { $0.isWhitespace })
+        guard parts.count >= 2 else {
+            return line.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return "\(parts[0]) \(parts[1])"
+    }
+
+    static func merge(existing: [String], inserting newKey: String) -> [String] {
+        let needle = fingerprint(newKey)
+        if existing.contains(where: { fingerprint($0) == needle }) {
+            return existing
+        }
+        return existing + [newKey]
     }
 }
 
@@ -824,6 +862,31 @@ struct RunPodSSHKeyStore {
     func removeManagedPrivateKey() throws {
         guard hasManagedPrivateKey else { return }
         try FileManager.default.removeItem(at: managedPrivateKeyURL)
+    }
+
+    static func derivePublicKey(fromPrivateKeyAt url: URL) throws -> String {
+        let process = Process()
+        let stdout = Pipe()
+        let stderr = Pipe()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh-keygen")
+        process.arguments = ["-y", "-f", url.path(percentEncoded: false)]
+        process.standardOutput = stdout
+        process.standardError = stderr
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            throw RunPodSSHKeyStoreError.cannotDerivePublicKey
+        }
+        let output = String(
+            data: stdout.fileHandleForReading.readDataToEndOfFile(),
+            encoding: .utf8
+        )?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard process.terminationStatus == 0, output.hasPrefix("ssh-") || output.hasPrefix("ecdsa-") else {
+            throw RunPodSSHKeyStoreError.cannotDerivePublicKey
+        }
+        return output
     }
 
     static func configuredPrivateKeyURL(for path: String) -> URL? {
@@ -1454,6 +1517,7 @@ struct RunPodLaunchConfiguration: Equatable, Sendable {
     var containerDiskGB: Int
     var volumeGB: Int
     var ports: [String] = ["22/tcp", "8888/http"]
+    var sshPrivateKeyPath: String? = nil
 
     func requestBody() throws -> RunPodCreatePodRequest {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -2599,6 +2663,10 @@ private struct RunPodProblemDetails: Decodable {
     var errors: [String]?
 }
 
+private struct RunPodSSHKeysPayload: Codable {
+    var keys: [String]
+}
+
 protocol RunPodTransport: Sendable {
     func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse)
 }
@@ -2713,6 +2781,32 @@ struct RunPodAPIClient {
     func deletePod(token: String, podID: String) async throws {
         let encodedID = podID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? podID
         let request = try makeRequest(path: "pods/\(encodedID)", method: "DELETE", token: token)
+        let (data, response) = try await transport.data(for: request)
+        try validate(response: response, data: data)
+    }
+
+    func ensureAccountSSHKey(token: String, publicKey: String) async throws {
+        let current = try await listAccountSSHKeys(token: token)
+        let merged = RunPodSSHPublicKey.merge(existing: current, inserting: publicKey)
+        guard merged != current else { return }
+        try await replaceAccountSSHKeys(token: token, keys: merged)
+    }
+
+    private func listAccountSSHKeys(token: String) async throws -> [String] {
+        let request = try makeRequest(path: "account/ssh-keys", method: "GET", token: token)
+        let (data, response) = try await transport.data(for: request)
+        try validate(response: response, data: data)
+        return try JSONDecoder().decode(RunPodSSHKeysPayload.self, from: data).keys
+    }
+
+    private func replaceAccountSSHKeys(token: String, keys: [String]) async throws {
+        let body = try JSONEncoder().encode(RunPodSSHKeysPayload(keys: keys))
+        let request = try makeRequest(
+            path: "account/ssh-keys",
+            method: "PUT",
+            token: token,
+            body: body
+        )
         let (data, response) = try await transport.data(for: request)
         try validate(response: response, data: data)
     }

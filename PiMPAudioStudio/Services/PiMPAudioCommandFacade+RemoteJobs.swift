@@ -354,7 +354,7 @@ extension PiMPAudioCommandFacade {
         )
     }
 
-    private func resolveMCPSSHKeyPath(arguments: [String: Any]) throws -> String {
+    func resolveMCPSSHKeyPath(arguments: [String: Any]) throws -> String {
         if let raw = stringValue(arguments["sshKeyPath"] ?? arguments["sshKey"] ?? arguments["privateKeyPath"])?
             .trimmingCharacters(in: .whitespacesAndNewlines),
            !raw.isEmpty {

@@ -1110,3 +1110,91 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
     #expect(message.contains("Could not reach RunPod"))
     #expect(message.contains("try again"))
 }
+
+@Test func runPodSSHPublicKeyMergeAddsMissingKeyAndSkipsDuplicates() {
+    let existing = [
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexisting comment-one"
+    ]
+    let ours = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAInewkey pimp-audio-studio"
+    let merged = RunPodSSHPublicKey.merge(existing: existing, inserting: ours)
+    #expect(merged.count == 2)
+    #expect(merged.contains(where: { $0.contains("AAAAInewkey") }))
+
+    let already = RunPodSSHPublicKey.merge(
+        existing: existing + ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAInewkey other-comment"],
+        inserting: ours
+    )
+    #expect(already.count == 2)
+}
+
+@Test func runPodClientEnsureSSHKeySkipsPutWhenAlreadyRegistered() async throws {
+    let ours = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAInewkey pimp"
+    let transport = RunPodMockTransport(responses: [(
+        statusCode: 200,
+        data: Data("""
+        { "keys": ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexisting one", "\(ours) extra"] }
+        """.utf8)
+    )])
+    let client = RunPodAPIClient(
+        baseURL: URL(string: "https://api.runpod.io/v2")!,
+        transport: transport
+    )
+
+    try await client.ensureAccountSSHKey(token: "rp_test_token", publicKey: ours)
+
+    #expect(transport.requests.count == 1)
+    #expect(transport.requests[0].httpMethod == "GET")
+    #expect(transport.requests[0].url?.absoluteString == "https://api.runpod.io/v2/account/ssh-keys")
+}
+
+@Test func runPodClientEnsureSSHKeyMergesPutWhenMissing() async throws {
+    let ours = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAInewkey pimp"
+    let transport = RunPodMockTransport(responses: [
+        (
+            statusCode: 200,
+            data: Data(#"{ "keys": ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexisting one"] }"#.utf8)
+        ),
+        (
+            statusCode: 200,
+            data: Data(#"{ "keys": ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexisting one", "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAInewkey pimp"] }"#.utf8)
+        ),
+    ])
+    let client = RunPodAPIClient(
+        baseURL: URL(string: "https://api.runpod.io/v2")!,
+        transport: transport
+    )
+
+    try await client.ensureAccountSSHKey(token: "rp_test_token", publicKey: ours)
+
+    #expect(transport.requests.count == 2)
+    #expect(transport.requests[1].httpMethod == "PUT")
+    #expect(transport.requests[1].url?.absoluteString == "https://api.runpod.io/v2/account/ssh-keys")
+    let bodyData = try #require(transport.requests[1].httpBody)
+    let body = try #require(JSONSerialization.jsonObject(with: bodyData) as? [String: Any])
+    let keys = try #require(body["keys"] as? [String])
+    #expect(keys.contains(where: { $0.contains("AAAAIexisting") }))
+    #expect(keys.contains(where: { $0.contains("AAAAInewkey") }))
+}
+
+@Test func runPodClientEnsureSSHKeyDoesNotPutWhenGetFails() async throws {
+    let transport = RunPodMockTransport(responses: [(
+        statusCode: 401,
+        data: Data(#"{"title":"Unauthorized","status":401,"detail":"nope"}"#.utf8)
+    )])
+    let client = RunPodAPIClient(
+        baseURL: URL(string: "https://api.runpod.io/v2")!,
+        transport: transport
+    )
+
+    do {
+        try await client.ensureAccountSSHKey(
+            token: "rp_test_token",
+            publicKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAInewkey pimp"
+        )
+        Issue.record("Expected GET failure")
+    } catch {
+        #expect(error.localizedDescription.contains("RunPod rejected the API key"))
+    }
+    #expect(transport.requests.count == 1)
+    #expect(transport.requests[0].httpMethod == "GET")
+}

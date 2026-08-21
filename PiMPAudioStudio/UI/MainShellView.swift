@@ -1008,7 +1008,8 @@ private struct BuildTrainingView: View {
                 in: runPodRegion
             ),
             containerDiskGB: runPodContainerDiskGB,
-            volumeGB: runPodVolumeGB
+            volumeGB: runPodVolumeGB,
+            sshPrivateKeyPath: runPodSSHKeyPath
         )
 
         Task {

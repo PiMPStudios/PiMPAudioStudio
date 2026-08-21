@@ -1710,6 +1710,7 @@ extension PiMPAudioCommandFacade {
             dataCenterIDs = service.launchDataCenterIDs(for: gpuType, in: region)
         }
 
+        let sshPrivateKeyPath = try? resolveMCPSSHKeyPath(arguments: arguments)
         let configuration = RunPodLaunchConfiguration(
             name: name?.isEmpty == false ? name! : runPodDefaultPodName(),
             templateID: templateID,
@@ -1717,7 +1718,8 @@ extension PiMPAudioCommandFacade {
             gpuTypeID: gpuType,
             dataCenterIDs: dataCenterIDs,
             containerDiskGB: containerDiskGB,
-            volumeGB: volumeGB
+            volumeGB: volumeGB,
+            sshPrivateKeyPath: sshPrivateKeyPath
         )
         return (configuration, recommendedTemplate, usedRecommendedTemplate)
     }
