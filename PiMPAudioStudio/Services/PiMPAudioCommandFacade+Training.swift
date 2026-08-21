@@ -1669,7 +1669,6 @@ extension PiMPAudioCommandFacade {
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         var containerDiskGB = integerValue(arguments["containerDiskGB"] ?? arguments["containerDiskGb"] ?? arguments["containerDisk"]) ?? 80
         var volumeGB = integerValue(arguments["volumeGB"] ?? arguments["volumeGb"] ?? arguments["volume"]) ?? 80
-        let interruptible = boolValue(arguments["interruptible"] ?? arguments["spot"]) ?? false
         let name = stringValue(arguments["name"] ?? arguments["podName"])?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let useRecommendedTemplate = boolValue(arguments["useRecommendedTemplate"] ?? arguments["autoTemplate"]) ?? true
@@ -1717,7 +1716,6 @@ extension PiMPAudioCommandFacade {
             imageName: imageName,
             gpuTypeID: gpuType,
             dataCenterIDs: dataCenterIDs,
-            interruptible: interruptible,
             containerDiskGB: containerDiskGB,
             volumeGB: volumeGB
         )
@@ -1781,11 +1779,9 @@ extension PiMPAudioCommandFacade {
                 : configuration.imageName,
             "gpuType": configuration.gpuTypeID,
             "dataCenterIDs": configuration.dataCenterIDs,
-            "interruptible": configuration.interruptible,
             "containerDiskGB": configuration.containerDiskGB,
             "volumeGB": configuration.volumeGB,
-            "ports": configuration.ports,
-            "supportPublicIP": configuration.supportPublicIP
+            "ports": configuration.ports
         ]
     }
 
@@ -1818,8 +1814,7 @@ extension PiMPAudioCommandFacade {
             "stockStatus": gpuType.secureLowestPrice?.stockStatus ?? NSNull(),
             "menuTitle": gpuType.menuTitle,
             "selectionValue": gpuType.selectionValue,
-            "detail": gpuType.detailLabel(interruptible: false),
-            "spotDetail": gpuType.detailLabel(interruptible: true)
+            "detail": gpuType.detailLabel()
         ]
     }
 

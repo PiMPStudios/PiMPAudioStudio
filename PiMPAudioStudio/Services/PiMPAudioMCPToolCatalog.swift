@@ -271,10 +271,6 @@ enum MCPToolCatalog {
                     "type": "string",
                     "description": "Optional RunPod pod name. Defaults to a PiMP Audio Studio generated name."
                 ],
-                "interruptible": [
-                    "type": "boolean",
-                    "description": "Use interruptible Secure RunPod pricing. Defaults to false."
-                ],
                 "containerDiskGB": [
                     "type": "integer",
                     "minimum": 20,

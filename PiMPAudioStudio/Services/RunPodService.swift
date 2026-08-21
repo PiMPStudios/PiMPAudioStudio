@@ -1443,11 +1443,9 @@ struct RunPodLaunchConfiguration: Equatable, Sendable {
     var imageName: String
     var gpuTypeID: String
     var dataCenterIDs: [String] = []
-    var interruptible: Bool
     var containerDiskGB: Int
     var volumeGB: Int
     var ports: [String] = ["22/tcp", "8888/http"]
-    var supportPublicIP: Bool = true
 
     func requestBody() throws -> RunPodCreatePodRequest {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1488,11 +1486,9 @@ struct RunPodLaunchConfiguration: Equatable, Sendable {
             gpuTypeIds: [trimmedGPUType],
             gpuTypePriority: "availability",
             imageName: requestImageName.isEmpty ? nil : requestImageName,
-            interruptible: interruptible,
             locked: false,
             name: trimmedName.isEmpty ? "PiMP Audio Studio Remote Job" : trimmedName,
             ports: ports,
-            supportPublicIp: supportPublicIP,
             templateId: requestTemplateID.isEmpty ? nil : requestTemplateID,
             volumeInGb: volumeGB,
             volumeMountPath: "/workspace"
@@ -1506,7 +1502,6 @@ struct RunPodLaunchConfiguration: Equatable, Sendable {
             "image=\(imageName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "none" : imageName)",
             "gpu=\(gpuTypeID)",
             "dataCenters=\(dataCenterIDs.isEmpty ? "any" : dataCenterIDs.joined(separator: ","))",
-            "interruptible=\(interruptible)",
             "containerDiskGB=\(containerDiskGB)",
             "volumeGB=\(volumeGB)"
         ].joined(separator: " ")
@@ -1932,10 +1927,7 @@ struct RunPodGPUType: Identifiable, Decodable, Equatable, Sendable {
         return "\(displayNameValue) (\(details.joined(separator: ", ")))"
     }
 
-    func detailLabel(
-        interruptible: Bool,
-        stockStatus: RunPodStockStatus? = nil
-    ) -> String {
+    func detailLabel(stockStatus: RunPodStockStatus? = nil) -> String {
         var details: [String] = []
         if let memoryInGb {
             details.append("\(memoryInGb) GB VRAM")
@@ -1946,8 +1938,8 @@ struct RunPodGPUType: Identifiable, Decodable, Equatable, Sendable {
         } else {
             details.append(stockLabel())
         }
-        if let launchPriceLabel = launchPriceLabel(interruptible: interruptible) {
-            details.append("\(interruptible ? "Spot" : "On-demand") \(launchPriceLabel)")
+        if let launchPriceLabel {
+            details.append(launchPriceLabel)
         }
         if let maxGpuCount = maxGpuCountSecureCloud ?? maxGpuCount, maxGpuCount > 0 {
             details.append("up to \(maxGpuCount) GPU\(maxGpuCount == 1 ? "" : "s")")
@@ -1968,10 +1960,8 @@ struct RunPodGPUType: Identifiable, Decodable, Equatable, Sendable {
 
     var lowestHourlyPriceLabel: String? {
         let prices = [
-            secureLowestPrice?.minimumBidPrice?.value,
             secureLowestPrice?.uninterruptablePrice?.value,
             securePrice?.value,
-            secureSpotPrice?.value,
         ].compactMap { $0 }.filter { $0 > 0 }
 
         guard let lowest = prices.min() else { return nil }
@@ -1995,13 +1985,12 @@ struct RunPodGPUType: Identifiable, Decodable, Equatable, Sendable {
         return parts.joined(separator: " · ")
     }
 
-    private func launchPriceLabel(interruptible: Bool) -> String? {
-        if let price = secureLowestPrice?.hourlyPriceLabel(interruptible: interruptible) {
+    private var launchPriceLabel: String? {
+        if let price = secureLowestPrice?.hourlyPriceLabel() {
             return price
         }
 
-        let fallback = interruptible ? secureSpotPrice ?? securePrice : securePrice
-        guard let value = fallback?.value, value > 0 else { return nil }
+        guard let value = securePrice?.value, value > 0 else { return nil }
         return String(format: "$%.2f/hr", value)
     }
 }
@@ -2309,10 +2298,8 @@ struct RunPodLowestPrice: Decodable, Equatable, Sendable {
         return "counts \(joined)"
     }
 
-    func hourlyPriceLabel(interruptible: Bool) -> String? {
-        let price = interruptible
-            ? minimumBidPrice?.value ?? uninterruptablePrice?.value
-            : uninterruptablePrice?.value ?? minimumBidPrice?.value
+    func hourlyPriceLabel() -> String? {
+        let price = uninterruptablePrice?.value
         guard let price, price > 0 else { return nil }
         return String(format: "$%.2f/hr", price)
     }
@@ -2370,11 +2357,9 @@ struct RunPodCreatePodRequest: Encodable, Equatable, Sendable {
     var gpuTypeIds: [String]
     var gpuTypePriority: String
     var imageName: String?
-    var interruptible: Bool
     var locked: Bool
     var name: String
     var ports: [String]
-    var supportPublicIp: Bool
     var templateId: String?
     var volumeInGb: Int
     var volumeMountPath: String

@@ -690,17 +690,15 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
     #expect(rtx4090.selectionValue == "NVIDIA GeForce RTX 4090")
     #expect(rtx4090.menuTitle.contains("24 GB"))
     #expect(rtx4090.menuTitle.contains("Medium stock"))
-    #expect(rtx4090.menuTitle.contains("from $0.50/hr"))
-    let secureDetail = rtx4090.detailLabel(interruptible: false)
+    #expect(rtx4090.menuTitle.contains("from $0.74/hr"))
+    let secureDetail = rtx4090.detailLabel()
     #expect(secureDetail.contains("Secure Cloud"))
     #expect(secureDetail.contains("Medium stock"))
     #expect(secureDetail.contains("counts 1/2"))
-    #expect(secureDetail.contains("On-demand $0.74/hr"))
+    #expect(secureDetail.contains("$0.74/hr"))
+    #expect(!secureDetail.contains("On-demand"))
+    #expect(!secureDetail.contains("Spot"))
     #expect(secureDetail.contains("up to 4 GPUs"))
-
-    let secureSpotDetail = rtx4090.detailLabel(interruptible: true)
-    #expect(secureSpotDetail.contains("Medium stock"))
-    #expect(secureSpotDetail.contains("Spot $0.50/hr"))
 
     let request = try #require(transport.requests.first)
     #expect(request.httpMethod == "POST")
@@ -931,6 +929,7 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
     #expect(properties["dryRun"] != nil)
     #expect(properties["confirm"] != nil)
     #expect(properties["useRecommendedTemplate"] != nil)
+    #expect(properties["interruptible"] == nil)
 }
 
 @Test func runPodClientCreatePodBuildsBearerRequestWithoutLeakingTokenIntoBody() async throws {
@@ -955,7 +954,6 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
         imageName: "",
         gpuTypeID: "NVIDIA GeForce RTX 4090",
         dataCenterIDs: ["US-TX-3", "US-TX-1", "US-TX-3"],
-        interruptible: false,
         containerDiskGB: 80,
         volumeGB: 120
     )
@@ -987,7 +985,6 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
         templateID: "template-123",
         imageName: "runpod/pytorch:custom",
         gpuTypeID: "NVIDIA GeForce RTX 4090",
-        interruptible: false,
         containerDiskGB: 80,
         volumeGB: 120
     )

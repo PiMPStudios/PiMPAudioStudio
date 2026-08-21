@@ -13,7 +13,6 @@ struct RunPodLifecyclePanel: View {
     @Binding var imageName: String
     @Binding var gpuType: String
     @Binding var region: RunPodRegion
-    @Binding var interruptible: Bool
     @Binding var containerDiskGB: Int
     @Binding var volumeGB: Int
     @Binding var sshKeyPath: String
@@ -245,7 +244,6 @@ struct RunPodLifecyclePanel: View {
             if let selectedRunPodGPUType {
                 Text(
                     selectedRunPodGPUType.detailLabel(
-                        interruptible: interruptible,
                         stockStatus: runPodService.stockStatus(
                             for: selectedRunPodGPUType.id,
                             in: region
@@ -291,8 +289,6 @@ struct RunPodLifecyclePanel: View {
                     }
                 }
             }
-
-            Toggle("Interruptible", isOn: $interruptible)
 
             Stepper(value: $containerDiskGB, in: 20...500, step: 10) {
                 LabeledContent("Container Disk", value: "\(containerDiskGB) GB")
