@@ -111,23 +111,25 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
     let transport = RunPodMockTransport(responses: [(
         statusCode: 200,
         data: Data("""
-        [
-          {
-            "id": "abc123",
-            "name": "pimp-training",
-            "desiredStatus": "RUNNING",
-            "costPerHr": "0.74",
-            "adjustedCostPerHr": 0.69,
-            "gpu": {"displayName": "NVIDIA RTX PRO 6000 Blackwell Server Edition"},
-            "publicIp": "216.81.151.42",
-            "portMappings": {"22": 11646},
-            "ports": ["22/tcp", "8888/http"]
-          }
-        ]
+        {
+          "pods": [
+            {
+              "id": "abc123",
+              "name": "pimp-training",
+              "desiredStatus": "RUNNING",
+              "costPerHr": "0.74",
+              "adjustedCostPerHr": 0.69,
+              "gpu": {"displayName": "NVIDIA RTX PRO 6000 Blackwell Server Edition"},
+              "publicIp": "216.81.151.42",
+              "portMappings": {"22": 11646},
+              "ports": ["22/tcp", "8888/http"]
+            }
+          ]
+        }
         """.utf8)
     )])
     let client = RunPodAPIClient(
-        baseURL: URL(string: "https://rest.runpod.io/v1")!,
+        baseURL: URL(string: "https://api.runpod.io/v2")!,
         transport: transport
     )
 
@@ -161,7 +163,7 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
     #expect(!remoteCommand.contains("unzip -oq"))
 
     #expect(transport.requests.first?.httpMethod == "GET")
-    #expect(transport.requests.first?.url?.absoluteString == "https://rest.runpod.io/v1/pods")
+    #expect(transport.requests.first?.url?.absoluteString == "https://api.runpod.io/v2/pods")
     #expect(transport.requests.first?.value(forHTTPHeaderField: "Authorization") == "Bearer rp_test_token")
 }
 
@@ -658,7 +660,7 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
         """.utf8)
     )])
     let client = RunPodAPIClient(
-        baseURL: URL(string: "https://rest.runpod.io/v1")!,
+        baseURL: URL(string: "https://api.runpod.io/v2")!,
         graphQLURL: URL(string: "https://api.runpod.io/graphql")!,
         transport: transport
     )
@@ -767,7 +769,7 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
         """.utf8)
     )])
     let client = RunPodAPIClient(
-        baseURL: URL(string: "https://rest.runpod.io/v1")!,
+        baseURL: URL(string: "https://api.runpod.io/v2")!,
         transport: transport
     )
 
@@ -782,7 +784,7 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
 
     let request = try #require(transport.requests.first)
     #expect(request.httpMethod == "GET")
-    #expect(request.url?.absoluteString == "https://rest.runpod.io/v1/templates?includeRunpodTemplates=true&includePublicTemplates=false&includeEndpointBoundTemplates=false")
+    #expect(request.url?.absoluteString == "https://api.runpod.io/v2/templates?includeRunpodTemplates=true&includePublicTemplates=false&includeEndpointBoundTemplates=false")
     #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer rp_test_token")
 }
 
@@ -945,7 +947,7 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
         """.utf8)
     )])
     let client = RunPodAPIClient(
-        baseURL: URL(string: "https://rest.runpod.io/v1")!,
+        baseURL: URL(string: "https://api.runpod.io/v2")!,
         transport: transport
     )
     let configuration = RunPodLaunchConfiguration(
@@ -963,7 +965,7 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
     #expect(pod.id == "newpod")
     let request = try #require(transport.requests.first)
     #expect(request.httpMethod == "POST")
-    #expect(request.url?.absoluteString == "https://rest.runpod.io/v1/pods")
+    #expect(request.url?.absoluteString == "https://api.runpod.io/v2/pods")
     #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer secret-token")
     #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
 
@@ -1003,7 +1005,7 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
         data: Data()
     )])
     let client = RunPodAPIClient(
-        baseURL: URL(string: "https://rest.runpod.io/v1")!,
+        baseURL: URL(string: "https://api.runpod.io/v2")!,
         transport: transport
     )
 
@@ -1011,17 +1013,17 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
 
     let request = try #require(transport.requests.first)
     #expect(request.httpMethod == "DELETE")
-    #expect(request.url?.absoluteString == "https://rest.runpod.io/v1/pods/abc123")
+    #expect(request.url?.absoluteString == "https://api.runpod.io/v2/pods/abc123")
     #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer rp_test_token")
 }
 
 @Test func runPodClientInvalidAPIKeyErrorIsSpecific() async throws {
     let transport = RunPodMockTransport(responses: [(
         statusCode: 401,
-        data: Data(#"{"error":"JWT expired"}"#.utf8)
+        data: Data(#"{"title":"Unauthorized","status":401,"detail":"JWT expired"}"#.utf8)
     )])
     let client = RunPodAPIClient(
-        baseURL: URL(string: "https://rest.runpod.io/v1")!,
+        baseURL: URL(string: "https://api.runpod.io/v2")!,
         transport: transport
     )
 
@@ -1031,6 +1033,7 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
     } catch {
         #expect(error.localizedDescription.contains("RunPod rejected the API key"))
         #expect(error.localizedDescription.contains("generate a new key"))
+        #expect(error.localizedDescription.contains("JWT expired"))
     }
 }
 

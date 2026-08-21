@@ -2383,6 +2383,17 @@ private struct RunPodGPUTypesPayload: Decodable {
     var dataCenters: [RunPodDataCenter]?
 }
 
+private struct RunPodListPodsResponse: Decodable {
+    var pods: [RunPodPodSummary]
+}
+
+private struct RunPodProblemDetails: Decodable {
+    var title: String?
+    var status: Int?
+    var detail: String?
+    var errors: [String]?
+}
+
 protocol RunPodTransport: Sendable {
     func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse)
 }
@@ -2405,7 +2416,7 @@ struct RunPodAPIClient {
     var transport: any RunPodTransport
 
     init(
-        baseURL: URL = URL(string: "https://rest.runpod.io/v1")!,
+        baseURL: URL = URL(string: "https://api.runpod.io/v2")!,
         graphQLURL: URL = URL(string: "https://api.runpod.io/graphql")!,
         transport: any RunPodTransport = URLSessionRunPodTransport()
     ) {
@@ -2418,7 +2429,7 @@ struct RunPodAPIClient {
         let request = try makeRequest(path: "pods", method: "GET", token: token)
         let (data, response) = try await transport.data(for: request)
         try validate(response: response, data: data)
-        return try JSONDecoder().decode([RunPodPodSummary].self, from: data)
+        return try JSONDecoder().decode(RunPodListPodsResponse.self, from: data).pods
     }
 
     func listGPUTypes(token: String) async throws -> [RunPodGPUType] {
@@ -2535,10 +2546,37 @@ struct RunPodAPIClient {
 
     private func validate(response: HTTPURLResponse, data: Data) throws {
         guard (200..<300).contains(response.statusCode) else {
-            let body = String(data: data, encoding: .utf8)?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            throw RunPodError.httpStatus(response.statusCode, body)
+            throw RunPodError.httpStatus(response.statusCode, Self.problemDetail(from: data))
         }
+    }
+
+    private static func problemDetail(from data: Data) -> String? {
+        if let problem = try? JSONDecoder().decode(RunPodProblemDetails.self, from: data) {
+            var parts: [String] = []
+            if let detail = problem.detail?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+               !detail.isEmpty {
+                parts.append(detail)
+            }
+            if let errors = problem.errors {
+                parts.append(
+                    contentsOf: errors
+                        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                        .filter { !$0.isEmpty }
+                )
+            }
+            if !parts.isEmpty {
+                return parts.joined(separator: "; ")
+            }
+            if let title = problem.title?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+               !title.isEmpty {
+                return title
+            }
+        }
+
+        return String(data: data, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private static let gpuCatalogQuery = """
