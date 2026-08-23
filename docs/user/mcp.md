@@ -64,9 +64,11 @@ High-level tool groups:
 | Cleanup | `release_memory` |
 
 Long-running work returns an `operationID` you can poll. Mutating tools default
-to safe modes (`dryRun: true` where applicable) and require explicit confirmation
-or MCP form elicitation before billable/destructive actions. API keys and SSH
-private keys stay UI/Keychain-managed and are not written through MCP.
+to safe modes (`dryRun: true` where applicable) and require `confirm: true` or
+MCP form elicitation before billable/destructive actions. Clients that cannot
+prompt must send `confirm: true`. The optional bearer token is stored in the
+Keychain. API keys and SSH private keys stay UI/Keychain-managed and are not
+written through MCP.
 
 ## Safety Model
 

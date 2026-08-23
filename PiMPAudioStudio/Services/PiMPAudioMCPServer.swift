@@ -50,11 +50,36 @@ enum MCPBindAddress: String, CaseIterable, Identifiable, Sendable {
     var isLoopbackOnly: Bool { self == .loopback }
 }
 
+enum MCPConfirmationDecision: Equatable {
+    case proceed
+    case elicit
+    case declined(action: String, reason: String)
+
+    static func evaluate(
+        requiresConfirmation: Bool,
+        confirmArgument: Bool?,
+        isDryRun: Bool,
+        clientSupportsFormElicitation: Bool
+    ) -> MCPConfirmationDecision {
+        guard requiresConfirmation, confirmArgument != true, !isDryRun else {
+            return .proceed
+        }
+        if clientSupportsFormElicitation {
+            return .elicit
+        }
+        return .declined(
+            action: "missingConfirm",
+            reason: "This tool requires confirm: true or MCP form elicitation approval."
+        )
+    }
+}
+
 @MainActor
 final class PiMPAudioMCPServer: ObservableObject {
     private static let enabledKey = AppRuntimeIdentity.defaultsKey("mcp.enabled")
     private static let tokenRequiredKey = AppRuntimeIdentity.defaultsKey("mcp.tokenRequired")
     private static let tokenKey = AppRuntimeIdentity.defaultsKey("mcp.token")
+    private static let tokenAccount = "mcp-bearer-token"
     private static let bindAddressKey = AppRuntimeIdentity.defaultsKey("mcp.bindAddress")
     private static let portKey = AppRuntimeIdentity.defaultsKey("mcp.port")
     private static let legacyEnabledKey = AppRuntimeIdentity.legacyDefaultsKey("mcp.enabled")
@@ -111,14 +136,17 @@ final class PiMPAudioMCPServer: ObservableObject {
         )
         self.bindAddress = Self.loadBindAddress(from: defaults)
         self.port = Self.loadPort(from: defaults)
-        if let storedToken = Self.migratedString(defaults, key: Self.tokenKey, legacyKey: Self.legacyTokenKey),
-           !storedToken.isEmpty {
-            self.token = storedToken
-        } else {
-            let generated = Self.generateToken()
-            self.token = generated
-            defaults.set(generated, forKey: Self.tokenKey)
-        }
+        let defaultsToken = Self.migratedString(defaults, key: Self.tokenKey, legacyKey: Self.legacyTokenKey)
+        let keychainToken = KeychainStringStore.isAvailable
+            ? KeychainStringStore.read(account: Self.tokenAccount)
+            : nil
+        let resolved = MCPTokenResolution.resolve(
+            keychainValue: keychainToken,
+            defaultsValue: defaultsToken,
+            generated: Self.generateToken()
+        )
+        self.token = resolved.token
+        Self.persistToken(resolved)
 
         Task { @MainActor [weak self] in
             guard let self, self.isEnabled else { return }
@@ -183,7 +211,9 @@ final class PiMPAudioMCPServer: ObservableObject {
     func regenerateToken() {
         let generated = Self.generateToken()
         token = generated
-        UserDefaults.standard.set(generated, forKey: Self.tokenKey)
+        Self.persistToken(
+            MCPTokenResolution(token: generated, writeToKeychain: generated, clearDefaults: true)
+        )
     }
 
     func stop() {
@@ -276,11 +306,26 @@ final class PiMPAudioMCPServer: ObservableObject {
         sdkBridge = nil
         state = .failed(error.localizedDescription)
         isEnabled = false
-        UserDefaults.standard.set(false, forKey: Self.enabledKey)
+        // Leave UserDefaults enabled as-is so a transient accept/bind failure
+        // retries on the next launch instead of silently staying off.
     }
 
     private static func generateToken() -> String {
         UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+    }
+
+    private static func persistToken(_ resolved: MCPTokenResolution) {
+        if KeychainStringStore.isAvailable {
+            if let write = resolved.writeToKeychain {
+                KeychainStringStore.write(account: tokenAccount, value: write)
+            }
+            if resolved.clearDefaults {
+                UserDefaults.standard.removeObject(forKey: tokenKey)
+                UserDefaults.standard.removeObject(forKey: legacyTokenKey)
+            }
+            return
+        }
+        UserDefaults.standard.set(resolved.token, forKey: tokenKey)
     }
 
     static func isValidPort(_ port: UInt16) -> Bool {
@@ -1163,14 +1208,22 @@ private final class PiMPAudioMCPSDKBridge {
         toolName: String,
         arguments: [String: Any]
     ) async -> ConfirmationDecision {
-        guard requiresElicitableConfirmation(toolName),
-              boolArgument(arguments["confirm"]) != true,
-              !isDryRun(toolName: toolName, arguments: arguments) else {
+        switch MCPConfirmationDecision.evaluate(
+            requiresConfirmation: requiresElicitableConfirmation(toolName),
+            confirmArgument: boolArgument(arguments["confirm"]),
+            isDryRun: isDryRun(toolName: toolName, arguments: arguments),
+            clientSupportsFormElicitation: clientSupportsFormElicitation
+        ) {
+        case .proceed:
             return .proceed(arguments)
-        }
-
-        guard clientSupportsFormElicitation else {
-            return .proceed(arguments)
+        case .declined(let action, let reason):
+            return .declined(confirmationDeclinedPayload(
+                toolName: toolName,
+                action: action,
+                reason: reason
+            ))
+        case .elicit:
+            break
         }
 
         do {
@@ -1204,7 +1257,11 @@ private final class PiMPAudioMCPSDKBridge {
             confirmedArguments["confirm"] = true
             return .proceed(confirmedArguments)
         } catch {
-            return .proceed(arguments)
+            return .declined(confirmationDeclinedPayload(
+                toolName: toolName,
+                action: "error",
+                reason: "MCP confirmation request failed: \(error.localizedDescription)"
+            ))
         }
     }
 

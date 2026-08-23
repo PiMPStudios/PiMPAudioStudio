@@ -237,9 +237,9 @@ For guarded mutations, PiMP Audio Studio uses the standard MCP `elicitation/crea
 when the initialized client advertises form elicitation support and the tool
 call omits `confirm: true`. The elicitation asks for an `approved` boolean;
 only `action: "accept"` with `approved: true` is treated as confirmation.
-Decline/cancel responses return a no-op structured result. Clients without
-elicitation support still use the compatibility fallback: call the tool again
-with `confirm: true` after explicit user approval.
+Decline/cancel responses return a no-op structured result. If elicitation
+throws, the tool is **not** run. Clients without elicitation support must call
+the tool again with `confirm: true` after explicit user approval.
 
 It also exposes controlled app actions:
 

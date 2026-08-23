@@ -65,6 +65,10 @@ public actor SFXDiffusionActor {
         uncrossCondTokens: MLXArray? = nil  // T5("")+time tokens for CFG; nil → no CFG
     ) async throws -> DiffusionResult {
         let totalStart = Date()
+        defer {
+            progressContinuation?.finish()
+            progressContinuation = nil
+        }
 
         // Rectified flow: initial noise is unit-variance N(0,I) — do NOT scale by any σ_max.
         var xt = DiffusionSampler.generateNoise(shape: config.latentShape, seed: config.seed)
@@ -205,8 +209,6 @@ public actor SFXDiffusionActor {
         let finalMean    = xt.mean().item(Float.self)
         print("[SFXDIFF] final_latents abs_mean=\(String(format:"%.4f",finalAbsMean)) abs_max=\(String(format:"%.4f",finalAbsMax)) mean=\(String(format:"%.4f",finalMean)) shape=\(xt.shape)")
 
-        progressContinuation?.finish()
-        progressContinuation = nil
         return DiffusionResult(latents: xt, timeCosts: costs)
     }
 
@@ -225,6 +227,10 @@ public actor SFXDiffusionActor {
         uncrossCondTokens: MLXArray? = nil  // T5("")+time tokens for CFG; nil → no CFG
     ) async throws -> DiffusionResult {
         let totalStart = Date()
+        defer {
+            progressContinuation?.finish()
+            progressContinuation = nil
+        }
 
         guard !schedule.isEmpty else {
             let costs = TimeCosts(diffusionTime: 0, perStepTime: 0, totalTime: 0)
@@ -338,8 +344,6 @@ public actor SFXDiffusionActor {
         AudioDiagnostics.tensor("sfx/inpaint/finalLatents", xt)
         AudioDiagnostics.memory("sfx/inpaint/end")
 
-        progressContinuation?.finish()
-        progressContinuation = nil
         return DiffusionResult(latents: xt, timeCosts: costs)
     }
 

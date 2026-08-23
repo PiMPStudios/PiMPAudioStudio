@@ -150,7 +150,17 @@ final class MCPHTTPServer {
         }
     }
 
+    static func isRetryableAcceptError(_ errnoCode: Int32) -> Bool {
+        errnoCode == EINTR
+            || errnoCode == EAGAIN
+            || errnoCode == EWOULDBLOCK
+            || errnoCode == EMFILE
+            || errnoCode == ENFILE
+            || errnoCode == ECONNABORTED
+    }
+
     private func acceptLoop(_ socketFD: Int32) {
+        var backoffNanoseconds: UInt64 = 20_000_000
         while isServerRunning(socketFD) {
             var storage = sockaddr_storage()
             var length = socklen_t(MemoryLayout<sockaddr_storage>.size)
@@ -162,15 +172,23 @@ final class MCPHTTPServer {
 
             if client < 0 {
                 let errnoCode = errno
-                if isServerRunning(socketFD) {
-                    let error = Self.posixError("accept", errnoCode: errnoCode)
-                    Task { @MainActor in
-                        self.onFailed(error)
+                if !isServerRunning(socketFD) {
+                    return
+                }
+                if Self.isRetryableAcceptError(errnoCode) {
+                    if errnoCode != EINTR {
+                        nanosleepBackoff(&backoffNanoseconds)
                     }
+                    continue
+                }
+                let error = Self.posixError("accept", errnoCode: errnoCode)
+                Task { @MainActor in
+                    self.onFailed(error)
                 }
                 return
             }
 
+            backoffNanoseconds = 20_000_000
             configureClientSocket(client)
             guard let generation = registerClient(client) else {
                 // Server stopped between accept and registration.
@@ -184,7 +202,19 @@ final class MCPHTTPServer {
         }
     }
 
+    private func nanosleepBackoff(_ backoffNanoseconds: inout UInt64) {
+        let capped = min(backoffNanoseconds, 1_000_000_000)
+        var spec = timespec(
+            tv_sec: capped == 1_000_000_000 ? 1 : 0,
+            tv_nsec: capped == 1_000_000_000 ? 0 : Int(capped)
+        )
+        nanosleep(&spec, nil)
+        backoffNanoseconds = min(backoffNanoseconds * 2, 1_000_000_000)
+    }
+
     private func configureClientSocket(_ client: Int32) {
+        // Slow or large JSON-RPC bodies over this socket are rejected after 10s;
+        // that matches interactive MCP clients, not bulk uploads.
         var timeout = timeval(tv_sec: 10, tv_usec: 0)
         setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
         setsockopt(client, SOL_SOCKET, SO_SNDTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))

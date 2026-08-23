@@ -70,6 +70,10 @@ public actor WeightConverter {
     }
 
     public func convertVAEWeights(stateDict: [(String, MLXArray)]) throws -> [(String, MLXArray)] {
+        defer {
+            progressContinuation?.finish()
+            progressContinuation = nil
+        }
         var result: [(String, MLXArray)] = []
         var processed: Set<String> = []
         let total = stateDict.count
@@ -118,12 +122,14 @@ public actor WeightConverter {
             processed.insert(key)
         }
 
-        progressContinuation?.finish()
-        progressContinuation = nil
         return result
     }
 
     public func convertDiTWeights(stateDict: [(String, MLXArray)]) throws -> [(String, MLXArray)] {
+        defer {
+            progressContinuation?.finish()
+            progressContinuation = nil
+        }
         var result: [(String, MLXArray)] = []
         let total = stateDict.count
 
@@ -150,8 +156,6 @@ public actor WeightConverter {
             }
         }
 
-        progressContinuation?.finish()
-        progressContinuation = nil
         return result
     }
 

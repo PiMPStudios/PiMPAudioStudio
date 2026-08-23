@@ -6,12 +6,35 @@ All notable changes to PiMP Audio Studio are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Dataset review bindings no longer force-unwrap** the loaded package.
+  Clip editors and text fields no-op if the document is cleared mid-edit.
+- **Generation/inpaint/weight-conversion progress streams finish on error
+  and cancel**, and `MusicPipeline` returns to `.ready` after a failed
+  generate.
+- **MCP accept loop retries transient errors** (`EINTR`, `EAGAIN`, `EMFILE`,
+  …) instead of disabling the server. A failed start no longer persists
+  MCP as off.
+- **MCP destructive tools fail closed** when elicitation errors or the
+  client cannot prompt — callers must pass `confirm: true`.
+- **Remote training monitors drop finished tasks** instead of leaving a
+  dead `Task` per pod.
+
+### Changed
+
+- **MCP bearer token is stored in the Keychain**, with a one-time migrate
+  from UserDefaults.
+- **Diffusion generate and inpaint share one CFG/APG loop** so the
+  null-embedding path cannot drift.
+
 ### Added
 
-- **CI workflow** — GitHub Actions runs ruff on `remote-worker/`, serial
-  `PiMPAudioCore` tests, and the app unit-test target on `macos-15`. macOS jobs
-  select Xcode 26.x (Swift 6.2) so vendored Demucs can resolve. Core CI compiles
-  tests only (`swift test` cannot load MLX `default.metallib` on Actions).
+- **CI workflow** — GitHub Actions runs ruff on `remote-worker/`, compiles
+  `PiMPAudioCore` tests, and runs the app unit-test target on `macos-15`.
+  macOS jobs select Xcode 26.x (Swift 6.2) so vendored Demucs can resolve.
+  Core CI compiles tests only (`swift test` cannot load MLX `default.metallib`
+  on Actions).
 - **MCP HTTP parser tests** — dedicated coverage for `RawHTTPRequest`
   (headers, Content-Length edges, query stripping, Origin gate, bearer token).
 - **AUDIODIAG log retention** — the Diagnostics folder auto-prunes old

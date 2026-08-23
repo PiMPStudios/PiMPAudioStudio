@@ -69,4 +69,28 @@ struct MusicPipelineTests {
         let frames = MusicPipeline.latentFrames(forDuration: 240.0, sampleRate: 44100, hopLength: 2048)
         #expect(frames >= 5160 && frames <= 5180)
     }
+
+    @Test("Cancelled generate returns the pipeline to ready")
+    func generateCancellationResetsState() async {
+        let pipeline = makeSmallPipeline()
+        let duration = 0.5
+        let frames = MusicPipeline.latentFrames(forDuration: duration)
+        let encoderStates = MLXArray.zeros([1, 20, 256])
+        let contextLatents = MLXArray.zeros([1, frames, 128])
+        let config = DiffusionConfig(seed: 42, steps: 8)
+
+        let task = Task {
+            try await pipeline.generate(
+                encoderStates: encoderStates,
+                contextLatents: contextLatents,
+                encoderMask: nil,
+                duration: duration,
+                config: config
+            )
+        }
+        task.cancel()
+        _ = try? await task.value
+        let state = await pipeline.state
+        #expect(state == .ready)
+    }
 }

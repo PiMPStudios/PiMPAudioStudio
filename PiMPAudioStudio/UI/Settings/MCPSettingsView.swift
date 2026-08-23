@@ -68,7 +68,7 @@ struct MCPSettingsView: View {
                     .foregroundStyle(.red)
             }
 
-            Text("MCP endpoint for local agents (and optional LAN access). Covers generation, editing, datasets, local training, adapters/models, Remote GPU lifecycle, history, diagnostics, and operations. Expensive or destructive tools use dry-run defaults and confirm/elicitation gates.")
+            Text("MCP endpoint for local agents (and optional LAN access). Covers generation, editing, datasets, local training, adapters/models, Remote GPU lifecycle, history, diagnostics, and operations. Expensive or destructive tools default to dry-run. Actual mutations need confirm: true or an MCP form prompt. Clients that cannot prompt must send confirm: true.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -158,8 +158,8 @@ struct MCPSettingsView: View {
 
             Text(
                 mcpServer.isNetworkExposed
-                    ? "When bound to 0.0.0.0, require a token so LAN clients must send `Authorization: Bearer <token>`. Switching to all interfaces enables this automatically."
-                    : "For localhost-only use this is optional. Turn it on if you want local clients to send `Authorization: Bearer <token>`."
+                    ? "When bound to 0.0.0.0, require a token so LAN clients must send `Authorization: Bearer <token>`. Switching to all interfaces enables this automatically. The token is stored in the Keychain."
+                    : "For localhost-only use this is optional. Turn it on if you want local clients to send `Authorization: Bearer <token>`. The token is stored in the Keychain."
             )
                 .font(.caption)
                 .foregroundStyle(.secondary)

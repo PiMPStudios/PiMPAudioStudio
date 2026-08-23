@@ -113,6 +113,10 @@ public actor SoundFXPipeline {
         config: SFXDiffusionConfig
     ) async throws -> AudioResult {
         let totalStart = Date()
+        defer {
+            progressContinuation?.finish()
+            progressContinuation = nil
+        }
         let clampedDuration = min(duration, Self.maxDuration)
 
         // Number conditioner: encode seconds_start=0 and seconds_total.
@@ -204,8 +208,6 @@ public actor SoundFXPipeline {
         )
 
         progressContinuation?.yield(.complete)
-        progressContinuation?.finish()
-        progressContinuation = nil
 
         return AudioResult(
             samples: audio,

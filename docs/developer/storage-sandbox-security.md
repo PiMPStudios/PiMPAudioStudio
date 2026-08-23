@@ -66,7 +66,7 @@ user selection when a workflow can use it.
 | Provider API keys | Keychain (optional env fallback) | packages, MCP resources |
 | RunPod API key | Keychain | job zips |
 | RunPod SSH private key | Protected sandbox copy (`0700`/`0600`) | job zips, logs |
-| MCP bearer token | Settings-controlled | bug reports |
+| MCP bearer token | Keychain | bug reports |
 
 ## Path Safety Rules
 

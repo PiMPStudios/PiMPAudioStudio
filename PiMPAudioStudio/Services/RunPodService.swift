@@ -20,6 +20,7 @@ final class RunPodService: ObservableObject {
     private let client: RunPodAPIClient
     private let remoteExecutor: any RunPodRemoteCommandExecuting
     private var remoteMonitorTasks: [String: Task<Void, Never>] = [:]
+    private var remoteMonitorGenerations: [String: UUID] = [:]
 
     init(
         apiKeyStore: APIKeyStore,
@@ -218,7 +219,7 @@ final class RunPodService: ObservableObject {
         do {
             note("terminate/begin", "podID=\(id)")
             try await client.deletePod(token: token, podID: id)
-            remoteMonitorTasks.removeValue(forKey: id)?.cancel()
+            clearMonitorTask(podID: id)
             pods.removeAll { $0.id == id }
             note("terminate/success", "podID=\(id)")
             lastMessage = "Terminate requested for RunPod pod \(id)."
@@ -457,8 +458,16 @@ final class RunPodService: ObservableObject {
     }
 
     private func beginMonitoring(plan: RunPodRemoteJobPlan) {
-        remoteMonitorTasks.removeValue(forKey: plan.podID)?.cancel()
-        remoteMonitorTasks[plan.podID] = Task { [weak self] in
+        clearMonitorTask(podID: plan.podID)
+        let generation = UUID()
+        let podID = plan.podID
+        remoteMonitorGenerations[podID] = generation
+        remoteMonitorTasks[podID] = Task { [weak self] in
+            defer {
+                Task { @MainActor [weak self] in
+                    self?.clearMonitorTask(podID: podID, generation: generation)
+                }
+            }
             guard let self else { return }
             while !Task.isCancelled {
                 do {
@@ -474,6 +483,14 @@ final class RunPodService: ObservableObject {
                 }
             }
         }
+    }
+
+    private func clearMonitorTask(podID: String, generation: UUID? = nil) {
+        if let generation, remoteMonitorGenerations[podID] != generation {
+            return
+        }
+        remoteMonitorGenerations.removeValue(forKey: podID)
+        remoteMonitorTasks.removeValue(forKey: podID)?.cancel()
     }
 
     private func refreshRemoteJob(plan: RunPodRemoteJobPlan) async {
@@ -573,7 +590,7 @@ final class RunPodService: ObservableObject {
         archiveURL: URL,
         error: Error
     ) {
-        remoteMonitorTasks.removeValue(forKey: podID)?.cancel()
+        clearMonitorTask(podID: podID)
         let message = RunPodRemoteJobError.userFacingMessage(for: error)
         updateRemoteJobState(
             podID: podID,
@@ -2684,11 +2701,13 @@ struct URLSessionRunPodTransport: RunPodTransport {
 }
 
 struct RunPodAPIClient {
+    static let defaultBaseURL = URL(string: "https://api.runpod.io/v2")!
+
     var baseURL: URL
     var transport: any RunPodTransport
 
     init(
-        baseURL: URL = URL(string: "https://api.runpod.io/v2")!,
+        baseURL: URL = RunPodAPIClient.defaultBaseURL,
         transport: any RunPodTransport = URLSessionRunPodTransport()
     ) {
         self.baseURL = baseURL

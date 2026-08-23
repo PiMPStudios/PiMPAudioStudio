@@ -52,4 +52,35 @@ struct WeightConverterCancellationTests {
             break
         }
     }
+
+    @Test("Cancelled convertDiTWeights finishes the progress stream")
+    func ditWeightsCancellationFinishesProgress() async {
+        var stateDict: [(String, MLXArray)] = []
+        for i in 0..<60 {
+            stateDict.append(("layers.\(i).weight", MLXArray.zeros([4, 4])))
+        }
+
+        let converter = WeightConverter()
+        let stream = await converter.makeProgressStream()
+        let convertTask = Task {
+            try await converter.convertDiTWeights(stateDict: stateDict)
+        }
+        convertTask.cancel()
+        _ = await convertTask.result
+
+        let finished = await withTaskGroup(of: Bool.self) { group in
+            group.addTask {
+                for await _ in stream {}
+                return true
+            }
+            group.addTask {
+                try? await Task.sleep(for: .seconds(2))
+                return false
+            }
+            let first = await group.next() ?? false
+            group.cancelAll()
+            return first
+        }
+        #expect(finished)
+    }
 }

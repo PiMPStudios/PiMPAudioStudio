@@ -23,7 +23,9 @@ Persisted keys (app defaults namespace):
 - `mcp.enabled`
 - `mcp.bindAddress` (`127.0.0.1` or `0.0.0.0`)
 - `mcp.port` (`1024`–`65535`, default `38765`)
-- `mcp.tokenRequired` / `mcp.token`
+- `mcp.tokenRequired`
+- Bearer token is stored in the Keychain (`mcp-bearer-token`); UserDefaults
+  `mcp.token` is only read to migrate older installs
 
 `MCPHTTPServer` accepts `bindHost` + `port`. Binding `0.0.0.0` relaxes Origin
 checks for LAN browser clients and auto-enables the bearer token from Settings.

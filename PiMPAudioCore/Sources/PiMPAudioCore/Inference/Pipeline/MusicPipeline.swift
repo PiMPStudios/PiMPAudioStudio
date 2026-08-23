@@ -204,6 +204,11 @@ public actor MusicPipeline {
     ) async throws -> AudioResult {
         let totalStart = Date()
         _state = .generating(step: 0, totalSteps: config.steps ?? 8)
+        defer {
+            _state = .ready
+            progressContinuation?.finish()
+            progressContinuation = nil
+        }
 
         let frames = Self.latentFrames(forDuration: duration)
         let batchSize = encoderStates.shape[0]
@@ -245,10 +250,7 @@ public actor MusicPipeline {
             totalTime: totalTime
         )
 
-        _state = .ready
         progressContinuation?.yield(.complete)
-        progressContinuation?.finish()
-        progressContinuation = nil
 
         return AudioResult(
             samples: audio,

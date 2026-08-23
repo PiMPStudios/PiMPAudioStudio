@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import Testing
 @testable import PiMPAudioStudio
@@ -106,4 +107,90 @@ import Testing
     #expect(MCPHTTPServer.tokensMatch("secret-token", "secret-tokex") == false)
     #expect(MCPHTTPServer.tokensMatch("short", "much-longer-token") == false)
     #expect(MCPHTTPServer.tokensMatch("", "") )
+}
+
+@Test func mcpAcceptRetriesTransientErrnos() {
+    #expect(MCPHTTPServer.isRetryableAcceptError(EINTR))
+    #expect(MCPHTTPServer.isRetryableAcceptError(EAGAIN))
+    #expect(MCPHTTPServer.isRetryableAcceptError(EWOULDBLOCK))
+    #expect(MCPHTTPServer.isRetryableAcceptError(EMFILE))
+    #expect(MCPHTTPServer.isRetryableAcceptError(ENFILE))
+    #expect(MCPHTTPServer.isRetryableAcceptError(ECONNABORTED))
+    #expect(MCPHTTPServer.isRetryableAcceptError(EBADF) == false)
+    #expect(MCPHTTPServer.isRetryableAcceptError(EINVAL) == false)
+}
+
+@Test func mcpConfirmationRequiresConfirmWithoutElicitation() {
+    #expect(
+        MCPConfirmationDecision.evaluate(
+            requiresConfirmation: true,
+            confirmArgument: nil,
+            isDryRun: false,
+            clientSupportsFormElicitation: false
+        ) == .declined(
+            action: "missingConfirm",
+            reason: "This tool requires confirm: true or MCP form elicitation approval."
+        )
+    )
+    #expect(
+        MCPConfirmationDecision.evaluate(
+            requiresConfirmation: true,
+            confirmArgument: true,
+            isDryRun: false,
+            clientSupportsFormElicitation: false
+        ) == .proceed
+    )
+    #expect(
+        MCPConfirmationDecision.evaluate(
+            requiresConfirmation: true,
+            confirmArgument: nil,
+            isDryRun: true,
+            clientSupportsFormElicitation: false
+        ) == .proceed
+    )
+    #expect(
+        MCPConfirmationDecision.evaluate(
+            requiresConfirmation: true,
+            confirmArgument: nil,
+            isDryRun: false,
+            clientSupportsFormElicitation: true
+        ) == .elicit
+    )
+    #expect(
+        MCPConfirmationDecision.evaluate(
+            requiresConfirmation: false,
+            confirmArgument: nil,
+            isDryRun: false,
+            clientSupportsFormElicitation: false
+        ) == .proceed
+    )
+}
+
+@Test func mcpTokenResolutionPrefersKeychainAndMigratesDefaults() {
+    let fromKeychain = MCPTokenResolution.resolve(
+        keychainValue: "keychain-token",
+        defaultsValue: "defaults-token",
+        generated: "generated-token"
+    )
+    #expect(fromKeychain.token == "keychain-token")
+    #expect(fromKeychain.writeToKeychain == nil)
+    #expect(fromKeychain.clearDefaults)
+
+    let migrateDefaults = MCPTokenResolution.resolve(
+        keychainValue: nil,
+        defaultsValue: "defaults-token",
+        generated: "generated-token"
+    )
+    #expect(migrateDefaults.token == "defaults-token")
+    #expect(migrateDefaults.writeToKeychain == "defaults-token")
+    #expect(migrateDefaults.clearDefaults)
+
+    let generated = MCPTokenResolution.resolve(
+        keychainValue: nil,
+        defaultsValue: nil,
+        generated: "generated-token"
+    )
+    #expect(generated.token == "generated-token")
+    #expect(generated.writeToKeychain == "generated-token")
+    #expect(generated.clearDefaults == false)
 }

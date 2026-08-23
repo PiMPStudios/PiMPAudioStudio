@@ -307,14 +307,14 @@ struct DatasetReviewView: View {
 
     @ViewBuilder
     private var clipEditor: some View {
-        if let index = selectedClipIndex {
+        if let index = selectedClipIndex, let clip = clip(at: index) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    editorHeader(index)
-                    audioPreview(index)
-                    issueSection(for: document!.clips[index])
-                    metadataEditor(index)
-                    assetsSection(document!.clips[index])
+                    editorHeader(index, clip: clip)
+                    audioPreview(clip)
+                    issueSection(for: clip)
+                    metadataEditor(index, clip: clip)
+                    assetsSection(clip)
                 }
                 .padding()
             }
@@ -328,9 +328,8 @@ struct DatasetReviewView: View {
         }
     }
 
-    private func editorHeader(_ index: Int) -> some View {
-        let clip = document!.clips[index]
-        return HStack {
+    private func editorHeader(_ index: Int, clip: DatasetClipReview) -> some View {
+        HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text(clip.displayName)
                     .font(.title3)
@@ -353,8 +352,8 @@ struct DatasetReviewView: View {
     }
 
     @ViewBuilder
-    private func audioPreview(_ index: Int) -> some View {
-        if let url = document!.clips[index].audioURL(relativeTo: datasetDirectory),
+    private func audioPreview(_ clip: DatasetClipReview) -> some View {
+        if let url = clip.audioURL(relativeTo: datasetDirectory),
            FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) {
             PlayerView(fileURL: url)
                 .environmentObject(playerService)
@@ -394,7 +393,7 @@ struct DatasetReviewView: View {
         }
     }
 
-    private func metadataEditor(_ index: Int) -> some View {
+    private func metadataEditor(_ index: Int, clip: DatasetClipReview) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Training Metadata")
                 .font(.subheadline)
@@ -405,7 +404,7 @@ struct DatasetReviewView: View {
                     Text("Caption")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    sourceBadge(document!.clips[index].captionSource)
+                    sourceBadge(clip.captionSource)
                 }
                 TextEditor(text: captionBinding(index))
                     .font(.callout)
@@ -420,7 +419,7 @@ struct DatasetReviewView: View {
                     Text("Lyrics / Transcript")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    sourceBadge(document!.clips[index].lyricsSource)
+                    sourceBadge(clip.lyricsSource)
                 }
                 TextEditor(text: lyricsBinding(index))
                     .font(.callout)
@@ -441,7 +440,7 @@ struct DatasetReviewView: View {
                 }
             }
 
-            if document!.clips[index].assetID == nil {
+            if clip.assetID == nil {
                 HStack {
                     Picker("Role", selection: binding(index, \.role)) {
                         Text("Full Mix").tag("full_mix")
@@ -457,9 +456,9 @@ struct DatasetReviewView: View {
                     Text("Asset Role")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    badge(document!.clips[index].role)
-                    if !document!.clips[index].trainingRangePolicy.isEmpty {
-                        badge(document!.clips[index].trainingRangePolicy)
+                    badge(clip.role)
+                    if !clip.trainingRangePolicy.isEmpty {
+                        badge(clip.trainingRangePolicy)
                     }
                     Spacer()
                 }
@@ -603,61 +602,81 @@ struct DatasetReviewView: View {
         enrichment.phase.isRunning || isSaving || isExporting
     }
 
-    private func binding<T>(_ index: Int, _ keyPath: WritableKeyPath<DatasetClipReview, T>) -> Binding<T> {
+    private func clip(at index: Int) -> DatasetClipReview? {
+        guard let document, document.clips.indices.contains(index) else { return nil }
+        return document.clips[index]
+    }
+
+    private func mutateClip(at index: Int, _ body: (inout DatasetClipReview) -> Void) {
+        guard var document, document.clips.indices.contains(index) else { return }
+        body(&document.clips[index])
+        document.hasUnsavedChanges = true
+        self.document = document
+    }
+
+    private func clipBinding<T>(
+        _ index: Int,
+        _ keyPath: WritableKeyPath<DatasetClipReview, T>,
+        default defaultValue: T
+    ) -> Binding<T> {
         Binding(
-            get: { document!.clips[index][keyPath: keyPath] },
+            get: { clip(at: index)?[keyPath: keyPath] ?? defaultValue },
             set: { value in
-                document!.clips[index][keyPath: keyPath] = value
-                document!.hasUnsavedChanges = true
+                mutateClip(at: index) { $0[keyPath: keyPath] = value }
             }
         )
     }
 
+    private func binding(_ index: Int, _ keyPath: WritableKeyPath<DatasetClipReview, String>) -> Binding<String> {
+        clipBinding(index, keyPath, default: "")
+    }
+
     private func captionBinding(_ index: Int) -> Binding<String> {
         Binding(
-            get: { document!.clips[index].caption },
+            get: { clip(at: index)?.caption ?? "" },
             set: { value in
-                document!.clips[index].caption = value
-                document!.clips[index].captionSource = value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "none" : "manual"
-                document!.clips[index].annotationBackend = "manual"
-                document!.clips[index].reviewStatus = document!.clips[index].isApproved ? "approved" : "needs_review"
-                document!.hasUnsavedChanges = true
+                mutateClip(at: index) { clip in
+                    clip.caption = value
+                    clip.captionSource = value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        ? "none"
+                        : "manual"
+                    clip.annotationBackend = "manual"
+                    clip.reviewStatus = clip.isApproved ? "approved" : "needs_review"
+                }
             }
         )
     }
 
     private func lyricsBinding(_ index: Int) -> Binding<String> {
         Binding(
-            get: { document!.clips[index].lyrics },
+            get: { clip(at: index)?.lyrics ?? "" },
             set: { value in
-                document!.clips[index].lyrics = value
-                document!.clips[index].lyricsSource = value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "none" : "manual"
-                document!.clips[index].annotationBackend = "manual"
-                document!.clips[index].reviewStatus = document!.clips[index].isApproved ? "approved" : "needs_review"
-                document!.hasUnsavedChanges = true
+                mutateClip(at: index) { clip in
+                    clip.lyrics = value
+                    clip.lyricsSource = value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        ? "none"
+                        : "manual"
+                    clip.annotationBackend = "manual"
+                    clip.reviewStatus = clip.isApproved ? "approved" : "needs_review"
+                }
             }
         )
     }
 
     private func approvedBinding(_ index: Int) -> Binding<Bool> {
         Binding(
-            get: { document!.clips[index].isApproved },
+            get: { clip(at: index)?.isApproved ?? false },
             set: { value in
-                document!.clips[index].isApproved = value
-                document!.clips[index].reviewStatus = value ? "approved" : "needs_review"
-                document!.hasUnsavedChanges = true
+                mutateClip(at: index) { clip in
+                    clip.isApproved = value
+                    clip.reviewStatus = value ? "approved" : "needs_review"
+                }
             }
         )
     }
 
     private func includeInTrainingBinding(_ index: Int) -> Binding<Bool> {
-        Binding(
-            get: { document!.clips[index].includeInTraining },
-            set: { value in
-                document!.clips[index].includeInTraining = value
-                document!.hasUnsavedChanges = true
-            }
-        )
+        clipBinding(index, \.includeInTraining, default: false)
     }
 
     private func field(_ label: String, text: Binding<String>) -> some View {
@@ -784,12 +803,13 @@ struct DatasetReviewView: View {
     }
 
     private func markAllApproved() {
-        guard document != nil else { return }
-        for index in document!.clips.indices where document!.clips[index].includeInTraining {
-            document!.clips[index].isApproved = true
-            document!.clips[index].reviewStatus = "approved"
+        guard var document else { return }
+        for index in document.clips.indices where document.clips[index].includeInTraining {
+            document.clips[index].isApproved = true
+            document.clips[index].reviewStatus = "approved"
         }
-        document!.hasUnsavedChanges = true
+        document.hasUnsavedChanges = true
+        self.document = document
         notice = "All selected assets marked approved. Save to persist."
     }
 
