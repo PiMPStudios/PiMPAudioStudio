@@ -23,8 +23,9 @@ import Testing
     let attributes = KeychainItemQuery.updateAttributes(data: data)
 
     #expect(attributes[kSecValueData as String] as? Data == data)
-    #expect(
-        attributes[kSecAttrAccessible as String] as? String
-            == kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String
-    )
+    #expect(cfString(attributes[kSecAttrAccessible as String]) == (kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String))
+}
+
+private func cfString(_ value: Any?) -> String? {
+    value as? String ?? (value as? NSString).map { $0 as String }
 }
