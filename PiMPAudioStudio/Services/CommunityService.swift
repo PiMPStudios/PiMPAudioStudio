@@ -357,7 +357,7 @@ final class CommunityService: ObservableObject {
 
         let rawArrays = try MLX.loadArrays(url: weightsDownload.fileURL)
         if type == "lokr" {
-            let metadata = (try? safetensorsMetadata(from: tmp)) ?? [:]
+            let metadata = (try? safetensorsMetadata(from: weightsDownload.fileURL)) ?? [:]
             return try saveLyCORISLoKRAdapter(
                 rawArrays: rawArrays,
                 safetensorsMetadata: metadata,
