@@ -25,10 +25,11 @@ http://127.0.0.1:38765/mcp
 Bind address:
 
 - `127.0.0.1` — localhost only (default).
-- `0.0.0.0` — all IPv4 interfaces (LAN reachable). Switching to this mode enables
-  the bearer token automatically. Clients on other machines should use the Mac's
-  LAN IP (Settings shows a network endpoint when one can be detected), not the
-  literal string `0.0.0.0`.
+- `0.0.0.0` — all IPv4 interfaces (LAN reachable). Switching to this mode
+  **requires** a bearer token; it cannot be turned off until you bind localhost
+  again. Clients on other machines should use the Mac's LAN IP (Settings shows a
+  network endpoint when one can be detected), not the literal string `0.0.0.0`.
+  CORS echoes a trusted `Origin` instead of `*`.
 
 Port:
 
@@ -43,7 +44,8 @@ PIMP_AUDIO_MCP_ENDPOINT='http://127.0.0.1:38765/mcp' scripts/smoke-pimpaudio-mcp
 ```
 
 The optional bearer token is disabled by default for localhost-only use. If you
-enable it (or bind to all interfaces), clients must send:
+enable it, or bind to all interfaces (which forces the token on), clients must
+send:
 
 ```text
 Authorization: Bearer <token>
@@ -267,14 +269,16 @@ the primary adapter, and notifies the Generate view when it is open.
 
 `generate_song` can optionally enhance the prompt, write lyrics, apply
 adapters, then submit generation through the same service path as the Generate
-button. When `clearAdapter: true` is combined with `adapter` or `adapters`, the
-orchestrator clears stale selection first and then applies the requested adapter
-selection before submission.
+button. It defaults to `dryRun: true` (and skips lyric API calls / adapter
+mutation). Actual runs need `dryRun: false` plus `confirm: true` or MCP form
+approval. When `clearAdapter: true` is combined with `adapter` or `adapters`,
+the orchestrator clears stale selection first and then applies the requested
+adapter selection before submission.
 
-`generate` submits a generation request directly. It returns immediately; use
-`generation_status`, `list_history`, or trace resources to observe completion. Pass
-`dryRun: true` to validate and echo the resolved request without starting a
-render.
+`generate` submits a generation request directly and defaults to `dryRun: true`.
+Actual runs need `dryRun: false` plus `confirm: true` or MCP form approval. It
+returns immediately; use `generation_status`, `list_history`, or trace resources
+to observe completion.
 
 `load_editor_audio` submits a background editor load. It validates the source
 up front, returns an `operationID`, and only updates the editor's loaded-audio
@@ -551,13 +555,16 @@ curl -s -X DELETE "$ENDPOINT" \
   Lyrics, and Audio grouping as the Generation Analyzer compare view.
 - `enhance_prompt` and `write_lyrics` may load/use the configured
   local LLM or API lyric backends, but their responses are return-only.
+  `write_lyrics` requires confirmation because it may call a paid API.
 - `mark_preferred_take` is intentionally scoped to trace/history review
-  metadata only.
+  metadata only and requires confirmation.
 - `apply_adapter` changes app adapter-selection state but does not start
-  generation, load model weights, or alter adapter files.
-- `generate` is non-blocking. It starts the same app generation path and
-  returns immediately so MCP clients can poll status or history instead of
-  holding a long-running HTTP request open.
+  generation, load model weights, or alter adapter files. It requires
+  confirmation.
+- `generate` is non-blocking and defaults to dry-run. A confirmed submit
+  starts the same app generation path and returns immediately so MCP clients
+  can poll status or history instead of holding a long-running HTTP request
+  open.
 - MCP-submitted generation now creates an operation record with `progress`,
   `total`, and `message` fields normalized to the whole operation lifetime.
   Stage-local counters, when available, are exposed as `stageProgress` and
@@ -566,10 +573,10 @@ curl -s -X DELETE "$ENDPOINT" \
   `_meta.progressToken` and keeps `GET /mcp` open. Full background-operation
   progress notifications should be implemented through MCP task-augmented
   requests once the SDK supports task capabilities.
-- `load_editor_audio` is the first editor operation. It accepts `id`,
-  `historyID`, `audioID`, or a readable `path`; registers an `editor.loadAudio`
-  record; reads the file; encodes editor latents; and updates
-  `editor_status.loadedAudio` when complete.
+- `load_editor_audio` is the first editor operation and defaults to dry-run.
+  A confirmed load accepts `id`, `historyID`, `audioID`, or a readable `path`;
+  registers an `editor.loadAudio` record; reads the file; encodes editor
+  latents; and updates `editor_status.loadedAudio` when complete.
 - `cancel_operation` currently supports active generation operations and
   background editor load, inpaint, DSP, and render tasks. Client
   `notifications/cancelled` apply to in-flight MCP requests through the SDK;

@@ -144,6 +144,7 @@ final class YouTubeDatasetBuilder: ObservableObject {
         styleTemplate: String = "",
         onPhase: @escaping (YouTubeImportPhase) async -> Void
     ) async throws -> YouTubeDatasetResult {
+        try YouTubeURLPolicy.validate(channelURL)
         guard ytDlpVersion() != nil else { throw YouTubeDatasetError.ytDlpNotFound }
 
         let maxVideos = max(1,
@@ -211,6 +212,7 @@ final class YouTubeDatasetBuilder: ObservableObject {
     // MARK: - Playlist Fetch
 
     static func fetchPlaylist(url: URL, limit: Int) async throws -> [YouTubeVideoInfo] {
+        try YouTubeURLPolicy.validate(url)
         let raw = try await runProcess(
             arguments: [
                 "yt-dlp",
@@ -229,6 +231,7 @@ final class YouTubeDatasetBuilder: ObservableObject {
                   let data = trimmed.data(using: .utf8),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let id = json["id"] as? String,
+                  YouTubeURLPolicy.isSafeVideoID(id),
                   let title = json["title"] as? String
             else { continue }
             videos.append(YouTubeVideoInfo(id: id, title: title, duration: json["duration"] as? Double))
@@ -239,6 +242,9 @@ final class YouTubeDatasetBuilder: ObservableObject {
     // MARK: - Audio Download
 
     static func downloadAudio(video: YouTubeVideoInfo, to outputDir: URL) async throws -> URL {
+        guard YouTubeURLPolicy.isSafeVideoID(video.id) else {
+            throw YouTubeDatasetError.downloadFailed(video.id)
+        }
         _ = try await runProcess(
             arguments: [
                 "yt-dlp",
@@ -546,8 +552,39 @@ private final class CapturedProcess: @unchecked Sendable {
 
 // MARK: - Errors
 
+enum YouTubeURLPolicy {
+    static let allowedHosts: Set<String> = [
+        "youtube.com",
+        "www.youtube.com",
+        "m.youtube.com",
+        "music.youtube.com",
+        "youtu.be",
+        "www.youtu.be",
+    ]
+
+    static func isAllowed(_ url: URL) -> Bool {
+        guard url.scheme?.lowercased() == "https" else { return false }
+        guard let host = url.host?.lowercased(), !host.isEmpty else { return false }
+        if let port = url.port, port != 443 { return false }
+        if allowedHosts.contains(host) { return true }
+        return host.hasSuffix(".youtube.com")
+    }
+
+    static func validate(_ url: URL) throws {
+        guard isAllowed(url) else { throw YouTubeDatasetError.unsupportedURL }
+    }
+
+    static func isSafeVideoID(_ id: String) -> Bool {
+        let trimmed = id.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.count <= 64 else { return false }
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_-"))
+        return trimmed.unicodeScalars.allSatisfy { allowed.contains($0) }
+    }
+}
+
 enum YouTubeDatasetError: LocalizedError {
     case ytDlpNotFound
+    case unsupportedURL
     case emptyPlaylist
     case downloadFailed(String)
     case noAudioTrack
@@ -561,6 +598,8 @@ enum YouTubeDatasetError: LocalizedError {
         switch self {
         case .ytDlpNotFound:
             return "yt-dlp not found. Install it with: brew install yt-dlp\n\nIf already installed, PiMPAudioStudio may need Full Disk Access in System Settings → Privacy & Security."
+        case .unsupportedURL:
+            return "Enter an https://youtube.com or https://youtu.be channel, playlist, or video URL."
         case .emptyPlaylist:
             return "No videos found at this URL. Make sure it's a public YouTube channel or playlist."
         case .downloadFailed(let id):

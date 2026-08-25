@@ -399,6 +399,9 @@ extension PiMPAudioCommandFacade {
     }
 
     func markPreferredTake(arguments: [String: Any]) throws -> [String: Any] {
+        guard boolValue(arguments["confirm"]) == true else {
+            throw PiMPAudioCommandFacadeError.confirmationRequired("mark_preferred_take")
+        }
         let trace = try resolveTrace(arguments: arguments)
         let hasPreferredArgument = hasArgument("isPreferred", in: arguments)
             || hasArgument("preferred", in: arguments)

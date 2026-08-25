@@ -116,7 +116,7 @@ struct MCPSettingsView: View {
 
             if mcpServer.isNetworkExposed {
                 Label(
-                    "All-interfaces binding exposes MCP on your LAN. Keep a bearer token enabled and avoid untrusted networks.",
+                    "All-interfaces binding exposes MCP on your LAN. A bearer token is required and cannot be disabled. Avoid untrusted networks.",
                     systemImage: "exclamationmark.triangle.fill"
                 )
                 .font(.caption)
@@ -131,6 +131,7 @@ struct MCPSettingsView: View {
                 get: { mcpServer.isTokenRequired },
                 set: { mcpServer.setTokenRequired($0) }
             ))
+            .disabled(mcpServer.isNetworkExposed)
 
             if mcpServer.isTokenRequired {
                 LabeledContent("Token") {
@@ -158,7 +159,7 @@ struct MCPSettingsView: View {
 
             Text(
                 mcpServer.isNetworkExposed
-                    ? "When bound to 0.0.0.0, require a token so LAN clients must send `Authorization: Bearer <token>`. Switching to all interfaces enables this automatically. The token is stored in the Keychain."
+                    ? "All-interfaces binding requires a bearer token. LAN clients must send `Authorization: Bearer <token>`. The toggle cannot be turned off until you bind to localhost. The token is stored in the Keychain."
                     : "For localhost-only use this is optional. Turn it on if you want local clients to send `Authorization: Bearer <token>`. The token is stored in the Keychain."
             )
                 .font(.caption)

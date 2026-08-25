@@ -8,6 +8,22 @@ land before a wider or paid build.
 
 ## Completed
 
+- [x] **#1 MCP generate / lyrics / adapters / editor load-export confirmation**
+  (security) — `generate`, `generate_song`, `load_editor_audio`, and
+  `render_editor_audio` default to dry-run and need `confirm` to mutate.
+  `write_lyrics`, `apply_adapter`, `mark_preferred_take`, and
+  `cancel_generation` require confirm / elicitation.
+- [x] **#2 All-interfaces token + CORS** (security) — Binding `0.0.0.0` forces
+  a bearer token that cannot be turned off. CORS echoes a trusted Origin and
+  never sends `*`.
+- [x] **#3 YouTube URL allowlist** (security) — Dataset import only accepts
+  https YouTube hosts and sanitizes yt-dlp video IDs before building watch URLs.
+- [x] **#4 Hugging Face adapter import host + streaming** (security) — Import
+  requires huggingface.co / hf.co https and streams safetensors to disk via
+  `DownloadClient`.
+- [x] **#6 Keychain write status + accessibility** (security / correctness) —
+  Writes check `SecItemUpdate`/`SecItemAdd`, pin
+  `WhenUnlockedThisDeviceOnly`, and surface failures in Settings / RunPod.
 - [x] **#8 Community adapter catalog URL** (correctness) —
   Catalog now loads from `PiMPStudios/pimp-adapters`. Pre-rebrand identity
   migration (old Application Support folder, Keychain service, MCP scheme, JSON
@@ -17,32 +33,10 @@ land before a wider or paid build.
 
 ## Open — ranked most important first
 
-1. **MCP generate / lyrics / adapters / editor load-export have no confirm, and token is optional on loopback** (security)
-   GPU burn, paid API spend, and library mutation from any local process or a
-   page that can hit `127.0.0.1`. Add confirm/dry-run defaults for `generate`,
-   `generate_song`, `write_lyrics`, `apply_adapter`, `load_editor_audio`,
-   `render_editor_audio`, `mark_preferred_take`, `cancel_generation`.
-
-2. **Token can be turned off after binding `0.0.0.0`, plus CORS `*`** (security)
-   Same tools, now on the LAN. Force token when bound to all interfaces; tighten
-   `Access-Control-Allow-Origin`.
-
-3. **YouTube import passes unsanitized URLs to yt-dlp** (security)
-   `file://`, random HTTP, extractor abuse. Allowlist `youtube.com` /
-   `youtu.be` HTTPS hosts before `fetchPlaylist`.
-
-4. **Hugging Face adapter import accepts any URL and loads the whole file into RAM** (security)
-   Fetch/install from an arbitrary host, plus a memory spike. Require
-   `huggingface.co` HTTPS and stream to disk via `DownloadClient`.
-
 5. **Built-in model downloads never set SHA-256** (security / supply chain)
    `ModelFileSpec.sha256` exists but no built-in spec pins a hash, so
    `downloadAndVerify` is a no-op. Pin hashes; fail closed if a built-in file
    is missing one.
-
-6. **Keychain writes ignore `SecItemAdd` errors and omit accessibility** (security / correctness)
-   “Key saved” can be a lie. Check status; set
-   `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`.
 
 7. **Sandbox exceptions cover all of Homebrew plus `~/.codex` / `~/.grok` / `~/.gemini`** (release)
    App Store / paid-release blocker if those tree-wide entitlements stay.
@@ -97,8 +91,7 @@ land before a wider or paid build.
 
 ## Highest-leverage next picks
 
-If only a few: **#1 + #2** (MCP auth/confirm), **#3 + #4** (URL allowlists),
-**#5** (pin model hashes). **#7** only if App Store is soon.
+If only a few: **#5** (pin model hashes). **#7** only if App Store is soon.
 
 ## What’s already in good shape
 

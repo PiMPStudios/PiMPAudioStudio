@@ -357,7 +357,7 @@ enum MCPToolCatalog {
         tool(
             name: "mark_preferred_take",
             title: "Mark Preferred Take",
-            description: "Save a preferred flag and optional listening note into an existing generation trace and mirrored history row.",
+            description: "Save a preferred flag and optional listening note into an existing generation trace and mirrored history row. Requires confirm: true or MCP form approval.",
             properties: [
                 "id": [
                     "type": "string",
@@ -381,6 +381,10 @@ enum MCPToolCatalog {
                 "note": [
                     "type": "string",
                     "description": "Alias for listeningNote."
+                ],
+                "confirm": [
+                    "type": "boolean",
+                    "description": "Required when the client does not support MCP elicitation."
                 ]
             ]
         ),
@@ -408,7 +412,7 @@ enum MCPToolCatalog {
         tool(
             name: "write_lyrics",
             title: "Write Lyrics",
-            description: "Generate cleaned, duration-aware lyrics using the same lyric writer and sanitizer as the Generate view.",
+            description: "Generate cleaned, duration-aware lyrics using the same lyric writer and sanitizer as the Generate view. Requires confirm: true or MCP form approval because this may call a paid API.",
             required: ["prompt", "duration"],
             properties: [
                 "prompt": [
@@ -428,13 +432,17 @@ enum MCPToolCatalog {
                     "type": "number",
                     "minimum": 1,
                     "description": "Alias for duration."
+                ],
+                "confirm": [
+                    "type": "boolean",
+                    "description": "Required when the client does not support MCP elicitation."
                 ]
             ]
         ),
         tool(
             name: "apply_adapter",
             title: "Apply Adapter",
-            description: "Select, stack, or clear ACE-Step LoRA adapters for the next generation. Updates the Generate view when it is open.",
+            description: "Select, stack, or clear ACE-Step LoRA adapters for the next generation. Updates the Generate view when it is open. Requires confirm: true or MCP form approval.",
             properties: [
                 "id": [
                     "type": "string",
@@ -472,13 +480,17 @@ enum MCPToolCatalog {
                 "clear": [
                     "type": "boolean",
                     "description": "Clear all selected adapters when true."
+                ],
+                "confirm": [
+                    "type": "boolean",
+                    "description": "Required when the client does not support MCP elicitation."
                 ]
             ]
         ),
         tool(
             name: "generate_song",
             title: "Generate Song",
-            description: "Orchestrate a song generation: optionally enhance the prompt, optionally write duration-aware lyrics, optionally apply adapters, then submit generation.",
+            description: "Orchestrate a song generation: optionally enhance the prompt, optionally write duration-aware lyrics, optionally apply adapters, then submit generation. Defaults to dryRun: true; actual runs require dryRun: false plus confirm: true or MCP form approval.",
             required: ["prompt"],
             properties: [
                 "prompt": [
@@ -600,14 +612,18 @@ enum MCPToolCatalog {
                 ],
                 "dryRun": [
                     "type": "boolean",
-                    "description": "Resolve orchestration and validate the generation request without starting generation or applying adapters."
+                    "description": "Defaults to true. Set false, with confirmation, to start generation."
+                ],
+                "confirm": [
+                    "type": "boolean",
+                    "description": "Required for actual generation when the client does not support MCP elicitation."
                 ]
             ]
         ),
         tool(
             name: "generate",
             title: "Generate Audio",
-            description: "Submit a generation request through the same path as the Generate view. Returns immediately; poll generation_status or history for completion.",
+            description: "Submit a generation request through the same path as the Generate view. Defaults to dryRun: true; actual runs require dryRun: false plus confirm: true or MCP form approval. Returns immediately; poll generation_status or history for completion.",
             required: ["prompt"],
             properties: [
                 "prompt": [
@@ -678,7 +694,11 @@ enum MCPToolCatalog {
                 ],
                 "dryRun": [
                     "type": "boolean",
-                    "description": "Validate and echo the resolved request without starting generation."
+                    "description": "Defaults to true. Set false, with confirmation, to start generation."
+                ],
+                "confirm": [
+                    "type": "boolean",
+                    "description": "Required for actual generation when the client does not support MCP elicitation."
                 ]
             ]
         ),
@@ -697,7 +717,7 @@ enum MCPToolCatalog {
         tool(
             name: "load_editor_audio",
             title: "Load Editor Audio",
-            description: "Load a history audio id or readable local audio path into the editor coordinator as a background operation. Returns an operationID for polling. Prefer history/audio ids; when using paths, prefer files under advertised MCP client roots.",
+            description: "Load a history audio id or readable local audio path into the editor coordinator as a background operation. Defaults to dryRun: true; actual loads require dryRun: false plus confirm: true or MCP form approval. Returns an operationID for polling. Prefer history/audio ids; when using paths, prefer files under advertised MCP client roots.",
             properties: [
                 "id": [
                     "type": "string",
@@ -741,11 +761,15 @@ enum MCPToolCatalog {
                 ],
                 "dryRun": [
                     "type": "boolean",
-                    "description": "Validate the local file path and echo the resolved request without loading audio."
+                    "description": "Defaults to true. Set false, with confirmation, to load audio."
                 ],
                 "validateOnly": [
                     "type": "boolean",
                     "description": "Alias for dryRun."
+                ],
+                "confirm": [
+                    "type": "boolean",
+                    "description": "Required for an actual load when the client does not support MCP elicitation."
                 ]
             ]
         ),
@@ -1145,7 +1169,7 @@ enum MCPToolCatalog {
         tool(
             name: "render_editor_audio",
             title: "Render Editor Audio",
-            description: "Render the loaded editor buffer or a selected time range to a WAV/AIFF file as a background operation. Use dryRun to resolve the output path without writing.",
+            description: "Render the loaded editor buffer or a selected time range to a WAV/AIFF file as a background operation. Defaults to dryRun: true; actual renders require dryRun: false plus confirm: true or MCP form approval.",
             properties: [
                 "format": [
                     "type": "string",
@@ -1218,11 +1242,15 @@ enum MCPToolCatalog {
                 ],
                 "dryRun": [
                     "type": "boolean",
-                    "description": "Validate and echo the resolved render request without writing a file."
+                    "description": "Defaults to true. Set false, with confirmation, to write the file."
                 ],
                 "validateOnly": [
                     "type": "boolean",
                     "description": "Alias for dryRun."
+                ],
+                "confirm": [
+                    "type": "boolean",
+                    "description": "Required for an actual render when the client does not support MCP elicitation."
                 ]
             ]
         ),
@@ -1832,11 +1860,15 @@ enum MCPToolCatalog {
         tool(
             name: "cancel_generation",
             title: "Cancel Generation",
-            description: "Cancel the active generation run through the same path as the Generate Cancel button.",
+            description: "Cancel the active generation run through the same path as the Generate Cancel button. Requires confirm: true or MCP form approval.",
             properties: [
                 "reason": [
                     "type": "string",
                     "description": "Optional cancellation reason."
+                ],
+                "confirm": [
+                    "type": "boolean",
+                    "description": "Required when the client does not support MCP elicitation."
                 ]
             ]
         ),

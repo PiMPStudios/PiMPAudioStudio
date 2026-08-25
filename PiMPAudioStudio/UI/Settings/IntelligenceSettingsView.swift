@@ -7,6 +7,7 @@ struct IntelligenceSettingsView: View {
     @EnvironmentObject private var lyricWriterManager: LyricWriterManager
 
     @State private var newAPIKeys: [String: String] = [:]
+    @State private var keySaveError: String?
 
     var body: some View {
         Form {
@@ -26,6 +27,14 @@ struct IntelligenceSettingsView: View {
         }
         .onChange(of: providerAccessStore.statuses) { _, _ in
             lyricWriterManager.refreshRemoteBackends()
+        }
+        .alert("Couldn’t save API key", isPresented: Binding(
+            get: { keySaveError != nil },
+            set: { if !$0 { keySaveError = nil } }
+        )) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(keySaveError ?? "")
         }
     }
 
@@ -243,8 +252,13 @@ struct IntelligenceSettingsView: View {
                     .frame(width: 200)
                     .onSubmit {
                         if let key = newAPIKeys[provider.id], !key.isEmpty {
-                            apiKeyStore.setAPIKey(key, for: provider.id)
-                            newAPIKeys[provider.id] = ""
+                            do {
+                                try apiKeyStore.setAPIKey(key, for: provider.id)
+                                newAPIKeys[provider.id] = ""
+                                keySaveError = nil
+                            } catch {
+                                keySaveError = error.localizedDescription
+                            }
                         }
                     }
 

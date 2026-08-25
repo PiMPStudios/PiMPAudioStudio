@@ -223,12 +223,16 @@ final class CommunityService: ObservableObject {
     /// - Parameter repoURL: The HuggingFace repo URL (e.g. `https://huggingface.co/user/repo`)
     /// - Returns: The installed `LoRAAdapter`.
     func importFromHuggingFace(repoURL: URL) async throws -> LoRAAdapter {
+        try HuggingFaceURLPolicy.validate(repoURL)
         let baseURL = repoURL.appendingPathComponent("resolve/main")
+        try HuggingFaceURLPolicy.validate(baseURL)
 
         // ── 1. PEFT with config ───────────────────────────────────────────────
-        let peftConfigURL = baseURL.appendingPathComponent("adapter_config.json")
-        let (peftConfigData, peftConfigResp) = try await URLSession.shared.data(from: peftConfigURL)
-        if let http = peftConfigResp as? HTTPURLResponse, http.statusCode == 200 {
+        if let configFile = try await downloadIfPresent(
+            from: baseURL.appendingPathComponent("adapter_config.json")
+        ) {
+            defer { try? FileManager.default.removeItem(at: configFile) }
+            let peftConfigData = try readSmallFile(configFile)
             return try await importPEFTAdapter(
                 repoURL: repoURL,
                 baseURL: baseURL,
@@ -237,9 +241,11 @@ final class CommunityService: ObservableObject {
         }
 
         // ── 2. Native PiMP Audio Studio format ────────────────────────────────
-        let metadataURL = baseURL.appendingPathComponent("adapter.json")
-        let (metaData, metaResponse) = try await URLSession.shared.data(from: metadataURL)
-        if let http = metaResponse as? HTTPURLResponse, http.statusCode == 200 {
+        if let metadataFile = try await downloadIfPresent(
+            from: baseURL.appendingPathComponent("adapter.json")
+        ) {
+            defer { try? FileManager.default.removeItem(at: metadataFile) }
+            let metaData = try readSmallFile(metadataFile)
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
             var adapter = try decoder.decode(LoRAAdapter.self, from: metaData)
@@ -253,8 +259,7 @@ final class CommunityService: ObservableObject {
             adapter.id = uniqueAdapterID(from: adapter.id)
 
             let weightsURL = baseURL.appendingPathComponent("adapter.safetensors")
-            let (weightsData, weightsResponse) = try await URLSession.shared.data(from: weightsURL)
-            guard let httpW = weightsResponse as? HTTPURLResponse, httpW.statusCode == 200 else {
+            guard let downloadedWeights = try await downloadIfPresent(from: weightsURL) else {
                 throw CommunityError.missingFile("adapter.safetensors", repoURL)
             }
             let expectedSHA256 = adapterSHA256(from: metaData)
@@ -267,13 +272,15 @@ final class CommunityService: ObservableObject {
                 encoder.dateEncodingStrategy = .iso8601
                 encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
                 try encoder.encode(adapter).write(to: dir.appending(path: "adapter.json"))
-                try weightsData.write(to: weightsDestination)
+                try? FileManager.default.removeItem(at: weightsDestination)
+                try FileManager.default.moveItem(at: downloadedWeights, to: weightsDestination)
                 try await verifyAdapterWeights(
                     at: weightsDestination,
                     expectedSHA256: expectedSHA256,
                     fileName: "adapter.safetensors"
                 )
             } catch {
+                try? FileManager.default.removeItem(at: downloadedWeights)
                 try? FileManager.default.removeItem(at: dir)
                 throw error
             }
@@ -281,25 +288,25 @@ final class CommunityService: ObservableObject {
         }
 
         // ── 3. Weights-only LyCORIS LoKR (no adapter_config.json) ────────────
-        let lokrWeightsURL = baseURL.appendingPathComponent("lokr_weights.safetensors")
-        let (lokrWeightsData, lokrWeightsResp) = try await URLSession.shared.data(from: lokrWeightsURL)
-        if let http = lokrWeightsResp as? HTTPURLResponse, http.statusCode == 200 {
+        if let lokrFile = try await downloadIfPresent(
+            from: baseURL.appendingPathComponent("lokr_weights.safetensors")
+        ) {
+            defer { try? FileManager.default.removeItem(at: lokrFile) }
             return try await importWeightsOnlyPEFT(
                 repoURL: repoURL,
-                weightsData: lokrWeightsData,
+                weightsFile: lokrFile,
                 fileName: "lokr_weights.safetensors"
             )
         }
 
         // ── 4. Weights-only PEFT (no adapter_config.json) ────────────────────
-        // Community repos often ship only adapter_model.safetensors. Infer rank
-        // and target modules from the tensor shapes and key names.
-        let peftWeightsURL = baseURL.appendingPathComponent("adapter_model.safetensors")
-        let (peftWeightsData, peftWeightsResp) = try await URLSession.shared.data(from: peftWeightsURL)
-        if let http = peftWeightsResp as? HTTPURLResponse, http.statusCode == 200 {
+        if let peftFile = try await downloadIfPresent(
+            from: baseURL.appendingPathComponent("adapter_model.safetensors")
+        ) {
+            defer { try? FileManager.default.removeItem(at: peftFile) }
             return try await importWeightsOnlyPEFT(
                 repoURL: repoURL,
-                weightsData: peftWeightsData,
+                weightsFile: peftFile,
                 fileName: "adapter_model.safetensors"
             )
         }
@@ -341,21 +348,14 @@ final class CommunityService: ObservableObject {
             errorURL: repoURL
         )
 
-        // Write to a temp file, load with MLX, remap keys, re-save in PiMPAudioStudio format.
-        // This ensures the on-disk safetensors always uses native key names so
-        // AdapterRegistry.loadWeights → LoRAInjector.addContribution works without changes.
-        let tmp = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString)
-            .appendingPathExtension("safetensors")
-        defer { try? FileManager.default.removeItem(at: tmp) }
-        try weightsDownload.data.write(to: tmp)
+        defer { try? FileManager.default.removeItem(at: weightsDownload.fileURL) }
         try await verifyAdapterWeights(
-            at: tmp,
+            at: weightsDownload.fileURL,
             expectedSHA256: adapterSHA256(from: configData),
             fileName: weightsDownload.fileName
         )
 
-        let rawArrays = try MLX.loadArrays(url: tmp)
+        let rawArrays = try MLX.loadArrays(url: weightsDownload.fileURL)
         if type == "lokr" {
             let metadata = (try? safetensorsMetadata(from: tmp)) ?? [:]
             return try saveLyCORISLoKRAdapter(
@@ -383,15 +383,40 @@ final class CommunityService: ObservableObject {
         fileNames: [String],
         baseURL: URL,
         errorURL: URL
-    ) async throws -> (fileName: String, data: Data) {
+    ) async throws -> (fileName: String, fileURL: URL) {
         for fileName in fileNames {
             let url = baseURL.appendingPathComponent(fileName)
-            let (data, response) = try await URLSession.shared.data(from: url)
-            if let http = response as? HTTPURLResponse, http.statusCode == 200 {
-                return (fileName, data)
+            if let fileURL = try await downloadIfPresent(from: url) {
+                return (fileName, fileURL)
             }
         }
         throw CommunityError.missingFile(fileNames.joined(separator: " or "), errorURL)
+    }
+
+    private func downloadIfPresent(from url: URL) async throws -> URL? {
+        try HuggingFaceURLPolicy.validate(url)
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        do {
+            try await downloadClient.download(from: url, to: tmp, onProgress: { _ in })
+            return tmp
+        } catch let error as DownloadError {
+            try? FileManager.default.removeItem(at: tmp)
+            if case .httpError(let code) = error, (400...499).contains(code) {
+                return nil
+            }
+            throw error
+        } catch {
+            try? FileManager.default.removeItem(at: tmp)
+            throw error
+        }
+    }
+
+    private func readSmallFile(_ url: URL, maxBytes: Int = 1_048_576) throws -> Data {
+        let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+        guard size > 0, size <= maxBytes else {
+            throw CommunityError.fileTooLarge(url)
+        }
+        return try Data(contentsOf: url)
     }
 
     /// Import a weights-only PEFT repo (no `adapter_config.json`).
@@ -400,7 +425,7 @@ final class CommunityService: ObservableObject {
     /// This handles community repos that publish only `adapter_model.safetensors`.
     private func importWeightsOnlyPEFT(
         repoURL: URL,
-        weightsData: Data,
+        weightsFile: URL,
         fileName: String
     ) async throws -> LoRAAdapter {
         let repoSlug = repoURL.lastPathComponent
@@ -409,15 +434,8 @@ final class CommunityService: ObservableObject {
             throw CommunityError.alreadyInstalled(repoSlug)
         }
 
-        // Load weights from a temp file so MLX can parse the safetensors format
-        let tmp = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString)
-            .appendingPathExtension("safetensors")
-        defer { try? FileManager.default.removeItem(at: tmp) }
-        try weightsData.write(to: tmp)
-
-        let rawArrays = try MLX.loadArrays(url: tmp)
-        let metadata = (try? safetensorsMetadata(from: tmp)) ?? [:]
+        let rawArrays = try MLX.loadArrays(url: weightsFile)
+        let metadata = (try? safetensorsMetadata(from: weightsFile)) ?? [:]
 
         if PEFTKeyRemapper.isLyCORISLoKR(Array(rawArrays.keys)) {
             return try saveLyCORISLoKRAdapter(
@@ -1194,6 +1212,22 @@ final class CommunityService: ObservableObject {
 }
 
 /// Errors specific to community adapter operations.
+enum HuggingFaceURLPolicy {
+    static func isAllowed(_ url: URL) -> Bool {
+        guard url.scheme?.lowercased() == "https" else { return false }
+        guard let host = url.host?.lowercased(), !host.isEmpty else { return false }
+        if let port = url.port, port != 443 { return false }
+        return host == "huggingface.co"
+            || host == "www.huggingface.co"
+            || host == "hf.co"
+            || host == "www.hf.co"
+    }
+
+    static func validate(_ url: URL) throws {
+        guard isAllowed(url) else { throw CommunityError.unsupportedURL(url) }
+    }
+}
+
 enum CommunityError: Error, LocalizedError {
     case missingFile(String, URL)
     case alreadyInstalled(String)
@@ -1201,6 +1235,8 @@ enum CommunityError: Error, LocalizedError {
     case unsupportedPEFTType(String)
     case unsupportedLoKRFormat(String, URL)
     case noMappableWeights(URL)
+    case unsupportedURL(URL)
+    case fileTooLarge(URL)
 
     var errorDescription: String? {
         switch self {
@@ -1216,6 +1252,10 @@ enum CommunityError: Error, LocalizedError {
             return "\(detail) (\(url.absoluteString))"
         case .noMappableWeights(let url):
             return "No compatible LoRA or LoKR weights found in this repo. The adapter key format may not be supported. (\(url.absoluteString))"
+        case .unsupportedURL:
+            return "Enter an https://huggingface.co/… or https://hf.co/… adapter repo URL."
+        case .fileTooLarge:
+            return "Adapter metadata was larger than expected. Refusing to load it."
         }
     }
 }

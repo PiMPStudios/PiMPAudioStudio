@@ -25,6 +25,19 @@ All notable changes to PiMP Audio Studio are documented here.
 
 ### Changed
 
+- **Keychain writes now fail visibly** and store secrets as
+  `WhenUnlockedThisDeviceOnly`. Update-or-add no longer deletes a good key
+  before a failed insert.
+- **YouTube dataset import only accepts https YouTube hosts**, and video IDs
+  from yt-dlp must be alphanumeric/`_`/`-` before a watch URL is built.
+- **Hugging Face adapter import only accepts huggingface.co / hf.co https
+  URLs** and streams weight files to disk instead of loading them into RAM.
+- **MCP generation, lyrics, adapters, editor load/export, preferred-take, and
+  cancel now require confirmation.** `generate`, `generate_song`,
+  `load_editor_audio`, and `render_editor_audio` default to dry-run.
+- **All-interfaces MCP bind requires a bearer token** that cannot be disabled
+  until you switch back to localhost. CORS echoes a trusted `Origin` and no
+  longer sends `Access-Control-Allow-Origin: *`.
 - **Dropped pre-rebrand identity migration.** The app no longer looks for the
   old Application Support folder, Keychain service, UserDefaults keys, MCP
   scheme, or JSON field names from the previous product name.

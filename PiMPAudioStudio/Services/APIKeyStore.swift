@@ -45,13 +45,13 @@ final class APIKeyStore: ObservableObject {
         return nil
     }
 
-    func setAPIKey(_ key: String, for provider: String) {
-        writeToKeychain(account: provider, value: key)
+    func setAPIKey(_ key: String, for provider: String) throws {
+        try KeychainStringStore.write(account: provider, value: key, serviceName: Self.serviceName)
         refreshAvailableProviders()
     }
 
     func removeAPIKey(for provider: String) {
-        deleteFromKeychain(account: provider)
+        KeychainStringStore.delete(account: provider, serviceName: Self.serviceName)
         refreshAvailableProviders()
     }
 
@@ -96,46 +96,48 @@ final class APIKeyStore: ObservableObject {
     }
 
     private func readFromKeychain(account: String) -> String? {
-        readFromKeychain(account: account, serviceName: Self.serviceName)
+        KeychainStringStore.read(account: account, serviceName: Self.serviceName)
     }
+}
 
-    private func readFromKeychain(account: String, serviceName: String) -> String? {
-        let query: [String: Any] = [
+enum KeychainStoreError: Error, LocalizedError {
+    case encodingFailed
+    case unhandled(OSStatus)
+
+    var errorDescription: String? {
+        switch self {
+        case .encodingFailed:
+            return "Could not encode the secret for Keychain storage."
+        case .unhandled(let status):
+            let reason = SecCopyErrorMessageString(status, nil) as String? ?? "unknown error"
+            return "Keychain save failed (\(status)): \(reason)"
+        }
+    }
+}
+
+enum KeychainItemQuery {
+    static let accessibility = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+
+    static func identity(account: String, serviceName: String) -> [String: Any] {
+        [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceName,
             kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
         ]
-        var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-        guard status == errSecSuccess, let data = result as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
     }
 
-    private func writeToKeychain(account: String, value: String) {
-        deleteFromKeychain(account: account, serviceName: Self.serviceName)
-        guard let data = value.data(using: .utf8) else { return }
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: Self.serviceName,
-            kSecAttrAccount as String: account,
+    static func add(account: String, serviceName: String, data: Data) -> [String: Any] {
+        var query = identity(account: account, serviceName: serviceName)
+        query[kSecValueData as String] = data
+        query[kSecAttrAccessible as String] = accessibility
+        return query
+    }
+
+    static func updateAttributes(data: Data) -> [String: Any] {
+        [
             kSecValueData as String: data,
+            kSecAttrAccessible as String: accessibility,
         ]
-        SecItemAdd(query as CFDictionary, nil)
-    }
-
-    private func deleteFromKeychain(account: String) {
-        deleteFromKeychain(account: account, serviceName: Self.serviceName)
-    }
-
-    private func deleteFromKeychain(account: String, serviceName: String) {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: serviceName,
-            kSecAttrAccount as String: account,
-        ]
-        SecItemDelete(query as CFDictionary)
     }
 }
 
@@ -148,13 +150,9 @@ enum KeychainStringStore {
         account: String,
         serviceName: String = AppRuntimeIdentity.keychainServiceName
     ) -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: serviceName,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
+        var query = KeychainItemQuery.identity(account: account, serviceName: serviceName)
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
         var result: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
         guard status == errSecSuccess, let data = result as? Data else { return nil }
@@ -165,27 +163,35 @@ enum KeychainStringStore {
         account: String,
         value: String,
         serviceName: String = AppRuntimeIdentity.keychainServiceName
-    ) {
-        delete(account: account, serviceName: serviceName)
-        guard let data = value.data(using: .utf8) else { return }
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: serviceName,
-            kSecAttrAccount as String: account,
-            kSecValueData as String: data,
-        ]
-        SecItemAdd(query as CFDictionary, nil)
+    ) throws {
+        guard let data = value.data(using: .utf8) else {
+            throw KeychainStoreError.encodingFailed
+        }
+        let identity = KeychainItemQuery.identity(account: account, serviceName: serviceName)
+        let updateStatus = SecItemUpdate(
+            identity as CFDictionary,
+            KeychainItemQuery.updateAttributes(data: data) as CFDictionary
+        )
+        if updateStatus == errSecSuccess {
+            return
+        }
+        guard updateStatus == errSecItemNotFound else {
+            throw KeychainStoreError.unhandled(updateStatus)
+        }
+        let addStatus = SecItemAdd(
+            KeychainItemQuery.add(account: account, serviceName: serviceName, data: data) as CFDictionary,
+            nil
+        )
+        guard addStatus == errSecSuccess else {
+            throw KeychainStoreError.unhandled(addStatus)
+        }
     }
 
     static func delete(
         account: String,
         serviceName: String = AppRuntimeIdentity.keychainServiceName
     ) {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: serviceName,
-            kSecAttrAccount as String: account,
-        ]
+        let query = KeychainItemQuery.identity(account: account, serviceName: serviceName)
         SecItemDelete(query as CFDictionary)
     }
 }

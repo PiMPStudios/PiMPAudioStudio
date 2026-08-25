@@ -207,6 +207,10 @@ struct HuggingFaceImportSheet: View {
             fetchError = "Enter a valid URL."
             return
         }
+        guard HuggingFaceURLPolicy.isAllowed(url) else {
+            fetchError = CommunityError.unsupportedURL(url).errorDescription
+            return
+        }
         fetchError = nil
         fetchedAdapter = nil
         downloadComplete = false

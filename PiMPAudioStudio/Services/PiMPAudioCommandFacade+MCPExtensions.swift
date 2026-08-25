@@ -625,6 +625,9 @@ extension PiMPAudioCommandFacade {
     }
 
     func cancelGeneration(arguments: [String: Any]) throws -> [String: Any] {
+        guard boolValue(arguments["confirm"]) == true else {
+            throw PiMPAudioCommandFacadeError.confirmationRequired("cancel_generation")
+        }
         guard let generationService else {
             throw PiMPAudioCommandFacadeError.generationServiceUnavailable
         }

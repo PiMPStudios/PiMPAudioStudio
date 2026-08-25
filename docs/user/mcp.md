@@ -27,10 +27,11 @@ http://127.0.0.1:38765/mcp
 | Localhost (`127.0.0.1`) | Only this Mac can connect (default) |
 | All interfaces (`0.0.0.0`) | Other machines on your LAN can connect |
 
-When you switch to all interfaces, a bearer token is enabled automatically.
-Keep it on for LAN use and prefer trusted networks only. Settings shows a
-suggested **Network endpoint** using this Mac's LAN IP when available; remote
-clients should use that host (or your Mac's real IP), not literally `0.0.0.0`.
+When you switch to all interfaces, a bearer token is **required** and cannot be
+turned off until you bind localhost again. Prefer trusted networks only.
+Settings shows a suggested **Network endpoint** using this Mac's LAN IP when
+available; remote clients should use that host (or your Mac's real IP), not
+literally `0.0.0.0`.
 
 ### Port
 
@@ -39,7 +40,8 @@ and click **Apply**. Changing bind address or port restarts the server when it
 is enabled.
 
 Optional bearer token is disabled by default for localhost-only use. If you
-enable it (or bind to all interfaces), clients must send:
+enable it, or bind to all interfaces (which forces the token on), clients must
+send:
 
 ```text
 Authorization: Bearer <token>
@@ -74,6 +76,9 @@ written through MCP.
 
 - Bind to **127.0.0.1** only — not a public server.
 - Prefer `dryRun: true` first.
+- Generation, editor load/export, lyrics, adapter selection, and take marking
+  are confirmation-gated. `generate` / `generate_song` / `load_editor_audio` /
+  `render_editor_audio` default to dry-run.
 - Billable RunPod launches require confirmation.
 - Training start/stop, editor mutations, and memory release are confirmation
   gated.

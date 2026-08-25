@@ -19,6 +19,9 @@ extension PiMPAudioCommandFacade {
     }
 
     func writeLyrics(arguments: [String: Any]) async throws -> [String: Any] {
+        guard boolValue(arguments["confirm"]) == true else {
+            throw PiMPAudioCommandFacadeError.confirmationRequired("write_lyrics")
+        }
         let prompt = try requiredString("prompt", in: arguments)
         let style = stringValue(arguments["style"]) ?? ""
         let duration = try requiredDuration(in: arguments)
@@ -39,6 +42,9 @@ extension PiMPAudioCommandFacade {
     }
 
     func applyAdapter(arguments: [String: Any]) async throws -> [String: Any] {
+        guard boolValue(arguments["confirm"]) == true else {
+            throw PiMPAudioCommandFacadeError.confirmationRequired("apply_adapter")
+        }
         guard let generationService else {
             throw PiMPAudioCommandFacadeError.generationServiceUnavailable
         }
@@ -61,7 +67,12 @@ extension PiMPAudioCommandFacade {
     }
 
     func generateSong(arguments: [String: Any]) async throws -> [String: Any] {
-        let dryRun = boolValue(arguments["dryRun"] ?? arguments["validateOnly"]) == true
+        let dryRun = boolValue(arguments["dryRun"] ?? arguments["validateOnly"]) ?? true
+        if !dryRun {
+            guard boolValue(arguments["confirm"]) == true else {
+                throw PiMPAudioCommandFacadeError.confirmationRequired("generate_song")
+            }
+        }
         let originalPrompt = try requiredString("prompt", aliases: ["text"], in: arguments)
         let mode = generationMode(from: arguments["mode"] ?? arguments["generationMode"]) ?? .music
         let shouldEnhancePrompt = boolValue(
@@ -90,19 +101,31 @@ extension PiMPAudioCommandFacade {
         if suppliedLyrics.isEmpty && shouldWriteLyrics {
             let duration = try orchestrationDuration(in: arguments)
             let style = stringValue(arguments["lyricStyle"] ?? arguments["style"]) ?? ""
-            finalLyrics = try await lyricWriterManager.writeLyricsText(
-                prompt: finalPrompt,
-                style: style,
-                duration: duration
-            )
-            workingArguments["lyrics"] = finalLyrics
-            lyricPayload = [
-                "generated": true,
-                "backend": lyricWriterManager.activeBackend,
-                "style": style,
-                "duration": duration,
-                "lineCount": lyricLineCount(finalLyrics)
-            ]
+            if dryRun {
+                lyricPayload = [
+                    "generated": false,
+                    "skipped": true,
+                    "reason": "dryRun",
+                    "wouldGenerate": true,
+                    "backend": lyricWriterManager.activeBackend,
+                    "style": style,
+                    "duration": duration
+                ]
+            } else {
+                finalLyrics = try await lyricWriterManager.writeLyricsText(
+                    prompt: finalPrompt,
+                    style: style,
+                    duration: duration
+                )
+                workingArguments["lyrics"] = finalLyrics
+                lyricPayload = [
+                    "generated": true,
+                    "backend": lyricWriterManager.activeBackend,
+                    "style": style,
+                    "duration": duration,
+                    "lineCount": lyricLineCount(finalLyrics)
+                ]
+            }
         } else {
             lyricPayload = [
                 "generated": false,
@@ -124,11 +147,16 @@ extension PiMPAudioCommandFacade {
             } else {
                 var clearPayload: [String: Any]?
                 if adapterPlan.shouldClear {
-                    clearPayload = try await applyAdapter(arguments: ["clear": true])
+                    clearPayload = try await applyAdapter(arguments: [
+                        "clear": true,
+                        "confirm": true
+                    ])
                 }
 
                 if let applyArguments = adapterPlan.applyArguments {
-                    var appliedPayload = try await applyAdapter(arguments: applyArguments)
+                    var confirmedApply = applyArguments
+                    confirmedApply["confirm"] = true
+                    var appliedPayload = try await applyAdapter(arguments: confirmedApply)
                     if adapterPlan.shouldClear {
                         appliedPayload["clearedBeforeApply"] = true
                     }
@@ -141,6 +169,10 @@ extension PiMPAudioCommandFacade {
             adapterPayload = nil
         }
 
+        workingArguments["dryRun"] = dryRun
+        if !dryRun {
+            workingArguments["confirm"] = true
+        }
         let submission = try await generate(arguments: workingArguments)
         return [
             "submitted": submission["submitted"] ?? false,
@@ -162,16 +194,22 @@ extension PiMPAudioCommandFacade {
         }
 
         let (request, requestedDuration) = try await generationRequestWithDurationMeta(arguments)
-        let dryRun = boolValue(arguments["dryRun"] ?? arguments["validateOnly"]) == true
+        let dryRun = boolValue(arguments["dryRun"] ?? arguments["validateOnly"]) ?? true
         if dryRun {
-            return generationSubmissionPayload(
+            var payload = generationSubmissionPayload(
                 request: request,
                 submitted: false,
                 dryRun: true,
                 requestedDuration: requestedDuration
             )
+            payload["confirmation"] = confirmationRequirementPayload(toolName: "generate")
+            payload["note"] = "Dry run only. Call with dryRun: false and confirm: true to submit generation."
+            return payload
         }
 
+        guard boolValue(arguments["confirm"]) == true else {
+            throw PiMPAudioCommandFacadeError.confirmationRequired("generate")
+        }
         guard generationService.outputDirectoryPath != nil else {
             throw PiMPAudioCommandFacadeError.outputDirectoryUnavailable
         }

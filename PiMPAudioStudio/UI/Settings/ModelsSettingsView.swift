@@ -119,7 +119,11 @@ struct ModelsSettingsView: View {
             SecureField("hf_…", text: $huggingFaceToken)
             HStack {
                 Button("Save") {
-                    apiKeyStore.setAPIKey(huggingFaceToken, for: APIKeyStore.huggingFaceProviderID)
+                    do {
+                        try apiKeyStore.setAPIKey(huggingFaceToken, for: APIKeyStore.huggingFaceProviderID)
+                    } catch {
+                        errorMessage = error.localizedDescription
+                    }
                 }
                 .disabled(huggingFaceToken.isEmpty)
                 Spacer()

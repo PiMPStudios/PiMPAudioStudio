@@ -28,10 +28,12 @@ Persisted keys (app defaults namespace):
   `mcp.token` is only read to migrate older installs
 
 `MCPHTTPServer` accepts `bindHost` + `port`. Binding `0.0.0.0` relaxes Origin
-checks for LAN browser clients and auto-enables the bearer token from Settings.
-Changing bind/port restarts a running server. Token compare is constant-time.
-Responses (including SSE) advertise `Connection: close` because the server
-closes the socket after the body.
+checks for LAN browser clients and **requires** a bearer token (the Settings
+toggle cannot turn it off while bound to all interfaces). CORS echoes a trusted
+`Origin` header and never sends `Access-Control-Allow-Origin: *`. Changing
+bind/port restarts a running server. Token compare is constant-time. Responses
+(including SSE) advertise `Connection: close` because the server closes the
+socket after the body.
 
 ## Code Map
 
@@ -72,21 +74,21 @@ scripts/smoke-pimpaudio-mcp.sh
 ### Intelligence (text only)
 
 - `enhance_prompt`
-- `write_lyrics`
+- `write_lyrics` (confirm)
 
 ### Generation
 
-- `apply_adapter`
-- `generate`
-- `generate_song`
-- `mark_preferred_take`
+- `apply_adapter` (confirm)
+- `generate` (default dry-run; confirm to submit)
+- `generate_song` (default dry-run; confirm to submit)
+- `mark_preferred_take` (confirm)
 
 ### Editor
 
-- `load_editor_audio`
+- `load_editor_audio` (default dry-run; confirm to load)
 - `submit_editor_inpaint`
 - `apply_editor_effect_chain`
-- `render_editor_audio`
+- `render_editor_audio` (default dry-run; confirm to write)
 
 Supported DSP effect names: `trimToSelection`, `deleteSelection`, `fadeIn`,
 `fadeOut`, `normalize`, `eq`, `reverb`, `timeStretch`, `pitchShift`.
@@ -108,7 +110,7 @@ Supported DSP effect names: `trimToSelection`, `deleteSelection`, `fadeIn`,
 - `delete_history_entries`
 - `save_generation_preset`, `delete_generation_preset`
 - `set_verbose_diagnostics`, `tail_diagnostics_log`
-- `cancel_generation`, `run_adapter_audition`
+- `cancel_generation` (confirm), `run_adapter_audition`
 
 ### Remote GPU lifecycle
 

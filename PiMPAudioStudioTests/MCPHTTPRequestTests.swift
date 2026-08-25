@@ -100,6 +100,18 @@ import Testing
     #expect(request(origin: "http://localhost").hasTrustedOrigin(allowNonLocalOrigins: false))
     #expect(request(origin: "https://evil.example").hasTrustedOrigin(allowNonLocalOrigins: false) == false)
     #expect(request(origin: "https://evil.example").hasTrustedOrigin(allowNonLocalOrigins: true))
+
+    #expect(request(origin: nil).corsAllowedOrigin(allowNonLocalOrigins: false) == nil)
+    #expect(request(origin: "http://127.0.0.1:38765").corsAllowedOrigin(allowNonLocalOrigins: false) == "http://127.0.0.1:38765")
+    #expect(request(origin: "https://evil.example").corsAllowedOrigin(allowNonLocalOrigins: false) == nil)
+    #expect(request(origin: "https://evil.example").corsAllowedOrigin(allowNonLocalOrigins: true) == "https://evil.example")
+}
+
+@Test func mcpTokenIsRequiredWhenBoundToAllInterfaces() {
+    #expect(PiMPAudioMCPServer.tokenIsRequired(requested: false, bindAddress: .loopback) == false)
+    #expect(PiMPAudioMCPServer.tokenIsRequired(requested: true, bindAddress: .loopback))
+    #expect(PiMPAudioMCPServer.tokenIsRequired(requested: false, bindAddress: .allInterfaces))
+    #expect(PiMPAudioMCPServer.tokenIsRequired(requested: true, bindAddress: .allInterfaces))
 }
 
 @Test func mcpTokensMatchIsConstantTimeAndRejectsMismatch() {

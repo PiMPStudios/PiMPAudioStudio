@@ -38,15 +38,20 @@ extension PiMPAudioCommandFacade {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let resolvedPrompt = originalPrompt?.isEmpty == false ? originalPrompt : source.originalPrompt
         let request = editorAudioLoadRequestPayload(source: source, originalPrompt: resolvedPrompt)
-        let dryRun = boolValue(arguments["dryRun"] ?? arguments["validateOnly"]) == true
+        let dryRun = boolValue(arguments["dryRun"] ?? arguments["validateOnly"]) ?? true
         if dryRun {
             return [
                 "submitted": false,
                 "dryRun": true,
+                "confirmation": confirmationRequirementPayload(toolName: "load_editor_audio"),
                 "request": request,
                 "operationID": NSNull(),
                 "operation": NSNull()
             ]
+        }
+
+        guard boolValue(arguments["confirm"]) == true else {
+            throw PiMPAudioCommandFacadeError.confirmationRequired("load_editor_audio")
         }
 
         let operation = registerOperation(
@@ -126,7 +131,7 @@ extension PiMPAudioCommandFacade {
     }
 
     func renderEditorAudio(arguments: [String: Any]) async throws -> [String: Any] {
-        let dryRun = boolValue(arguments["dryRun"] ?? arguments["validateOnly"]) == true
+        let dryRun = boolValue(arguments["dryRun"] ?? arguments["validateOnly"]) ?? true
         let loadedAudio = editorService?.loadedAudio
         let request = try editorRenderRequest(arguments, loadedAudio: loadedAudio)
         let requestPayload = editorRenderRequestPayload(request)
@@ -136,12 +141,16 @@ extension PiMPAudioCommandFacade {
                 "submitted": false,
                 "dryRun": true,
                 "requiresLoadedAudio": true,
+                "confirmation": confirmationRequirementPayload(toolName: "render_editor_audio"),
                 "request": requestPayload,
                 "operationID": NSNull(),
                 "operation": NSNull()
             ]
         }
 
+        guard boolValue(arguments["confirm"]) == true else {
+            throw PiMPAudioCommandFacadeError.confirmationRequired("render_editor_audio")
+        }
         guard let editorService, let coordinator = editorService.coordinator else {
             throw PiMPAudioCommandFacadeError.editorServiceUnavailable
         }

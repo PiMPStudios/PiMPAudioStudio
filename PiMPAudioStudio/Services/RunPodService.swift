@@ -43,10 +43,16 @@ final class RunPodService: ObservableObject {
     func saveAPIKey(_ key: String) {
         let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        apiKeyStore.setAPIKey(trimmed, for: APIKeyStore.runPodProviderID)
-        note("apiKeySaved", "source=\(keySourceDiagnosticsLabel)")
-        lastMessage = "RunPod API key saved."
-        lastError = nil
+        do {
+            try apiKeyStore.setAPIKey(trimmed, for: APIKeyStore.runPodProviderID)
+            note("apiKeySaved", "source=\(keySourceDiagnosticsLabel)")
+            lastMessage = "RunPod API key saved."
+            lastError = nil
+        } catch {
+            note("apiKeySaveError", "error=\(error.localizedDescription)")
+            lastMessage = nil
+            lastError = error.localizedDescription
+        }
     }
 
     func removeAPIKey() {

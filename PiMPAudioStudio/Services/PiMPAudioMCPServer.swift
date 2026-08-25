@@ -126,9 +126,16 @@ final class PiMPAudioMCPServer: ObservableObject {
         self.facade = facade
         let defaults = UserDefaults.standard
         self.isEnabled = defaults.bool(forKey: Self.enabledKey)
-        self.isTokenRequired = defaults.bool(forKey: Self.tokenRequiredKey)
         self.bindAddress = Self.loadBindAddress(from: defaults)
         self.port = Self.loadPort(from: defaults)
+        let requestedToken = defaults.bool(forKey: Self.tokenRequiredKey)
+        self.isTokenRequired = Self.tokenIsRequired(
+            requested: requestedToken,
+            bindAddress: self.bindAddress
+        )
+        if self.isTokenRequired != requestedToken {
+            defaults.set(true, forKey: Self.tokenRequiredKey)
+        }
         let defaultsToken = defaults.string(forKey: Self.tokenKey)
         let keychainToken = KeychainStringStore.isAvailable
             ? KeychainStringStore.read(account: Self.tokenAccount)
@@ -162,9 +169,10 @@ final class PiMPAudioMCPServer: ObservableObject {
     }
 
     func setTokenRequired(_ required: Bool) {
-        UserDefaults.standard.set(required, forKey: Self.tokenRequiredKey)
-        isTokenRequired = required
-        if required && token.isEmpty {
+        let enforced = Self.tokenIsRequired(requested: required, bindAddress: bindAddress)
+        UserDefaults.standard.set(enforced, forKey: Self.tokenRequiredKey)
+        isTokenRequired = enforced
+        if enforced && token.isEmpty {
             regenerateToken()
         }
     }
@@ -175,11 +183,15 @@ final class PiMPAudioMCPServer: ObservableObject {
         guard normalized != bindAddress else { return }
         bindAddress = normalized
         UserDefaults.standard.set(normalized.rawValue, forKey: Self.bindAddressKey)
-        // Network exposure without a token is risky; nudge security on by default.
-        if normalized == .allInterfaces, !isTokenRequired {
+        // Network exposure without a token is unsafe; the toggle cannot turn it off.
+        if normalized == .allInterfaces {
             setTokenRequired(true)
         }
         restartIfEnabled()
+    }
+
+    static func tokenIsRequired(requested: Bool, bindAddress: MCPBindAddress) -> Bool {
+        requested || bindAddress == .allInterfaces
     }
 
     @discardableResult
@@ -310,7 +322,17 @@ final class PiMPAudioMCPServer: ObservableObject {
     private static func persistToken(_ resolved: MCPTokenResolution) {
         if KeychainStringStore.isAvailable {
             if let write = resolved.writeToKeychain {
-                KeychainStringStore.write(account: tokenAccount, value: write)
+                do {
+                    try KeychainStringStore.write(account: tokenAccount, value: write)
+                } catch {
+                    Logger(
+                        subsystem: "com.pimpstudios.PiMPAudioStudio",
+                        category: "MCP"
+                    ).error(
+                        "Failed to persist MCP token in Keychain: \(error.localizedDescription, privacy: .public)"
+                    )
+                    return
+                }
             }
             if resolved.clearDefaults {
                 UserDefaults.standard.removeObject(forKey: tokenKey)
@@ -1241,7 +1263,15 @@ private final class PiMPAudioMCPSDKBridge {
 
     private func requiresElicitableConfirmation(_ toolName: String) -> Bool {
         switch toolName {
-        case "submit_editor_inpaint",
+        case "generate",
+             "generate_song",
+             "write_lyrics",
+             "apply_adapter",
+             "load_editor_audio",
+             "render_editor_audio",
+             "mark_preferred_take",
+             "cancel_generation",
+             "submit_editor_inpaint",
              "apply_editor_effect_chain",
              "start_training",
              "stop_training",
@@ -1272,6 +1302,10 @@ private final class PiMPAudioMCPSDKBridge {
 
     private func isDryRun(toolName: String, arguments: [String: Any]) -> Bool {
         let dryRunDefaultTools: Set<String> = [
+            "generate",
+            "generate_song",
+            "load_editor_audio",
+            "render_editor_audio",
             "start_training",
             "launch_runpod_pod",
             "create_remote_training_job",
@@ -1325,6 +1359,22 @@ private final class PiMPAudioMCPSDKBridge {
 
     private func confirmationMessage(for toolName: String) -> String {
         switch toolName {
+        case "generate":
+            return "PiMP Audio Studio wants to start a local audio generation. Approve this action?"
+        case "generate_song":
+            return "PiMP Audio Studio wants to orchestrate a song generation (optional lyrics/adapters, then generate). Approve this action?"
+        case "write_lyrics":
+            return "PiMP Audio Studio wants to call the lyric writer (may use a paid API). Approve this action?"
+        case "apply_adapter":
+            return "PiMP Audio Studio wants to change the adapter selection for the next generation. Approve this action?"
+        case "load_editor_audio":
+            return "PiMP Audio Studio wants to load audio into the editor. Approve this action?"
+        case "render_editor_audio":
+            return "PiMP Audio Studio wants to export editor audio to disk. Approve this action?"
+        case "mark_preferred_take":
+            return "PiMP Audio Studio wants to mark a history take as preferred. Approve this action?"
+        case "cancel_generation":
+            return "PiMP Audio Studio wants to cancel the active generation. Approve this action?"
         case "submit_editor_inpaint":
             return "PiMP Audio Studio wants to submit a selected-region editor inpaint/repaint mutation. Approve this action?"
         case "apply_editor_effect_chain":

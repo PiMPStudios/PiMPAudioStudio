@@ -416,12 +416,17 @@ struct YouTubeImportSheet: View {
 
     private var canStart: Bool {
         let trimmed = urlText.trimmingCharacters(in: .whitespacesAndNewlines)
-        return !trimmed.isEmpty && outputManager.directory != nil && ytDlpFound
+        guard let url = URL(string: trimmed), YouTubeURLPolicy.isAllowed(url) else { return false }
+        return outputManager.directory != nil && ytDlpFound
     }
 
     private func startImport() {
         let trimmed = urlText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let url = URL(string: trimmed), let outputBase = outputManager.directory else { return }
+        guard YouTubeURLPolicy.isAllowed(url) else {
+            builder.phase = .failed(YouTubeDatasetError.unsupportedURL.localizedDescription ?? "Unsupported URL")
+            return
+        }
         let template = styleTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
         builder.start(channelURL: url, config: config, outputBase: outputBase, styleTemplate: template)
     }

@@ -311,35 +311,40 @@ final class MCPHTTPServer {
     }
 
     private func respond(to request: RawHTTPRequest) async -> RawHTTPResponse {
+        let corsOrigin = request.corsAllowedOrigin(allowNonLocalOrigins: allowNonLocalOrigins)
         guard request.hasTrustedOrigin(allowNonLocalOrigins: allowNonLocalOrigins) else {
-            return .jsonError(statusCode: 403, message: "Forbidden Origin")
+            return .jsonError(statusCode: 403, message: "Forbidden Origin", corsOrigin: corsOrigin)
         }
 
         if request.method == "OPTIONS" {
-            return .empty(statusCode: 204, statusText: "No Content")
+            return .empty(statusCode: 204, statusText: "No Content", corsOrigin: corsOrigin)
         }
 
         if request.method == "GET", request.path == "/health" {
             return .json([
                 "status": "ok",
                 "endpoint": "/mcp"
-            ])
+            ], corsOrigin: corsOrigin)
         }
 
         guard request.path == "/mcp" else {
-            return .jsonError(statusCode: 404, message: "MCP endpoint is /mcp")
+            return .jsonError(statusCode: 404, message: "MCP endpoint is /mcp", corsOrigin: corsOrigin)
         }
 
         let expectedToken = await tokenProvider()
         if let expectedToken, !expectedToken.isEmpty {
             let headerToken = request.bearerToken ?? ""
             guard Self.tokensMatch(headerToken, expectedToken) else {
-                return .jsonError(statusCode: 401, message: "Missing or invalid MCP token")
+                return .jsonError(
+                    statusCode: 401,
+                    message: "Missing or invalid MCP token",
+                    corsOrigin: corsOrigin
+                )
             }
         }
 
         let sdkResponse = await handler(request.sdkRequest)
-        return .sdk(sdkResponse)
+        return .sdk(sdkResponse, corsOrigin: corsOrigin)
     }
 
     private func send(
@@ -472,6 +477,19 @@ struct RawHTTPRequest {
         return host == "localhost" || host == "127.0.0.1" || host == "::1"
     }
 
+    /// Echo a specific Origin when the browser sent one we trust. Never `*`.
+    /// Agent clients omit Origin and do not need CORS headers.
+    func corsAllowedOrigin(allowNonLocalOrigins: Bool) -> String? {
+        guard let origin = headers["origin"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !origin.isEmpty else {
+            return nil
+        }
+        guard hasTrustedOrigin(allowNonLocalOrigins: allowNonLocalOrigins) else {
+            return nil
+        }
+        return origin
+    }
+
     var sdkRequest: MCP.HTTPRequest {
         MCP.HTTPRequest(
             method: method,
@@ -486,7 +504,12 @@ private enum RawHTTPResponse {
     case fixed(Data)
     case stream(header: Data, body: AsyncThrowingStream<Data, Error>)
 
-    static func json(_ object: Any, statusCode: Int = 200, statusText: String = "OK") -> RawHTTPResponse {
+    static func json(
+        _ object: Any,
+        statusCode: Int = 200,
+        statusText: String = "OK",
+        corsOrigin: String? = nil
+    ) -> RawHTTPResponse {
         let body: Data
         if JSONSerialization.isValidJSONObject(object),
            let encoded = try? JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys]) {
@@ -494,22 +517,42 @@ private enum RawHTTPResponse {
         } else {
             body = Data("{\"error\":\"Invalid JSON response\"}".utf8)
         }
-        return response(statusCode: statusCode, statusText: statusText, body: body, contentType: "application/json")
+        return response(
+            statusCode: statusCode,
+            statusText: statusText,
+            body: body,
+            contentType: "application/json",
+            corsOrigin: corsOrigin
+        )
     }
 
-    static func jsonError(statusCode: Int, message: String) -> RawHTTPResponse {
-        json(["error": message], statusCode: statusCode, statusText: message)
+    static func jsonError(
+        statusCode: Int,
+        message: String,
+        corsOrigin: String? = nil
+    ) -> RawHTTPResponse {
+        json(["error": message], statusCode: statusCode, statusText: message, corsOrigin: corsOrigin)
     }
 
     static func badRequest() -> RawHTTPResponse {
         jsonError(statusCode: 400, message: "Bad Request")
     }
 
-    static func empty(statusCode: Int, statusText: String) -> RawHTTPResponse {
-        response(statusCode: statusCode, statusText: statusText, body: Data(), contentType: "application/json")
+    static func empty(
+        statusCode: Int,
+        statusText: String,
+        corsOrigin: String? = nil
+    ) -> RawHTTPResponse {
+        response(
+            statusCode: statusCode,
+            statusText: statusText,
+            body: Data(),
+            contentType: "application/json",
+            corsOrigin: corsOrigin
+        )
     }
 
-    static func sdk(_ response: MCP.HTTPResponse) -> RawHTTPResponse {
+    static func sdk(_ response: MCP.HTTPResponse, corsOrigin: String? = nil) -> RawHTTPResponse {
         if case .stream(let stream, let headers) = response {
             let contentType = headers[MCP.HTTPHeaderName.contentType] ?? "text/event-stream"
             return self.stream(
@@ -517,7 +560,8 @@ private enum RawHTTPResponse {
                 statusText: statusText(for: response.statusCode),
                 contentType: contentType,
                 body: stream,
-                extraHeaders: headers
+                extraHeaders: headers,
+                corsOrigin: corsOrigin
             )
         }
 
@@ -528,7 +572,8 @@ private enum RawHTTPResponse {
             statusText: statusText(for: response.statusCode),
             body: body,
             contentType: contentType,
-            extraHeaders: response.headers
+            extraHeaders: response.headers,
+            corsOrigin: corsOrigin
         )
     }
 
@@ -537,7 +582,8 @@ private enum RawHTTPResponse {
         statusText: String,
         contentType: String,
         body: AsyncThrowingStream<Data, Error>,
-        extraHeaders: [String: String] = [:]
+        extraHeaders: [String: String] = [:],
+        corsOrigin: String? = nil
     ) -> RawHTTPResponse {
         let headers = responseHeaders(
             contentType: contentType,
@@ -545,7 +591,8 @@ private enum RawHTTPResponse {
             // Stream is always followed by closeClient; advertise close so
             // clients do not try to reuse the socket after the body.
             connection: "close",
-            extraHeaders: extraHeaders
+            extraHeaders: extraHeaders,
+            corsOrigin: corsOrigin
         )
         return .stream(header: headerData(statusCode: statusCode, statusText: statusText, headers: headers), body: body)
     }
@@ -555,13 +602,15 @@ private enum RawHTTPResponse {
         statusText: String,
         body: Data,
         contentType: String,
-        extraHeaders: [String: String] = [:]
+        extraHeaders: [String: String] = [:],
+        corsOrigin: String? = nil
     ) -> RawHTTPResponse {
         let headers = responseHeaders(
             contentType: contentType,
             contentLength: "\(body.count)",
             connection: "close",
-            extraHeaders: extraHeaders
+            extraHeaders: extraHeaders,
+            corsOrigin: corsOrigin
         )
         var data = headerData(statusCode: statusCode, statusText: statusText, headers: headers)
         data.append(body)
@@ -572,21 +621,30 @@ private enum RawHTTPResponse {
         contentType: String,
         contentLength: String?,
         connection: String,
-        extraHeaders: [String: String]
+        extraHeaders: [String: String],
+        corsOrigin: String? = nil
     ) -> [String: String] {
         var headers = [
             "Content-Type": contentType,
             "Connection": connection,
             "MCP-Protocol-Version": "2025-06-18",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "Accept, Content-Type, Authorization, Mcp-Method, MCP-Protocol-Version, MCP-Session-Id, Last-Event-ID",
-            "Access-Control-Allow-Methods": "POST, GET, DELETE, OPTIONS",
             "Allow": "POST, GET, DELETE, OPTIONS"
         ]
         if let contentLength {
             headers["Content-Length"] = contentLength
         }
         headers.merge(extraHeaders) { _, sdkValue in sdkValue }
+        if let corsOrigin {
+            headers["Access-Control-Allow-Origin"] = corsOrigin
+            headers["Access-Control-Allow-Headers"] =
+                "Accept, Content-Type, Authorization, Mcp-Method, MCP-Protocol-Version, MCP-Session-Id, Last-Event-ID"
+            headers["Access-Control-Allow-Methods"] = "POST, GET, DELETE, OPTIONS"
+            headers["Vary"] = "Origin"
+        } else {
+            headers.removeValue(forKey: "Access-Control-Allow-Origin")
+            headers.removeValue(forKey: "Access-Control-Allow-Headers")
+            headers.removeValue(forKey: "Access-Control-Allow-Methods")
+        }
         if contentLength == nil {
             headers.removeValue(forKey: "Content-Length")
         }
