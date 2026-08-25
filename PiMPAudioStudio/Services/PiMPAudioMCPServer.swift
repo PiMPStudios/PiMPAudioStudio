@@ -192,7 +192,7 @@ final class PiMPAudioMCPServer: ObservableObject {
         restartIfEnabled()
     }
 
-    static func tokenIsRequired(requested: Bool, bindAddress: MCPBindAddress) -> Bool {
+    nonisolated static func tokenIsRequired(requested: Bool, bindAddress: MCPBindAddress) -> Bool {
         requested || bindAddress == .allInterfaces
     }
 

@@ -11,14 +11,11 @@ import Testing
         data: data
     )
 
-    #expect(query[kSecClass as String] as? String == kSecClassGenericPassword as String)
-    #expect(query[kSecAttrService as String] as? String == AppRuntimeIdentity.keychainServiceName)
-    #expect(query[kSecAttrAccount as String] as? String == "huggingface")
+    #expect(cfString(query[kSecClass as String]) == (kSecClassGenericPassword as String))
+    #expect(cfString(query[kSecAttrService as String]) == AppRuntimeIdentity.keychainServiceName)
+    #expect(cfString(query[kSecAttrAccount as String]) == "huggingface")
     #expect(query[kSecValueData as String] as? Data == data)
-    #expect(
-        query[kSecAttrAccessible as String] as? String
-            == kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String
-    )
+    #expect(cfString(query[kSecAttrAccessible as String]) == (kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String))
 }
 
 @Test func keychainUpdateAttributesPinThisDeviceOnlyAccessibility() {
