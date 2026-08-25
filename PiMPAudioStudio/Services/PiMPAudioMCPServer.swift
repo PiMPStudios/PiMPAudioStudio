@@ -126,14 +126,16 @@ final class PiMPAudioMCPServer: ObservableObject {
         self.facade = facade
         let defaults = UserDefaults.standard
         self.isEnabled = defaults.bool(forKey: Self.enabledKey)
-        self.bindAddress = Self.loadBindAddress(from: defaults)
+        let bindAddress = Self.loadBindAddress(from: defaults)
+        self.bindAddress = bindAddress
         self.port = Self.loadPort(from: defaults)
         let requestedToken = defaults.bool(forKey: Self.tokenRequiredKey)
-        self.isTokenRequired = Self.tokenIsRequired(
+        let isTokenRequired = Self.tokenIsRequired(
             requested: requestedToken,
-            bindAddress: self.bindAddress
+            bindAddress: bindAddress
         )
-        if self.isTokenRequired != requestedToken {
+        self.isTokenRequired = isTokenRequired
+        if isTokenRequired != requestedToken {
             defaults.set(true, forKey: Self.tokenRequiredKey)
         }
         let defaultsToken = defaults.string(forKey: Self.tokenKey)
