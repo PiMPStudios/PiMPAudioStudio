@@ -18,6 +18,7 @@ Audio Studio. End-user instructions live under `docs/user/`.
 | Paths, sandbox, secrets | [Storage, Sandbox, Security](storage-sandbox-security.md) |
 | Bundling user docs for Help | [Documentation Integration](documentation-integration.md) |
 | Signing, notarization, DMG | [Release And Packaging](release-packaging.md) |
+| Ranked review leftovers | [Review Follow-ups](review-followups.md) |
 
 ## Related Top-Level Docs
 
