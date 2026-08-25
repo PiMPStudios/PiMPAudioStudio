@@ -212,7 +212,6 @@ struct AddModelView: View {
         case .aceStepVAE: return ["vae.safetensors", "config.json"]
         case .aceStepLM: return ["model.safetensors", "tokenizer.json", "config.json"]
         case .stableAudio: return ["model.safetensors", "config.json"]
-        case .lyricLLM: return ["model.safetensors", "tokenizer.json", "config.json"]
         }
     }
 

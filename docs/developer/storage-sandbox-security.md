@@ -68,6 +68,15 @@ user selection when a workflow can use it.
 | RunPod SSH private key | Protected sandbox copy (`0700`/`0600`) | job zips, logs |
 | MCP bearer token | Keychain | bug reports |
 
+## Model File Checksums
+
+Built-in ACE-Step files pin SHA-256 values from Hugging Face. After download,
+`DownloadClient.downloadAndVerify` retries once on mismatch, then deletes the
+file and fails.
+
+A missing or empty pin **skips** verification. Gated catalogs (Stable Audio)
+must still download. Do not fail closed on a missing hash.
+
 ## Path Safety Rules
 
 Implemented across History, adapters, model indexes, remote worker, and MCP:

@@ -45,6 +45,11 @@ All notable changes to PiMP Audio Studio are documented here.
   from UserDefaults.
 - **Diffusion generate and inpaint share one CFG/APG loop** so the
   null-embedding path cannot drift.
+- **Built-in ACE-Step model files pin SHA-256** from Hugging Face. A missing
+  pin still downloads (gated Stable Audio); checksums run only when a hash is
+  present.
+- **Dropped the unused Phi-3 `lyric-llm` built-in.** Local lyrics stay on
+  Settings → Intelligence (Llama 3 MLX). `ModelCategory.lyricLLM` is gone.
 
 ### Added
 

@@ -41,3 +41,16 @@ import Foundation
     let badResult = await client.verifySHA256(file: testFile, expected: "0000")
     #expect(badResult == false)
 }
+
+@Test func downloadAndVerifyTreatsMissingAndEmptyHashesAsSkip() {
+    // Policy: a missing pin must not block the download. `downloadAndVerify`
+    // only checksums when `expectedHash` is non-empty.
+    #expect(DownloadClient.checksumToVerify(nil) == nil)
+    #expect(DownloadClient.checksumToVerify("") == nil)
+    #expect(DownloadClient.checksumToVerify("   ") == nil)
+    #expect(
+        DownloadClient.checksumToVerify(
+            "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
+        ) == "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
+    )
+}

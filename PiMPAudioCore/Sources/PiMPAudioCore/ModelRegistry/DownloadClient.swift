@@ -22,6 +22,14 @@ public actor DownloadClient: NativeModelPackDownloading {
         return url
     }
 
+    /// Non-empty SHA-256 hex to verify after download, or `nil` to skip.
+    /// Missing/blank pins must not block a download.
+    public nonisolated static func checksumToVerify(_ expectedHash: String?) -> String? {
+        guard let expectedHash else { return nil }
+        let trimmed = expectedHash.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
     /// Downloads a file and verifies its SHA256 checksum if provided.
     /// On verification failure, deletes the file and retries once.
     /// If `expectedHash` is nil or empty, skips verification.
@@ -42,7 +50,7 @@ public actor DownloadClient: NativeModelPackDownloading {
         )
         try await downloadFile(from: source, to: destination, bearerToken: bearerToken, onProgress: onProgress)
 
-        guard let hash = expectedHash, !hash.isEmpty else { return }
+        guard let hash = Self.checksumToVerify(expectedHash) else { return }
 
         let verified = await verifySHA256(file: destination, expected: hash)
         if verified { return }

@@ -8,7 +8,6 @@ public enum ModelCategory: String, Codable, Sendable, Hashable {
     /// it uses the DiT bundle's tokenizer/detokenizer path.
     case aceStepLM
     case stableAudio
-    case lyricLLM
 }
 
 public struct ModelFileSpec: Sendable, Codable, Hashable {
@@ -17,6 +16,8 @@ public struct ModelFileSpec: Sendable, Codable, Hashable {
     /// Flat filename used on disk and by consumer code, e.g. "model.safetensors".
     /// Defaults to the basename of `remotePath` when not specified.
     public let localName: String
+    /// Expected SHA-256 hex of the downloaded bytes. `nil` or empty skips
+    /// verification so a missing pin cannot block the download.
     public let sha256: String?
     public let sizeBytes: Int64
 

@@ -13,8 +13,12 @@ import Foundation
     #expect(specs.contains(where: { $0.id == "ace-step-dit-xl-turbo" }))
     #expect(specs.contains(where: { $0.id == "ace-step-vae" }))
     #expect(specs.contains(where: { $0.id == "ace-step-lm-1.7b" }))
-    #expect(specs.contains(where: { $0.id == "lyric-llm" }))
     #expect(specs.contains(where: { $0.id == "stable-audio-open" }))
+    #expect(specs.contains(where: { $0.id == "lyric-llm" }) == false)
+}
+
+@Test func modelCategoryDropsRetiredLyricLLMCase() {
+    #expect(ModelCategory(rawValue: "lyricLLM") == nil)
 }
 
 @Test func registryIncludesOfficialACEv15XLVariants() async {
@@ -173,4 +177,78 @@ import Foundation
     #expect(!FileManager.default.fileExists(atPath: orphanDir.path(percentEncoded: false)))
     let marker = tempDir.appending(path: ".model-migration-v1-complete")
     #expect(FileManager.default.fileExists(atPath: marker.path(percentEncoded: false)))
+}
+
+@Test func builtInACEStepFilesPinSHA256Checksums() {
+    for spec in ModelRegistry.builtInSpecs where spec.huggingFaceRepo.hasPrefix("ACE-Step/") {
+        for file in spec.files {
+            #expect(
+                isPinnedSHA256(file.sha256),
+                "\(spec.id) \(file.remotePath) must pin a 64-char lowercase SHA-256"
+            )
+        }
+    }
+}
+
+@Test func builtInFileChecksumsAreWellFormedWhenPresent() {
+    for spec in ModelRegistry.builtInSpecs {
+        for file in spec.files {
+            guard let hash = file.sha256 else { continue }
+            #expect(
+                isPinnedSHA256(hash),
+                "\(spec.id) \(file.remotePath) has a malformed sha256 pin"
+            )
+        }
+    }
+}
+
+@Test func missingChecksumDoesNotInvalidateAModelFileSpec() {
+    let file = ModelFileSpec(remotePath: "model.safetensors", sizeBytes: 1)
+    #expect(file.sha256 == nil)
+}
+
+@Test func gatedBuiltInsMayOmitChecksums() {
+    let stable = ModelRegistry.builtInSpecs.first { $0.id == "stable-audio-open" }
+    #expect(stable != nil)
+    #expect(stable?.files.contains { $0.sha256 == nil } == true)
+}
+
+@Test func registryRemovesRetiredLyricLLMDirectoryEvenAfterMigration() async throws {
+    let tempDir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+    try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: tempDir) }
+
+    let leftover = tempDir.appending(path: "lyric-llm", directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: leftover, withIntermediateDirectories: true)
+    try Data("stale-phi3".utf8).write(to: leftover.appending(path: "model.safetensors"))
+    try Data().write(to: tempDir.appending(path: ".model-migration-v1-complete"))
+
+    _ = ModelRegistry(baseDirectory: tempDir)
+
+    #expect(!FileManager.default.fileExists(atPath: leftover.path(percentEncoded: false)))
+}
+
+@Test func registryDropsRetiredLyricLLMActiveEntry() async throws {
+    let tempDir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+    try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: tempDir) }
+
+    let activeURL = tempDir.appending(path: "active-models.json")
+    try Data(#"{"aceStepDiT":"ace-step-dit-turbo","lyricLLM":"lyric-llm"}"#.utf8)
+        .write(to: activeURL)
+    try Data().write(to: tempDir.appending(path: ".model-migration-v1-complete"))
+
+    _ = ModelRegistry(baseDirectory: tempDir)
+
+    let decoded = try JSONDecoder().decode(
+        [String: String].self,
+        from: Data(contentsOf: activeURL)
+    )
+    #expect(decoded["lyricLLM"] == nil)
+    #expect(decoded["aceStepDiT"] == "ace-step-dit-turbo")
+}
+
+private func isPinnedSHA256(_ value: String?) -> Bool {
+    guard let value, value.count == 64 else { return false }
+    return value.unicodeScalars.allSatisfy { CharacterSet(charactersIn: "0123456789abcdef").contains($0) }
 }

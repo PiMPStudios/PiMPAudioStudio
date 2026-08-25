@@ -18,6 +18,10 @@ The sandboxed app stores downloaded models under:
 You normally do not need to touch this folder. Use **Settings → Models** to
 download, activate, remove, or refresh model status.
 
+ACE-Step downloads verify SHA-256 after the file lands. If a catalog entry has
+no checksum (for example a gated model you have not authenticated for), the
+download still completes.
+
 ## Essential Models
 
 First launch downloads these essentials:

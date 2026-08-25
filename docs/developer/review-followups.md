@@ -30,17 +30,17 @@ land before a wider or paid build.
   field names) was removed in the same pass because no shipped users needed it.
   Commit `aebf72d`. Still need a public `pimp-adapters` repo with `manifest.json`
   or the Community tab stays empty on 404.
+- [x] **#5 Built-in model SHA-256 pins** (security / supply chain) —
+  ACE-Step built-in files pin Hugging Face SHA-256 values. Verification still
+  **fail-open**: `nil`/empty `sha256` skips the checksum (gated Stable Audio)
+  instead of refusing the download.
 
 ## Open — ranked most important first
 
-5. **Built-in model downloads never set SHA-256** (security / supply chain)
-   `ModelFileSpec.sha256` exists but no built-in spec pins a hash, so
-   `downloadAndVerify` is a no-op. Pin hashes; fail closed if a built-in file
-   is missing one.
-
 7. **Sandbox exceptions cover all of Homebrew plus `~/.codex` / `~/.grok` / `~/.gemini`** (release)
    App Store / paid-release blocker if those tree-wide entitlements stay.
-   Prefer security-scoped bookmarks for the exact binaries.
+   Prefer security-scoped bookmarks for the exact binaries. Not in scope for
+   this non-App-Store 0.8.0 cut.
 
 8. ~~Community catalog URL~~ — done.
 
@@ -91,7 +91,8 @@ land before a wider or paid build.
 
 ## Highest-leverage next picks
 
-If only a few: **#5** (pin model hashes). **#7** only if App Store is soon.
+If only a few: **#9** (run remote-worker Python tests in CI). **#7** only if
+App Store is soon.
 
 ## What’s already in good shape
 
@@ -99,6 +100,8 @@ Do not “fix” these while working the list — they are intentional:
 
 - Path containment for History, adapters, and remote-worker zips, with tests
 - Secrets in Keychain; job zips documented as token-free
+- Model downloads verify SHA-256 when `ModelFileSpec.sha256` is set, and skip
+  verification when it is missing — a missing pin must not block install
 - MCP socket details: constant-time token compare, FD generation, 2 MB cap,
   dry-run defaults on billable tools
 - Immutable generation submission context; cancel waits; `.releasing` gate

@@ -10,7 +10,10 @@ Defined in `ModelSpec` / `ModelCategory`:
 | `aceStepVAE` | Shared VAE + Qwen text encoder assets |
 | `aceStepLM` | Optional LM sizes for experimental/cover-related paths |
 | `stableAudio` | Stable Audio Open SFX stack |
-| `lyricLLM` | Local intelligence / lyric model |
+
+Local lyric / intelligence models are **not** `ModelRegistry` entries. They
+live under Settings → Intelligence (`LLMModelManager`: Llama 3.2 3B / Llama 3.1
+8B MLX 4-bit).
 
 Built-in specs live in `ModelRegistry.builtInSpecs`. Essential first-launch IDs:
 

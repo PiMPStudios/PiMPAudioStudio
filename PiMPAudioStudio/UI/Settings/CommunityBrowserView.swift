@@ -10,7 +10,7 @@ struct CommunityBrowserView: View {
 
     // ModelCategory doesn't conform to CaseIterable — use a hardcoded list.
     private let allCategories: [ModelCategory] = [
-        .aceStepDiT, .aceStepVAE, .stableAudio, .lyricLLM
+        .aceStepDiT, .aceStepVAE, .aceStepLM, .stableAudio
     ]
 
     var body: some View {

@@ -19,15 +19,101 @@ public actor ModelRegistry {
 
     // MARK: - Built-in Models
 
-    private static func aceStepXLFiles(configSizeBytes: Int64) -> [ModelFileSpec] {
+    /// Shared `silence_latent.pt` across ACE-Step v1.5 DiT repos.
+    private static let aceStepSilenceLatentSHA256 =
+        "8a2ef60fef2b175d83e420a0eb76c696dcb428494347ecb5ca5866cb4bab09f4"
+
+    /// Shared XL `model.safetensors.index.json` (turbo / base / sft).
+    private static let aceStepXLIndexSHA256 =
+        "0a0c7e153a7bb6f6061b155739e9502cf83977bb959186d4df688595302a9474"
+
+    private static func aceStepXLFiles(
+        configSizeBytes: Int64,
+        configSHA256: String,
+        shard1: String,
+        shard2: String,
+        shard3: String,
+        shard4: String
+    ) -> [ModelFileSpec] {
         [
-            ModelFileSpec(remotePath: "model.safetensors.index.json", sizeBytes: 71_471),
-            ModelFileSpec(remotePath: "model-00001-of-00004.safetensors", sizeBytes: 4_986_971_456),
-            ModelFileSpec(remotePath: "model-00002-of-00004.safetensors", sizeBytes: 4_986_942_776),
-            ModelFileSpec(remotePath: "model-00003-of-00004.safetensors", sizeBytes: 4_986_942_808),
-            ModelFileSpec(remotePath: "model-00004-of-00004.safetensors", sizeBytes: 4_988_483_464),
-            ModelFileSpec(remotePath: "config.json", sizeBytes: configSizeBytes),
-            ModelFileSpec(remotePath: "silence_latent.pt", sizeBytes: 3_841_215)
+            ModelFileSpec(
+                remotePath: "model.safetensors.index.json",
+                sha256: aceStepXLIndexSHA256,
+                sizeBytes: 71_471
+            ),
+            ModelFileSpec(
+                remotePath: "model-00001-of-00004.safetensors",
+                sha256: shard1,
+                sizeBytes: 4_986_971_456
+            ),
+            ModelFileSpec(
+                remotePath: "model-00002-of-00004.safetensors",
+                sha256: shard2,
+                sizeBytes: 4_986_942_776
+            ),
+            ModelFileSpec(
+                remotePath: "model-00003-of-00004.safetensors",
+                sha256: shard3,
+                sizeBytes: 4_986_942_808
+            ),
+            ModelFileSpec(
+                remotePath: "model-00004-of-00004.safetensors",
+                sha256: shard4,
+                sizeBytes: 4_988_483_464
+            ),
+            ModelFileSpec(
+                remotePath: "config.json",
+                sha256: configSHA256,
+                sizeBytes: configSizeBytes
+            ),
+            ModelFileSpec(
+                remotePath: "silence_latent.pt",
+                sha256: aceStepSilenceLatentSHA256,
+                sizeBytes: 3_841_215
+            )
+        ]
+    }
+
+    /// Tokenizer/vocab files shared by the 5 Hz LM repos.
+    private static func aceStepLMTokenizerFiles(remotePrefix: String = "") -> [ModelFileSpec] {
+        let prefix = remotePrefix.isEmpty ? "" : "\(remotePrefix)/"
+        return [
+            ModelFileSpec(
+                remotePath: "\(prefix)tokenizer.json",
+                localName: "tokenizer.json",
+                sha256: "0823bb309a130de57e419bb1283214fea8e5cf3d375706c1dcbda810feae6aa8",
+                sizeBytes: 24_321_939
+            ),
+            ModelFileSpec(
+                remotePath: "\(prefix)tokenizer_config.json",
+                localName: "tokenizer_config.json",
+                sha256: "4d0ea85ee37d515583a92848d9cbeb5181a6294268201b2ea4317eff18812320",
+                sizeBytes: 14_072_925
+            ),
+            ModelFileSpec(
+                remotePath: "\(prefix)special_tokens_map.json",
+                localName: "special_tokens_map.json",
+                sha256: "76e233bfc357b0b03d7b6e6ba8e799244f358552575a7cdadb78d3d19106b298",
+                sizeBytes: 1_824_199
+            ),
+            ModelFileSpec(
+                remotePath: "\(prefix)added_tokens.json",
+                localName: "added_tokens.json",
+                sha256: "db08b66a515fb5d6acca0b3492d25bb44e0deda6241fc1113ac0679d40558c48",
+                sizeBytes: 2_217_787
+            ),
+            ModelFileSpec(
+                remotePath: "\(prefix)merges.txt",
+                localName: "merges.txt",
+                sha256: "8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5",
+                sizeBytes: 1_671_853
+            ),
+            ModelFileSpec(
+                remotePath: "\(prefix)vocab.json",
+                localName: "vocab.json",
+                sha256: "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910",
+                sizeBytes: 2_776_833
+            )
         ]
     }
 
@@ -40,16 +126,19 @@ public actor ModelRegistry {
                 ModelFileSpec(
                     remotePath: "acestep-v15-turbo/model.safetensors",
                     localName: "model.safetensors",
+                    sha256: "077d06c5a16c9f9ff327389b66b0dd355fe3b8f7ad2777ef6767cbd9022d2a7c",
                     sizeBytes: 4_787_825_604
                 ),
                 ModelFileSpec(
                     remotePath: "acestep-v15-turbo/config.json",
                     localName: "config.json",
+                    sha256: "74745ff704ea49164c3d2d1c99fc0670f3fc635a869f0aec2d1311e6a52d400a",
                     sizeBytes: 1_968
                 ),
                 ModelFileSpec(
                     remotePath: "acestep-v15-turbo/silence_latent.pt",
                     localName: "silence_latent.pt",
+                    sha256: aceStepSilenceLatentSHA256,
                     sizeBytes: 3_841_215
                 )
             ],
@@ -64,16 +153,19 @@ public actor ModelRegistry {
                 ModelFileSpec(
                     remotePath: "model.safetensors",
                     localName: "model.safetensors",
+                    sha256: "897a3f6af4bf1d87a88a6de2c93f13e36a446764496a40bc6f7c1d94032b0223",
                     sizeBytes: 4_787_825_604
                 ),
                 ModelFileSpec(
                     remotePath: "config.json",
                     localName: "config.json",
+                    sha256: "9bb4f832f2e5e6c8bf7bddab3c6a6da1b13c01d072efbf0ed3c830536c473359",
                     sizeBytes: 1_940
                 ),
                 ModelFileSpec(
                     remotePath: "silence_latent.pt",
                     localName: "silence_latent.pt",
+                    sha256: aceStepSilenceLatentSHA256,
                     sizeBytes: 3_841_215
                 )
             ],
@@ -88,16 +180,19 @@ public actor ModelRegistry {
                 ModelFileSpec(
                     remotePath: "model.safetensors",
                     localName: "model.safetensors",
+                    sha256: "dc9cedbc5b0c55559e71047de50bd80060d39f30d7e8af7df00bdb275ab5867e",
                     sizeBytes: 4_787_825_604
                 ),
                 ModelFileSpec(
                     remotePath: "config.json",
                     localName: "config.json",
+                    sha256: "9bb4f832f2e5e6c8bf7bddab3c6a6da1b13c01d072efbf0ed3c830536c473359",
                     sizeBytes: 1_940
                 ),
                 ModelFileSpec(
                     remotePath: "silence_latent.pt",
                     localName: "silence_latent.pt",
+                    sha256: aceStepSilenceLatentSHA256,
                     sizeBytes: 3_841_215
                 )
             ],
@@ -108,7 +203,14 @@ public actor ModelRegistry {
             id: "ace-step-dit-xl-turbo",
             displayName: "ACE-Step v1.5 XL Turbo",
             huggingFaceRepo: "ACE-Step/acestep-v15-xl-turbo",
-            files: aceStepXLFiles(configSizeBytes: 2_407),
+            files: aceStepXLFiles(
+                configSizeBytes: 2_407,
+                configSHA256: "e3665376d46477cbd3e76203cd4e241f11a6a6bb5f88464c49f3c6aae51a918b",
+                shard1: "ec9eadbaca0a158f081202251df17f0705005748894a156e616cdef444e21e36",
+                shard2: "18a5eb68cd09c1828948f9e0152c0e2ba88213a7d3b372af7b48e73685c64dbe",
+                shard3: "b513523ba4fc2b15a87cfd718448ad3e551133f8a5b5d4c6a8fde1ab8210e354",
+                shard4: "facfecb98896340eb5df7e06efdeccafe182408d2ea04ce4a99623bf4bfa5c9e"
+            ),
             category: .aceStepDiT,
             variantFamily: "ace-step-1.5-xl"
         ),
@@ -116,7 +218,14 @@ public actor ModelRegistry {
             id: "ace-step-dit-xl-base",
             displayName: "ACE-Step v1.5 XL Base",
             huggingFaceRepo: "ACE-Step/acestep-v15-xl-base",
-            files: aceStepXLFiles(configSizeBytes: 2_525),
+            files: aceStepXLFiles(
+                configSizeBytes: 2_525,
+                configSHA256: "174cf8c4afc2c41212546b4dca9afb11e7958f8b1e1a770d7cd009a82d72a6f1",
+                shard1: "1749e9905cb25caa445928249c0f5136b0995e7194c5155d4ffacea7747e4e8d",
+                shard2: "03b39bebb8a9e9522b4f53dd3d03d34ff40e9ca6a573057b421c953b4336ae6f",
+                shard3: "1d5550d66f5d6078ec7fb479c37bad7284e6b0848231dbef781c6cfc2893b8da",
+                shard4: "e66354e8035ff5758b1d5fe4dc14216dc66023a4555d496ea3faa6e63617e382"
+            ),
             category: .aceStepDiT,
             variantFamily: "ace-step-1.5-xl"
         ),
@@ -124,7 +233,14 @@ public actor ModelRegistry {
             id: "ace-step-dit-xl-sft",
             displayName: "ACE-Step v1.5 XL SFT",
             huggingFaceRepo: "ACE-Step/acestep-v15-xl-sft",
-            files: aceStepXLFiles(configSizeBytes: 2_525),
+            files: aceStepXLFiles(
+                configSizeBytes: 2_525,
+                configSHA256: "174cf8c4afc2c41212546b4dca9afb11e7958f8b1e1a770d7cd009a82d72a6f1",
+                shard1: "0a9cfd65eef84c0f25724e4d88e3e630feb4c82437c5f02df74ad4bdff9f347b",
+                shard2: "871f801cb5e3d5b8fb5505234340da458761693d0b1b2d82246c4c49bb19b01d",
+                shard3: "e0b2f38d2930844aa128afc3ed7ed075bb817e4befdc7f3a054e28e1eb15262b",
+                shard4: "113055326f9855034c33d47eeab1db79eb49acf4fd14924c0956c30a8147b0d0"
+            ),
             category: .aceStepDiT,
             variantFamily: "ace-step-1.5-xl"
         ),
@@ -136,21 +252,25 @@ public actor ModelRegistry {
                 ModelFileSpec(
                     remotePath: "vae/diffusion_pytorch_model.safetensors",
                     localName: "vae.safetensors",
+                    sha256: "e8d754cd5cb69cf864a2d44a61b39bf61354ebac7fc70680bbfdb8ed49b1bc8b",
                     sizeBytes: 337_431_388
                 ),
                 ModelFileSpec(
                     remotePath: "vae/config.json",
                     localName: "config.json",
+                    sha256: "14e019904df567f26df750317a70e2bd08f9f8f3c40ff4a24c97d1cd3f20ccd2",
                     sizeBytes: 425
                 ),
                 ModelFileSpec(
                     remotePath: "Qwen3-Embedding-0.6B/tokenizer.json",
                     localName: "tokenizer.json",
+                    sha256: "e1c5ae75d50677cf0cce3ad0441fbf25396122838224b9473c03004e92077538",
                     sizeBytes: 11_423_705
                 ),
                 ModelFileSpec(
                     remotePath: "Qwen3-Embedding-0.6B/model.safetensors",
                     localName: "qwen3_model.safetensors",
+                    sha256: "50e3c282187ba05fed66edb58ffbba6f4ce258bd2d3dcda860b8dc125e041bab",
                     sizeBytes: 1_191_586_416
                 )
             ],
@@ -240,15 +360,17 @@ public actor ModelRegistry {
             displayName: "ACE-Step LM 0.6B",
             huggingFaceRepo: "ACE-Step/acestep-5Hz-lm-0.6B",
             files: [
-                ModelFileSpec(remotePath: "model.safetensors", sizeBytes: 1_325_804_024),
-                ModelFileSpec(remotePath: "config.json", sizeBytes: 1_386),
-                ModelFileSpec(remotePath: "tokenizer.json", sizeBytes: 24_321_939),
-                ModelFileSpec(remotePath: "tokenizer_config.json", sizeBytes: 14_072_925),
-                ModelFileSpec(remotePath: "special_tokens_map.json", sizeBytes: 1_824_199),
-                ModelFileSpec(remotePath: "added_tokens.json", sizeBytes: 2_217_787),
-                ModelFileSpec(remotePath: "merges.txt", sizeBytes: 1_671_853),
-                ModelFileSpec(remotePath: "vocab.json", sizeBytes: 2_776_833)
-            ],
+                ModelFileSpec(
+                    remotePath: "model.safetensors",
+                    sha256: "b7faa8fb8c208849547000dae6d0e6a54fbf4d3f0f236f8c46636d530f709f11",
+                    sizeBytes: 1_325_804_024
+                ),
+                ModelFileSpec(
+                    remotePath: "config.json",
+                    sha256: "873ca63808b74e1e008ab950114765553b898b489b9e077e80db83348a118384",
+                    sizeBytes: 1_386
+                )
+            ] + aceStepLMTokenizerFiles(),
             category: .aceStepLM,
             variantFamily: "ace-step-lm"
         ),
@@ -260,46 +382,20 @@ public actor ModelRegistry {
                 ModelFileSpec(
                     remotePath: "acestep-5Hz-lm-1.7B/model.safetensors",
                     localName: "model.safetensors",
+                    sha256: "b2a2c0d5de99b6255e72a519af42ded22fa26f60bdaf408aa659e340c172ab0c",
                     sizeBytes: 3_708_521_528
                 ),
                 ModelFileSpec(
                     remotePath: "acestep-5Hz-lm-1.7B/config.json",
                     localName: "config.json",
+                    sha256: "73515ca4bfd86a5b56f28bf680311d1911e159c85d7f7ceb2188e310007c9010",
                     sizeBytes: 1_385
-                ),
-                ModelFileSpec(
-                    remotePath: "acestep-5Hz-lm-1.7B/tokenizer.json",
-                    localName: "tokenizer.json",
-                    sizeBytes: 24_321_939
-                ),
-                ModelFileSpec(
-                    remotePath: "acestep-5Hz-lm-1.7B/tokenizer_config.json",
-                    localName: "tokenizer_config.json",
-                    sizeBytes: 14_072_925
-                ),
-                ModelFileSpec(
-                    remotePath: "acestep-5Hz-lm-1.7B/special_tokens_map.json",
-                    localName: "special_tokens_map.json",
-                    sizeBytes: 1_824_199
-                ),
-                ModelFileSpec(
-                    remotePath: "acestep-5Hz-lm-1.7B/added_tokens.json",
-                    localName: "added_tokens.json",
-                    sizeBytes: 2_217_787
-                ),
-                ModelFileSpec(
-                    remotePath: "acestep-5Hz-lm-1.7B/merges.txt",
-                    localName: "merges.txt",
-                    sizeBytes: 1_671_853
-                ),
-                ModelFileSpec(
-                    remotePath: "acestep-5Hz-lm-1.7B/vocab.json",
-                    localName: "vocab.json",
-                    sizeBytes: 2_776_833
-                ),
+                )
+            ] + aceStepLMTokenizerFiles(remotePrefix: "acestep-5Hz-lm-1.7B") + [
                 ModelFileSpec(
                     remotePath: "acestep-5Hz-lm-1.7B/chat_template.jinja",
                     localName: "chat_template.jinja",
+                    sha256: "a55ee1b1660128b7098723e0abcd92caa0788061051c62d51cbe87d9cf1974d8",
                     sizeBytes: 4_168
                 )
             ],
@@ -311,30 +407,29 @@ public actor ModelRegistry {
             displayName: "ACE-Step LM 4B",
             huggingFaceRepo: "ACE-Step/acestep-5Hz-lm-4B",
             files: [
-                ModelFileSpec(remotePath: "model-00001-of-00002.safetensors", sizeBytes: 4_999_914_896),
-                ModelFileSpec(remotePath: "model-00002-of-00002.safetensors", sizeBytes: 3_379_239_240),
-                ModelFileSpec(remotePath: "model.safetensors.index.json", sizeBytes: 32_818),
-                ModelFileSpec(remotePath: "config.json", sizeBytes: 1_562),
-                ModelFileSpec(remotePath: "tokenizer.json", sizeBytes: 24_321_939),
-                ModelFileSpec(remotePath: "tokenizer_config.json", sizeBytes: 14_072_925),
-                ModelFileSpec(remotePath: "special_tokens_map.json", sizeBytes: 1_824_199),
-                ModelFileSpec(remotePath: "added_tokens.json", sizeBytes: 2_217_787),
-                ModelFileSpec(remotePath: "merges.txt", sizeBytes: 1_671_853),
-                ModelFileSpec(remotePath: "vocab.json", sizeBytes: 2_776_833)
-            ],
+                ModelFileSpec(
+                    remotePath: "model-00001-of-00002.safetensors",
+                    sha256: "c9e9c9a05ca539d6f618f2c798c5672dbe53635dd2d6741ede979319429f6dad",
+                    sizeBytes: 4_999_914_896
+                ),
+                ModelFileSpec(
+                    remotePath: "model-00002-of-00002.safetensors",
+                    sha256: "55088d893e0ea7a8a117bf1cee23640ffb44ccf7c9efdf3e09e6a63e3efac96a",
+                    sizeBytes: 3_379_239_240
+                ),
+                ModelFileSpec(
+                    remotePath: "model.safetensors.index.json",
+                    sha256: "8a9ec992fbae144ba9b40521f8763a3419546bd7a8864d80b0c3f1e1e3678fcf",
+                    sizeBytes: 32_818
+                ),
+                ModelFileSpec(
+                    remotePath: "config.json",
+                    sha256: "211bb68b2d641360526e4654b524e508f4046c1292016c08555bb877bd686d1b",
+                    sizeBytes: 1_562
+                )
+            ] + aceStepLMTokenizerFiles(),
             category: .aceStepLM,
             variantFamily: "ace-step-lm"
-        ),
-        ModelSpec(
-            id: "lyric-llm",
-            displayName: "Phi-3 Mini 4k Instruct",
-            huggingFaceRepo: "microsoft/Phi-3-mini-4k-instruct",
-            files: [
-                ModelFileSpec(remotePath: "model.safetensors", sizeBytes: 2_400_000_000),
-                ModelFileSpec(remotePath: "tokenizer.json", sizeBytes: 2_000_000),
-                ModelFileSpec(remotePath: "config.json", sizeBytes: 1_000)
-            ],
-            category: .lyricLLM
         ),
     ]
 
@@ -363,8 +458,11 @@ public actor ModelRegistry {
     private static let defaultActiveModels: [ModelCategory: String] = [
         .aceStepDiT: "ace-step-dit-turbo",
         .aceStepVAE: "ace-step-vae",
-        .stableAudio: "stable-audio-open",
-        .lyricLLM: "lyric-llm"
+        .stableAudio: "stable-audio-open"
+    ]
+
+    private static let retiredBuiltInModelIDs: Set<String> = [
+        "lyric-llm"
     ]
 
     private(set) var activeModels: [ModelCategory: String] = [:]
@@ -399,12 +497,19 @@ public actor ModelRegistry {
             // Keep an empty in-memory list; the corrupt index was preserved on disk.
             self.userSpecs = []
         }
-        self.activeModels = Self.migratedActiveModelsIfNeeded(
-            activeModels: Self.loadActiveModels(from: baseDirectory),
-            userSpecs: self.userSpecs,
-            baseDirectory: baseDirectory,
-            allowOrphanCleanup: loadedUserSpecs.allowsDestructiveOrphanCleanup
+        self.activeModels = Self.strippingRetiredActiveModels(
+            Self.migratedActiveModelsIfNeeded(
+                activeModels: Self.loadActiveModels(from: baseDirectory),
+                userSpecs: self.userSpecs,
+                baseDirectory: baseDirectory,
+                allowOrphanCleanup: loadedUserSpecs.allowsDestructiveOrphanCleanup
+            )
         )
+        Self.removeRetiredBuiltInDirectories(from: baseDirectory)
+        let activeURL = baseDirectory.appending(path: "active-models.json")
+        if Self.activeModelsFileNeedsRewrite(self.activeModels, at: activeURL) {
+            Self.saveActiveModels(self.activeModels, to: activeURL)
+        }
     }
 
     /// Per-models-root marker so migration state is isolated per directory.
@@ -497,6 +602,44 @@ public actor ModelRegistry {
                 "Failed to write model migration marker: \(error.localizedDescription, privacy: .public)"
             )
         }
+    }
+
+    private static func strippingRetiredActiveModels(
+        _ models: [ModelCategory: String]
+    ) -> [ModelCategory: String] {
+        models.filter { !retiredBuiltInModelIDs.contains($0.value) }
+    }
+
+    private static func removeRetiredBuiltInDirectories(from baseDirectory: URL) {
+        for id in retiredBuiltInModelIDs {
+            let url = baseDirectory.appending(path: id)
+            var isDir: ObjCBool = false
+            let exists = FileManager.default.fileExists(
+                atPath: url.path(percentEncoded: false),
+                isDirectory: &isDir
+            )
+            guard exists, isDir.boolValue else { continue }
+            try? FileManager.default.removeItem(at: url)
+            logger.info("Removed retired built-in model directory: \(id)")
+        }
+    }
+
+    private static func activeModelsFileNeedsRewrite(
+        _ models: [ModelCategory: String],
+        at url: URL
+    ) -> Bool {
+        guard FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) else {
+            return false
+        }
+        guard let data = try? Data(contentsOf: url),
+              let decoded = try? JSONDecoder().decode([String: String].self, from: data)
+        else {
+            return false
+        }
+        let expected = Dictionary(
+            uniqueKeysWithValues: models.map { ($0.key.rawValue, $0.value) }
+        )
+        return decoded != expected
     }
 
     // MARK: - Status
@@ -857,12 +1000,19 @@ public actor ModelRegistry {
     }
 
     private func saveActiveModels() {
+        Self.saveActiveModels(activeModels, to: activeModelsFileURL)
+    }
+
+    private static func saveActiveModels(
+        _ models: [ModelCategory: String],
+        to url: URL
+    ) {
         let encoded = Dictionary(
-            uniqueKeysWithValues: activeModels.map { ($0.key.rawValue, $0.value) }
+            uniqueKeysWithValues: models.map { ($0.key.rawValue, $0.value) }
         )
         do {
             let data = try JSONEncoder().encode(encoded)
-            try data.write(to: activeModelsFileURL, options: .atomic)
+            try data.write(to: url, options: .atomic)
         } catch {
             logger.error("Failed to save active-models.json: \(error.localizedDescription)")
         }
