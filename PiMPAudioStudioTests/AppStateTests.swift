@@ -175,14 +175,6 @@ private func makeTestCommandFacade(root: URL) -> PiMPAudioCommandFacade {
     )
 }
 
-private extension JSONDecoder {
-    static var withISO8601Dates: JSONDecoder {
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        return decoder
-    }
-}
-
 @Test func adapterRegistryRejectsTraversalAndSymlinkEscapes() throws {
     let root = FileManager.default.temporaryDirectory
         .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -254,141 +246,6 @@ private extension JSONDecoder {
     ])
 
     #expect(home.path == "/Users/testuser")
-}
-
-@Test func appRuntimeMigrationMovesLegacyDataDirectoriesAndWritesReport() throws {
-    let tempRoot = FileManager.default.temporaryDirectory
-        .appendingPathComponent(UUID().uuidString, isDirectory: true)
-    let legacyRoot = tempRoot.appendingPathComponent("Application Support/Anvil", isDirectory: true)
-    let destinationRoot = tempRoot.appendingPathComponent("Application Support/PiMP Audio Studio", isDirectory: true)
-    let reportURL = destinationRoot.appendingPathComponent("runtime_migration.json")
-    defer { try? FileManager.default.removeItem(at: tempRoot) }
-
-    try writeFixture("legacy model", to: legacyRoot.appendingPathComponent("models/ace-step/model.safetensors"))
-    try writeFixture("legacy adapter", to: legacyRoot.appendingPathComponent("models/adapters/dark/adapter.json"))
-    try writeFixture("legacy preset", to: legacyRoot.appendingPathComponent("presets/dark-blues.json"))
-    try writeFixture("legacy llm", to: legacyRoot.appendingPathComponent("LLM/qwen/model.safetensors"))
-    try writeFixture("legacy import", to: legacyRoot.appendingPathComponent("SourceAudioImports/source.m4a"))
-    try writeFixture("legacy dataset", to: legacyRoot.appendingPathComponent("TrainingDatasets/pkg/captions.json"))
-    try writeFixture("legacy mcp import", to: legacyRoot.appendingPathComponent("MCPImports/imported.wav"))
-    try writeFixture("existing model", to: destinationRoot.appendingPathComponent("models/existing/keep.txt"))
-
-    let report = AppRuntimeMigration.migrateDataDirectories(
-        from: [legacyRoot],
-        into: destinationRoot,
-        reportURL: reportURL,
-        migratedAt: Date(timeIntervalSince1970: 0)
-    )
-
-    #expect(FileManager.default.fileExists(
-        atPath: destinationRoot.appendingPathComponent("models/ace-step/model.safetensors").path
-    ))
-    #expect(FileManager.default.fileExists(
-        atPath: destinationRoot.appendingPathComponent("models/adapters/dark/adapter.json").path
-    ))
-    #expect(FileManager.default.fileExists(
-        atPath: destinationRoot.appendingPathComponent("presets/dark-blues.json").path
-    ))
-    #expect(FileManager.default.fileExists(
-        atPath: destinationRoot.appendingPathComponent("LLM/qwen/model.safetensors").path
-    ))
-    #expect(FileManager.default.fileExists(
-        atPath: destinationRoot.appendingPathComponent("SourceAudioImports/source.m4a").path
-    ))
-    #expect(FileManager.default.fileExists(
-        atPath: destinationRoot.appendingPathComponent("TrainingDatasets/pkg/captions.json").path
-    ))
-    #expect(FileManager.default.fileExists(
-        atPath: destinationRoot.appendingPathComponent("MCPImports/imported.wav").path
-    ))
-    #expect(
-        try String(
-            contentsOf: destinationRoot.appendingPathComponent("models/existing/keep.txt"),
-            encoding: .utf8
-        ) == "existing model"
-    )
-
-    let migratedPaths = Set(report.entries.map(\.relativePath))
-    #expect(migratedPaths == ["models", "presets", "LLM", "SourceAudioImports", "TrainingDatasets", "MCPImports"])
-    #expect(report.entries.first(where: { $0.relativePath == "models" })?.action == "merged")
-    #expect(FileManager.default.fileExists(atPath: reportURL.path))
-
-    let reportData = try Data(contentsOf: reportURL)
-    let decoded = try JSONDecoder.withISO8601Dates.decode(AppDataDirectoryMigrationReport.self, from: reportData)
-    #expect(decoded.schemaVersion == "1.0")
-    #expect(decoded.entries.count == report.entries.count)
-}
-
-@Test func appRuntimeMigrationDoesNotOverwriteExistingFiles() throws {
-    let tempRoot = FileManager.default.temporaryDirectory
-        .appendingPathComponent(UUID().uuidString, isDirectory: true)
-    let legacyRoot = tempRoot.appendingPathComponent("Application Support/Anvil", isDirectory: true)
-    let destinationRoot = tempRoot.appendingPathComponent("Application Support/PiMP Audio Studio", isDirectory: true)
-    defer { try? FileManager.default.removeItem(at: tempRoot) }
-
-    let destinationPreset = destinationRoot.appendingPathComponent("presets/shared.json")
-    try writeFixture("new preset", to: destinationPreset)
-    try writeFixture("old preset", to: legacyRoot.appendingPathComponent("presets/shared.json"))
-
-    _ = AppRuntimeMigration.migrateDataDirectories(from: [legacyRoot], into: destinationRoot)
-    _ = AppRuntimeMigration.migrateDataDirectories(from: [legacyRoot], into: destinationRoot)
-
-    #expect(try String(contentsOf: destinationPreset, encoding: .utf8) == "new preset")
-}
-
-@Test func appRuntimeMigrationTreatsMissingLegacyRootsAsNoOp() throws {
-    let tempRoot = FileManager.default.temporaryDirectory
-        .appendingPathComponent(UUID().uuidString, isDirectory: true)
-    let missingLegacyRoot = tempRoot.appendingPathComponent("missing/Anvil", isDirectory: true)
-    let destinationRoot = tempRoot.appendingPathComponent("Application Support/PiMP Audio Studio", isDirectory: true)
-    let reportURL = destinationRoot.appendingPathComponent("runtime_migration.json")
-    defer { try? FileManager.default.removeItem(at: tempRoot) }
-
-    let report = AppRuntimeMigration.migrateDataDirectories(
-        from: [missingLegacyRoot],
-        into: destinationRoot,
-        reportURL: reportURL
-    )
-
-    #expect(report.entries.isEmpty)
-    #expect(FileManager.default.fileExists(atPath: reportURL.path))
-}
-
-@Test func appRuntimeMigrationLeavesFailedDataMigrationRetryable() {
-    let failedReport = AppDataDirectoryMigrationReport(
-        schemaVersion: "1.0",
-        migratedAt: Date(timeIntervalSince1970: 0),
-        sourceRoots: ["/legacy/Anvil"],
-        destinationRoot: "/new/PiMP Audio Studio",
-        entries: [
-            .init(
-                relativePath: "models",
-                sourcePath: "/legacy/Anvil/models",
-                destinationPath: "/new/PiMP Audio Studio/models",
-                action: "failed",
-                message: "Permission denied"
-            ),
-        ]
-    )
-    let cleanReport = AppDataDirectoryMigrationReport(
-        schemaVersion: "1.0",
-        migratedAt: Date(timeIntervalSince1970: 0),
-        sourceRoots: ["/legacy/Anvil"],
-        destinationRoot: "/new/PiMP Audio Studio",
-        entries: [
-            .init(
-                relativePath: "models",
-                sourcePath: "/legacy/Anvil/models",
-                destinationPath: "/new/PiMP Audio Studio/models",
-                action: "copied",
-                message: nil
-            ),
-        ]
-    )
-
-    #expect(failedReport.hasFailures)
-    #expect(AppRuntimeMigration.shouldMarkDataDirectoryMigrationComplete(failedReport) == false)
-    #expect(AppRuntimeMigration.shouldMarkDataDirectoryMigrationComplete(cleanReport))
 }
 
 @Test func trainingDatasetImporterUsesVocalStemTranscriptAsLyrics() throws {
@@ -961,7 +818,6 @@ private extension JSONDecoder {
     let refreshedPreprocessData = try Data(contentsOf: datasetDir.appendingPathComponent("preprocess_cache.json"))
     let refreshedPreprocess = try JSONSerialization.jsonObject(with: refreshedPreprocessData) as? [String: Any]
     #expect(refreshedPreprocess?["pimp_audio_preprocess_cache_version"] as? String == "1.0")
-    #expect(refreshedPreprocess?["anvil_preprocess_cache_version"] == nil)
     #expect(refreshedPreprocess?["status"] as? String == "partial")
     let refreshedBundles = refreshedPreprocess?["bundles"] as? [[String: Any]] ?? []
     let fullMixBundle = refreshedBundles.first { ($0["name"] as? String) == "full_mix" }
@@ -971,7 +827,6 @@ private extension JSONDecoder {
     let remoteData = try Data(contentsOf: datasetDir.appendingPathComponent("remote_training_package.json"))
     let remoteJSON = try JSONSerialization.jsonObject(with: remoteData) as? [String: Any]
     #expect(remoteJSON?["pimp_audio_remote_package_version"] as? String == "1.0")
-    #expect(remoteJSON?["anvil_remote_package_version"] == nil)
     let providerTargets = remoteJSON?["provider_targets"] as? [String] ?? []
     #expect(providerTargets.contains("runpod"))
     #expect(providerTargets.contains("digitalocean_gpu"))
@@ -1001,16 +856,6 @@ private extension JSONDecoder {
         from: remoteData
     )
     #expect(descriptor.pimpAudioRemotePackageVersion == "1.0")
-    var legacyRemoteJSON = remoteJSON ?? [:]
-    legacyRemoteJSON["anvil_remote_package_version"] = legacyRemoteJSON.removeValue(
-        forKey: "pimp_audio_remote_package_version"
-    )
-    let legacyRemoteData = try JSONSerialization.data(withJSONObject: legacyRemoteJSON)
-    let legacyDescriptor = try RemoteTrainingJobCodec.decoder.decode(
-        RemoteTrainingPackageDescriptor.self,
-        from: legacyRemoteData
-    )
-    #expect(legacyDescriptor.pimpAudioRemotePackageVersion == "1.0")
 
     let job = RemoteTrainingJobRequest.makeTemplate(
         from: descriptor,
@@ -1043,17 +888,9 @@ private extension JSONDecoder {
     let encodedJob = try RemoteTrainingJobCodec.encoder.encode(job)
     let encodedJobJSON = try JSONSerialization.jsonObject(with: encodedJob) as? [String: Any]
     #expect(encodedJobJSON?["pimp_audio_remote_job_version"] as? String == "1.0")
-    #expect(encodedJobJSON?["anvil_remote_job_version"] == nil)
     let decodedJob = try RemoteTrainingJobCodec.decoder.decode(RemoteTrainingJobRequest.self, from: encodedJob)
     #expect(decodedJob.jobID == "job-test-1")
     #expect(decodedJob.package.copyRules.include.contains("preprocessed/**"))
-    var legacyJobJSON = encodedJobJSON ?? [:]
-    legacyJobJSON["anvil_remote_job_version"] = legacyJobJSON.removeValue(
-        forKey: "pimp_audio_remote_job_version"
-    )
-    let legacyJobData = try JSONSerialization.data(withJSONObject: legacyJobJSON)
-    let legacyJob = try RemoteTrainingJobCodec.decoder.decode(RemoteTrainingJobRequest.self, from: legacyJobData)
-    #expect(legacyJob.pimpAudioRemoteJobVersion == "1.0")
 
     let backupDirectory = datasetDir
         .appendingPathComponent("review_backups", isDirectory: true)

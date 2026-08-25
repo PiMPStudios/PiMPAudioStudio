@@ -445,9 +445,7 @@ enum TrainingDatasetPackageEditor {
         guard let manifest = try JSONSerialization.jsonObject(with: manifestData) as? [String: Any] else {
             throw TrainingDatasetPackageEditorError.invalidManifest(directory)
         }
-        let version = stringValue(manifest["pimp_audio_dataset_version"])
-            ?? stringValue(manifest["anvil_dataset_version"])
-            ?? "1.0"
+        let version = stringValue(manifest["pimp_audio_dataset_version"]) ?? "1.0"
 
         if version == DatasetPackageV2.currentVersion {
             return try DatasetPackageV2Codec.decodeValidated(manifestData)

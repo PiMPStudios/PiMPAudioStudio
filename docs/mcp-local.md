@@ -310,9 +310,6 @@ weights, evicts the local LLM, and flushes the MLX GPU cache. It requires
 `confirm: true` or MCP form elicitation approval and returns before/after
 memory counters.
 
-Legacy `anvil.` and `anvil_` tool prefixes are no longer part of the public MCP
-surface. Use the plain snake_case tool names listed above.
-
 ### Remote GPU lifecycle tools
 
 The managed RunPod job path is also exposed for agents:

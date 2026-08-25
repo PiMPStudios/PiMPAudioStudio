@@ -132,8 +132,6 @@ Implementation files for the expansion:
 - `PiMPAudioMCPToolCatalog.swift`
 - `PiMPAudioMCPServer.swift`
 
-Legacy `anvil.` / `anvil_` prefixes are not part of the public surface.
-
 ## Safety Patterns
 
 1. Prefer dry-run defaults for mutations and billable actions.

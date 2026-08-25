@@ -8,7 +8,6 @@ final class OutputDirectoryManager: ObservableObject {
     @Published var directory: URL?
 
     private static let bookmarkKey = AppUserDefaultsKeys.outputDirectoryBookmark
-    private static let legacyBookmarkKey = AppUserDefaultsKeys.legacyOutputDirectoryBookmark
 
     init() {
         directory = resolveBookmark()
@@ -52,8 +51,7 @@ final class OutputDirectoryManager: ObservableObject {
     }
 
     private func resolveBookmark() -> URL? {
-        guard let data = UserDefaults.standard.data(forKey: Self.bookmarkKey) ??
-            UserDefaults.standard.data(forKey: Self.legacyBookmarkKey) else {
+        guard let data = UserDefaults.standard.data(forKey: Self.bookmarkKey) else {
             return nil
         }
         do {
@@ -67,8 +65,6 @@ final class OutputDirectoryManager: ObservableObject {
             guard url.startAccessingSecurityScopedResource() else { return nil }
             if isStale {
                 saveBookmark(for: url)
-            } else if UserDefaults.standard.data(forKey: Self.bookmarkKey) == nil {
-                UserDefaults.standard.set(data, forKey: Self.bookmarkKey)
             }
             return url
         } catch {

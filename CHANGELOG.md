@@ -8,6 +8,8 @@ All notable changes to PiMP Audio Studio are documented here.
 
 ### Fixed
 
+- **Community adapter catalog now loads from `PiMPStudios/pimp-adapters`**.
+  The previous catalog URL 404'd and showed an empty list.
 - **Dataset review bindings no longer force-unwrap** the loaded package.
   Clip editors and text fields no-op if the document is cleared mid-edit.
 - **Generation/inpaint/weight-conversion progress streams finish on error
@@ -23,6 +25,9 @@ All notable changes to PiMP Audio Studio are documented here.
 
 ### Changed
 
+- **Dropped pre-rebrand identity migration.** The app no longer looks for the
+  old Application Support folder, Keychain service, UserDefaults keys, MCP
+  scheme, or JSON field names from the previous product name.
 - **MCP bearer token is stored in the Keychain**, with a one-time migrate
   from UserDefaults.
 - **Diffusion generate and inpaint share one CFG/APG loop** so the

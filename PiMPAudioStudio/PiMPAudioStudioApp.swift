@@ -22,7 +22,6 @@ struct PiMPAudioStudioApp: App {
     @StateObject private var presetStore = PresetStore()
 
     init() {
-        AppRuntimeMigration.migrateIfNeeded()
         AudioDiagnostics.setLogDirectory(AppStorageLocations.diagnosticsDirectory)
         AudioDiagnostics.refreshFileLoggingState()
 

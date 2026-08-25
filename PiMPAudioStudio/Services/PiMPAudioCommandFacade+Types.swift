@@ -502,8 +502,7 @@ struct PiMPAudioResourceURI {
 
     init?(_ rawValue: String) {
         guard let components = URLComponents(string: rawValue),
-              components.scheme == AppRuntimeIdentity.mcpScheme ||
-                components.scheme == AppRuntimeIdentity.legacyMCPScheme,
+              components.scheme == AppRuntimeIdentity.mcpScheme,
               let host = components.host,
               !host.isEmpty else {
             return nil

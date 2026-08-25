@@ -144,9 +144,11 @@ Keep the best-sounding checkpoint even when it is not the lowest-loss one.
 ## Community Adapters
 
 The Community tab can list and install shared adapters into the local registry
-when network access is available. Community metadata cannot redirect storage
-outside the validated adapter directory. Treat community adapters like any other
-import: check base-model compatibility and A/B against base.
+when network access is available. The catalog is
+`https://github.com/PiMPStudios/pimp-adapters`. Community metadata cannot
+redirect storage outside the validated adapter directory. Treat community
+adapters like any other import: check base-model compatibility and A/B against
+base.
 
 ## Related
 

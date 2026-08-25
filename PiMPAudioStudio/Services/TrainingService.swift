@@ -1583,7 +1583,6 @@ enum TrainingPreprocessCacheStore {
                 "encoder_mask": sample.encoderMask?.shape ?? [],
             ],
         ])
-        index.removeValue(forKey: "anvil_preprocess_index_version")
         index["pimp_audio_preprocess_index_version"] = version
         index["updated_at"] = ISO8601DateFormatter().string(from: Date())
         index["entries"] = entries.sorted {

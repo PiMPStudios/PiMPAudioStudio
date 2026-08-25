@@ -176,9 +176,7 @@ public enum DatasetPackageV1Adapter {
             }
         }
 
-        let sourceVersion = string(manifest["pimp_audio_dataset_version"])
-            ?? string(manifest["anvil_dataset_version"])
-            ?? "1.0"
+        let sourceVersion = string(manifest["pimp_audio_dataset_version"]) ?? "1.0"
         let createdAt = string(manifest["created_at"]) ?? adaptedAt ?? "unknown"
         let package = DatasetPackageV2(
             id: slug(packageName),

@@ -33,8 +33,9 @@ final class CommunityService: ObservableObject {
 
     // MARK: - Configuration
 
-    private let manifestURL = URL(string:
-        "https://raw.githubusercontent.com/PiMPStudios/anvil-adapters/main/manifest.json")!
+    /// Curated catalog hosted in the public `pimp-adapters` repo.
+    static let communityManifestURL = URL(string:
+        "https://raw.githubusercontent.com/PiMPStudios/pimp-adapters/main/manifest.json")!
     private let cacheTTL: TimeInterval = 3600  // 1 hour
     private static let maxConcurrentDownloads = 3
 
@@ -68,7 +69,7 @@ final class CommunityService: ObservableObject {
         error = nil
 
         do {
-            let (data, response) = try await URLSession.shared.data(from: manifestURL)
+            let (data, response) = try await URLSession.shared.data(from: Self.communityManifestURL)
 
             // A 404 means the manifest hasn't been published yet — not an error worth
             // surfacing.  Treat it as an empty catalogue so the UI stays clean.

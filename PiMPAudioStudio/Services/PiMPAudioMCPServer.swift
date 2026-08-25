@@ -82,9 +82,6 @@ final class PiMPAudioMCPServer: ObservableObject {
     private static let tokenAccount = "mcp-bearer-token"
     private static let bindAddressKey = AppRuntimeIdentity.defaultsKey("mcp.bindAddress")
     private static let portKey = AppRuntimeIdentity.defaultsKey("mcp.port")
-    private static let legacyEnabledKey = AppRuntimeIdentity.legacyDefaultsKey("mcp.enabled")
-    private static let legacyTokenRequiredKey = AppRuntimeIdentity.legacyDefaultsKey("mcp.tokenRequired")
-    private static let legacyTokenKey = AppRuntimeIdentity.legacyDefaultsKey("mcp.token")
     static let defaultPort: UInt16 = 38765
     static let minimumPort: UInt16 = 1_024
     static let maximumPort: UInt16 = 65_535
@@ -128,15 +125,11 @@ final class PiMPAudioMCPServer: ObservableObject {
     init(facade: PiMPAudioCommandFacade) {
         self.facade = facade
         let defaults = UserDefaults.standard
-        self.isEnabled = Self.migratedBool(defaults, key: Self.enabledKey, legacyKey: Self.legacyEnabledKey)
-        self.isTokenRequired = Self.migratedBool(
-            defaults,
-            key: Self.tokenRequiredKey,
-            legacyKey: Self.legacyTokenRequiredKey
-        )
+        self.isEnabled = defaults.bool(forKey: Self.enabledKey)
+        self.isTokenRequired = defaults.bool(forKey: Self.tokenRequiredKey)
         self.bindAddress = Self.loadBindAddress(from: defaults)
         self.port = Self.loadPort(from: defaults)
-        let defaultsToken = Self.migratedString(defaults, key: Self.tokenKey, legacyKey: Self.legacyTokenKey)
+        let defaultsToken = defaults.string(forKey: Self.tokenKey)
         let keychainToken = KeychainStringStore.isAvailable
             ? KeychainStringStore.read(account: Self.tokenAccount)
             : nil
@@ -321,7 +314,6 @@ final class PiMPAudioMCPServer: ObservableObject {
             }
             if resolved.clearDefaults {
                 UserDefaults.standard.removeObject(forKey: tokenKey)
-                UserDefaults.standard.removeObject(forKey: legacyTokenKey)
             }
             return
         }
@@ -392,24 +384,6 @@ final class PiMPAudioMCPServer: ObservableObject {
         return candidate
     }
 
-    private static func migratedBool(_ defaults: UserDefaults, key: String, legacyKey: String) -> Bool {
-        if defaults.object(forKey: key) != nil {
-            return defaults.bool(forKey: key)
-        }
-        guard defaults.object(forKey: legacyKey) != nil else { return false }
-        let value = defaults.bool(forKey: legacyKey)
-        defaults.set(value, forKey: key)
-        return value
-    }
-
-    private static func migratedString(_ defaults: UserDefaults, key: String, legacyKey: String) -> String? {
-        if let value = defaults.string(forKey: key) {
-            return value
-        }
-        guard let value = defaults.string(forKey: legacyKey) else { return nil }
-        defaults.set(value, forKey: key)
-        return value
-    }
 }
 
 @MainActor

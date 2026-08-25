@@ -26,7 +26,6 @@ final class APIKeyStore: ObservableObject {
     ]
 
     private static let serviceName = AppRuntimeIdentity.keychainServiceName
-    private static let legacyServiceName = AppRuntimeIdentity.legacyKeychainServiceName
     private static var shouldReadKeychain: Bool {
         ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil
     }
@@ -97,14 +96,7 @@ final class APIKeyStore: ObservableObject {
     }
 
     private func readFromKeychain(account: String) -> String? {
-        if let value = readFromKeychain(account: account, serviceName: Self.serviceName) {
-            return value
-        }
-        guard let legacyValue = readFromKeychain(account: account, serviceName: Self.legacyServiceName) else {
-            return nil
-        }
-        writeToKeychain(account: account, value: legacyValue)
-        return legacyValue
+        readFromKeychain(account: account, serviceName: Self.serviceName)
     }
 
     private func readFromKeychain(account: String, serviceName: String) -> String? {
@@ -135,7 +127,6 @@ final class APIKeyStore: ObservableObject {
 
     private func deleteFromKeychain(account: String) {
         deleteFromKeychain(account: account, serviceName: Self.serviceName)
-        deleteFromKeychain(account: account, serviceName: Self.legacyServiceName)
     }
 
     private func deleteFromKeychain(account: String, serviceName: String) {
