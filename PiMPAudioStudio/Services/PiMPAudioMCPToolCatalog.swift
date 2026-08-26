@@ -1289,7 +1289,7 @@ enum MCPToolCatalog {
         tool(
             name: "cancel_operation",
             title: "Cancel Operation",
-            description: "Cancel a running MCP-observable operation by id. Generation and editor background operations use the same operation registry.",
+            description: "Cancel a running MCP-observable operation by id. Generation and editor background operations use the same operation registry. Requires confirm: true or MCP form approval.",
             properties: [
                 "id": [
                     "type": "string",
@@ -1306,6 +1306,10 @@ enum MCPToolCatalog {
                 "reason": [
                     "type": "string",
                     "description": "Optional human-readable cancellation reason."
+                ],
+                "confirm": [
+                    "type": "boolean",
+                    "description": "Required when the client does not support MCP elicitation."
                 ]
             ]
         ),

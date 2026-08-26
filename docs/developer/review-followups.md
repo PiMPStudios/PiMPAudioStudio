@@ -7,8 +7,8 @@ Internal 0.8.0 use on a trusted Mac is still reasonable. Several of these should
 land before a wider or paid build.
 
 A `[x]` means the product change landed. It does **not** mean a test file on
-disk is compiled or run in CI. After the 2026-08 Qwen review, **#22** tracks
-three security test files that were never added to `project.pbxproj`.
+disk is compiled or run in CI unless that target is in `project.pbxproj` (see
+completed **#22**).
 
 ## Completed
 
@@ -22,56 +22,38 @@ three security test files that were never added to `project.pbxproj`.
   never sends `*`.
 - [x] **#3 YouTube URL allowlist** (security) — Dataset import only accepts
   https YouTube hosts and sanitizes yt-dlp video IDs before building watch URLs.
-  Tests live in `URLAllowlistTests.swift` but are **not in the Xcode target**
-  until **#22**.
+  Tests live in `URLAllowlistTests.swift` (in the Xcode target as of **#22**).
 - [x] **#4 Hugging Face adapter import host + streaming** (security) — Import
   requires huggingface.co / hf.co https and streams safetensors to disk via
-  `DownloadClient`. Same uncompiled `URLAllowlistTests.swift` as **#3**.
+  `DownloadClient`. Covered by `URLAllowlistTests.swift` (in the Xcode target as
+  of **#22**).
 - [x] **#6 Keychain write status + accessibility** (security / correctness) —
   Writes check `SecItemUpdate`/`SecItemAdd`, pin
   `WhenUnlockedThisDeviceOnly`, and surface failures in Settings / RunPod.
-  Tests live in `KeychainStoreTests.swift` but are **not in the Xcode target**
-  until **#22**.
+  Tests live in `KeychainStoreTests.swift` (in the Xcode target as of **#22**).
 - [x] **#8 Community adapter catalog URL** (correctness) —
   Catalog now loads from `PiMPStudios/pimp-adapters`. Pre-rebrand identity
   migration (old Application Support folder, Keychain service, MCP scheme, JSON
   field names) was removed in the same pass because no shipped users needed it.
   Commit `aebf72d`. Still need a public `pimp-adapters` repo with `manifest.json`
   or the Community tab stays empty on 404. Catalog URL test is in
-  `CommunityServiceTests.swift` — also **not in the Xcode target** until **#22**.
+  `CommunityServiceTests.swift` (in the Xcode target as of **#22**).
 - [x] **#5 Built-in model SHA-256 pins** (security / supply chain) —
   ACE-Step built-in files pin Hugging Face SHA-256 values. Verification still
   **fail-open**: `nil`/empty `sha256` skips the checksum (gated Stable Audio)
   instead of refusing the download.
+- [x] **#22 Stale XcodeGen project** (quality / process) — Regenerated
+  `project.pbxproj` so `URLAllowlistTests`, `KeychainStoreTests`, and
+  `CommunityServiceTests` compile in the app test target. Optional later: CI
+  `xcodegen generate && git diff --exit-code`.
+- [x] **#23 MCP `cancel_operation` confirmation** (security / policy) —
+  Same confirm / elicitation gate as `cancel_generation`. Facade also requires
+  `confirm: true`. `set_verbose_diagnostics` still ungated (lower stakes).
+- [x] **#24 Operation trim must not cancel live work** (correctness) —
+  Evicts oldest terminal records only; pinned / non-terminal ids stay even if
+  the cap is exceeded.
 
 ## Open — ranked most important first
-
-22. **Stale XcodeGen project — three app tests never compile** (quality / process)
-    `project.yml` already has `sources: [PiMPAudioStudioTests]`. Committed
-    `project.pbxproj` was last generated in `01e4951`. Disk has 10 test files;
-    the target Sources phase has 7. Missing: `URLAllowlistTests.swift`,
-    `KeychainStoreTests.swift`, `CommunityServiceTests.swift`. CI
-    `xcodebuild -only-testing:PiMPAudioStudioTests` goes green without them.
-    Fix: `xcodegen generate` and commit the pbxproj. Optional later: CI
-    `xcodegen generate && git diff --exit-code -- PiMPAudioStudio.xcodeproj`.
-    Do not stop committing the pbxproj without a workflow decision.
-
-23. **MCP `cancel_operation` bypasses the `cancel_generation` confirm gate**
-    (security / policy) — `requiresElicitableConfirmation` includes
-    `cancel_generation` but not `cancel_operation`. The latter can still call
-    `generationService?.cancel()` for the active generation id. Same
-    string-list vs dispatch hole as `generate` missing confirm. Gate
-    `cancel_operation` (and consider `set_verbose_diagnostics`). Longer term:
-    `requiresConfirmation` on the tool declaration plus a test that every
-    mutating catalog tool is gated — folds into **#13**.
-
-24. **`trimOperationRecords()` can cancel a live operation** (correctness) —
-    New ops `insert(id, at: 0)`; the cap keeps the 50 newest and
-    `operationTasks[id]?.cancel()` on the rest with no terminal/active check.
-    A live generate is evicted if 50 later `registerOperation` calls pile up
-    (generate / editor / download / training / audition — not list/status).
-    Evict oldest **terminal** records first; never cancel
-    `activeGenerationOperationID` / `activeEditorOperationID`.
 
 25. **SFX unconditional `print()` + MLX `.item()` GPU syncs** (perf / hygiene)
     `SoundFXPipeline`, `SFXDiffusionActor`, `SFXDiTActor` print even when
@@ -143,12 +125,9 @@ three security test files that were never added to `project.pbxproj`.
 
 ## Highest-leverage next picks
 
-If only a few: **#22** (`xcodegen generate` so the three tests actually run),
-then **#23** (gate `cancel_operation`). **#9** is the cheapest CI add (Ubuntu
-Python unittests, not macOS 10× minutes). **#7** only if App Store is soon.
-
-Hold **#25** for an SFX hygiene pass. Do **#24** when touching the operation
-registry.
+If only a few: **#9** (Ubuntu `python3 -m unittest` for remote-worker — cheap
+on Linux minutes). **#25** is a local SFX hygiene pass (no CI needed).
+**#7** only if App Store is soon.
 
 ## Declined or parked (do not re-open from later reviews)
 

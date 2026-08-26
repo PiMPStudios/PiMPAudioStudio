@@ -22,6 +22,8 @@ All notable changes to PiMP Audio Studio are documented here.
   client cannot prompt — callers must pass `confirm: true`.
 - **Remote training monitors drop finished tasks** instead of leaving a
   dead `Task` per pod.
+- **App unit tests include URL allowlist, Keychain, and community catalog
+  tests** that were on disk but missing from the committed Xcode project.
 
 ### Changed
 
@@ -50,6 +52,8 @@ All notable changes to PiMP Audio Studio are documented here.
   present.
 - **Dropped the unused Phi-3 `lyric-llm` built-in.** Local lyrics stay on
   Settings → Intelligence (Llama 3 MLX). `ModelCategory.lyricLLM` is gone.
+- **MCP `cancel_operation` requires confirmation**, same as
+  `cancel_generation`. Operation history trim no longer cancels live tasks.
 
 ### Added
 

@@ -26,6 +26,9 @@ extension PiMPAudioCommandFacade {
     }
 
     func cancelOperation(arguments: [String: Any]) throws -> [String: Any] {
+        guard boolValue(arguments["confirm"]) == true else {
+            throw PiMPAudioCommandFacadeError.confirmationRequired("cancel_operation")
+        }
         refreshGenerationOperation()
         let id = try operationID(from: arguments)
         guard var record = operationRecords[id] else {
@@ -863,14 +866,45 @@ extension PiMPAudioCommandFacade {
     }
 
     func trimOperationRecords() {
-        guard operationOrder.count > maxOperationRecords else { return }
-        let staleIDs = operationOrder.dropFirst(maxOperationRecords)
-        operationOrder = Array(operationOrder.prefix(maxOperationRecords))
-        for id in staleIDs {
+        let pinned = Set(
+            [activeGenerationOperationID, activeEditorOperationID].compactMap { $0 }
+        )
+        let trimmed = Self.trimmedOperationOrder(
+            order: operationOrder,
+            isPinned: { pinned.contains($0) },
+            isTerminal: { operationRecords[$0]?.status.isTerminal ?? true },
+            maxCount: maxOperationRecords
+        )
+        guard trimmed.evicted.isEmpty == false else { return }
+        operationOrder = trimmed.kept
+        for id in trimmed.evicted {
             operationRecords[id] = nil
-            operationTasks[id]?.cancel()
             operationTasks[id] = nil
         }
+    }
+
+    /// Newest-first `order`. Evict oldest terminal records first. Never drop
+    /// pinned or non-terminal ids, even if that exceeds `maxCount`.
+    nonisolated static func trimmedOperationOrder(
+        order: [String],
+        isPinned: (String) -> Bool,
+        isTerminal: (String) -> Bool,
+        maxCount: Int
+    ) -> (kept: [String], evicted: [String]) {
+        let cap = max(1, maxCount)
+        var live: [String] = []
+        var terminal: [String] = []
+        for id in order {
+            if isPinned(id) || !isTerminal(id) {
+                live.append(id)
+            } else {
+                terminal.append(id)
+            }
+        }
+        let terminalBudget = max(0, cap - live.count)
+        let keptTerminal = Array(terminal.prefix(terminalBudget))
+        let evicted = Array(terminal.dropFirst(terminalBudget))
+        return (live + keptTerminal, evicted)
     }
 
 

@@ -132,6 +132,39 @@ import Testing
     #expect(MCPHTTPServer.isRetryableAcceptError(EINVAL) == false)
 }
 
+@Test func mcpCancelOperationRequiresElicitableConfirmation() {
+    #expect(PiMPAudioMCPServer.toolRequiresElicitableConfirmation("cancel_operation"))
+    #expect(PiMPAudioMCPServer.toolRequiresElicitableConfirmation("cancel_generation"))
+    #expect(PiMPAudioMCPServer.toolRequiresElicitableConfirmation("list_operations") == false)
+    #expect(PiMPAudioMCPServer.toolRequiresElicitableConfirmation("get_operation") == false)
+}
+
+@Test func mcpOperationTrimEvictsOldestTerminalAndKeepsLive() {
+    let order = ["live-new", "done-new", "live-old", "done-mid", "done-old"]
+    let pinned: Set<String> = ["live-old"]
+    let terminal: Set<String> = ["done-new", "done-mid", "done-old"]
+    let trimmed = PiMPAudioCommandFacade.trimmedOperationOrder(
+        order: order,
+        isPinned: { pinned.contains($0) },
+        isTerminal: { terminal.contains($0) },
+        maxCount: 3
+    )
+    #expect(trimmed.kept == ["live-new", "live-old", "done-new"])
+    #expect(trimmed.evicted == ["done-mid", "done-old"])
+}
+
+@Test func mcpOperationTrimNeverEvictsLiveEvenWhenOverCap() {
+    let order = ["a", "b", "c", "done"]
+    let trimmed = PiMPAudioCommandFacade.trimmedOperationOrder(
+        order: order,
+        isPinned: { $0 == "c" },
+        isTerminal: { $0 == "done" },
+        maxCount: 2
+    )
+    #expect(trimmed.kept == ["a", "b", "c"])
+    #expect(trimmed.evicted == ["done"])
+}
+
 @Test func mcpConfirmationRequiresConfirmWithoutElicitation() {
     #expect(
         MCPConfirmationDecision.evaluate(

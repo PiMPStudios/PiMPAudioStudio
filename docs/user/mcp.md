@@ -62,7 +62,7 @@ High-level tool groups:
 | Local training | `training_preflight`, `start_training`, `stop_training`, inspect/compare tools |
 | Remote GPU | `runpod_status`, `launch_runpod_pod`, `create_remote_training_job`, `upload_remote_training_job`, `start_remote_training_job`, `remote_training_job_status`, `pull_remote_training_job`, `stop_runpod_pod` |
 | Library / diagnostics | `save_generation_preset`, `delete_generation_preset`, `set_verbose_diagnostics`, `tail_diagnostics_log` |
-| Operations | `list_operations`, `get_operation`, `cancel_operation` |
+| Operations | `list_operations`, `get_operation`, `cancel_operation` (confirm) |
 | Cleanup | `release_memory` |
 
 Long-running work returns an `operationID` you can poll. Mutating tools default
@@ -76,9 +76,10 @@ written through MCP.
 
 - Bind to **127.0.0.1** only — not a public server.
 - Prefer `dryRun: true` first.
-- Generation, editor load/export, lyrics, adapter selection, and take marking
-  are confirmation-gated. `generate` / `generate_song` / `load_editor_audio` /
-  `render_editor_audio` default to dry-run.
+- Generation, editor load/export, lyrics, adapter selection, take marking,
+  and cancelling a generation or operation are confirmation-gated. `generate` /
+  `generate_song` / `load_editor_audio` / `render_editor_audio` default to
+  dry-run.
 - Billable RunPod launches require confirmation.
 - Training start/stop, editor mutations, and memory release are confirmation
   gated.

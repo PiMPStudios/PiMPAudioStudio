@@ -196,6 +196,46 @@ final class PiMPAudioMCPServer: ObservableObject {
         requested || bindAddress == .allInterfaces
     }
 
+    nonisolated static func toolRequiresElicitableConfirmation(_ toolName: String) -> Bool {
+        switch toolName {
+        case "generate",
+             "generate_song",
+             "write_lyrics",
+             "apply_adapter",
+             "load_editor_audio",
+             "render_editor_audio",
+             "mark_preferred_take",
+             "cancel_generation",
+             "cancel_operation",
+             "submit_editor_inpaint",
+             "apply_editor_effect_chain",
+             "start_training",
+             "stop_training",
+             "launch_runpod_pod",
+             "stop_runpod_pod",
+             "create_remote_training_job",
+             "upload_remote_training_job",
+             "start_remote_training_job",
+             "pull_remote_training_job",
+             "build_training_dataset",
+             "enrich_training_dataset",
+             "update_training_dataset_review",
+             "import_adapter",
+             "delete_adapter",
+             "merge_adapters",
+             "download_model",
+             "set_active_model",
+             "delete_history_entries",
+             "save_generation_preset",
+             "delete_generation_preset",
+             "run_adapter_audition",
+             "release_memory":
+            return true
+        default:
+            return false
+        }
+    }
+
     @discardableResult
     func setPort(_ newPort: UInt16) -> Bool {
         guard Self.isValidPort(newPort) else { return false }
@@ -1207,7 +1247,7 @@ private final class PiMPAudioMCPSDKBridge {
         arguments: [String: Any]
     ) async -> ConfirmationDecision {
         switch MCPConfirmationDecision.evaluate(
-            requiresConfirmation: requiresElicitableConfirmation(toolName),
+            requiresConfirmation: PiMPAudioMCPServer.toolRequiresElicitableConfirmation(toolName),
             confirmArgument: boolArgument(arguments["confirm"]),
             isDryRun: isDryRun(toolName: toolName, arguments: arguments),
             clientSupportsFormElicitation: clientSupportsFormElicitation
@@ -1260,45 +1300,6 @@ private final class PiMPAudioMCPSDKBridge {
                 action: "error",
                 reason: "MCP confirmation request failed: \(error.localizedDescription)"
             ))
-        }
-    }
-
-    private func requiresElicitableConfirmation(_ toolName: String) -> Bool {
-        switch toolName {
-        case "generate",
-             "generate_song",
-             "write_lyrics",
-             "apply_adapter",
-             "load_editor_audio",
-             "render_editor_audio",
-             "mark_preferred_take",
-             "cancel_generation",
-             "submit_editor_inpaint",
-             "apply_editor_effect_chain",
-             "start_training",
-             "stop_training",
-             "launch_runpod_pod",
-             "stop_runpod_pod",
-             "create_remote_training_job",
-             "upload_remote_training_job",
-             "start_remote_training_job",
-             "pull_remote_training_job",
-             "build_training_dataset",
-             "enrich_training_dataset",
-             "update_training_dataset_review",
-             "import_adapter",
-             "delete_adapter",
-             "merge_adapters",
-             "download_model",
-             "set_active_model",
-             "delete_history_entries",
-             "save_generation_preset",
-             "delete_generation_preset",
-             "run_adapter_audition",
-             "release_memory":
-            return true
-        default:
-            return false
         }
     }
 
@@ -1377,6 +1378,8 @@ private final class PiMPAudioMCPSDKBridge {
             return "PiMP Audio Studio wants to mark a history take as preferred. Approve this action?"
         case "cancel_generation":
             return "PiMP Audio Studio wants to cancel the active generation. Approve this action?"
+        case "cancel_operation":
+            return "PiMP Audio Studio wants to cancel a running operation. Approve this action?"
         case "submit_editor_inpaint":
             return "PiMP Audio Studio wants to submit a selected-region editor inpaint/repaint mutation. Approve this action?"
         case "apply_editor_effect_chain":

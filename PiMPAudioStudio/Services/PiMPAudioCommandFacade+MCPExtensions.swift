@@ -635,7 +635,8 @@ extension PiMPAudioCommandFacade {
         if let operationID = activeGenerationOperationID {
             _ = try? cancelOperation(arguments: [
                 "id": operationID,
-                "reason": stringValue(arguments["reason"]) ?? "Cancelled via cancel_generation"
+                "reason": stringValue(arguments["reason"]) ?? "Cancelled via cancel_generation",
+                "confirm": true
             ])
         }
         return [

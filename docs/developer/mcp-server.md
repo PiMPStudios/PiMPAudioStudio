@@ -110,7 +110,8 @@ Supported DSP effect names: `trimToSelection`, `deleteSelection`, `fadeIn`,
 - `delete_history_entries`
 - `save_generation_preset`, `delete_generation_preset`
 - `set_verbose_diagnostics`, `tail_diagnostics_log`
-- `cancel_generation` (confirm), `run_adapter_audition`
+- `cancel_generation` (confirm), `cancel_operation` (confirm),
+  `run_adapter_audition`
 
 ### Remote GPU lifecycle
 

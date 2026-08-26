@@ -108,7 +108,7 @@ The local MCP endpoint exposes these tools:
 - `generate`
 - `generate_song`
 - `mark_preferred_take`
-- `cancel_generation`
+- `cancel_generation` (confirm)
 - `run_adapter_audition`
 
 ### Editor
@@ -154,7 +154,7 @@ The local MCP endpoint exposes these tools:
 
 ### Operations / cleanup
 
-- `cancel_operation`
+- `cancel_operation` (confirm)
 - `release_memory`
 
 `enhance_prompt` and `write_lyrics` call the same local/API
@@ -217,7 +217,9 @@ time range, to a WAV/AIFF file. It defaults to an `MCPExports` folder beside
 the loaded source audio and returns an `editor.renderAudio` `operationID`.
 
 `list_operations`, `get_operation`, and `cancel_operation` expose the current
-operation layer for long-running work. Generation submissions return an
+operation layer for long-running work. `cancel_operation` requires `confirm:
+true` or MCP form elicitation, same as `cancel_generation`. Generation
+submissions return an
 `operationID`; editor audio loads return `editor.loadAudio` operations,
 editor inpaint/repaint submissions return `editor.inpaint`, DSP chains return
 `editor.applyEffectChain`, and editor render submissions return
@@ -578,7 +580,8 @@ curl -s -X DELETE "$ENDPOINT" \
   registers an `editor.loadAudio` record; reads the file; encodes editor
   latents; and updates `editor_status.loadedAudio` when complete.
 - `cancel_operation` currently supports active generation operations and
-  background editor load, inpaint, DSP, and render tasks. Client
+  background editor load, inpaint, DSP, and render tasks. It requires
+  `confirm: true` or MCP form elicitation. Client
   `notifications/cancelled` apply to in-flight MCP requests through the SDK;
   after background work has been submitted, use `cancel_operation` for the app
   operation itself.
