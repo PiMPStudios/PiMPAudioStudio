@@ -145,15 +145,20 @@ public actor SFXDiffusionActor {
                     AudioDiagnostics.tensor("sfx/diffusion/step\(stepIdx)/cfgDelta", diff)
                 }
 
-                // Log cond/uncond diff at step 0 — compare to Python reference:
-                //   Python diff.abs_mean ≈ 0.019 (ratio ≈ 11% of v_cond)
-                //   Swift should match within ~2× if cross-attention is working.
-                if stepIdx == 0 {
+                if stepIdx == 0, AudioDiagnostics.isEnabled {
                     let diffMean = MLX.abs(diff).mean().item(Float.self)
                     let condMean = MLX.abs(condPred).mean().item(Float.self)
-                    let ratio    = condMean > 0 ? diffMean / condMean : 0
-                    print(String(format: "[SFXDIFF] step0 cond_abs_mean=%.4f uncond_abs_mean=%.4f diff_abs_mean=%.4f ratio=%.4f (Python ref: diff≈0.019 ratio≈0.11)",
-                                 condMean, MLX.abs(uncondPred).mean().item(Float.self), diffMean, ratio))
+                    let ratio = condMean > 0 ? diffMean / condMean : 0
+                    AudioDiagnostics.note(
+                        "sfx/diffusion/step0cfg",
+                        String(
+                            format: "cond_abs_mean=%.4f uncond_abs_mean=%.4f diff_abs_mean=%.4f ratio=%.4f (Python ref: diff≈0.019 ratio≈0.11)",
+                            condMean,
+                            MLX.abs(uncondPred).mean().item(Float.self),
+                            diffMean,
+                            ratio
+                        )
+                    )
                 }
             } else {
                 vt = try await dit.predict(
@@ -201,13 +206,6 @@ public actor SFXDiffusionActor {
         AudioDiagnostics.tensor("SFX_FINAL_LATENTS", xt)
         AudioDiagnostics.note("SFX_DIFF_DONE", "diffTime=\(String(format:"%.2f",diffTime))s perStep=\(String(format:"%.3f",diffTime/Double(max(config.steps,1))))s")
         AudioDiagnostics.memory("sfx/diffusion/end")
-
-        // Unconditional diagnostic — always printed regardless of AudioDiagnostics flag.
-        // Tells us whether the ODE converged to structured latents or stayed noisy.
-        let finalAbsMean = MLX.abs(xt).mean().item(Float.self)
-        let finalAbsMax  = MLX.abs(xt).max().item(Float.self)
-        let finalMean    = xt.mean().item(Float.self)
-        print("[SFXDIFF] final_latents abs_mean=\(String(format:"%.4f",finalAbsMean)) abs_max=\(String(format:"%.4f",finalAbsMax)) mean=\(String(format:"%.4f",finalMean)) shape=\(xt.shape)")
 
         return DiffusionResult(latents: xt, timeCosts: costs)
     }
@@ -299,12 +297,20 @@ public actor SFXDiffusionActor {
                     AudioDiagnostics.tensor("sfx/inpaint/step\(stepIdx)/uncondPred", uncondPred)
                     AudioDiagnostics.tensor("sfx/inpaint/step\(stepIdx)/cfgDelta", diff)
                 }
-                if stepIdx == 0 {
+                if stepIdx == 0, AudioDiagnostics.isEnabled {
                     let diffMean = MLX.abs(diff).mean().item(Float.self)
                     let condMean = MLX.abs(condPred).mean().item(Float.self)
-                    let ratio    = condMean > 0 ? diffMean / condMean : 0
-                    print(String(format: "[SFXDIFF] step0 cond_abs_mean=%.4f uncond_abs_mean=%.4f diff_abs_mean=%.4f ratio=%.4f (Python ref: diff≈0.019 ratio≈0.11)",
-                                 condMean, MLX.abs(uncondPred).mean().item(Float.self), diffMean, ratio))
+                    let ratio = condMean > 0 ? diffMean / condMean : 0
+                    AudioDiagnostics.note(
+                        "sfx/inpaint/step0cfg",
+                        String(
+                            format: "cond_abs_mean=%.4f uncond_abs_mean=%.4f diff_abs_mean=%.4f ratio=%.4f (Python ref: diff≈0.019 ratio≈0.11)",
+                            condMean,
+                            MLX.abs(uncondPred).mean().item(Float.self),
+                            diffMean,
+                            ratio
+                        )
+                    )
                 }
             } else {
                 vt = try await dit.predict(

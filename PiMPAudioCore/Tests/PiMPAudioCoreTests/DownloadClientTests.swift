@@ -2,16 +2,16 @@ import Testing
 import Foundation
 @testable import PiMPAudioCore
 
-@Test func downloadClientBuildsCorrectURL() async {
+@Test func downloadClientBuildsCorrectURL() async throws {
     let client = DownloadClient()
-    let url = await client.huggingFaceURL(repo: "ACEStep/ACE-Step-v1-5-DiT", file: "model.safetensors")
+    let url = try await client.huggingFaceURL(repo: "ACEStep/ACE-Step-v1-5-DiT", file: "model.safetensors")
 
     #expect(url.absoluteString == "https://huggingface.co/ACEStep/ACE-Step-v1-5-DiT/resolve/main/model.safetensors")
 }
 
-@Test func downloadClientBuildsPinnedRevisionURL() async {
+@Test func downloadClientBuildsPinnedRevisionURL() async throws {
     let client = DownloadClient()
-    let url = await client.huggingFaceURL(
+    let url = try await client.huggingFaceURL(
         repo: "DaRealDahoodie/native-pack",
         revision: "0123456789abcdef",
         file: "nested/model.safetensors"

@@ -84,9 +84,8 @@ public actor SoundFXPipeline {
 
         let textHidden  = t5(inputIds: paddedTextIds,  attentionMask: paddedTextMask)  // [1, 128, 768]
         let emptyHidden = t5(inputIds: paddedEmptyIds, attentionMask: paddedEmptyMask) // [1, 128, 768]
-
-        print("[SFXPIPE] T5 textHidden  shape=\(textHidden.shape)  abs_mean=\(String(format:"%.4f",abs(textHidden).mean().item(Float.self)))")
-        print("[SFXPIPE] T5 emptyHidden shape=\(emptyHidden.shape) abs_mean=\(String(format:"%.4f",abs(emptyHidden).mean().item(Float.self)))")
+        AudioDiagnostics.tensor("SFX_T5_TEXT_HIDDEN", textHidden)
+        AudioDiagnostics.tensor("SFX_T5_EMPTY_HIDDEN", emptyHidden)
 
         return try await generate(
             precomputedText: textHidden,
@@ -148,12 +147,6 @@ public actor SoundFXPipeline {
         let startToken = startEmb.expandedDimensions(axis: 1)   // [1, 1, 768]
         let t5Text  = Self.t5Pad64(textHidden)                   // [1, 64, 768]
         let crossCond = concatenated([t5Text, totalToken, startToken], axis: 1) // [1, 66, 768]
-        // Unconditional scale check — Python target: crossCond abs_mean ≈ 0.025, globalCond ≈ 0.68.
-        // The small crossCond value is expected: Python's T5 zeroes out PAD positions after the
-        // final norm, so for a short prompt (~4 real tokens) only 4/64 T5 slots are non-zero.
-        // The 2 time tokens (~0.68 each) dominate the average: (4*~0.3 + 60*0 + 2*0.68)/66 ≈ 0.039.
-        let crossAbsMean = abs(crossCond).mean().item(Float.self)
-        print("[SFXPIPE] crossCond shape=\(crossCond.shape) abs_mean=\(String(format:"%.4f",crossAbsMean))")
         AudioDiagnostics.tensor("SFX_CROSS_COND", crossCond)
 
         // Unconditioned tokens: same time tokens, empty-string T5 prefix.
@@ -163,14 +156,10 @@ public actor SoundFXPipeline {
             return concatenated([t5Uncond, totalToken, startToken], axis: 1) // [1, 66, 768]
         }
         if let uc = uncrossCondTokens {
-            let uncrossAbsMean = abs(uc).mean().item(Float.self)
-            print("[SFXPIPE] uncrossCond shape=\(uc.shape) abs_mean=\(String(format:"%.4f",uncrossAbsMean))")
             AudioDiagnostics.tensor("SFX_UNCROSS_COND", uc)
         } else {
             AudioDiagnostics.note("SFX_UNCROSS_COND", "nil (CFG disabled)")
         }
-        let globalAbsMean = abs(globalCond).mean().item(Float.self)
-        print("[SFXPIPE] globalCond shape=\(globalCond.shape) abs_mean=\(String(format:"%.4f",globalAbsMean))")
 
         // Diffusion.
         progressContinuation?.yield(.diffusion(DiffusionProgress(

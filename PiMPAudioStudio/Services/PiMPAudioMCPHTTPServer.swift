@@ -275,13 +275,23 @@ final class MCPHTTPServer {
 
             if byteCount > 0 {
                 buffer.append(contentsOf: chunk.prefix(byteCount))
-                if let request = RawHTTPRequest(data: buffer) {
+                switch RawHTTPRequest.parse(buffer) {
+                case .ready(let request):
                     Task {
                         let response = await self.respond(to: request)
                         await self.send(response, on: client, generation: generation)
                         self.closeClient(client, generation: generation)
                     }
                     return
+                case .notImplemented:
+                    sendAndClose(
+                        .jsonError(statusCode: 501, message: "Not Implemented"),
+                        on: client,
+                        generation: generation
+                    )
+                    return
+                case .incomplete:
+                    break
                 }
                 continue
             }
@@ -392,9 +402,15 @@ final class MCPHTTPServer {
             while remaining > 0 {
                 guard isClientLive(client, generation: generation) else { return false }
                 let sent = Darwin.send(client, address, remaining, 0)
-                guard sent > 0 else { return false }
-                remaining -= sent
-                address += sent
+                if sent > 0 {
+                    remaining -= sent
+                    address += sent
+                    continue
+                }
+                if sent < 0 && errno == EINTR {
+                    continue
+                }
+                return false
             }
             return true
         }
@@ -415,21 +431,36 @@ private struct MCPHTTPServerError: LocalizedError {
 }
 
 struct RawHTTPRequest {
+    enum ParseResult {
+        case incomplete
+        case ready(RawHTTPRequest)
+        case notImplemented
+    }
+
     let method: String
     let path: String
     let headers: [String: String]
     let body: Data
 
     init?(data: Data) {
+        switch Self.parse(data) {
+        case .ready(let request):
+            self = request
+        case .incomplete, .notImplemented:
+            return nil
+        }
+    }
+
+    static func parse(_ data: Data) -> ParseResult {
         let marker = Data("\r\n\r\n".utf8)
-        guard let headerEnd = data.range(of: marker)?.upperBound else { return nil }
+        guard let headerEnd = data.range(of: marker)?.upperBound else { return .incomplete }
         let headerData = data[..<headerEnd]
-        guard let headerText = String(data: headerData, encoding: .utf8) else { return nil }
+        guard let headerText = String(data: headerData, encoding: .utf8) else { return .incomplete }
 
         let lines = headerText.components(separatedBy: "\r\n").filter { !$0.isEmpty }
-        guard let requestLine = lines.first else { return nil }
+        guard let requestLine = lines.first else { return .incomplete }
         let parts = requestLine.split(separator: " ", maxSplits: 2).map(String.init)
-        guard parts.count >= 2 else { return nil }
+        guard parts.count >= 2 else { return .incomplete }
 
         var headers: [String: String] = [:]
         for line in lines.dropFirst() {
@@ -439,25 +470,44 @@ struct RawHTTPRequest {
             headers[key] = value
         }
 
+        if headers["transfer-encoding"]?.lowercased().contains("chunked") == true {
+            return .notImplemented
+        }
+
         let bodyStart = headerEnd
         let availableBodyBytes = data.count - bodyStart
         guard let contentLength = Int(headers["content-length"] ?? "0"),
               contentLength >= 0,
               contentLength <= availableBodyBytes else {
-            return nil
+            return .incomplete
         }
 
-        self.method = parts[0]
-        self.path = parts[1].split(separator: "?", maxSplits: 1).first.map(String.init) ?? parts[1]
+        return .ready(
+            RawHTTPRequest(
+                method: parts[0],
+                path: parts[1].split(separator: "?", maxSplits: 1).first.map(String.init) ?? parts[1],
+                headers: headers,
+                body: Data(data[bodyStart..<(bodyStart + contentLength)])
+            )
+        )
+    }
+
+    private init(method: String, path: String, headers: [String: String], body: Data) {
+        self.method = method
+        self.path = path
         self.headers = headers
-        self.body = Data(data[bodyStart..<(bodyStart + contentLength)])
+        self.body = body
     }
 
     var bearerToken: String? {
         guard let authorization = headers["authorization"] else { return nil }
-        let prefix = "Bearer "
-        guard authorization.hasPrefix(prefix) else { return nil }
-        return String(authorization.dropFirst(prefix.count))
+        let trimmed = authorization.trimmingCharacters(in: .whitespaces)
+        guard let space = trimmed.firstIndex(of: " ") else { return nil }
+        let scheme = trimmed[..<space]
+        guard scheme.lowercased() == "bearer" else { return nil }
+        let token = trimmed[trimmed.index(after: space)...]
+            .trimmingCharacters(in: .whitespaces)
+        return token.isEmpty ? nil : String(token)
     }
 
     func hasTrustedOrigin(allowNonLocalOrigins: Bool) -> Bool {

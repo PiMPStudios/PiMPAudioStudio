@@ -82,6 +82,39 @@ import Testing
     #expect(parsed?.bearerToken == "abcdef123456")
 }
 
+@Test func rawHTTPRequestExtractsBearerTokenCaseInsensitiveScheme() {
+    let request = """
+    POST /mcp HTTP/1.1\r
+    Authorization: bearer abcdef123456\r
+    Content-Length: 0\r
+    \r
+
+    """
+    let parsed = RawHTTPRequest(data: Data(request.utf8))
+    #expect(parsed?.bearerToken == "abcdef123456")
+}
+
+@Test func rawHTTPRequestRejectsChunkedTransferEncoding() {
+    let request = """
+    POST /mcp HTTP/1.1\r
+    Transfer-Encoding: chunked\r
+    \r
+    5\r
+    hello\r
+    0\r
+    \r
+
+    """
+    let data = Data(request.utf8)
+    switch RawHTTPRequest.parse(data) {
+    case .notImplemented:
+        break
+    default:
+        Issue.record("expected chunked encoding to be rejected as not implemented")
+    }
+    #expect(RawHTTPRequest(data: data) == nil)
+}
+
 @Test func rawHTTPRequestTrustedOriginAllowsMissingAndLocalhost() {
     func request(origin: String?) -> RawHTTPRequest {
         var lines = ["POST /mcp HTTP/1.1"]

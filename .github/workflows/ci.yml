@@ -11,7 +11,7 @@ concurrency:
 
 jobs:
   remote-worker:
-    name: Remote worker (ruff)
+    name: Remote worker (ruff + tests)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,6 +19,8 @@ jobs:
         with:
           src: remote-worker
           args: check --config remote-worker/ruff.toml
+      - name: Unit tests
+        run: python3 -m unittest discover -s remote-worker/tests -v
 
   pimpaudiocore:
     name: PiMPAudioCore compile tests

@@ -36,14 +36,25 @@ public actor SFXDiTActor {
         let matched   = suppliedKeys.intersection(modelKeys).count
         let supplied  = suppliedKeys.count
         let inModel   = modelKeys.count
-        print("[SFXDiT] loadWeights: supplied=\(supplied) model=\(inModel) matched=\(matched)")
+        AudioDiagnostics.note(
+            "SFX_DIT_LOAD",
+            "supplied=\(supplied) model=\(inModel) matched=\(matched)"
+        )
         if matched < supplied {
-            print("[SFXDiT] WARNING: \(supplied - matched) supplied key(s) not matched in model")
+            AudioDiagnostics.note(
+                "SFX_DIT_LOAD",
+                "WARNING: \(supplied - matched) supplied key(s) not matched in model"
+            )
         }
         let unloadedModelKeys = modelKeys.subtracting(suppliedKeys).sorted()
         if !unloadedModelKeys.isEmpty {
-            print("[SFXDiT] WARNING: \(unloadedModelKeys.count) model param(s) got no weight — staying at init:")
-            for k in unloadedModelKeys { print("  MISSING: \(k)") }
+            AudioDiagnostics.note(
+                "SFX_DIT_LOAD",
+                "WARNING: \(unloadedModelKeys.count) model param(s) got no weight — staying at init"
+            )
+            for k in unloadedModelKeys.prefix(20) {
+                AudioDiagnostics.note("SFX_DIT_LOAD", "MISSING: \(k)")
+            }
         }
 
         loaded = true
@@ -61,9 +72,7 @@ public actor SFXDiTActor {
         globalCond: MLXArray
     ) throws -> MLXArray {
         guard loaded else { throw SFXDiTActorError.weightsNotLoaded }
-        // Emit DiT-internal probes only on the first two calls per generation
-        // (cond + uncond for step 0).  After that diagEnabled=false keeps it quiet.
-        let shouldDiag = diagCallCount < 2
+        let shouldDiag = AudioDiagnostics.isEnabled && diagCallCount < 2
         diagCallCount += 1
         let result = model.forward(
             latents: latents,
@@ -73,15 +82,9 @@ public actor SFXDiTActor {
             diagEnabled: shouldDiag
         )
         eval(result)
-        // Non-gated probe: fires for the first 2 predict calls regardless of
-        // AudioDiagnostics flag so we can confirm the DiT is producing real velocity.
         if shouldDiag {
-            let absM = abs(result).mean().item(Float.self)
-            let absX = abs(result).max().item(Float.self)
-            let latAbsM = abs(latents).mean().item(Float.self)
-            let callN = diagCallCount - 1
-            let tsVal = timestep.item(Float.self)
-            print("[SFXDiT] call=\(callN) t=\(String(format:"%.4f",tsVal)) latents_abs_mean=\(String(format:"%.4f",latAbsM)) vt_abs_mean=\(String(format:"%.4f",absM)) vt_abs_max=\(String(format:"%.4f",absX))")
+            AudioDiagnostics.tensor("sfx/dit/predict\(diagCallCount - 1)/latents", latents)
+            AudioDiagnostics.tensor("sfx/dit/predict\(diagCallCount - 1)/vt", result)
         }
         return result
     }

@@ -78,7 +78,7 @@ GitHub Actions (`.github/workflows/ci.yml`) on `main` and pull requests:
 
 | Job | What it runs |
 | --- | --- |
-| Remote worker | `ruff check` with `remote-worker/ruff.toml` |
+| Remote worker | `ruff check` plus `python3 -m unittest discover -s remote-worker/tests -v` |
 | PiMPAudioCore | `swift build --package-path PiMPAudioCore --build-tests` (compile only — SwiftPM cannot load `default.metallib` on Actions). Run `scripts/test-pimpaudiocore-serial.sh` locally. |
 | App tests | `xcodebuild test -scheme PiMPAudioStudio -only-testing:PiMPAudioStudioTests` |
 
@@ -90,6 +90,7 @@ SwiftFormat config lives at `.swiftformat` for local use; it is **not** a CI gat
 
 ```bash
 ruff check remote-worker --config remote-worker/ruff.toml
+python3 -m unittest discover -s remote-worker/tests -v
 scripts/test-pimpaudiocore-serial.sh
 xcodebuild test -scheme PiMPAudioStudio -destination 'platform=macOS' -only-testing:PiMPAudioStudioTests
 ```

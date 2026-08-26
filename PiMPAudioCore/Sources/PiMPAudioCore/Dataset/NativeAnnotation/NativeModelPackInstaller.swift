@@ -28,14 +28,13 @@ public struct NativeModelPackCatalogEntry: Equatable, Sendable {
     }
 
     public var modelPageURL: URL {
-        guard let url = URL(
-            string: "https://huggingface.co/\(repositoryID)"
-        ) else {
-            preconditionFailure(
-                "Invalid Hugging Face repository ID: \(repositoryID)"
-            )
-        }
-        return url
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "huggingface.co"
+        components.percentEncodedPath = "/" + repositoryID.split(separator: "/").map {
+            $0.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? String($0)
+        }.joined(separator: "/")
+        return components.url ?? URL(string: "https://huggingface.co")!
     }
 }
 

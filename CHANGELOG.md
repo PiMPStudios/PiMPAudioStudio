@@ -54,6 +54,12 @@ All notable changes to PiMP Audio Studio are documented here.
   Settings → Intelligence (Llama 3 MLX). `ModelCategory.lyricLLM` is gone.
 - **MCP `cancel_operation` requires confirmation**, same as
   `cancel_generation`. Operation history trim no longer cancels live tasks.
+- **SFX generate/inpaint diagnostics go through `AudioDiagnostics`** instead of
+  unconditional `print()` / GPU `.item()` syncs.
+- **CI remote-worker job runs the Python unit tests**, not only ruff.
+- **MCP HTTP `Authorization` scheme is case-insensitive**; chunked
+  `Transfer-Encoding` is rejected with 501; `send` retries on `EINTR`.
+  Hugging Face URL builders throw instead of `preconditionFailure`.
 
 ### Added
 

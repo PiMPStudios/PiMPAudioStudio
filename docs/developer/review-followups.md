@@ -52,15 +52,17 @@ completed **#22**).
 - [x] **#24 Operation trim must not cancel live work** (correctness) —
   Evicts oldest terminal records only; pinned / non-terminal ids stay even if
   the cap is exceeded.
+- [x] **#25 SFX diagnostics** (perf / hygiene) — Unconditional `print()` /
+  `.item()` probes now go through `AudioDiagnostics` (AUDIODIAG files when
+  verbose is on). DiT first-two-call probes also honor that flag.
+- [x] **#9 Remote-worker Python tests in CI** (quality) — Ubuntu job runs
+  `python3 -m unittest discover -s remote-worker/tests -v` after ruff. Core
+  tests on Actions stay compile-only (metallib).
+- [x] **#26 Small MCP / download nits** (correctness) — Bearer scheme is
+  case-insensitive; chunked transfer encoding → 501; `send` retries `EINTR`;
+  Hugging Face URL builders throw instead of `preconditionFailure`.
 
 ## Open — ranked most important first
-
-25. **SFX unconditional `print()` + MLX `.item()` GPU syncs** (perf / hygiene)
-    `SoundFXPipeline`, `SFXDiffusionActor`, `SFXDiTActor` print even when
-    `AudioDiagnostics` is off. `.item(Float.self)` in those arguments forces
-    device→host syncs on the generate path. Finder-launched `.app` has no
-    stdout, so the probes also vanish in shipping. Route through
-    `AudioDiagnostics`; drop Python-parity scaffolding that always prints.
 
 7. **Sandbox exceptions cover all of Homebrew plus `~/.codex` / `~/.grok` / `~/.gemini`** (release)
    App Store / paid-release blocker if those tree-wide entitlements stay.
@@ -69,9 +71,7 @@ completed **#22**).
 
 8. ~~Community catalog URL~~ — done.
 
-9. **CI doesn’t run remote-worker Python tests (ruff only) and only compiles Core** (quality)
-   Path/zip guards can regress unnoticed. Add
-   `python3 -m unittest discover -s remote-worker/tests -v` to the Ubuntu job.
+9. ~~Remote-worker Python tests in CI~~ — done.
 
 10. **Community / HF adapters are unsigned** (security)
     LoRA deltas into DiT with no manifest signature. Pin hashes in the catalog
@@ -116,18 +116,11 @@ completed **#22**).
     `print()` in YouTube builder, UUID MCP token vs `SecRandomCopyBytes`,
     non-constant-time SHA compare, Swift 5.10 vs CI 6.2.
 
-26. **Small MCP / download nits** (correctness) — keep, do not boil:
-    RFC 7235 `Authorization` scheme is case-insensitive (`bearer` 401s);
-    `Transfer-Encoding: chunked` becomes an empty body (reject 501);
-    `preconditionFailure` in `DownloadClient` / `NativeModelPackInstaller` is
-    reachable from Add Model (throw instead);
-    `send` on EINTR should retry.
-
 ## Highest-leverage next picks
 
-If only a few: **#9** (Ubuntu `python3 -m unittest` for remote-worker — cheap
-on Linux minutes). **#25** is a local SFX hygiene pass (no CI needed).
-**#7** only if App Store is soon.
+If only a few: **#11** (`ytDlpVersion()` off the main thread) or **#17**
+(clamp `merge_adapters` alpha). **#7** only if App Store is soon. **#10**
+before a public adapter catalog.
 
 ## Declined or parked (do not re-open from later reviews)
 

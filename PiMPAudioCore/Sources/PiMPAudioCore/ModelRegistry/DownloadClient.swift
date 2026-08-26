@@ -8,16 +8,13 @@ public actor DownloadClient: NativeModelPackDownloading {
         repo: String,
         revision: String = "main",
         file: String
-    ) -> URL {
+    ) throws -> URL {
         var components = URLComponents()
         components.scheme = "https"
         components.host = "huggingface.co"
         components.path = "/\(repo)/resolve/\(revision)/\(file)"
         guard let url = components.url else {
-            preconditionFailure(
-                "Invalid HuggingFace URL for repo: \(repo), "
-                    + "revision: \(revision), file: \(file)"
-            )
+            throw DownloadError.invalidURL("\(repo)/\(revision)/\(file)")
         }
         return url
     }
@@ -43,7 +40,7 @@ public actor DownloadClient: NativeModelPackDownloading {
         onProgress: @Sendable @escaping (Double) -> Void,
         onRetry: @Sendable @escaping () -> Void
     ) async throws {
-        let source = huggingFaceURL(
+        let source = try huggingFaceURL(
             repo: repo,
             revision: revision,
             file: file
@@ -79,7 +76,7 @@ public actor DownloadClient: NativeModelPackDownloading {
         onProgress: @Sendable @escaping (Double) -> Void
     ) async throws {
         try await downloadFile(
-            from: huggingFaceURL(
+            from: try huggingFaceURL(
                 repo: repo,
                 revision: revision,
                 file: file
@@ -199,6 +196,7 @@ public enum DownloadError: Error, Sendable, LocalizedError {
     case checksumMismatch(file: String)
     case authRequired(repo: String)
     case authForbidden(repo: String)
+    case invalidURL(String)
 
     public var errorDescription: String? {
         switch self {
@@ -220,6 +218,8 @@ public enum DownloadError: Error, Sendable, LocalizedError {
             return "\(repo) is a gated model. Add a HuggingFace access token in Settings → Models, and accept the model's license on huggingface.co."
         case .authForbidden(let repo):
             return "HuggingFace rejected the access token for \(repo). Verify the token is valid and that the model license has been accepted."
+        case .invalidURL(let spec):
+            return "Invalid Hugging Face URL for \(spec)"
         }
     }
 }
