@@ -177,11 +177,18 @@ def find_remote_job(root: Path) -> Path:
         return find_remote_job(target)
     if root.is_dir():
         direct = root / "remote_job.json"
-        if direct.exists():
+        if direct.is_file():
             return direct.resolve()
-        for candidate in root.rglob("remote_job.json"):
-            return candidate.resolve()
-    raise FileNotFoundError(f"Could not find remote_job.json from {root}")
+        wrappers = [
+            child / "remote_job.json"
+            for child in sorted(root.iterdir())
+            if child.is_dir() and (child / "remote_job.json").is_file()
+        ]
+        if len(wrappers) == 1:
+            return wrappers[0].resolve()
+    raise FileNotFoundError(
+        f"Could not find remote_job.json at the package root of {root}"
+    )
 
 
 def normalize_variant(raw: str | None) -> str:

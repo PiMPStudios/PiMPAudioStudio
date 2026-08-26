@@ -74,6 +74,12 @@ completed **#22**).
   `© 2026 PiMP Studios`.
 - [x] **#15 MCP HTTP is IPv4-only** (correctness) — Documented: bind
   `127.0.0.1`, not `localhost`/`::1`. Dual-stack not done.
+- [x] **#18 `remote_job.json` must sit at the package/zip root** (security) —
+  No more `rglob` first-match. Allowed: file at extract root, or one wrapper
+  folder that directly contains it. Deeper or competing copies fail.
+- [x] **#19 Per-pod SSH `known_hosts`** (security) — Launch already uses
+  `UserKnownHostsFile=known_hosts-<pod-id>` next to the key, not
+  `~/.ssh/known_hosts`. Test asserts that.
 
 ## Open — ranked most important first
 
@@ -105,11 +111,9 @@ completed **#22**).
 
 17. ~~`merge_adapters` alpha clamp~~ — done.
 
-18. **`find_remote_job` takes the first nested `remote_job.json`** (security / correctness)
-    Extra JSON in a zip can win. Require the file at package root.
+18. ~~`find_remote_job` nested `remote_job.json`~~ — done.
 
-19. **SSH `accept-new` known_hosts should stay per-pod in the container** (security)
-    Mostly already true; don’t let it drift to the user file.
+19. ~~SSH per-pod `known_hosts`~~ — done.
 
 20. ~~Empty `NSHumanReadableCopyright`~~ — done.
 
@@ -119,8 +123,8 @@ completed **#22**).
 
 ## Highest-leverage next picks
 
-If only a few: **#18** (require `remote_job.json` at zip root). **#10**
-before a public adapter catalog.
+If only a few: **#10** before a public adapter catalog. Do not start **#13**
+or **#14** as a surprise rewrite. **#21** is nits.
 
 ## Declined or parked (do not re-open from later reviews)
 

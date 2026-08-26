@@ -321,6 +321,9 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
         )
     )
     #expect(
+        !plan.statusCommand.arguments.contains("UserKnownHostsFile=\(NSHomeDirectory())/.ssh/known_hosts")
+    )
+    #expect(
         !plan.startCommand.arguments
             .joined(separator: " ")
             .localizedCaseInsensitiveContains("api_key")

@@ -262,6 +262,29 @@ class RemoteWorkerPathTests(unittest.TestCase):
 
             self.assertEqual(outside_audio.read_bytes(), b"outside")
 
+    def test_find_remote_job_requires_file_at_package_root(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            nested = root / "package" / "nested"
+            nested.mkdir(parents=True)
+            (nested / "remote_job.json").write_text("{}", encoding="utf-8")
+            with self.assertRaisesRegex(FileNotFoundError, "package root"):
+                worker.find_remote_job(root)
+
+    def test_zip_uses_root_remote_job_not_a_nested_copy(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            archive_path = root / "job.zip"
+            extraction_root = root / "jobs"
+            with zipfile.ZipFile(archive_path, "w") as archive:
+                archive.writestr("remote_job.json", '{"source":"root"}')
+                archive.writestr("decoy/remote_job.json", '{"source":"nested"}')
+
+            with patch.dict(os.environ, {"PIMP_REMOTE_JOB_DIR": str(extraction_root)}):
+                found = worker.find_remote_job(archive_path)
+
+            self.assertEqual(json.loads(found.read_text(encoding="utf-8"))["source"], "root")
+
     def test_zip_extraction_rejects_parent_traversal(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

@@ -67,6 +67,9 @@ All notable changes to PiMP Audio Studio are documented here.
 - **History load drops rows whose audio/trace names escape the History folder**.
 - **Copyright string is `© 2026 PiMP Studios`**.
 - **MCP docs state the listener is IPv4 `127.0.0.1`**, not IPv6 `::1`.
+- **Remote job zips must put `remote_job.json` at the archive/package root**;
+  a nested decoy no longer wins. SSH `accept-new` stays on a per-pod
+  `known_hosts-<pod-id>` file.
 
 ### Added
 
