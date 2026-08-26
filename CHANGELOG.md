@@ -60,6 +60,13 @@ All notable changes to PiMP Audio Studio are documented here.
 - **MCP HTTP `Authorization` scheme is case-insensitive**; chunked
   `Transfer-Encoding` is rejected with 501; `send` retries on `EINTR`.
   Hugging Face URL builders throw instead of `preconditionFailure`.
+- **`merge_adapters` clamps blend weight to 0…1**.
+- **yt-dlp version probe is async** so the YouTube import sheet does not block
+  the main thread.
+- **Release builds disable `ENABLE_TESTABILITY`**.
+- **History load drops rows whose audio/trace names escape the History folder**.
+- **Copyright string is `© 2026 PiMP Studios`**.
+- **MCP docs state the listener is IPv4 `127.0.0.1`**, not IPv6 `::1`.
 
 ### Added
 

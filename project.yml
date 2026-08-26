@@ -54,10 +54,15 @@ targets:
         MACOSX_DEPLOYMENT_TARGET: "15.0"
         INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.music"
         GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_NSHumanReadableCopyright: ""
+        INFOPLIST_KEY_NSHumanReadableCopyright: "© 2026 PiMP Studios"
         INFOPLIST_KEY_CFBundleDisplayName: "PiMP Audio Studio"
         ENABLE_HARDENED_RUNTIME: YES
-        ENABLE_TESTABILITY: YES
+        ENABLE_TESTABILITY: NO
+      configs:
+        Debug:
+          ENABLE_TESTABILITY: YES
+        Release:
+          ENABLE_TESTABILITY: NO
     entitlements:
       path: PiMPAudioStudio/PiMPAudioStudio.entitlements
       properties:

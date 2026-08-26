@@ -236,7 +236,20 @@ final class HistoryStore: ObservableObject {
             let data = try Data(contentsOf: historyFileURL)
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
-            entries = try decoder.decode([HistoryEntry].self, from: data)
+            let loaded = try decoder.decode([HistoryEntry].self, from: data)
+            let safe = loaded.filter { entry in
+                isSafeHistoryFileName(entry.fileName)
+                    && (entry.traceFileName.map(isSafeHistoryFileName) ?? true)
+            }
+            if safe.count != loaded.count {
+                logger.error(
+                    "Dropped \(loaded.count - safe.count, privacy: .public) history row(s) with unsafe filenames"
+                )
+                entries = safe
+                saveToDisk()
+            } else {
+                entries = loaded
+            }
         } catch {
             preserveCorruptHistoryFile(cause: error)
             entries = []

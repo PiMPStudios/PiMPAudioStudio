@@ -370,7 +370,9 @@ extension PiMPAudioCommandFacade {
         }
         let idA = try requiredString("adapterA", aliases: ["a", "left"], in: arguments)
         let idB = try requiredString("adapterB", aliases: ["b", "right"], in: arguments)
-        let alpha = Float(doubleValue(arguments["alpha"] ?? arguments["weight"]) ?? 0.5)
+        let alpha = AdapterRegistry.clampedMergeAlpha(
+            Float(doubleValue(arguments["alpha"] ?? arguments["weight"]) ?? 0.5)
+        )
         let name = stringValue(arguments["name"] ?? arguments["adapterName"])?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let adapters = AdapterRegistry.listAdapters()

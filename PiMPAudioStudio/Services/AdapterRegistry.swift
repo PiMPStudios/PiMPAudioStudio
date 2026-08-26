@@ -9,6 +9,12 @@ struct AdapterRegistry {
         AppStorageLocations.adaptersDirectory
     }
 
+    /// Blend weight on adapter A. Non-finite values fall back to 0.5.
+    static func clampedMergeAlpha(_ alpha: Float) -> Float {
+        guard alpha.isFinite else { return 0.5 }
+        return min(max(alpha, 0), 1)
+    }
+
     static func listAdapters() -> [LoRAAdapter] {
         let dir = adaptersDirectory
         let fm = FileManager.default
@@ -447,6 +453,7 @@ struct AdapterRegistry {
         alpha: Float,
         name: String
     ) throws -> LoRAAdapter {
+        let alpha = clampedMergeAlpha(alpha)
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
 

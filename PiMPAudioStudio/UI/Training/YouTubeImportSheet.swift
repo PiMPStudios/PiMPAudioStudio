@@ -47,7 +47,7 @@ struct YouTubeImportSheet: View {
             actionBar
         }
         .frame(minWidth: 540, minHeight: 500)
-        .onAppear { ytDlpVersion = YouTubeDatasetBuilder.ytDlpVersion() }
+        .task { ytDlpVersion = await YouTubeDatasetBuilder.ytDlpVersion() }
         .onChange(of: builder.phase) { _, newPhase in
             if case .complete = newPhase { editableClips = builder.resultClips }
         }

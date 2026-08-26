@@ -125,12 +125,9 @@ final class YouTubeDatasetBuilder: ObservableObject {
     ]
 
     /// Returns the installed yt-dlp version string, or nil if not reachable.
-    static func ytDlpVersion() -> String? {
-        let result = try? runProcessSync(
-            arguments: ["yt-dlp", "--version"],
-            environment: ytDlpEnvironment
-        ).trimmingCharacters(in: .whitespacesAndNewlines)
-        // Sanity check: a real version string is non-empty and starts with a digit
+    static func ytDlpVersion() async -> String? {
+        let result = (try? await runProcess(arguments: ["yt-dlp", "--version"]))?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         guard let v = result, !v.isEmpty, v.first?.isNumber == true else { return nil }
         return v
     }
@@ -145,7 +142,7 @@ final class YouTubeDatasetBuilder: ObservableObject {
         onPhase: @escaping (YouTubeImportPhase) async -> Void
     ) async throws -> YouTubeDatasetResult {
         try YouTubeURLPolicy.validate(channelURL)
-        guard ytDlpVersion() != nil else { throw YouTubeDatasetError.ytDlpNotFound }
+        guard await ytDlpVersion() != nil else { throw YouTubeDatasetError.ytDlpNotFound }
 
         let maxVideos = max(1,
             Int(ceil(Double(config.maxTotalClips) / Double(max(1, config.clipsPerTrack)))) + 1
@@ -378,21 +375,6 @@ final class YouTubeDatasetBuilder: ObservableObject {
             environment: ytDlpEnvironment
         )
         return try await runner.run()
-    }
-
-    /// Synchronous variant — used only for the version check on the UI thread.
-    static func runProcessSync(arguments: [String],
-                               environment: [String: String]) throws -> String {
-        let process = Process()
-        let pipe = Pipe()
-        process.executableURL = envURL
-        process.arguments = arguments
-        process.environment = environment
-        process.standardOutput = pipe
-        process.standardError = Pipe()
-        try process.run()
-        process.waitUntilExit()
-        return String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
     }
 
     // MARK: - Helpers

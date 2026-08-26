@@ -24,7 +24,8 @@ http://127.0.0.1:38765/mcp
 
 Bind address:
 
-- `127.0.0.1` — localhost only (default).
+- `127.0.0.1` — localhost only (default). The listener is **IPv4-only**;
+  clients must use `127.0.0.1`, not `localhost` if that resolves to `::1`.
 - `0.0.0.0` — all IPv4 interfaces (LAN reachable). Switching to this mode
   **requires** a bearer token; it cannot be turned off until you bind localhost
   again. Clients on other machines should use the Mac's LAN IP (Settings shows a

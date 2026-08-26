@@ -159,6 +159,35 @@ import Testing
     }
 }
 
+@Test @MainActor func historyStoreDropsUnsafeFilenamesOnLoad() throws {
+    let tempDir = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: tempDir) }
+
+    let safe = makeHistoryEntry(fileName: "keep.wav", traceFileName: "keep.trace.json")
+    let escaped = makeHistoryEntry(fileName: "../escape.wav", traceFileName: "../escape.trace.json")
+    let encoder = JSONEncoder()
+    encoder.dateEncodingStrategy = .iso8601
+    try encoder.encode([safe, escaped]).write(to: tempDir.appending(path: "history.json"))
+
+    let store = HistoryStore(directory: tempDir)
+    #expect(store.entries.map(\.fileName) == ["keep.wav"])
+
+    let reloaded = HistoryStore(directory: tempDir)
+    #expect(reloaded.entries.map(\.fileName) == ["keep.wav"])
+}
+
+@Test func adapterRegistryClampsMergeAlpha() {
+    #expect(AdapterRegistry.clampedMergeAlpha(0) == 0)
+    #expect(AdapterRegistry.clampedMergeAlpha(1) == 1)
+    #expect(AdapterRegistry.clampedMergeAlpha(0.25) == 0.25)
+    #expect(AdapterRegistry.clampedMergeAlpha(-2) == 0)
+    #expect(AdapterRegistry.clampedMergeAlpha(3) == 1)
+    #expect(AdapterRegistry.clampedMergeAlpha(.nan) == 0.5)
+    #expect(AdapterRegistry.clampedMergeAlpha(.infinity) == 0.5)
+}
+
 private func makeHistoryEntry(
     id: UUID = UUID(),
     fileName: String,

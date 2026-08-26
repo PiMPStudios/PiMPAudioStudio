@@ -61,13 +61,21 @@ completed **#22**).
 - [x] **#26 Small MCP / download nits** (correctness) — Bearer scheme is
   case-insensitive; chunked transfer encoding → 501; `send` retries `EINTR`;
   Hugging Face URL builders throw instead of `preconditionFailure`.
+- [x] **#17 MCP `merge_adapters` clamps `alpha`** (correctness) — Blend weight
+  is clamped to 0…1 (non-finite → 0.5) in `AdapterRegistry` and the MCP
+  facade.
+- [x] **#11 `ytDlpVersion()` is async** (UX) — Import sheet probes yt-dlp off
+  the main thread via `.task`.
+- [x] **#12 `ENABLE_TESTABILITY` is Debug-only** (release) — Release/shipped
+  builds no longer enable testability.
+- [x] **#16 History skips unsafe filenames at load** (correctness) — Ghost rows
+  with traversal names are dropped from the index instead of staying in the UI.
+- [x] **#20 `NSHumanReadableCopyright`** (release nit) — Set to
+  `© 2026 PiMP Studios`.
+- [x] **#15 MCP HTTP is IPv4-only** (correctness) — Documented: bind
+  `127.0.0.1`, not `localhost`/`::1`. Dual-stack not done.
 
 ## Open — ranked most important first
-
-7. **Sandbox exceptions cover all of Homebrew plus `~/.codex` / `~/.grok` / `~/.gemini`** (release)
-   App Store / paid-release blocker if those tree-wide entitlements stay.
-   Prefer security-scoped bookmarks for the exact binaries. Not in scope for
-   this non-App-Store 0.8.0 cut.
 
 8. ~~Community catalog URL~~ — done.
 
@@ -77,11 +85,9 @@ completed **#22**).
     LoRA deltas into DiT with no manifest signature. Pin hashes in the catalog
     and refuse install on mismatch.
 
-11. **`ytDlpVersion()` blocks the main thread** (UX / correctness)
-    Import sheet can freeze on PATH lookup. Make the version probe async.
+11. ~~`ytDlpVersion()` on the main thread~~ — done.
 
-12. **`ENABLE_TESTABILITY: YES` on Release** (release)
-    Extra attack surface in shipped builds. Debug only.
+12. ~~`ENABLE_TESTABILITY` on Release~~ — done.
 
 13. **God files** (maintainability)
     `RunPodService` ~3k, enrichment, package writer, MCP catalog/server. This is
@@ -92,16 +98,12 @@ completed **#22**).
 14. **Three near-identical `CapturedProcess` implementations** (maintainability)
     Timeout/pipe/cancel bugs will keep duplicating. One shared helper.
 
-15. **MCP HTTP is IPv4-only** (correctness)
-    `localhost` → `::1` clients miss the server. Dual-stack or document
-    `127.0.0.1` only (the UI already advertises that).
+15. ~~MCP HTTP IPv4-only~~ — documented: use `127.0.0.1`, not `::1`. Dual-stack
+    left for later.
 
-16. **History index keeps unsafe filenames as ghost rows** (correctness)
-    UI shows entries that cannot be opened or deleted cleanly. Skip/quarantine
-    at load.
+16. ~~History unsafe filenames as ghost rows~~ — done.
 
-17. **MCP `merge_adapters` doesn’t clamp `alpha`** (correctness)
-    Garbage blend weights. Clamp to 0…1.
+17. ~~`merge_adapters` alpha clamp~~ — done.
 
 18. **`find_remote_job` takes the first nested `remote_job.json`** (security / correctness)
     Extra JSON in a zip can win. Require the file at package root.
@@ -109,8 +111,7 @@ completed **#22**).
 19. **SSH `accept-new` known_hosts should stay per-pod in the container** (security)
     Mostly already true; don’t let it drift to the user file.
 
-20. **Empty `NSHumanReadableCopyright`** (release nit)
-    Fill before shipping.
+20. ~~Empty `NSHumanReadableCopyright`~~ — done.
 
 21. **Polish / future Swift 6** (nits)
     `print()` in YouTube builder, UUID MCP token vs `SecRandomCopyBytes`,
@@ -118,8 +119,7 @@ completed **#22**).
 
 ## Highest-leverage next picks
 
-If only a few: **#11** (`ytDlpVersion()` off the main thread) or **#17**
-(clamp `merge_adapters` alpha). **#7** only if App Store is soon. **#10**
+If only a few: **#18** (require `remote_job.json` at zip root). **#10**
 before a public adapter catalog.
 
 ## Declined or parked (do not re-open from later reviews)
@@ -132,6 +132,9 @@ before a public adapter catalog.
   is already 6.2; 5.10 mode is intentional
 - **Tree-wide SwiftFormat or SwiftLint in CI** — parked until Actions minutes
   reset, then a dedicated format pass (not a surprise while quota is tight)
+- **#7 Homebrew / `~/.codex` / `~/.grok` / `~/.gemini` sandbox exceptions** —
+  App Store entitlement cleanup. This product is not going to the App Store;
+  keep the exceptions for local CLI tools.
 
 ## What’s already in good shape
 
