@@ -3,8 +3,8 @@
 Ranked leftovers from a 2026-08 repo review. Pick from the top. Severity is
 security / correctness / release / maintainability — not “lines of code.”
 
-Internal 0.8.0 use on a trusted Mac is still reasonable. Several of these should
-land before a wider or paid build.
+Internal 0.8.0 use on a trusted Mac is still reasonable. Ranked leftovers are
+done or parked.
 
 A `[x]` means the product change landed. It does **not** mean a test file on
 disk is compiled or run in CI unless that target is in `project.pbxproj` (see
@@ -114,13 +114,13 @@ completed **#22**).
 
 20. ~~Empty `NSHumanReadableCopyright`~~ — done.
 
-21. **Polish / future Swift 6** (nits)
-    `print()` in YouTube builder, UUID MCP token vs `SecRandomCopyBytes`,
-    non-constant-time SHA compare, Swift 5.10 vs CI 6.2.
+21. ~~Polish / future Swift 6 nits~~ — parked: YouTube `print()`, UUID MCP
+    token, SHA string compare, and 5.10 language mode are not user-facing
+    bugs.
 
 ## Highest-leverage next picks
 
-**#21** is nits. Do not reopen parked rewrites from later reviews.
+Ranked list is empty. Do not reopen parked rewrites from later reviews.
 
 ## Declined or parked (do not re-open from later reviews)
 
@@ -149,6 +149,10 @@ completed **#22**).
   confirm misses are fixed. File size and a single-declaration catalog are
   not current bugs. Do not split RunPod/enrichment/MCP unless a new miss
   shows up.
+- **#21 Polish / Swift 6 nits** — YouTube skip `print()`, UUID MCP token,
+  non-constant-time SHA hex compare, and Swift 5.10 language mode stay as
+  they are. Token compare is already constant-time; SHA is a file checksum
+  not a secret.
 
 ## What’s already in good shape
 
