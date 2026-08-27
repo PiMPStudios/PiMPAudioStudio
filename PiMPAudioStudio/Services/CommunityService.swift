@@ -36,6 +36,16 @@ final class CommunityService: ObservableObject {
     /// Curated catalog hosted in the public `pimp-adapters` repo.
     static let communityManifestURL = URL(string:
         "https://raw.githubusercontent.com/PiMPStudios/pimp-adapters/main/manifest.json")!
+
+    /// Temp destination for a Hub file. `MLX.loadArrays` chooses the parser from
+    /// the path extension, so a bare UUID file fails with "Unknown extension"
+    /// even when the bytes are safetensors.
+    nonisolated static func temporaryDownloadURL(for sourceURL: URL) -> URL {
+        let ext = sourceURL.pathExtension
+        let name = ext.isEmpty ? UUID().uuidString : "\(UUID().uuidString).\(ext)"
+        return FileManager.default.temporaryDirectory.appendingPathComponent(name)
+    }
+
     private let cacheTTL: TimeInterval = 3600  // 1 hour
     private static let maxConcurrentDownloads = 3
 
@@ -395,7 +405,7 @@ final class CommunityService: ObservableObject {
 
     private func downloadIfPresent(from url: URL) async throws -> URL? {
         try HuggingFaceURLPolicy.validate(url)
-        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let tmp = Self.temporaryDownloadURL(for: url)
         do {
             try await downloadClient.download(from: url, to: tmp, onProgress: { _ in })
             return tmp
