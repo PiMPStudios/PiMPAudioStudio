@@ -35,8 +35,9 @@ completed **#22**).
   Catalog now loads from `PiMPStudios/pimp-adapters`. Pre-rebrand identity
   migration (old Application Support folder, Keychain service, MCP scheme, JSON
   field names) was removed in the same pass because no shipped users needed it.
-  Commit `aebf72d`. Still need a public `pimp-adapters` repo with `manifest.json`
-  or the Community tab stays empty on 404. Catalog URL test is in
+  Commit `aebf72d`. PiMP will not publish adapters; the Community tab stays
+  empty on 404 unless someone else hosts that repo. Hugging Face import is
+  the supported download path. Catalog URL test is in
   `CommunityServiceTests.swift` (in the Xcode target as of **#22**).
 - [x] **#5 Built-in model SHA-256 pins** (security / supply chain) —
   ACE-Step built-in files pin Hugging Face SHA-256 values. Verification still
@@ -73,7 +74,7 @@ completed **#22**).
 - [x] **#20 `NSHumanReadableCopyright`** (release nit) — Set to
   `© 2026 PiMP Studios`.
 - [x] **#15 MCP HTTP is IPv4-only** (correctness) — Documented: bind
-  `127.0.0.1`, not `localhost`/`::1`. Dual-stack not done.
+  `127.0.0.1`, not `localhost`/`::1`. Dual-stack / IPv6 parked.
 - [x] **#18 `remote_job.json` must sit at the package/zip root** (security) —
   No more `rglob` first-match. Allowed: file at extract root, or one wrapper
   folder that directly contains it. Deeper or competing copies fail.
@@ -87,9 +88,8 @@ completed **#22**).
 
 9. ~~Remote-worker Python tests in CI~~ — done.
 
-10. **Community / HF adapters are unsigned** (security)
-    LoRA deltas into DiT with no manifest signature. Pin hashes in the catalog
-    and refuse install on mismatch.
+10. ~~Community / HF adapters unsigned~~ — parked: no PiMP catalog; Hub
+    import is user-initiated. Optional SHA-256 still fail-open.
 
 11. ~~`ytDlpVersion()` on the main thread~~ — done.
 
@@ -101,11 +101,11 @@ completed **#22**).
     missed it again. Eventual shape: one tool declaration with Codable input
     plus `requiresConfirmation`, schema/dispatch derived from that.
 
-14. **Three near-identical `CapturedProcess` implementations** (maintainability)
-    Timeout/pipe/cancel bugs will keep duplicating. One shared helper.
+14. ~~Three `CapturedProcess` copies~~ — parked: wrappers have diverged
+    (timeout, stdin, SIGKILL). Do not unify unless a hang shows up.
 
 15. ~~MCP HTTP IPv4-only~~ — documented: use `127.0.0.1`, not `::1`. Dual-stack
-    left for later.
+    / IPv6 parked.
 
 16. ~~History unsafe filenames as ghost rows~~ — done.
 
@@ -123,8 +123,7 @@ completed **#22**).
 
 ## Highest-leverage next picks
 
-If only a few: **#10** before a public adapter catalog. Do not start **#13**
-or **#14** as a surprise rewrite. **#21** is nits.
+Do not start **#13** as a surprise rewrite. **#21** is nits.
 
 ## Declined or parked (do not re-open from later reviews)
 
@@ -139,6 +138,16 @@ or **#14** as a surprise rewrite. **#21** is nits.
 - **#7 Homebrew / `~/.codex` / `~/.grok` / `~/.gemini` sandbox exceptions** —
   App Store entitlement cleanup. This product is not going to the App Store;
   keep the exceptions for local CLI tools.
+- **#10 Unsigned community / HF adapters** — PiMP will not publish a signed
+  catalog. Users train locally or import a Hub URL they chose. Optional
+  SHA-256 on downloads stays fail-open (same as built-in models). Do not
+  refuse install for a missing hash.
+- **MCP dual-stack / IPv6** — listener stays IPv4 (`127.0.0.1` / `0.0.0.0`).
+  Clients must not use `localhost` if that resolves to `::1`.
+- **#14 Shared `CapturedProcess`** — YouTube, RunPod, and provider CLI
+  wrappers stay separate. They share a pipe/cancel shape but differ on
+  timeout, stdin, and SIGKILL. Unify only if a real hang or timeout bug
+  shows up.
 
 ## What’s already in good shape
 
