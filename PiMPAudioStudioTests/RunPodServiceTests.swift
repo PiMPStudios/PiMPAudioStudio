@@ -1044,7 +1044,8 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
     #expect(body["gpuTypeIds"] == nil)
     #expect(body["interruptible"] == nil)
     #expect(body["supportPublicIp"] == nil)
-    #expect(try !(#require(String(data: bodyData, encoding: .utf8)?.contains("secret-token"))))
+    let bodyText = try #require(String(data: bodyData, encoding: .utf8))
+    #expect(!bodyText.contains("secret-token"))
 }
 
 @Test func runPodLaunchConfigurationUsesCustomImageInsteadOfTemplateWhenBothAreFilled() throws {

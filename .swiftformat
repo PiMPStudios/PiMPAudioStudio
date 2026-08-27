@@ -9,6 +9,7 @@
 --trimwhitespace always
 --stripunusedargs closure-only
 --disable wrapMultilineStatementBraces
+--disable wrap
 --disable noForceUnwrapInTests
 --disable noForceTryInTests
 --exclude .build,DerivedData,Vendor,Spikes
