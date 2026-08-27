@@ -1,5 +1,5 @@
-import Foundation
 import AVFoundation
+import Foundation
 import PiMPAudioCore
 
 @MainActor
@@ -18,6 +18,7 @@ final class PiMPAudioCommandFacade {
         formatter.dateFormat = "yyyyMMdd_HHmmss"
         return formatter
     }()
+
     let maxOperationRecords = 50
     var operationRecords: [String: MCPOperationRecord] = [:]
     var operationOrder: [String] = []
@@ -36,7 +37,7 @@ final class PiMPAudioCommandFacade {
         "decoding": (0.85, 0.10),
         "complete": (1.00, 0.00),
         "error": (1.00, 0.00),
-        "cancelled": (1.00, 0.00)
+        "cancelled": (1.00, 0.00),
     ]
     let editorLoadProgressPlan: [String: (base: Double, span: Double)] = [
         "queued": (0.00, 0.02),
@@ -45,7 +46,7 @@ final class PiMPAudioCommandFacade {
         "encodingLatents": (0.35, 0.60),
         "complete": (1.00, 0.00),
         "error": (1.00, 0.00),
-        "cancelled": (1.00, 0.00)
+        "cancelled": (1.00, 0.00),
     ]
     let editorInpaintProgressPlan: [String: (base: Double, span: Double)] = [
         "queued": (0.00, 0.02),
@@ -55,7 +56,7 @@ final class PiMPAudioCommandFacade {
         "decoding": (0.88, 0.10),
         "complete": (1.00, 0.00),
         "error": (1.00, 0.00),
-        "cancelled": (1.00, 0.00)
+        "cancelled": (1.00, 0.00),
     ]
     let editorRenderProgressPlan: [String: (base: Double, span: Double)] = [
         "queued": (0.00, 0.02),
@@ -64,7 +65,7 @@ final class PiMPAudioCommandFacade {
         "writingFile": (0.50, 0.45),
         "complete": (1.00, 0.00),
         "error": (1.00, 0.00),
-        "cancelled": (1.00, 0.00)
+        "cancelled": (1.00, 0.00),
     ]
     let editorDSPProgressPlan: [String: (base: Double, span: Double)] = [
         "queued": (0.00, 0.02),
@@ -74,7 +75,7 @@ final class PiMPAudioCommandFacade {
         "encodingLatents": (0.60, 0.35),
         "complete": (1.00, 0.00),
         "error": (1.00, 0.00),
-        "cancelled": (1.00, 0.00)
+        "cancelled": (1.00, 0.00),
     ]
 
     init(
@@ -108,5 +109,4 @@ final class PiMPAudioCommandFacade {
     func configure(runPodService: RunPodService) {
         self.runPodService = runPodService
     }
-
 }

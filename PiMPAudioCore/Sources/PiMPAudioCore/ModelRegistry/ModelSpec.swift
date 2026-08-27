@@ -86,15 +86,15 @@ public struct ModelSpec: Sendable, Identifiable, Codable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.id = try container.decode(String.self, forKey: .id)
-        self.displayName = try container.decode(String.self, forKey: .displayName)
-        self.huggingFaceRepo = try container.decode(String.self, forKey: .huggingFaceRepo)
-        self.files = try container.decode([ModelFileSpec].self, forKey: .files)
-        self.category = try container.decode(ModelCategory.self, forKey: .category)
-        self.variantFamily = try container.decodeIfPresent(String.self, forKey: .variantFamily)
-        self.requiresAuth = try container.decodeIfPresent(Bool.self, forKey: .requiresAuth) ?? false
-        self.isRunnable = try container.decodeIfPresent(Bool.self, forKey: .isRunnable) ?? true
-        self.runtimeNote = try container.decodeIfPresent(String.self, forKey: .runtimeNote)
+        id = try container.decode(String.self, forKey: .id)
+        displayName = try container.decode(String.self, forKey: .displayName)
+        huggingFaceRepo = try container.decode(String.self, forKey: .huggingFaceRepo)
+        files = try container.decode([ModelFileSpec].self, forKey: .files)
+        category = try container.decode(ModelCategory.self, forKey: .category)
+        variantFamily = try container.decodeIfPresent(String.self, forKey: .variantFamily)
+        requiresAuth = try container.decodeIfPresent(Bool.self, forKey: .requiresAuth) ?? false
+        isRunnable = try container.decodeIfPresent(Bool.self, forKey: .isRunnable) ?? true
+        runtimeNote = try container.decodeIfPresent(String.self, forKey: .runtimeNote)
     }
 
     public func encode(to encoder: Encoder) throws {

@@ -13,16 +13,16 @@ public struct OmniAudioConfiguration: Codable, Equatable, Sendable {
     public let outputDimension: Int
 
     public init(
-        sampleRate: Int = 16_000,
+        sampleRate: Int = 16000,
         featureSize: Int = 128,
         fftSize: Int = 400,
         hopLength: Int = 160,
-        modelDimension: Int = 1_280,
+        modelDimension: Int = 1280,
         attentionWindow: Int = 100,
         attentionHeads: Int = 20,
         encoderLayers: Int = 32,
-        maxSourcePositions: Int = 1_500,
-        outputDimension: Int = 3_584
+        maxSourcePositions: Int = 1500,
+        outputDimension: Int = 3584
     ) {
         self.sampleRate = sampleRate
         self.featureSize = featureSize
@@ -70,11 +70,11 @@ public enum OmniAudioConfigurationError: LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .invalidFrontend:
-            return "The audio feature configuration contains an invalid dimension."
+            "The audio feature configuration contains an invalid dimension."
         case .invalidTower:
-            return "The audio tower configuration contains an invalid dimension."
-        case .checkpointMismatch(let field, let expected, let actual):
-            return "Checkpoint \(field) is \(actual); expected \(expected)."
+            "The audio tower configuration contains an invalid dimension."
+        case let .checkpointMismatch(field, expected, actual):
+            "Checkpoint \(field) is \(actual); expected \(expected)."
         }
     }
 }

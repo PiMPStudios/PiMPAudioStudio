@@ -188,7 +188,10 @@ struct GenerationAnalyzerView: View {
 
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
-                panelTitle(showAllComparisonRows ? "All Settings" : "Changed Settings", systemImage: "list.bullet.rectangle")
+                panelTitle(
+                    showAllComparisonRows ? "All Settings" : "Changed Settings",
+                    systemImage: "list.bullet.rectangle"
+                )
                 Spacer()
                 Toggle("Show unchanged", isOn: $showAllComparisonRows)
                     .toggleStyle(.switch)
@@ -440,7 +443,8 @@ struct GenerationAnalyzerView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            if session.isPreferred == true || !(session.listeningNote ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if session.isPreferred == true || !(session.listeningNote ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Divider()
                 HStack(spacing: 6) {
                     if session.isPreferred == true {
@@ -626,28 +630,28 @@ struct GenerationAnalyzerView: View {
 
     private func statusColor(_ status: LiveGenerationTraceStatus) -> Color {
         switch status {
-        case .running: return .blue
-        case .complete: return .green
-        case .failed: return .red
-        case .cancelled: return .orange
+        case .running: .blue
+        case .complete: .green
+        case .failed: .red
+        case .cancelled: .orange
         }
     }
 
     private func eventColor(_ level: LiveTraceEventLevel) -> Color {
         switch level {
-        case .info: return .secondary
-        case .success: return .green
-        case .warning: return .orange
-        case .error: return .red
+        case .info: .secondary
+        case .success: .green
+        case .warning: .orange
+        case .error: .red
         }
     }
 
     private func eventIcon(_ level: LiveTraceEventLevel) -> String {
         switch level {
-        case .info: return "circle"
-        case .success: return "checkmark.circle.fill"
-        case .warning: return "exclamationmark.triangle.fill"
-        case .error: return "xmark.octagon.fill"
+        case .info: "circle"
+        case .success: "checkmark.circle.fill"
+        case .warning: "exclamationmark.triangle.fill"
+        case .error: "xmark.octagon.fill"
         }
     }
 
@@ -720,7 +724,7 @@ struct GenerationAnalyzerView: View {
             object: nil,
             userInfo: [
                 "url": url,
-                "prompt": trace.originalPrompt ?? trace.prompt
+                "prompt": trace.originalPrompt ?? trace.prompt,
             ]
         )
     }

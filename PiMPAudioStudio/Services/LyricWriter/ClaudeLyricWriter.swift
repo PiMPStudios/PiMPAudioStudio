@@ -30,8 +30,8 @@ struct ClaudeLyricWriter: LyricWriter {
                         "stream": true,
                         "system": plan.systemPrompt,
                         "messages": [
-                            ["role": "user", "content": plan.userPrompt(prompt: prompt, style: style)]
-                        ]
+                            ["role": "user", "content": plan.userPrompt(prompt: prompt, style: style)],
+                        ],
                     ]
 
                     request.httpBody = try LyricWriterRequest.jsonBody(body, provider: displayName)
@@ -40,7 +40,9 @@ struct ClaudeLyricWriter: LyricWriter {
                     try LyricWriterRequest.validate(response: response, provider: displayName)
 
                     for try await line in bytes.lines {
-                        if Task.isCancelled { break }
+                        if Task.isCancelled {
+                            break
+                        }
                         guard line.hasPrefix("data: ") else { continue }
                         let json = String(line.dropFirst(6))
                         guard json != "[DONE]",

@@ -8,12 +8,12 @@ public enum AudioParityMetricsError: Error, LocalizedError, Sendable {
 
     public var errorDescription: String? {
         switch self {
-        case .unsupportedAudioShape(let shape):
-            return "Unsupported audio tensor shape \(shape). Expected [1, frames, channels], [frames, channels], or [channels, frames]."
-        case .channelMismatch(let swiftChannels, let referenceChannels):
-            return "Swift audio has \(swiftChannels) channels but reference audio has \(referenceChannels)."
+        case let .unsupportedAudioShape(shape):
+            "Unsupported audio tensor shape \(shape). Expected [1, frames, channels], [frames, channels], or [channels, frames]."
+        case let .channelMismatch(swiftChannels, referenceChannels):
+            "Swift audio has \(swiftChannels) channels but reference audio has \(referenceChannels)."
         case .emptyAudio:
-            return "Cannot compare empty audio."
+            "Cannot compare empty audio."
         }
     }
 }
@@ -89,8 +89,8 @@ public enum AudioParityMetrics {
         }
 
         let channels = swiftChannels
-        let swiftComparable = swiftAudio[0..., 0..<frames, 0..<channels]
-        let referenceComparable = referenceAudio[0..., 0..<frames, 0..<channels]
+        let swiftComparable = swiftAudio[0..., 0 ..< frames, 0 ..< channels]
+        let referenceComparable = referenceAudio[0..., 0 ..< frames, 0 ..< channels]
         eval(swiftComparable, referenceComparable)
 
         let diff = swiftComparable - referenceComparable
@@ -130,8 +130,8 @@ public enum AudioParityMetrics {
     private static func highFrequencyProxy(_ audio: MLXArray) -> Float {
         let frames = audio.shape[1]
         guard frames > 1 else { return 0 }
-        let next = audio[0..., 1..<frames, 0..<audio.shape[2]]
-        let previous = audio[0..., 0..<(frames - 1), 0..<audio.shape[2]]
+        let next = audio[0..., 1 ..< frames, 0 ..< audio.shape[2]]
+        let previous = audio[0..., 0 ..< (frames - 1), 0 ..< audio.shape[2]]
         let diff = next - previous
         return rms(diff)
     }
@@ -139,8 +139,8 @@ public enum AudioParityMetrics {
     private static func stereoCorrelation(_ audio: MLXArray) -> Float? {
         guard audio.shape[2] >= 2 else { return nil }
         let frames = audio.shape[1]
-        let left = audio[0, 0..<frames, 0]
-        let right = audio[0, 0..<frames, 1]
+        let left = audio[0, 0 ..< frames, 0]
+        let right = audio[0, 0 ..< frames, 1]
         return correlation(left, right)
     }
 
@@ -156,12 +156,20 @@ public enum AudioParityMetrics {
 
         let usableFrames = windows * windowFrames
         let channels = swiftAudio.shape[2]
-        let swiftWindowed = (swiftAudio[0..., 0..<usableFrames, 0..<channels] * swiftAudio[0..., 0..<usableFrames, 0..<channels])
-            .reshaped([windows, windowFrames * channels])
-            .mean(axis: 1)
-        let referenceWindowed = (referenceAudio[0..., 0..<usableFrames, 0..<channels] * referenceAudio[0..., 0..<usableFrames, 0..<channels])
-            .reshaped([windows, windowFrames * channels])
-            .mean(axis: 1)
+        let swiftWindowed = (swiftAudio[0..., 0 ..< usableFrames, 0 ..< channels] * swiftAudio[
+            0...,
+            0 ..< usableFrames,
+            0 ..< channels
+        ])
+        .reshaped([windows, windowFrames * channels])
+        .mean(axis: 1)
+        let referenceWindowed = (referenceAudio[0..., 0 ..< usableFrames, 0 ..< channels] * referenceAudio[
+            0...,
+            0 ..< usableFrames,
+            0 ..< channels
+        ])
+        .reshaped([windows, windowFrames * channels])
+        .mean(axis: 1)
 
         return correlation(sqrt(swiftWindowed), sqrt(referenceWindowed))
     }

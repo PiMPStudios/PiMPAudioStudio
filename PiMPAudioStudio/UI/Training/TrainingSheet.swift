@@ -1,8 +1,8 @@
-import SwiftUI
-import PiMPAudioCore
-import UniformTypeIdentifiers
 import AppKit
 import AVFoundation
+import PiMPAudioCore
+import SwiftUI
+import UniformTypeIdentifiers
 
 /// Drives `.sheet(item:)` for any training sheet presentation.
 /// Carrying all data as value types ensures the sheet closure sees the
@@ -26,13 +26,13 @@ struct TrainingPresentation: Identifiable {
 
     /// Blank new training session.
     init(files: [TrainingImportedFile] = [], adapterKind: AdapterKind = .lora, initialName: String = "") {
-        self.selectedEntries = []
+        selectedEntries = []
         self.files = files
         self.initialName = initialName
-        self.initialConfig = nil
-        self.initialLoKRConfig = nil
+        initialConfig = nil
+        initialLoKRConfig = nil
         self.adapterKind = adapterKind
-        self.resumeAdapterID = nil
+        resumeAdapterID = nil
     }
 
     /// Pre-populated retrain session.
@@ -123,30 +123,34 @@ struct TrainingSheet: View {
         self.presentationStyle = presentationStyle
         self.onClose = onClose
         self.adapterKind = adapterKind
-        self._importedFiles = State(initialValue: initialImportedFiles)
-        self._adapterName = State(initialValue: initialName)
+        _importedFiles = State(initialValue: initialImportedFiles)
+        _adapterName = State(initialValue: initialName)
         let effectiveInitialConfig = initialLoKRConfig?.loraCompatibleConfig ?? initialConfig
         if let config = effectiveInitialConfig {
-            self._selectedRecipe = State(initialValue: TrainingRecipePreset.infer(from: config, adapterKind: adapterKind))
-            self._selectedRank = State(initialValue: config.rank)
-            self._selectedEpochs = State(initialValue: config.maxEpochs)
-            self._selectedLayerCount = State(initialValue: config.trainingLayerCount ?? (resumeAdapterID == nil ? 8 : 4))
-            self._selectedProjectionCoverage = State(initialValue: TrainingProjectionCoverage.infer(from: config))
-            self._selectedAlphaScale = State(initialValue: TrainingAlphaScale.infer(from: config.alpha, dimension: config.rank))
-            self._selectedDropout = State(initialValue: TrainingDropoutPreset.closest(to: config.dropout))
-            self._selectedTargetLayers = State(initialValue: config.targetLayers)
-            self._warmupFraction = State(initialValue: config.warmupFraction)
-            self._gradientAccumulationSteps = State(initialValue: config.gradientAccumulationSteps)
-            self._trainingSeedText = State(initialValue: "\(config.effectiveTrainingSeed)")
-            self._selectedLoKRWeightDecompose = State(initialValue: initialLoKRConfig?.weightDecompose ?? false)
+            _selectedRecipe = State(initialValue: TrainingRecipePreset.infer(from: config, adapterKind: adapterKind))
+            _selectedRank = State(initialValue: config.rank)
+            _selectedEpochs = State(initialValue: config.maxEpochs)
+            _selectedLayerCount = State(initialValue: config.trainingLayerCount ?? (resumeAdapterID == nil ? 8 : 4))
+            _selectedProjectionCoverage = State(initialValue: TrainingProjectionCoverage.infer(from: config))
+            _selectedAlphaScale = State(initialValue: TrainingAlphaScale.infer(
+                from: config.alpha,
+                dimension: config.rank
+            ))
+            _selectedDropout = State(initialValue: TrainingDropoutPreset.closest(to: config.dropout))
+            _selectedTargetLayers = State(initialValue: config.targetLayers)
+            _warmupFraction = State(initialValue: config.warmupFraction)
+            _gradientAccumulationSteps = State(initialValue: config.gradientAccumulationSteps)
+            _trainingSeedText = State(initialValue: "\(config.effectiveTrainingSeed)")
+            _selectedLoKRWeightDecompose = State(initialValue: initialLoKRConfig?.weightDecompose ?? false)
         } else if adapterKind == .lokr {
-            self._selectedLoKRWeightDecompose = State(initialValue: true)
+            _selectedLoKRWeightDecompose = State(initialValue: true)
         }
     }
 
     private var rankOptions: [Int] {
         adapterKind == .lokr ? [16, 32, 64, 128] : [8, 16, 32, 64, 96]
     }
+
     private let epochOptions = [5, 10, 20, 50, 75, 100, 150]
     private let layerCountOptions = [4, 8, 12, 16, 32]
     private let accumOptions = [1, 2, 4, 8]
@@ -180,7 +184,7 @@ struct TrainingSheet: View {
                     configView
                 case .loadingModels, .preparingDataset, .training, .saving:
                     progressView
-                case .complete(let adapter):
+                case let .complete(adapter):
                     completionView(adapter: adapter)
                 }
             }
@@ -214,9 +218,9 @@ struct TrainingSheet: View {
             allowedContentTypes: [.audio, .json],
             allowsMultipleSelection: true
         ) { result in
-            if case .success(let urls) = result {
+            if case let .success(urls) = result {
                 importSelectedFiles(urls)
-            } else if case .failure(let error) = result {
+            } else if case let .failure(error) = result {
                 importErrorMessage = error.localizedDescription
             }
         }
@@ -241,13 +245,12 @@ struct TrainingSheet: View {
 
     // MARK: - Config View
 
+    @ViewBuilder
     private var configView: some View {
-        Group {
-            if presentationStyle == .inline {
-                inlineConfigView
-            } else {
-                sheetConfigView
-            }
+        if presentationStyle == .inline {
+            inlineConfigView
+        } else {
+            sheetConfigView
         }
     }
 
@@ -524,7 +527,7 @@ struct TrainingSheet: View {
                                 get: { Double(warmupFraction) },
                                 set: { warmupFraction = Float($0) }
                             ),
-                            in: 0...0.5,
+                            in: 0 ... 0.5,
                             step: 0.05
                         )
                         .frame(maxWidth: 150)
@@ -593,7 +596,7 @@ struct TrainingSheet: View {
 
     @ViewBuilder
     private var errorDisplay: some View {
-        if case .failed(let message) = trainingService.state {
+        if case let .failed(message) = trainingService.state {
             Label(message, systemImage: "exclamationmark.triangle")
                 .foregroundStyle(.red)
                 .font(.caption)
@@ -637,7 +640,7 @@ struct TrainingSheet: View {
                 }
                 .padding(.top, 40)
 
-            case .preparingDataset(let current, let total):
+            case let .preparingDataset(current, total):
                 VStack(spacing: 8) {
                     Text("Preparing Dataset")
                         .font(.headline)
@@ -649,7 +652,7 @@ struct TrainingSheet: View {
                 }
                 .padding(.top, 40)
 
-            case .training(let uiState):
+            case let .training(uiState):
                 VStack(spacing: 12) {
                     Text("Training \"\(adapterName)\"")
                         .font(.headline)
@@ -665,7 +668,7 @@ struct TrainingSheet: View {
                         lossHistory: uiState.lossHistory,
                         validationHistory: uiState.validationHistory
                     )
-                        .padding(.horizontal)
+                    .padding(.horizontal)
 
                     // Stats row
                     HStack(spacing: 20) {
@@ -750,11 +753,13 @@ struct TrainingSheet: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                Text("\(adapter.kind == .lokr ? "Linear dim" : "Rank") \(adapter.kind == .lokr ? adapter.lokrConfig?.linearDim ?? adapter.config.rank : adapter.config.rank) \u{2022} last \(adapter.trainedLayerIndices?.count ?? adapter.config.trainingLayerCount ?? selectedLayerCount) layers \u{2022} \(adapter.sampleCount) tracks")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
+                Text(
+                    "\(adapter.kind == .lokr ? "Linear dim" : "Rank") \(adapter.kind == .lokr ? adapter.lokrConfig?.linearDim ?? adapter.config.rank : adapter.config.rank) \u{2022} last \(adapter.trainedLayerIndices?.count ?? adapter.config.trainingLayerCount ?? selectedLayerCount) layers \u{2022} \(adapter.sampleCount) tracks"
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: 420)
 
@@ -767,7 +772,9 @@ struct TrainingSheet: View {
                     Label("Test in Generate", systemImage: "play.circle")
                 }
                 .buttonStyle(.borderedProminent)
-                .help("Open Generate with this adapter selected, strength 1.0, seed 42, and a training caption as the prompt")
+                .help(
+                    "Open Generate with this adapter selected, strength 1.0, seed 42, and a training caption as the prompt"
+                )
 
                 HStack(spacing: 10) {
                     Button {
@@ -1009,7 +1016,9 @@ struct TrainingSheet: View {
     }
 
     private var isPausedState: Bool {
-        if case .paused = trainingService.state { return true }
+        if case .paused = trainingService.state {
+            return true
+        }
         return false
     }
 
@@ -1102,7 +1111,7 @@ struct TrainingSheet: View {
     private func showAdapterInFinder(_ adapter: LoRAAdapter) {
         guard let directory = try? AdapterRegistry.adapterDirectory(id: adapter.id) else { return }
         NSWorkspace.shared.activateFileViewerSelecting([
-            directory
+            directory,
         ])
     }
 
@@ -1127,7 +1136,7 @@ struct TrainingSheet: View {
         importedFileDurations = durations
     }
 
-    nonisolated private static func audioDuration(for url: URL) -> TimeInterval? {
+    private nonisolated static func audioDuration(for url: URL) -> TimeInterval? {
         let didAccess = url.startAccessingSecurityScopedResource()
         defer {
             if didAccess {
@@ -1149,7 +1158,7 @@ struct TrainingSheet: View {
         Self.durationKey(for: url)
     }
 
-    nonisolated private static func durationKey(for url: URL) -> String {
+    private nonisolated static func durationKey(for url: URL) -> String {
         url.standardizedFileURL.path(percentEncoded: false)
     }
 
@@ -1164,8 +1173,8 @@ struct TrainingSheet: View {
                     [
                         "id": adapter.id,
                         "strength": 1.0,
-                    ]
-                ]
+                    ],
+                ],
             ]
         )
         completionStatusMessage = "Selected for Generate at strength 1.0."
@@ -1374,7 +1383,7 @@ struct TrainingSheet: View {
             return "0"
         }
         let magnitude = abs(value)
-        if magnitude >= 1_000 || magnitude < 0.01 {
+        if magnitude >= 1000 || magnitude < 0.01 {
             return String(format: "%.1e", value)
         }
         return String(format: "%.3f", value)
@@ -1475,7 +1484,7 @@ struct TrainingSheet: View {
     }
 
     private func appendImportedFiles(_ files: [TrainingImportedFile]) -> (added: Int, duplicates: Int) {
-        var seen = Set(importedFiles.map { $0.url.standardizedFileURL.path })
+        var seen = Set(importedFiles.map(\.url.standardizedFileURL.path))
         var added = 0
         var duplicates = 0
 
@@ -1519,14 +1528,16 @@ private enum TrainingRecipePreset: String, CaseIterable, Identifiable {
     case wideLoRA
     case expandedLoKR
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     static func options(for adapterKind: AdapterKind) -> [TrainingRecipePreset] {
         switch adapterKind {
         case .lora:
-            return [.balancedLocal, .wideLoRA]
+            [.balancedLocal, .wideLoRA]
         case .lokr:
-            return [.balancedLocal, .expandedLoKR]
+            [.balancedLocal, .expandedLoKR]
         }
     }
 
@@ -1552,24 +1563,24 @@ private enum TrainingRecipePreset: String, CaseIterable, Identifiable {
     func displayName(for adapterKind: AdapterKind) -> String {
         switch self {
         case .balancedLocal:
-            return "Narrow"
+            "Narrow"
         case .wideLoRA:
-            return "Wide"
+            "Wide"
         case .expandedLoKR:
-            return "Wide"
+            "Wide"
         }
     }
 
     func summary(for adapterKind: AdapterKind) -> String {
         switch self {
         case .balancedLocal:
-            return ""
+            ""
         case .wideLoRA:
-            return adapterKind == .lora
+            adapterKind == .lora
                 ? "Uses a wider LoRA footprint: rank 96, alpha 192, dropout 0.08, all 32 layers, and q/k/v/o attention."
                 : "Uses a wider local footprint: double alpha, dropout, all 32 layers, and q/k/v/o attention."
         case .expandedLoKR:
-            return "Uses a wider local LoKR footprint: linear dim 32, double alpha, DoRA, dropout, last 16 layers, and Q/V attention."
+            "Uses a wider local LoKR footprint: linear dim 32, double alpha, DoRA, dropout, last 16 layers, and Q/V attention."
         }
     }
 
@@ -1579,7 +1590,7 @@ private enum TrainingRecipePreset: String, CaseIterable, Identifiable {
     ) -> TrainingRecipeDefaults {
         switch self {
         case .balancedLocal:
-            return TrainingRecipeDefaults(
+            TrainingRecipeDefaults(
                 rank: recommendation?.rank ?? 16,
                 epochs: recommendation?.epochs ?? 10,
                 layerCount: recommendation?.layerCount ?? 8,
@@ -1590,7 +1601,7 @@ private enum TrainingRecipePreset: String, CaseIterable, Identifiable {
                 gradientAccumulationSteps: recommendation?.gradientAccumulationSteps ?? 1
             )
         case .wideLoRA:
-            return TrainingRecipeDefaults(
+            TrainingRecipeDefaults(
                 rank: adapterKind == .lora ? 96 : 64,
                 epochs: adapterKind == .lora ? 150 : 100,
                 layerCount: 32,
@@ -1601,7 +1612,7 @@ private enum TrainingRecipePreset: String, CaseIterable, Identifiable {
                 gradientAccumulationSteps: 4
             )
         case .expandedLoKR:
-            return TrainingRecipeDefaults(
+            TrainingRecipeDefaults(
                 rank: 32,
                 epochs: 100,
                 layerCount: 16,
@@ -1617,9 +1628,9 @@ private enum TrainingRecipePreset: String, CaseIterable, Identifiable {
     func learningRate(for adapterKind: AdapterKind) -> Float {
         switch self {
         case .wideLoRA where adapterKind == .lora:
-            return 0.000075
+            0.000075
         default:
-            return 0.0001
+            0.0001
         }
     }
 }
@@ -1639,14 +1650,16 @@ private enum TrainingProjectionCoverage: String, CaseIterable, Identifiable {
     case queryValue
     case fullAttention
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     var displayName: String {
         switch self {
         case .queryValue:
-            return "Q/V"
+            "Q/V"
         case .fullAttention:
-            return "Q/K/V/O"
+            "Q/K/V/O"
         }
     }
 
@@ -1693,14 +1706,16 @@ private enum TrainingAlphaScale: Float, CaseIterable, Identifiable {
     case rank = 1
     case doubleRank = 2
 
-    var id: Float { rawValue }
+    var id: Float {
+        rawValue
+    }
 
     var displayName: String {
         switch self {
         case .rank:
-            return "1x"
+            "1x"
         case .doubleRank:
-            return "2x"
+            "2x"
         }
     }
 
@@ -1720,20 +1735,24 @@ private enum TrainingDropoutPreset: Float, CaseIterable, Identifiable {
     case p08 = 0.08
     case p10 = 0.10
 
-    var id: Float { rawValue }
+    var id: Float {
+        rawValue
+    }
 
-    var value: Float { rawValue }
+    var value: Float {
+        rawValue
+    }
 
     var displayName: String {
         switch self {
         case .none:
-            return "0"
+            "0"
         case .p05:
-            return "0.05"
+            "0.05"
         case .p08:
-            return "0.08"
+            "0.08"
         case .p10:
-            return "0.10"
+            "0.10"
         }
     }
 
@@ -1747,8 +1766,8 @@ private enum TrainingDropoutPreset: Float, CaseIterable, Identifiable {
 private extension AdapterKind {
     var title: String {
         switch self {
-        case .lora: return "LoRA"
-        case .lokr: return "LoKR"
+        case .lora: "LoRA"
+        case .lokr: "LoKR"
         }
     }
 }
@@ -1921,69 +1940,69 @@ struct TrainingPlanRecommendation: Equatable {
         func dimension(for adapterKind: AdapterKind) -> Int {
             switch (self, adapterKind) {
             case (.tiny, _), (.small, _):
-                return 16
+                16
             case (.medium, .lora):
-                return 32
+                32
             case (.medium, .lokr):
-                return 16
+                16
             case (.large, .lora), (.huge, .lora):
-                return 64
+                64
             case (.large, .lokr), (.huge, .lokr):
-                return 32
+                32
             }
         }
 
         var targetOptimizerUpdates: Int {
             switch self {
             case .tiny:
-                return 600
+                600
             case .small:
-                return 900
+                900
             case .medium:
-                return 1_400
+                1400
             case .large:
-                return 2_200
+                2200
             case .huge:
-                return 3_200
+                3200
             }
         }
 
         var layerCount: Int {
             switch self {
             case .tiny:
-                return 4
+                4
             case .small, .medium:
-                return 8
+                8
             case .large:
-                return 12
+                12
             case .huge:
-                return 16
+                16
             }
         }
 
         var gradientAccumulationSteps: Int {
             switch self {
             case .tiny, .small:
-                return 1
+                1
             case .medium, .large:
-                return 2
+                2
             case .huge:
-                return 4
+                4
             }
         }
 
         var rationale: String {
             switch self {
             case .tiny:
-                return "Use more passes and fewer layers to avoid spreading a tiny set too thin."
+                "Use more passes and fewer layers to avoid spreading a tiny set too thin."
             case .small:
-                return "A longer run helps the adapter catch the style without widening too much."
+                "A longer run helps the adapter catch the style without widening too much."
             case .medium:
-                return "Enough data for a wider adapter and moderate passes."
+                "Enough data for a wider adapter and moderate passes."
             case .large:
-                return "Use stronger capacity and broader coverage while keeping the run bounded."
+                "Use stronger capacity and broader coverage while keeping the run bounded."
             case .huge:
-                return "Favor coverage and fewer passes because the dataset already supplies many steps."
+                "Favor coverage and fewer passes because the dataset already supplies many steps."
             }
         }
     }
@@ -1994,9 +2013,9 @@ struct TrainingPlanRecommendation: Equatable {
 extension TargetLayer {
     var displayName: String {
         switch self {
-        case .selfAttention: return "Self-Attn"
-        case .crossAttention: return "Cross-Attn"
-        case .mlp: return "MLP"
+        case .selfAttention: "Self-Attn"
+        case .crossAttention: "Cross-Attn"
+        case .mlp: "MLP"
         }
     }
 }

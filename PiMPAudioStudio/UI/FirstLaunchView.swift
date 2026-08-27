@@ -1,5 +1,5 @@
-import SwiftUI
 import PiMPAudioCore
+import SwiftUI
 
 struct FirstLaunchView: View {
     @EnvironmentObject private var appState: AppState
@@ -17,9 +17,11 @@ struct FirstLaunchView: View {
             Text("Welcome to \(AppRuntimeIdentity.displayName)")
                 .font(.largeTitle.bold())
 
-            Text("AI audio generation — music, sound effects, and more.\nCore models need to be downloaded before first use.")
-                .multilineTextAlignment(.center)
-                .foregroundStyle(.secondary)
+            Text(
+                "AI audio generation — music, sound effects, and more.\nCore models need to be downloaded before first use."
+            )
+            .multilineTextAlignment(.center)
+            .foregroundStyle(.secondary)
 
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(essentialSpecs) { spec in
@@ -49,10 +51,12 @@ struct FirstLaunchView: View {
             .controlSize(.large)
             .disabled(isActivelyDownloading)
 
-            Text("Additional models (sound effects, lyric writing) will download\nautomatically in the background after setup.")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-                .multilineTextAlignment(.center)
+            Text(
+                "Additional models (sound effects, lyric writing) will download\nautomatically in the background after setup."
+            )
+            .font(.caption)
+            .foregroundStyle(.tertiary)
+            .multilineTextAlignment(.center)
 
             Spacer()
         }
@@ -62,7 +66,7 @@ struct FirstLaunchView: View {
 
     private var isActivelyDownloading: Bool {
         !appState.downloadProgress.isEmpty &&
-        appState.downloadProgress.values.contains(where: { $0 < 1.0 })
+            appState.downloadProgress.values.contains(where: { $0 < 1.0 })
     }
 
     private var totalSizeLabel: some View {

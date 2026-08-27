@@ -1,7 +1,7 @@
 import Foundation
 import MLX
 
-public struct WAVWriter {
+public enum WAVWriter {
     public static func write(
         samples: MLXArray,
         sampleRate: Int = 44100,
@@ -52,18 +52,17 @@ public struct WAVWriter {
         let scaled = (clamped * Float(32767)).asType(.int16)
         eval(scaled)
 
-        let interleaved: MLXArray
-        switch samples.ndim {
+        let interleaved: MLXArray = switch samples.ndim {
         case 1:
             // Already a flat mono buffer.
-            interleaved = scaled.reshaped([-1])
+            scaled.reshaped([-1])
         case 2:
             // [channels, frames] -> transpose to [frames, channels] -> flatten LRLR…
-            interleaved = scaled.transposed(1, 0).reshaped([-1])
+            scaled.transposed(1, 0).reshaped([-1])
         default:
             // [length, channels] (after the [0] indexing above) -> row-major flatten
             // already produces LRLR… interleaving.
-            interleaved = scaled.reshaped([-1])
+            scaled.reshaped([-1])
         }
         eval(interleaved)
 
@@ -170,7 +169,7 @@ public struct WAVWriter {
 
         let bytesPerFrame = channels * 2
         let scanFrames = max(1, Int(Double(sampleRate) * scanWindow))
-        let fadeFrames  = max(1, Int(Double(sampleRate) * fadeDuration))
+        let fadeFrames = max(1, Int(Double(sampleRate) * fadeDuration))
         let maxSilentTailFrames = max(1, Int(Double(sampleRate) * maxSilentTailDuration))
         let byteCount = pcmData.count
 
@@ -185,16 +184,16 @@ public struct WAVWriter {
             let numChunks = (numFrames + scanFrames - 1) / scanFrames
             scan: for chunk in stride(from: numChunks - 1, through: 0, by: -1) {
                 let startF = chunk * scanFrames
-                let endF   = min(startF + scanFrames, numFrames)
+                let endF = min(startF + scanFrames, numFrames)
                 var sumSq: Int64 = 0
-                for f in startF..<endF {
+                for f in startF ..< endF {
                     let base = f * bytesPerFrame
-                    for c in 0..<channels {
+                    for c in 0 ..< channels {
                         let off = base + c * 2
-                        let lo  = UInt16(bytes[off])
-                        let hi  = UInt16(bytes[off + 1])
+                        let lo = UInt16(bytes[off])
+                        let hi = UInt16(bytes[off + 1])
                         let raw = Int16(bitPattern: lo | (hi << 8))
-                        let s   = Int64(raw)
+                        let s = Int64(raw)
                         sumSq += s * s
                     }
                 }
@@ -215,18 +214,18 @@ public struct WAVWriter {
 
             // ── 2. Apply linear fade from (contentEnd - fadeDuration) to contentEnd
             let fadeStart = max(0, contentEndFrame - fadeFrames)
-            let fadeLen   = contentEndFrame - fadeStart
-            for f in fadeStart..<contentEndFrame {
+            let fadeLen = contentEndFrame - fadeStart
+            for f in fadeStart ..< contentEndFrame {
                 let alpha = Float(contentEndFrame - 1 - f) / Float(max(fadeLen - 1, 1))
-                let base  = f * bytesPerFrame
-                for c in 0..<channels {
+                let base = f * bytesPerFrame
+                for c in 0 ..< channels {
                     let off = base + c * 2
-                    let lo  = UInt16(bytes[off])
-                    let hi  = UInt16(bytes[off + 1])
+                    let lo = UInt16(bytes[off])
+                    let hi = UInt16(bytes[off + 1])
                     let raw = Int16(bitPattern: lo | (hi << 8))
                     let faded = Int16(clamping: Int32(Float(raw) * alpha))
                     let u = UInt16(bitPattern: faded)
-                    bytes[off]     = UInt8(u & 0xFF)
+                    bytes[off] = UInt8(u & 0xFF)
                     bytes[off + 1] = UInt8((u >> 8) & 0xFF)
                 }
             }

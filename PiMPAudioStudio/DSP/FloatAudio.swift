@@ -1,5 +1,5 @@
-import Foundation
 import Accelerate
+import Foundation
 
 /// Interleaved float working format for the editor DSP chain.
 ///
@@ -32,11 +32,17 @@ struct FloatAudio: Equatable, Sendable {
         )
     }
 
-    var frameCount: Int { samples.count / channels }
+    var frameCount: Int {
+        samples.count / channels
+    }
 
-    var duration: TimeInterval { Double(frameCount) / Double(max(sampleRate, 1)) }
+    var duration: TimeInterval {
+        Double(frameCount) / Double(max(sampleRate, 1))
+    }
 
-    var isEmpty: Bool { samples.isEmpty }
+    var isEmpty: Bool {
+        samples.isEmpty
+    }
 
     /// Quantize back to the editor's Int16 buffer format. Clips at ±1.0 — call once,
     /// at the end of a chain.
@@ -61,7 +67,7 @@ struct FloatAudio: Equatable, Sendable {
     func framePeak(_ frame: Int) -> Float {
         var peak: Float = 0
         let base = frame * channels
-        for channel in 0..<channels {
+        for channel in 0 ..< channels {
             peak = max(peak, abs(samples[base + channel]))
         }
         return peak
@@ -71,6 +77,6 @@ struct FloatAudio: Equatable, Sendable {
     func frames(_ start: Int, _ end: Int) -> FloatAudio {
         let lower = max(0, min(start, frameCount))
         let upper = max(lower, min(end, frameCount))
-        return replacingSamples(Array(samples[(lower * channels)..<(upper * channels)]))
+        return replacingSamples(Array(samples[(lower * channels) ..< (upper * channels)]))
     }
 }

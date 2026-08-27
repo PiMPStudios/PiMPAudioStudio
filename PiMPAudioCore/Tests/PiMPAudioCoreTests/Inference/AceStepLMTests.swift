@@ -1,7 +1,7 @@
 import Foundation
-import Testing
 import MLX
 @testable import PiMPAudioCore
+import Testing
 
 @Suite("ACE-Step LM Audio Codes")
 struct AceStepLMTests {

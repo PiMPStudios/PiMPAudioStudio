@@ -16,8 +16,8 @@ public enum FrequencyBandError: Error, Sendable, Equatable, LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case .invalid(let lowCutHz, let highCutHz):
-            return "Frequency band must provide lowCutHz >= 0, highCutHz > lowCutHz, and highCutHz <= 24000 (got \(lowCutHz)–\(highCutHz) Hz)."
+        case let .invalid(lowCutHz, highCutHz):
+            "Frequency band must provide lowCutHz >= 0, highCutHz > lowCutHz, and highCutHz <= 24000 (got \(lowCutHz)–\(highCutHz) Hz)."
         }
     }
 }
@@ -33,7 +33,7 @@ public struct FrequencyBand: Sendable, Equatable {
     public init(lowCutHz: Float, highCutHz: Float) throws {
         guard lowCutHz >= 0,
               highCutHz > lowCutHz,
-              highCutHz <= 24_000 else {
+              highCutHz <= 24000 else {
             throw FrequencyBandError.invalid(lowCutHz: lowCutHz, highCutHz: highCutHz)
         }
         self.lowCutHz = lowCutHz
@@ -67,9 +67,9 @@ public enum PipelineChoice: String, Codable, Sendable, CaseIterable {
 
     public var displayName: String {
         switch self {
-        case .auto: return "Auto"
-        case .aceStep: return "ACE-Step (Music)"
-        case .stableAudio: return "Stable Audio (SFX)"
+        case .auto: "Auto"
+        case .aceStep: "ACE-Step (Music)"
+        case .stableAudio: "Stable Audio (SFX)"
         }
     }
 }
@@ -130,17 +130,17 @@ public enum InpaintPreset: String, CaseIterable, Sendable {
 
     public var strength: Float {
         switch self {
-        case .subtle: return 0.3
-        case .moderate: return 0.6
-        case .full: return 0.9
+        case .subtle: 0.3
+        case .moderate: 0.6
+        case .full: 0.9
         }
     }
 
     public var guidanceScale: Float {
         switch self {
-        case .subtle: return 5.0
-        case .moderate: return 7.0
-        case .full: return 10.0
+        case .subtle: 5.0
+        case .moderate: 7.0
+        case .full: 10.0
         }
     }
 }

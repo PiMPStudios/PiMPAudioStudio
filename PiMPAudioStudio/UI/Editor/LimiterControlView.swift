@@ -20,7 +20,7 @@ struct LimiterControlView: View {
                 title: "Release",
                 valueText: String(format: "%.0f ms", parameters.releaseMilliseconds),
                 value: $parameters.releaseMilliseconds,
-                range: 10...200
+                range: 10 ... 200
             )
 
             Text("Brickwall-style peak limiter. Use after glue or loudness staging so peaks stay under the ceiling.")

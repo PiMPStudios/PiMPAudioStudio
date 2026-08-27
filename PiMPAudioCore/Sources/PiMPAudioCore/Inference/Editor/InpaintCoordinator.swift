@@ -17,7 +17,7 @@ public actor InpaintCoordinator {
     private var conditioningActor: ConditioningActor?
     private let historyManager: EditHistoryManager
 
-    // ACE-Step latents (48 kHz, stride 1920)
+    /// ACE-Step latents (48 kHz, stride 1920)
     private var currentLatents: MLXArray?
     // SAO latents (44.1 kHz, stride 2048) — populated lazily on first SAO inpaint
     private var sfxCurrentLatents: MLXArray?
@@ -36,9 +36,18 @@ public actor InpaintCoordinator {
     public var hasLoadedAudio: Bool {
         currentLatents != nil || sfxCurrentLatents != nil || currentAudio != nil
     }
-    public var canUndo: Bool { historyManager.canUndo }
-    public var canRedo: Bool { historyManager.canRedo }
-    public var recentEdits: [EditSnapshot] { historyManager.recentEdits }
+
+    public var canUndo: Bool {
+        historyManager.canUndo
+    }
+
+    public var canRedo: Bool {
+        historyManager.canRedo
+    }
+
+    public var recentEdits: [EditSnapshot] {
+        historyManager.recentEdits
+    }
 
     public static let aceStepHopSize = MusicPipeline.hopLength
     public static let sfxHopSize = SoundFXPipeline.hopLength
@@ -59,7 +68,7 @@ public actor InpaintCoordinator {
         self.conditioningActor = conditioningActor
         self.sfxPipeline = sfxPipeline
         self.sfxTokenizer = sfxTokenizer
-        self.historyManager = EditHistoryManager()
+        historyManager = EditHistoryManager()
     }
 
     /// Update the SAO conditioning pipeline at runtime (called when SAO weights load).
@@ -86,8 +95,8 @@ public actor InpaintCoordinator {
 
     public static func hopSize(for pipeline: PipelineChoice) -> Int {
         switch pipeline {
-        case .stableAudio: return sfxHopSize
-        case .aceStep, .auto: return aceStepHopSize
+        case .stableAudio: sfxHopSize
+        case .aceStep, .auto: aceStepHopSize
         }
     }
 
@@ -187,19 +196,19 @@ public actor InpaintCoordinator {
         _ = precision // reserved for future quantized sample paths
         self.sampleRate = sampleRate
         let numSamples = samples.shape[1]
-        self.totalDuration = Double(numSamples) / Double(sampleRate)
+        totalDuration = Double(numSamples) / Double(sampleRate)
         AudioDiagnostics.note(
             "\(tag)/config",
             "samplesShape=\(samples.shape) sampleRate=\(sampleRate) duration=\(totalDuration)"
         )
         AudioDiagnostics.tensor("\(tag)/samples", samples)
 
-        self.currentAudio = samples
+        currentAudio = samples
         // Drop prior latent caches so the next AI edit encodes this buffer.
-        self.currentLatents = nil
-        self.latentFrames = 0
-        self.sfxCurrentLatents = nil
-        self.sfxLatentFrames = 0
+        currentLatents = nil
+        latentFrames = 0
+        sfxCurrentLatents = nil
+        sfxLatentFrames = 0
         Self.flushMLXCache(tag: "\(tag)/afterAdopt")
 
         return AudioLoadResult(
@@ -219,8 +228,8 @@ public actor InpaintCoordinator {
         }
         AudioDiagnostics.memory("editor/ensureACELatents/begin")
         let latents = try await vaeActor.encodeMean(audio: audio, precision: precision)
-        self.currentLatents = latents
-        self.latentFrames = latents.shape[1]
+        currentLatents = latents
+        latentFrames = latents.shape[1]
         AudioDiagnostics.tensor("editor/ensureACELatents/aceLatents", latents)
         Self.flushMLXCache(tag: "editor/ensureACELatents/afterEncode")
         AudioDiagnostics.memory("editor/ensureACELatents/end")
@@ -513,7 +522,7 @@ public actor InpaintCoordinator {
             let sfxProgressStream = await sfxDiff.makeProgressStream()
             let sfxRelayTask = Task {
                 for await progress in sfxProgressStream {
-                    if case .diffusion(let diffusionProgress) = progress {
+                    if case let .diffusion(diffusionProgress) = progress {
                         continuation.yield(.diffusion(diffusionProgress))
                     }
                 }
@@ -566,12 +575,12 @@ public actor InpaintCoordinator {
         switch request.pipeline {
         case .stableAudio:
             sfxCurrentLatents = composited
-            sfxLatentFrames   = composited.shape[1]
-            currentLatents    = nil   // stale; re-encode on next ACE-Step inpaint
+            sfxLatentFrames = composited.shape[1]
+            currentLatents = nil // stale; re-encode on next ACE-Step inpaint
         case .aceStep, .auto:
-            currentLatents  = composited
-            latentFrames    = composited.shape[1]
-            sfxCurrentLatents = nil   // stale; re-encode on next SAO inpaint
+            currentLatents = composited
+            latentFrames = composited.shape[1]
+            sfxCurrentLatents = nil // stale; re-encode on next SAO inpaint
         }
         currentAudio = audio
         let snapshot = EditSnapshot(
@@ -618,9 +627,9 @@ public enum InpaintCoordinatorError: Error, LocalizedError, Sendable {
     public var errorDescription: String? {
         switch self {
         case .noSourceAudio:
-            return "No source audio to encode for AI edit."
+            "No source audio to encode for AI edit."
         case .sfxVAEUnavailable:
-            return "Stable Audio VAE not available."
+            "Stable Audio VAE not available."
         }
     }
 }

@@ -1,16 +1,15 @@
-import Testing
 import MLX
 @testable import PiMPAudioCore
+import Testing
 
 // MARK: - MaskBuilder Tests
 
 @Suite("MaskBuilder")
 struct MaskBuilderTests {
-
     // Common test parameters matching ACE-Step v1.5 defaults.
-    let sampleRate = 48_000
-    let hopSize    = 1_920
-    let latentDim  = 8
+    let sampleRate = 48000
+    let hopSize = 1920
+    let latentDim = 8
 
     private func latentFrames(for duration: Double) -> Int {
         Int((duration * Double(sampleRate) / Double(hopSize)).rounded(.up))
@@ -75,7 +74,7 @@ struct MaskBuilderTests {
 
     @Test("Frequency channel mapping uses sample-rate Nyquist")
     func frequencyChannelMappingUsesSampleRateNyquist() throws {
-        let band = try FrequencyBand(lowCutHz: 23_000, highCutHz: 24_000)
+        let band = try FrequencyBand(lowCutHz: 23000, highCutHz: 24000)
         let weights = MaskBuilder.frequencyChannelWeights(
             latentDim: latentDim,
             nyquistHz: Float(sampleRate) / 2.0,
@@ -87,10 +86,10 @@ struct MaskBuilderTests {
 
     @Test("Frequency channel mapping keeps 44.1 kHz top below 23 kHz")
     func frequencyChannelMappingKeeps44100TopBelow23k() throws {
-        let band = try FrequencyBand(lowCutHz: 23_000, highCutHz: 24_000)
+        let band = try FrequencyBand(lowCutHz: 23000, highCutHz: 24000)
         let weights = MaskBuilder.frequencyChannelWeights(
             latentDim: latentDim,
-            nyquistHz: 22_050,
+            nyquistHz: 22050,
             band: band
         )
 
@@ -101,7 +100,7 @@ struct MaskBuilderTests {
 
     @Test("Full selection produces all-ones mask with shape [1, T, 1]")
     func fullSelectionAllOnes() {
-        let totalDuration = 10.0  // seconds
+        let totalDuration = 10.0 // seconds
         let latentFrames = latentFrames(for: totalDuration)
 
         let selection = InpaintSelection(startTime: 0, endTime: totalDuration)
@@ -126,14 +125,14 @@ struct MaskBuilderTests {
     @Test("Partial selection produces correct number of masked frames")
     func partialSelectionCorrectFrameCount() {
         let totalDuration = 10.0
-        let latentFrames  = latentFrames(for: totalDuration)
+        let latentFrames = latentFrames(for: totalDuration)
 
         // Select 2 – 5 seconds
         let startTime = 2.0
-        let endTime   = 5.0
+        let endTime = 5.0
         let expectedStart = startFrame(for: startTime)
-        let expectedEnd   = endFrame(for: endTime)
-        let expectedOnes  = expectedEnd - expectedStart
+        let expectedEnd = endFrame(for: endTime)
+        let expectedOnes = expectedEnd - expectedStart
 
         let selection = InpaintSelection(startTime: startTime, endTime: endTime)
         let mask = MaskBuilder.buildMask(
@@ -158,7 +157,7 @@ struct MaskBuilderTests {
     @Test("Mask contains only binary values (0.0 or 1.0)")
     func binaryValuesOnly() {
         let totalDuration = 8.0
-        let latentFrames  = latentFrames(for: totalDuration)
+        let latentFrames = latentFrames(for: totalDuration)
 
         let selection = InpaintSelection(startTime: 1.0, endTime: 6.5)
         let mask = MaskBuilder.buildMask(
@@ -180,7 +179,7 @@ struct MaskBuilderTests {
     @Test("Empty selection (startTime == endTime) returns zero mask")
     func emptySelectionZeroMask() {
         let totalDuration = 5.0
-        let latentFrames  = latentFrames(for: totalDuration)
+        let latentFrames = latentFrames(for: totalDuration)
 
         let selection = InpaintSelection(startTime: 2.0, endTime: 2.0)
         let mask = MaskBuilder.buildMask(
@@ -205,8 +204,8 @@ struct MaskBuilderTests {
     @Test("Frequency band produces [1, T, latentDim] mask with sum in valid range")
     func frequencyBandShape() throws {
         let totalDuration = 6.0
-        let latentFrames  = latentFrames(for: totalDuration)
-        let band = try FrequencyBand(lowCutHz: 200, highCutHz: 8_000)
+        let latentFrames = latentFrames(for: totalDuration)
+        let band = try FrequencyBand(lowCutHz: 200, highCutHz: 8000)
 
         let selection = InpaintSelection(
             startTime: 0.5,
@@ -227,7 +226,7 @@ struct MaskBuilderTests {
 
         let flat = mask.reshaped([-1]).asArray(Float.self)
         let total = Float(latentFrames * latentDim)
-        let sum   = flat.reduce(0, +)
+        let sum = flat.reduce(0, +)
         #expect(sum >= 0)
         #expect(sum <= total)
         // At least some channels should be active given the wide band
@@ -239,7 +238,7 @@ struct MaskBuilderTests {
     @Test("Selection beyond total duration is clamped to valid frame range")
     func clampsBeyondDuration() {
         let totalDuration = 5.0
-        let latentFrames  = latentFrames(for: totalDuration)
+        let latentFrames = latentFrames(for: totalDuration)
 
         // Selection extends well beyond the audio
         let selection = InpaintSelection(startTime: 3.0, endTime: 999.0)
@@ -261,7 +260,7 @@ struct MaskBuilderTests {
 
         // Frames from startFrame to latentFrames should be 1
         let expectedStart = startFrame(for: 3.0)
-        let expectedOnes  = latentFrames - expectedStart
+        let expectedOnes = latentFrames - expectedStart
         let onesCount = flat.filter { $0 == 1.0 }.count
         #expect(onesCount == expectedOnes)
     }
@@ -271,9 +270,9 @@ struct MaskBuilderTests {
     @Test("Tiny non-zero selection covers at least one touched frame")
     func tinySelectionCoversTouchedFrame() {
         let totalDuration = 5.0
-        let latentFrames  = latentFrames(for: totalDuration)
+        let latentFrames = latentFrames(for: totalDuration)
 
-        let tinyDelta = 0.00001  // much less than one hop
+        let tinyDelta = 0.00001 // much less than one hop
         let selection = InpaintSelection(startTime: 2.0, endTime: 2.0 + tinyDelta)
         let mask = MaskBuilder.buildMask(
             selection: selection,

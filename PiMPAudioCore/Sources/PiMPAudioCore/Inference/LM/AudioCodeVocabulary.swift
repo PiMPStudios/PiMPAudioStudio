@@ -11,14 +11,14 @@ public struct AudioCodeVocabulary: Sendable, Equatable {
         tokenStartID + codeCount
     }
 
-    public init(tokenStartID: Int, codeCount: Int = 64_000) {
+    public init(tokenStartID: Int, codeCount: Int = 64000) {
         self.tokenStartID = tokenStartID
         self.codeCount = codeCount
     }
 
     public static func load(
         from tokenizerURL: URL,
-        requiredCodeCount: Int = 64_000
+        requiredCodeCount: Int = 64000
     ) throws -> AudioCodeVocabulary {
         let data = try Data(contentsOf: tokenizerURL)
         let json = try JSONSerialization.jsonObject(with: data)
@@ -41,7 +41,7 @@ public struct AudioCodeVocabulary: Sendable, Equatable {
             throw AudioCodeVocabularyError.missingAudioCodeZero
         }
 
-        for code in 0..<requiredCodeCount {
+        for code in 0 ..< requiredCodeCount {
             guard let tokenID = tokenIDsByCode[code] else {
                 throw AudioCodeVocabularyError.missingAudioCode(code)
             }
@@ -65,7 +65,7 @@ public struct AudioCodeVocabulary: Sendable, Equatable {
         }
         let start = content.index(content.startIndex, offsetBy: prefix.count)
         let end = content.index(content.endIndex, offsetBy: -suffix.count)
-        return Int(content[start..<end])
+        return Int(content[start ..< end])
     }
 }
 
@@ -78,13 +78,13 @@ public enum AudioCodeVocabularyError: Error, LocalizedError, Equatable {
     public var errorDescription: String? {
         switch self {
         case .missingAddedTokens:
-            return "ACE-Step LM tokenizer is missing added audio-code tokens"
+            "ACE-Step LM tokenizer is missing added audio-code tokens"
         case .missingAudioCodeZero:
-            return "ACE-Step LM tokenizer is missing <|audio_code_0|>"
-        case .missingAudioCode(let code):
-            return "ACE-Step LM tokenizer is missing <|audio_code_\(code)|>"
-        case .nonContiguousAudioCodes(let expected, let actual):
-            return "ACE-Step LM audio-code token IDs are not contiguous (expected \(expected), got \(actual))"
+            "ACE-Step LM tokenizer is missing <|audio_code_0|>"
+        case let .missingAudioCode(code):
+            "ACE-Step LM tokenizer is missing <|audio_code_\(code)|>"
+        case let .nonContiguousAudioCodes(expected, actual):
+            "ACE-Step LM audio-code token IDs are not contiguous (expected \(expected), got \(actual))"
         }
     }
 }

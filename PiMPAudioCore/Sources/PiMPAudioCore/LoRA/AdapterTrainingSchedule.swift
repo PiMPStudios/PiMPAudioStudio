@@ -59,6 +59,6 @@ enum AdapterTrainingSchedule {
 
     private static func shouldDropConditioning(key: MLXArray?) -> Bool {
         guard cfgDropoutRatio > 0 else { return false }
-        return MLXRandom.uniform(0..<1, [1], key: key).item(Float.self) < cfgDropoutRatio
+        return MLXRandom.uniform(0 ..< 1, [1], key: key).item(Float.self) < cfgDropoutRatio
     }
 }

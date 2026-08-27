@@ -10,8 +10,12 @@ struct DocumentationView: View {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return pages }
         return pages.filter { page in
-            if page.title.localizedCaseInsensitiveContains(query) { return true }
-            if page.fileName.localizedCaseInsensitiveContains(query) { return true }
+            if page.title.localizedCaseInsensitiveContains(query) {
+                return true
+            }
+            if page.fileName.localizedCaseInsensitiveContains(query) {
+                return true
+            }
             if let body = HelpCatalog.loadMarkdown(for: page),
                body.localizedCaseInsensitiveContains(query) {
                 return true
@@ -34,7 +38,9 @@ struct DocumentationView: View {
                     ContentUnavailableView(
                         "Help Unavailable",
                         systemImage: "book.closed",
-                        description: Text("User documentation was not found in the app bundle. Rebuild so the Sync User Help Docs phase can copy docs/user.")
+                        description: Text(
+                            "User documentation was not found in the app bundle. Rebuild so the Sync User Help Docs phase can copy docs/user."
+                        )
                     )
                 } else {
                     Section("Topics") {
@@ -165,19 +171,19 @@ private struct HelpMarkdownBlockView: View {
 
     var body: some View {
         switch block {
-        case .heading(let level, let text):
+        case let .heading(level, text):
             HelpInlineMarkdownText(text)
                 .font(headingFont(level))
                 .foregroundStyle(.primary)
                 .padding(.top, level <= 2 ? 8 : 4)
 
-        case .paragraph(let text):
+        case let .paragraph(text):
             HelpInlineMarkdownText(text)
                 .font(.body)
                 .foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
 
-        case .unorderedList(let items):
+        case let .unorderedList(items):
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(Array(items.enumerated()), id: \.offset) { _, item in
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -193,7 +199,7 @@ private struct HelpMarkdownBlockView: View {
             }
             .padding(.leading, 4)
 
-        case .orderedList(let items):
+        case let .orderedList(items):
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(Array(items.enumerated()), id: \.offset) { index, item in
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -209,7 +215,7 @@ private struct HelpMarkdownBlockView: View {
             }
             .padding(.leading, 4)
 
-        case .code(_, let code):
+        case let .code(_, code):
             ScrollView(.horizontal, showsIndicators: false) {
                 Text(code)
                     .font(.system(.callout, design: .monospaced))
@@ -227,7 +233,7 @@ private struct HelpMarkdownBlockView: View {
                     .strokeBorder(Color(nsColor: .separatorColor).opacity(0.6), lineWidth: 1)
             )
 
-        case .table(let headers, let rows):
+        case let .table(headers, rows):
             HelpMarkdownTableView(headers: headers, rows: rows)
 
         case .thematicBreak:
@@ -238,10 +244,10 @@ private struct HelpMarkdownBlockView: View {
 
     private func headingFont(_ level: Int) -> Font {
         switch level {
-        case 1: return .title.weight(.semibold)
-        case 2: return .title2.weight(.semibold)
-        case 3: return .title3.weight(.semibold)
-        default: return .headline
+        case 1: .title.weight(.semibold)
+        case 2: .title2.weight(.semibold)
+        case 3: .title3.weight(.semibold)
+        default: .headline
         }
     }
 }

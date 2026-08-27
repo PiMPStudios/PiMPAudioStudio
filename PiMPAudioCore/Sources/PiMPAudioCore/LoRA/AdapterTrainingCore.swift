@@ -61,7 +61,7 @@ public struct AdapterTrainingSplit {
             return AdapterTrainingSplit(trainingIndices: [], validationIndices: [])
         }
 
-        var indices = Array(0..<sampleCount)
+        var indices = Array(0 ..< sampleCount)
         var rng = SeededRandomNumberGenerator(seed: AdapterTrainingRandom.mix(seed, 0x7A7C_72A1_51D5_EED5))
         indices.shuffle(using: &rng)
 
@@ -69,7 +69,7 @@ public struct AdapterTrainingSplit {
         let validation = Array(indices.prefix(validationCount)).sorted()
         let training = Array(indices.dropFirst(validationCount))
         return AdapterTrainingSplit(
-            trainingIndices: training.isEmpty ? Array(0..<sampleCount) : training,
+            trainingIndices: training.isEmpty ? Array(0 ..< sampleCount) : training,
             validationIndices: training.isEmpty ? [] : validation
         )
     }

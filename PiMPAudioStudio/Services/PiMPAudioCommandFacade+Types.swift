@@ -1,5 +1,5 @@
-import Foundation
 import AVFoundation
+import Foundation
 import PiMPAudioCore
 
 enum MCPTrainingRecipe: String {
@@ -87,99 +87,99 @@ enum PiMPAudioCommandFacadeError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .missingTraceIdentifier:
-            return "Provide a history id, trace filename, or audio filename."
-        case .traceNotFound(let identifier):
-            return "No generation trace matched '\(identifier)'."
-        case .historyEntryNotFound(let identifier):
-            return "No history entry matched '\(identifier)'."
-        case .invalidResourceURI(let uri):
-            return "Invalid PiMP Audio Studio resource URI: \(uri)."
-        case .resourceNotFound(let uri):
-            return "No PiMP Audio Studio resource matched '\(uri)'."
-        case .adapterNotFound(let identifier):
-            return "No LoRA adapter matched '\(identifier)'."
-        case .incompatibleAdapter(let name, let category):
-            return "'\(name)' is a \(category) adapter and cannot be applied to ACE-Step generation."
+            "Provide a history id, trace filename, or audio filename."
+        case let .traceNotFound(identifier):
+            "No generation trace matched '\(identifier)'."
+        case let .historyEntryNotFound(identifier):
+            "No history entry matched '\(identifier)'."
+        case let .invalidResourceURI(uri):
+            "Invalid PiMP Audio Studio resource URI: \(uri)."
+        case let .resourceNotFound(uri):
+            "No PiMP Audio Studio resource matched '\(uri)'."
+        case let .adapterNotFound(identifier):
+            "No LoRA adapter matched '\(identifier)'."
+        case let .incompatibleAdapter(name, category):
+            "'\(name)' is a \(category) adapter and cannot be applied to ACE-Step generation."
         case .invalidAdapterStack:
-            return "'adapters' must be an array of adapter objects."
-        case .invalidBoolean(let key):
-            return "'\(key)' must be true or false."
+            "'adapters' must be an array of adapter objects."
+        case let .invalidBoolean(key):
+            "'\(key)' must be true or false."
         case .invalidStrength:
-            return "Adapter strength must be a number from 0.0 to 6.0."
+            "Adapter strength must be a number from 0.0 to 6.0."
         case .invalidSeed:
-            return "Seed must be an integer or 'random'."
+            "Seed must be an integer or 'random'."
         case .invalidSteps:
-            return "Steps must be a positive integer or 'auto'."
-        case .tooManyAdapters(let maxCount):
-            return "Adapter stack can contain at most \(maxCount) adapters."
-        case .missingRequiredArgument(let key):
-            return "Missing required argument '\(key)'."
+            "Steps must be a positive integer or 'auto'."
+        case let .tooManyAdapters(maxCount):
+            "Adapter stack can contain at most \(maxCount) adapters."
+        case let .missingRequiredArgument(key):
+            "Missing required argument '\(key)'."
         case .invalidDuration:
-            return "Provide a positive duration in seconds."
+            "Provide a positive duration in seconds."
         case .outputDirectoryUnavailable:
-            return "No output directory is selected."
-        case .generationAlreadyActive(let state):
-            return "Generation is already active (state: \(state))."
-        case .confirmationRequired(let action):
-            return "Refusing to run '\(action)' without confirm: true."
+            "No output directory is selected."
+        case let .generationAlreadyActive(state):
+            "Generation is already active (state: \(state))."
+        case let .confirmationRequired(action):
+            "Refusing to run '\(action)' without confirm: true."
         case .generationServiceUnavailable:
-            return "Generation service is not ready yet."
+            "Generation service is not ready yet."
         case .editorServiceUnavailable:
-            return "Editor service is not ready yet."
+            "Editor service is not ready yet."
         case .editorAudioNotLoaded:
-            return "Load audio into the editor before submitting an edit."
-        case .editorAudioFileNotFound(let path):
-            return "No readable editor audio file exists at '\(path)'."
-        case .invalidEditMode(let value):
-            return "Unsupported editor edit mode '\(value)'. Use 'inpaint' or 'repaint'."
+            "Load audio into the editor before submitting an edit."
+        case let .editorAudioFileNotFound(path):
+            "No readable editor audio file exists at '\(path)'."
+        case let .invalidEditMode(value):
+            "Unsupported editor edit mode '\(value)'. Use 'inpaint' or 'repaint'."
         case .invalidEditorSelection:
-            return "Editor selection must have startTime >= 0, endTime > startTime, and fit within the loaded audio duration when audio is loaded."
+            "Editor selection must have startTime >= 0, endTime > startTime, and fit within the loaded audio duration when audio is loaded."
         case .invalidFrequencyBand:
-            return "Frequency band must provide lowCutHz >= 0, highCutHz > lowCutHz, and highCutHz <= 24000."
+            "Frequency band must provide lowCutHz >= 0, highCutHz > lowCutHz, and highCutHz <= 24000."
         case .invalidEditorStrength:
-            return "Editor edit strength must be a number from 0.0 to 1.0."
+            "Editor edit strength must be a number from 0.0 to 1.0."
         case .invalidGuidanceScale:
-            return "Guidance scale must be a positive number."
-        case .invalidInpaintPreset(let value):
-            return "Unsupported inpaint preset '\(value)'. Use 'subtle', 'moderate', or 'full'."
-        case .invalidPipeline(let value):
-            return "Unsupported pipeline '\(value)'. Use 'auto', 'aceStep', or 'stableAudio'."
+            "Guidance scale must be a positive number."
+        case let .invalidInpaintPreset(value):
+            "Unsupported inpaint preset '\(value)'. Use 'subtle', 'moderate', or 'full'."
+        case let .invalidPipeline(value):
+            "Unsupported pipeline '\(value)'. Use 'auto', 'aceStep', or 'stableAudio'."
         case .editorInpaintDidNotComplete:
-            return "Editor inpaint ended before reporting completion."
-        case .invalidRenderFormat(let value):
-            return "Unsupported editor render format '\(value)'. Use 'wav' or 'aiff'."
-        case .editorRenderFileExists(let path):
-            return "Editor render output already exists at '\(path)'. Pass overwrite: true or choose another path."
-        case .editorRenderWriteFailed(let path, let reason):
-            return "Could not write editor render output to '\(path)': \(reason)"
+            "Editor inpaint ended before reporting completion."
+        case let .invalidRenderFormat(value):
+            "Unsupported editor render format '\(value)'. Use 'wav' or 'aiff'."
+        case let .editorRenderFileExists(path):
+            "Editor render output already exists at '\(path)'. Pass overwrite: true or choose another path."
+        case let .editorRenderWriteFailed(path, reason):
+            "Could not write editor render output to '\(path)': \(reason)"
         case .editorDSPChainEmpty:
-            return "Editor DSP effect chain must include at least one effect."
+            "Editor DSP effect chain must include at least one effect."
         case .editorOperationAlreadyActive:
-            return "Another editor operation is still running. Wait for it to finish or cancel it before starting a new one."
+            "Another editor operation is still running. Wait for it to finish or cancel it before starting a new one."
         case .invalidDSPChain:
-            return "'effects' must be an array of effect names or effect objects."
-        case .invalidDSPEffect(let value):
-            return "Unsupported editor DSP effect '\(value)'."
-        case .invalidDSPTarget(let reason):
-            return reason
-        case .invalidDSPParameters(let reason):
-            return reason
-        case .operationNotFound(let id):
-            return "No MCP operation matched '\(id)'."
+            "'effects' must be an array of effect names or effect objects."
+        case let .invalidDSPEffect(value):
+            "Unsupported editor DSP effect '\(value)'."
+        case let .invalidDSPTarget(reason):
+            reason
+        case let .invalidDSPParameters(reason):
+            reason
+        case let .operationNotFound(id):
+            "No MCP operation matched '\(id)'."
         case .trainingServiceUnavailable:
-            return "Training service is not ready yet."
+            "Training service is not ready yet."
         case .runPodServiceUnavailable:
-            return "RunPod service is not ready yet."
-        case .trainingAlreadyActive(let status):
-            return "Training is already active (state: \(status)). Stop it before starting another MCP training run."
-        case .invalidTrainingKind(let value):
-            return "Unsupported training kind '\(value)'. Use 'lora' or 'lokr'."
-        case .invalidTrainingRecipe(let value):
-            return "Unsupported training recipe '\(value)'. Use narrow or wide."
-        case .invalidTrainingConfiguration(let reason):
-            return reason
+            "RunPod service is not ready yet."
+        case let .trainingAlreadyActive(status):
+            "Training is already active (state: \(status)). Stop it before starting another MCP training run."
+        case let .invalidTrainingKind(value):
+            "Unsupported training kind '\(value)'. Use 'lora' or 'lokr'."
+        case let .invalidTrainingRecipe(value):
+            "Unsupported training recipe '\(value)'. Use narrow or wide."
+        case let .invalidTrainingConfiguration(reason):
+            reason
         case .encodingFailed:
-            return "Could not encode the trace as JSON."
+            "Could not encode the trace as JSON."
         }
     }
 }
@@ -230,8 +230,8 @@ enum EditorRenderFormat: String {
 
     var fileExtension: String {
         switch self {
-        case .wav: return "wav"
-        case .aiff: return "aiff"
+        case .wav: "wav"
+        case .aiff: "aiff"
         }
     }
 }
@@ -245,9 +245,9 @@ enum MCPOperationStatus: String {
     var isTerminal: Bool {
         switch self {
         case .running:
-            return false
+            false
         case .succeeded, .failed, .cancelled:
-            return true
+            true
         }
     }
 }
@@ -309,21 +309,21 @@ let workflowPromptDefinitions: [WorkflowPromptDefinition] = [
                 name: "direction",
                 description: "Creative direction for the improved chorus.",
                 required: false
-            )
+            ),
         ],
         resources: [
             "pimpaudio://takes",
             "pimpaudio://track/current",
             "pimpaudio://clip/current",
             "pimpaudio://region/current-selection",
-            "pimpaudio://presets"
+            "pimpaudio://presets",
         ],
         tools: [
             "load_editor_audio",
             "submit_editor_inpaint",
             "apply_editor_effect_chain",
             "render_editor_audio",
-            "get_operation"
+            "get_operation",
         ],
         template: """
         Improve the chorus while preserving the best material around it.
@@ -353,20 +353,20 @@ let workflowPromptDefinitions: [WorkflowPromptDefinition] = [
                 name: "direction",
                 description: "Mix direction such as brighter, wider, tighter, or more ambient.",
                 required: false
-            )
+            ),
         ],
         resources: [
             "pimpaudio://takes",
             "pimpaudio://track/current",
             "pimpaudio://clip/current",
-            "pimpaudio://presets"
+            "pimpaudio://presets",
         ],
         tools: [
             "load_editor_audio",
             "apply_editor_effect_chain",
             "render_editor_audio",
             "mark_preferred_take",
-            "get_operation"
+            "get_operation",
         ],
         template: """
         Create mix variants from the loaded editor audio or the supplied takeID.
@@ -400,20 +400,20 @@ let workflowPromptDefinitions: [WorkflowPromptDefinition] = [
                 name: "issue",
                 description: "Problem to solve, such as click, weak vocal, or muddy transient.",
                 required: false
-            )
+            ),
         ],
         resources: [
             "pimpaudio://track/current",
             "pimpaudio://clip/current",
             "pimpaudio://region/current-selection",
-            "pimpaudio://presets"
+            "pimpaudio://presets",
         ],
         tools: [
             "load_editor_audio",
             "submit_editor_inpaint",
             "apply_editor_effect_chain",
             "render_editor_audio",
-            "get_operation"
+            "get_operation",
         ],
         template: """
         Clean the specified region only.
@@ -437,19 +437,19 @@ let workflowPromptDefinitions: [WorkflowPromptDefinition] = [
                 name: "outputDirectory",
                 description: "Optional directory for rendered review exports.",
                 required: false
-            )
+            ),
         ],
         resources: [
             "pimpaudio://takes",
             "pimpaudio://track/current",
             "pimpaudio://clip/current",
-            "pimpaudio://operations"
+            "pimpaudio://operations",
         ],
         tools: [
             "load_editor_audio",
             "render_editor_audio",
             "mark_preferred_take",
-            "get_operation"
+            "get_operation",
         ],
         template: """
         Prepare review-ready renders from the current clip or the supplied takeID.
@@ -473,27 +473,27 @@ let workflowPromptDefinitions: [WorkflowPromptDefinition] = [
                 name: "duration",
                 description: "Optional target duration in seconds.",
                 required: false
-            )
+            ),
         ],
         resources: [
             "pimpaudio://models",
             "pimpaudio://adapters",
             "pimpaudio://presets",
-            "pimpaudio://operations"
+            "pimpaudio://operations",
         ],
         tools: [
             "enhance_prompt",
             "write_lyrics",
             "apply_adapter",
             "generate_song",
-            "generation_status"
+            "generation_status",
         ],
         template: """
         Convert the supplied prompt into a production-ready PiMP Audio Studio generation request.
         Inspect models, adapters, and presets first so the request fits the current workstation.
         Use enhance_prompt and write_lyrics when useful, then validate the final generate_song request with dryRun before submitting.
         """
-    )
+    ),
 ]
 
 struct PiMPAudioResourceURI {
@@ -512,11 +512,11 @@ struct PiMPAudioResourceURI {
             .split(separator: "/", omittingEmptySubsequences: true)
             .map(String.init)
 
-        self.kind = host
+        kind = host
         if let first = path.first {
-            self.identifier = first.removingPercentEncoding ?? first
+            identifier = first.removingPercentEncoding ?? first
         } else {
-            self.identifier = nil
+            identifier = nil
         }
     }
 }
@@ -525,15 +525,15 @@ extension ModelStatus {
     var mcpDescription: [String: Any] {
         switch self {
         case .notDownloaded:
-            return ["state": "notDownloaded"]
-        case .downloading(let progress):
-            return ["state": "downloading", "progress": progress]
+            ["state": "notDownloaded"]
+        case let .downloading(progress):
+            ["state": "downloading", "progress": progress]
         case .verifying:
-            return ["state": "verifying"]
+            ["state": "verifying"]
         case .ready:
-            return ["state": "ready"]
-        case .failed(let message):
-            return ["state": "failed", "message": message]
+            ["state": "ready"]
+        case let .failed(message):
+            ["state": "failed", "message": message]
         }
     }
 }

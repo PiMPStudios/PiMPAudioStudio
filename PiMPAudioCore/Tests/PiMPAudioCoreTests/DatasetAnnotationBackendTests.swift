@@ -1,6 +1,6 @@
 import Foundation
-import XCTest
 @testable import PiMPAudioCore
+import XCTest
 
 final class DatasetAnnotationBackendTests: XCTestCase {
     private final class LockedCounter: @unchecked Sendable {

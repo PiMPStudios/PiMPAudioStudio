@@ -1,6 +1,6 @@
 import Foundation
-import XCTest
 @testable import PiMPAudioCore
+import XCTest
 
 final class NativeModelPackManifestTests: XCTestCase {
     func testValidManifestPassesAndCorruptionFailsClosed() throws {
@@ -116,11 +116,9 @@ final class NativeModelPackManifestTests: XCTestCase {
             options: .atomic
         )
         for path in NativeModelPackValidator.requiredFiles.values
-            where path != "model.safetensors.index.json"
-        {
-            let data: Data
-            if path == "annotation-prompts.json" {
-                data = try JSONSerialization.data(
+            where path != "model.safetensors.index.json" {
+            let data: Data = if path == "annotation-prompts.json" {
+                try JSONSerialization.data(
                     withJSONObject: [
                         "schemaVersion": 1,
                         "caption": OmniAnnotationTask.caption.prompt,
@@ -129,7 +127,7 @@ final class NativeModelPackManifestTests: XCTestCase {
                     options: [.prettyPrinted, .sortedKeys]
                 )
             } else {
-                data = Data(path.utf8)
+                Data(path.utf8)
             }
             try data.write(
                 to: directory.appendingPathComponent(path),

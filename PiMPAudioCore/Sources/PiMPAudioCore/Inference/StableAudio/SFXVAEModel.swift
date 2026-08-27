@@ -34,13 +34,13 @@ public class SFXVAEModel: Module {
         self.config = config
         // channelMultiples is fixed for SAO 1.0; ratios come from config.
         let channelMultiples = [1, 2, 4, 8, 16]
-        self.encoder = OobleckEncoder(
+        encoder = OobleckEncoder(
             encoderHiddenSize: 128,
             audioChannels: config.outputChannels,
-            downsamplingRatios: config.upsampleRatios.reversed(),  // [8,8,4,4,2] → [2,4,4,8,8]
+            downsamplingRatios: config.upsampleRatios.reversed(), // [8,8,4,4,2] → [2,4,4,8,8]
             channelMultiples: channelMultiples
         )
-        self.decoder = OobleckDecoder(
+        decoder = OobleckDecoder(
             channels: 128,
             inputChannels: config.latentDim,
             audioChannels: config.outputChannels,
@@ -54,8 +54,8 @@ public class SFXVAEModel: Module {
     /// The encoder outputs `2 × latentDim` channels (μ || log_scale); we return μ only
     /// (same as `AutoEncoderOobleck.encodeMean` for the ACE-Step VAE).
     public func encodeMean(audio: MLXArray) -> MLXArray {
-        let h = encoder(audio)                          // [B, T_latent, 2*latentDim]
-        return MLX.split(h, parts: 2, axis: -1)[0]     // [B, T_latent, latentDim]
+        let h = encoder(audio) // [B, T_latent, 2*latentDim]
+        return MLX.split(h, parts: 2, axis: -1)[0] // [B, T_latent, latentDim]
     }
 
     /// Decode diffusion latents `[B, T_latent, latentDim]` → audio `[B, T_audio, audioChannels]`.

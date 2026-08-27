@@ -18,11 +18,11 @@ public class Qwen3Model: Module {
     static let rmsNormEps: Float = 1e-6
 
     override public init() {
-        self.embeddingTable = Embedding(
+        embeddingTable = Embedding(
             embeddingCount: Self.vocabSize,
             dimensions: Self.hiddenSize
         )
-        self.layers = (0..<Self.numLayers).map { _ in
+        layers = (0 ..< Self.numLayers).map { _ in
             Qwen3Layer(
                 hiddenSize: Self.hiddenSize,
                 intermediateSize: Self.intermediateSize,
@@ -32,8 +32,8 @@ public class Qwen3Model: Module {
                 rmsNormEps: Self.rmsNormEps
             )
         }
-        self.norm = RMSNorm(dimensions: Self.hiddenSize, eps: Self.rmsNormEps)
-        self.rotaryEmbedding = RotaryEmbedding(
+        norm = RMSNorm(dimensions: Self.hiddenSize, eps: Self.rmsNormEps)
+        rotaryEmbedding = RotaryEmbedding(
             headDim: Self.headDim,
             maxLen: 32768,
             base: 1_000_000.0
@@ -53,13 +53,13 @@ public class Qwen3Model: Module {
         // Without this mask the hidden states diverge wildly from the Python
         // HuggingFace Qwen3Model forward pass (max abs diff ~45), producing
         // completely wrong text conditioning for the DiT.
-        let indices = MLXArray(Array(0..<seqLen).map { Float($0) })
-        let rowIdx = indices.expandedDimensions(axis: 1)  // [seqLen, 1]  (query positions)
-        let colIdx = indices.expandedDimensions(axis: 0)  // [1, seqLen]  (key positions)
-        let zeros  = MLXArray.zeros([seqLen, seqLen], dtype: .float32)
+        let indices = MLXArray(Array(0 ..< seqLen).map { Float($0) })
+        let rowIdx = indices.expandedDimensions(axis: 1) // [seqLen, 1]  (query positions)
+        let colIdx = indices.expandedDimensions(axis: 0) // [1, seqLen]  (key positions)
+        let zeros = MLXArray.zeros([seqLen, seqLen], dtype: .float32)
         let negInf = MLXArray.full([seqLen, seqLen], values: MLXArray(Float(-1e9)))
         // mask[i, j] = −1e9 when key j > query i (future token), else 0.
-        let causalMask = which(colIdx .> rowIdx, negInf, zeros)  // [seqLen, seqLen]
+        let causalMask = which(colIdx .> rowIdx, negInf, zeros) // [seqLen, seqLen]
 
         // Combine causal mask with optional padding mask.
         // causalMask  [seqLen, seqLen] → broadcasts as [1, 1, seqLen, seqLen]

@@ -1,8 +1,8 @@
 // PiMPAudioCore/Tests/PiMPAudioCoreTests/Inference/StableAudio/SFXVAETests.swift
-import Testing
 import MLX
 import MLXRandom
 @testable import PiMPAudioCore
+import Testing
 
 @Suite("SFX VAE")
 struct SFXVAETests {
@@ -59,8 +59,8 @@ struct SFXVAETests {
     private func randomVAEWeights() -> [(String, MLXArray)] {
         var w: [(String, MLXArray)] = []
         let channels = 128
-        let cm = [1, 1, 2, 4, 8, 16]   // [1] + channelMultiples
-        let ratios = config.upsampleRatios  // [8,8,4,2]
+        let cm = [1, 1, 2, 4, 8, 16] // [1] + channelMultiples
+        let ratios = config.upsampleRatios // [8,8,4,2]
 
         // decoder.conv1: Conv1d([B,T,64] → [B,T,2048])
         // MLX Conv1d weight layout: [outC, kernelSize, inC]

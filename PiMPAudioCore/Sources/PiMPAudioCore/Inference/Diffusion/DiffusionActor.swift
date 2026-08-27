@@ -26,7 +26,7 @@ private func audioDiagnosticCFGPlan(
     var skipped: [String] = []
     for (idx, timestep) in schedule.enumerated() {
         let label = "\(idx)@\(audioDiagnosticFloat(timestep, format: "%.4f"))"
-        if timestep >= intervalStart && timestep <= intervalEnd {
+        if timestep >= intervalStart, timestep <= intervalEnd {
             applied.append(label)
         } else {
             skipped.append(label)
@@ -64,7 +64,7 @@ public actor DiffusionActor {
 
     public func makeProgressStream() -> AsyncStream<DiffusionProgress> {
         let (stream, continuation) = AsyncStream<DiffusionProgress>.makeStream()
-        self.progressContinuation = continuation
+        progressContinuation = continuation
         return stream
     }
 
@@ -89,7 +89,10 @@ public actor DiffusionActor {
 
         let xt = DiffusionSampler.generateNoise(shape: [bsz, T, C], seed: config.seed)
         AudioDiagnostics.memory("diff/generate/begin")
-        AudioDiagnostics.note("config", "shift=\(config.shift) steps=\(config.steps ?? -1) method=\(config.method) guidance=\(config.guidanceScale) cfgInterval=\(config.cfgIntervalStart)...\(config.cfgIntervalEnd) precision=\(config.precision) seed=\(config.seed.map(String.init) ?? "random")")
+        AudioDiagnostics.note(
+            "config",
+            "shift=\(config.shift) steps=\(config.steps ?? -1) method=\(config.method) guidance=\(config.guidanceScale) cfgInterval=\(config.cfgIntervalStart)...\(config.cfgIntervalEnd) precision=\(config.precision) seed=\(config.seed.map(String.init) ?? "random")"
+        )
         AudioDiagnostics.note(
             "diff/generate/config",
             "shape=[\(bsz),\(T),\(C)] shift=\(config.shift) steps=\(config.steps ?? -1) method=\(config.method) guidance=\(config.guidanceScale) cfgInterval=\(config.cfgIntervalStart)...\(config.cfgIntervalEnd) audioCoverStrength=\(config.audioCoverStrength) precision=\(config.precision) seed=\(config.seed.map(String.init) ?? "random")"
@@ -155,15 +158,15 @@ public actor DiffusionActor {
         let framesPerSec = 25
         let nSecs = (nFrames + framesPerSec - 1) / framesPerSec
         var perSecStats: [(Int, Float)] = []
-        for s in 0..<nSecs {
+        for s in 0 ..< nSecs {
             let startF = s * framesPerSec
             let endF = min(startF + framesPerSec, nFrames)
             // slice [0..., startF..<endF, 0...]
-            let chunk = denoised[0..., startF..<endF, 0...]
+            let chunk = denoised[0..., startF ..< endF, 0...]
             let chunkAbsMean = MLX.abs(chunk).mean().item(Float.self)
             perSecStats.append((s, chunkAbsMean))
         }
-        let statStrs = perSecStats.map { (s, v) in "s\(s)=\(String(format: "%.4f", v))" }.joined(separator: " ")
+        let statStrs = perSecStats.map { s, v in "s\(s)=\(String(format: "%.4f", v))" }.joined(separator: " ")
         diagLogger.info("[DiffusionActor] per-sec latent abs_mean: \(statStrs)")
         AudioDiagnostics.floats("diff/final_latent_abs_mean_per_sec", perSecStats.map(\.1))
         AudioDiagnostics.tensor("diff/generate/finalLatents", denoised)
@@ -432,7 +435,7 @@ public actor DiffusionActor {
         AudioDiagnostics.memory("\(diagnosticsTag)/diffusionBegin")
 
         var xt = initialXt
-        for stepIdx in 0..<numSteps {
+        for stepIdx in 0 ..< numSteps {
             try Task.checkCancellation()
             let currentT = schedule[stepIdx]
             let logDetail = AudioDiagnostics.isEnabled && audioDiagnosticStep(stepIdx, totalSteps: numSteps)
@@ -460,7 +463,7 @@ public actor DiffusionActor {
 
             var velocity = vt
             if doCFG {
-                let predCond = vt[0..<bsz]
+                let predCond = vt[0 ..< bsz]
                 let predUncond = vt[bsz...]
                 let applyCFG = currentT >= config.cfgIntervalStart && currentT <= config.cfgIntervalEnd
                 if applyCFG {

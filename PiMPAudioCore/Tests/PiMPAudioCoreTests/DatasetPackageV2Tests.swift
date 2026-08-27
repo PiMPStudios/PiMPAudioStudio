@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 @testable import PiMPAudioCore
+import Testing
 
 @Test func datasetPackageV2RoundTripsAndProjectsDefaultFullMix() throws {
     let package = makeWholeTrackPackage()
@@ -296,9 +296,9 @@ private func makeWholeTrackPackage() -> DatasetPackageV2 {
                 sourceFile: DatasetAudioFileV2(
                     path: "sources/track-one.wav",
                     format: "wav",
-                    byteSize: 10_000,
+                    byteSize: 10000,
                     durationSeconds: 305,
-                    sampleRate: 48_000,
+                    sampleRate: 48000,
                     channels: 2
                 )
             ),
@@ -311,9 +311,9 @@ private func makeWholeTrackPackage() -> DatasetPackageV2 {
                 file: DatasetAudioFileV2(
                     path: "sources/track-one.wav",
                     format: "wav",
-                    byteSize: 10_000,
+                    byteSize: 10000,
                     durationSeconds: 305,
-                    sampleRate: 48_000,
+                    sampleRate: 48000,
                     channels: 2
                 ),
                 sourceRange: sourceRange,

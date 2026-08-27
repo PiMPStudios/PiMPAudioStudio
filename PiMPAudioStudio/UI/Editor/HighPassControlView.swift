@@ -23,8 +23,8 @@ struct HighPassControlView: View {
                     }
                     .buttonStyle(.bordered)
                     .tint(abs(parameters.cutoffHz - value) < 0.5
-                          ? DSPEffectCategory.spectral.accentColor
-                          : .gray)
+                        ? DSPEffectCategory.spectral.accentColor
+                        : .gray)
                     .controlSize(.small)
                 }
             }

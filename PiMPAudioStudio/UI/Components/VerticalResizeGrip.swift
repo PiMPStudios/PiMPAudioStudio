@@ -1,5 +1,5 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 
 /// Bottom-edge grip for vertical-only resize of Generate prompt/lyrics fields.
 struct VerticalResizeGrip: View {

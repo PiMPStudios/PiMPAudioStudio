@@ -1,6 +1,6 @@
-import SwiftUI
-import PiMPAudioCore
 import AppKit
+import PiMPAudioCore
+import SwiftUI
 
 struct AdaptersSettingsView: View {
     enum Tab: String, CaseIterable {
@@ -106,7 +106,11 @@ private struct MyAdaptersListView: View {
         }
         .alert("Rename Adapter", isPresented: Binding(
             get: { renamingAdapter != nil },
-            set: { if !$0 { renamingAdapter = nil } }
+            set: {
+                if !$0 {
+                    renamingAdapter = nil
+                }
+            }
         )) {
             TextField("New name", text: $renameText)
             Button("Cancel", role: .cancel) { renamingAdapter = nil }
@@ -231,14 +235,14 @@ private struct MyAdaptersListView: View {
     /// Short display name for the model variant, or nil for unknown / non-ACE-Step IDs.
     private func modelVariant(for baseModelID: String) -> String? {
         switch baseModelID {
-        case "ace-step-dit-turbo":    return "Turbo"
-        case "ace-step-dit-sft":      return "SFT"
-        case "ace-step-dit-base":     return "Base"
-        case "ace-step-dit-xl-turbo": return "XL Turbo"
-        case "ace-step-dit-xl-sft":   return "XL SFT"
-        case "ace-step-dit-xl-base":  return "XL Base"
-        case "ace-step-dit-xl":       return "XL"
-        default:                   return nil
+        case "ace-step-dit-turbo": "Turbo"
+        case "ace-step-dit-sft": "SFT"
+        case "ace-step-dit-base": "Base"
+        case "ace-step-dit-xl-turbo": "XL Turbo"
+        case "ace-step-dit-xl-sft": "XL SFT"
+        case "ace-step-dit-xl-base": "XL Base"
+        case "ace-step-dit-xl": "XL"
+        default: nil
         }
     }
 
@@ -263,15 +267,14 @@ private struct MyAdaptersListView: View {
         }
 
         // Resolve imported file references still accessible on disk
-        let resolvedFiles: [TrainingImportedFile]
-        if let refs = manifest?.importedFiles {
-            resolvedFiles = refs.compactMap { ref in
+        let resolvedFiles: [TrainingImportedFile] = if let refs = manifest?.importedFiles {
+            refs.compactMap { ref in
                 FileManager.default.fileExists(atPath: ref.url.path(percentEncoded: false))
                     ? ref
                     : nil
             }
         } else {
-            resolvedFiles = []
+            []
         }
 
         return (resolvedEntries, resolvedFiles)
@@ -360,7 +363,7 @@ private struct MyAdaptersListView: View {
     private func showInFinder(_ adapter: LoRAAdapter) {
         guard let directory = try? AdapterRegistry.adapterDirectory(id: adapter.id) else { return }
         NSWorkspace.shared.activateFileViewerSelecting([
-            directory
+            directory,
         ])
     }
 }

@@ -7,7 +7,7 @@ struct PlayerView: View {
     let fileURL: URL
     /// Pre-computed waveform peaks from generation time.
     /// When provided the player skips re-reading the WAV file for peak extraction.
-    var precomputedPeaks: [Float]? = nil
+    var precomputedPeaks: [Float]?
 
     var body: some View {
         VStack(spacing: 12) {
@@ -51,8 +51,8 @@ struct PlayerView: View {
                 Slider(value: Binding(
                     get: { playerService.volume },
                     set: { playerService.setVolume($0) }
-                ), in: 0...1)
-                .frame(width: 80)
+                ), in: 0 ... 1)
+                    .frame(width: 80)
 
                 Spacer()
 

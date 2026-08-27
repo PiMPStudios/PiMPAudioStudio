@@ -33,7 +33,7 @@ public struct CosineScheduler: Sendable {
         let clampedStep = max(0, min(step, totalSteps - 1))
         let warmup = warmupSteps
 
-        if warmup > 0 && clampedStep < warmup {
+        if warmup > 0, clampedStep < warmup {
             return baseLR * Float(clampedStep + 1) / Float(warmup)
         }
 

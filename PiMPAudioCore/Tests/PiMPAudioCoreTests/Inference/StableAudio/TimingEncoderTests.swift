@@ -1,6 +1,6 @@
-import Testing
 import MLX
 @testable import PiMPAudioCore
+import Testing
 
 @Suite("TimingEncoder")
 struct TimingEncoderTests {

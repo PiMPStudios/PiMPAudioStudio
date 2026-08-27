@@ -1,5 +1,5 @@
-import SwiftUI
 import PiMPAudioCore
+import SwiftUI
 
 struct EditorControlsBar: View {
     @ObservedObject var state: EditorState
@@ -29,7 +29,7 @@ struct EditorControlsBar: View {
                         Text(String(format: "%.2f", state.strength))
                             .font(.caption).monospacedDigit().foregroundStyle(.secondary)
                     }
-                    Slider(value: $state.strength, in: 0...1) { _ in
+                    Slider(value: $state.strength, in: 0 ... 1) { _ in
                         state.clearPresetIfManual()
                     }
                     .tint(.orange)
@@ -42,7 +42,7 @@ struct EditorControlsBar: View {
                         Text(String(format: "%.1f", state.guidanceScale))
                             .font(.caption).monospacedDigit().foregroundStyle(.secondary)
                     }
-                    Slider(value: $state.guidanceScale, in: 1...15) { _ in
+                    Slider(value: $state.guidanceScale, in: 1 ... 15) { _ in
                         state.clearPresetIfManual()
                     }
                     .tint(.orange)
@@ -70,7 +70,9 @@ struct EditorControlsBar: View {
 
     private var canExecute: Bool {
         guard state.isLoaded, !state.isProcessing, !state.regionPrompt.isEmpty else { return false }
-        if state.editMode == .inpaint { return state.hasSelection }
+        if state.editMode == .inpaint {
+            return state.hasSelection
+        }
         return true
     }
 }

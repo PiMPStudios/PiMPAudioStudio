@@ -191,7 +191,10 @@ final class RunPodService: ObservableObject {
             lastError = nil
             return pod
         } catch {
-            note("launch/error", "configuration={\(configuration.diagnosticsSummary)} error=\(RunPodError.userFacingMessage(for: error))")
+            note(
+                "launch/error",
+                "configuration={\(configuration.diagnosticsSummary)} error=\(RunPodError.userFacingMessage(for: error))"
+            )
             lastError = RunPodError.userFacingMessage(for: error)
             return nil
         }
@@ -203,9 +206,9 @@ final class RunPodService: ObservableObject {
     ) async throws {
         guard let rawPath = configuration.sshPrivateKeyPath?
             .trimmingCharacters(in: .whitespacesAndNewlines),
-              !rawPath.isEmpty,
-              let keyURL = RunPodSSHKeyStore.configuredPrivateKeyURL(for: rawPath),
-              FileManager.default.fileExists(atPath: keyURL.path(percentEncoded: false)) else {
+            !rawPath.isEmpty,
+            let keyURL = RunPodSSHKeyStore.configuredPrivateKeyURL(for: rawPath),
+            FileManager.default.fileExists(atPath: keyURL.path(percentEncoded: false)) else {
             return
         }
 
@@ -325,7 +328,7 @@ final class RunPodService: ObservableObject {
                 phase: .starting,
                 message: detail.isEmpty
                     ? "Remote setup started. Progress refreshes automatically."
-                    : String(detail.suffix(1_000))
+                    : String(detail.suffix(1000))
             )
             lastMessage = "Remote setup started on \(pod.displayName)."
             lastError = nil
@@ -384,7 +387,7 @@ final class RunPodService: ObservableObject {
                 in: destinationParentURL
             )
             let pullCommand = plan.pullArtifactsCommand(destinationURL: destination)
-            try await runRemoteCommand(pullCommand, timeoutSeconds: 1_800)
+            try await runRemoteCommand(pullCommand, timeoutSeconds: 1800)
 
             let artifactsURL = destination.appendingPathComponent(
                 "remote_artifacts",
@@ -396,7 +399,7 @@ final class RunPodService: ObservableObject {
                 from: Data(contentsOf: resultURL)
             )
             guard result.pimpAudioRemoteResultVersion
-                    == RemoteTrainingJobResult.schemaVersion else {
+                == RemoteTrainingJobResult.schemaVersion else {
                 throw RunPodRemoteJobError.invalidResult(
                     "unsupported result schema \(result.pimpAudioRemoteResultVersion)"
                 )
@@ -479,8 +482,8 @@ final class RunPodService: ObservableObject {
                 do {
                     try await Task.sleep(for: .seconds(5))
                     try Task.checkCancellation()
-                    await self.refreshRemoteJob(plan: plan)
-                    guard let state = self.remoteJobStates[plan.podID],
+                    await refreshRemoteJob(plan: plan)
+                    guard let state = remoteJobStates[plan.podID],
                           !state.phase.isTerminal else {
                         return
                     }
@@ -522,13 +525,13 @@ final class RunPodService: ObservableObject {
                 state.phase = .starting
                 state.message = snapshot.logTail.isEmpty
                     ? "Preparing the remote worker. First setup typically takes 20\u{2013}45 minutes."
-                    : String(snapshot.logTail.prefix(1_000))
+                    : String(snapshot.logTail.prefix(1000))
                 state.logTail = ""
             case .failed:
                 state.phase = .failed
                 state.message = snapshot.logTail.isEmpty
                     ? "The remote worker stopped without writing result.json."
-                    : String(snapshot.logTail.suffix(1_000))
+                    : String(snapshot.logTail.suffix(1000))
             case .result:
                 guard let result = snapshot.result else {
                     throw RunPodRemoteJobError.invalidResult(
@@ -568,7 +571,7 @@ final class RunPodService: ObservableObject {
             throw RunPodRemoteJobError.commandFailed(
                 detail.isEmpty
                     ? "\(command.displayName) exited with status \(result.exitStatus)"
-                    : String(detail.suffix(2_000))
+                    : String(detail.suffix(2000))
             )
         }
         return result
@@ -637,11 +640,11 @@ final class RunPodService: ObservableObject {
     private var keySourceDiagnosticsLabel: String {
         switch keySource {
         case .keychain:
-            return "keychain"
+            "keychain"
         case .environment:
-            return "environment"
+            "environment"
         case .none:
-            return "none"
+            "none"
         }
     }
 
@@ -664,18 +667,18 @@ enum RunPodRemoteJobPhase: String, Equatable, Sendable {
     var isBusy: Bool {
         switch self {
         case .uploading, .starting, .downloading:
-            return true
+            true
         default:
-            return false
+            false
         }
     }
 
     var isTerminal: Bool {
         switch self {
         case .succeeded, .failed, .downloaded, .imported:
-            return true
+            true
         default:
-            return false
+            false
         }
     }
 }
@@ -727,14 +730,14 @@ enum RunPodRemoteJobError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidConfiguration(let detail):
-            return "Remote worker configuration is incomplete: \(detail)"
-        case .commandFailed(let detail):
-            return "Remote worker command failed: \(detail)"
-        case .invalidResult(let detail):
-            return "Remote worker result is invalid: \(detail)"
-        case .timedOut(let command):
-            return "\(command) timed out."
+        case let .invalidConfiguration(detail):
+            "Remote worker configuration is incomplete: \(detail)"
+        case let .commandFailed(detail):
+            "Remote worker command failed: \(detail)"
+        case let .invalidResult(detail):
+            "Remote worker result is invalid: \(detail)"
+        case let .timedOut(command):
+            "\(command) timed out."
         }
     }
 
@@ -775,11 +778,11 @@ enum RunPodSSHKeyStoreError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidPrivateKey:
-            return "Choose an SSH private key, not a public key or another file."
+            "Choose an SSH private key, not a public key or another file."
         case .keyTooLarge:
-            return "The selected SSH private key is unexpectedly large."
+            "The selected SSH private key is unexpectedly large."
         case .cannotDerivePublicKey:
-            return "Could not derive an SSH public key from the selected private key. Use an unencrypted key, or register the public key in the RunPod console."
+            "Could not derive an SSH public key from the selected private key. Use an unencrypted key, or register the public key in the RunPod console."
         }
     }
 }
@@ -803,7 +806,7 @@ enum RunPodSSHPublicKey {
 }
 
 struct RunPodSSHKeyStore {
-    private static let maximumPrivateKeySize = 128 * 1_024
+    private static let maximumPrivateKeySize = 128 * 1024
     private static let supportedPrivateKeyHeaders = [
         "-----BEGIN OPENSSH PRIVATE KEY-----",
         "-----BEGIN PRIVATE KEY-----",
@@ -964,12 +967,12 @@ struct RunPodRemoteJobPlan: Sendable {
         }
         guard let publicIP = pod.sshHost,
               publicIP.rangeOfCharacter(
-                from: CharacterSet(
-                    charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-"
-                ).inverted
+                  from: CharacterSet(
+                      charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-"
+                  ).inverted
               ) == nil,
               let sshPort = pod.sshPort,
-              (1...65_535).contains(sshPort) else {
+              (1 ... 65535).contains(sshPort) else {
             throw RunPodRemoteJobError.invalidConfiguration(
                 "the pod does not expose a valid public SSH endpoint"
             )
@@ -993,21 +996,21 @@ struct RunPodRemoteJobPlan: Sendable {
             )
         }
 
-        self.podID = pod.id
+        podID = pod.id
         self.archiveURL = archiveURL
         self.workerDirectoryURL = workerDirectoryURL
-        self.host = publicIP
-        self.port = sshPort
+        host = publicIP
+        port = sshPort
         self.username = username
         self.sshKeyPath = expandedKey
         let knownHostsDirectory = expandedKey.map {
             URL(fileURLWithPath: $0).deletingLastPathComponent()
         } ?? FileManager.default.temporaryDirectory
-        self.knownHostsPath = knownHostsDirectory.appendingPathComponent(
+        knownHostsPath = knownHostsDirectory.appendingPathComponent(
             "known_hosts-\(Self.safeRemoteJobKey(pod.id))",
             isDirectory: false
         ).path(percentEncoded: false)
-        self.remoteJobKey = Self.safeRemoteJobKey(
+        remoteJobKey = Self.safeRemoteJobKey(
             archiveURL.deletingPathExtension().lastPathComponent
         )
     }
@@ -1337,7 +1340,7 @@ struct RunPodRemoteStatusSnapshot {
                 from: data
             )
             guard result.pimpAudioRemoteResultVersion
-                    == RemoteTrainingJobResult.schemaVersion else {
+                == RemoteTrainingJobResult.schemaVersion else {
                 throw RunPodRemoteJobError.invalidResult(
                     "unsupported result schema \(result.pimpAudioRemoteResultVersion)"
                 )
@@ -1358,8 +1361,7 @@ struct RunPodRemoteStatusSnapshot {
 
 final class RunPodRemoteProcessExecutor:
     RunPodRemoteCommandExecuting,
-    @unchecked Sendable
-{
+    @unchecked Sendable {
     func run(
         executableURL: URL,
         arguments: [String],
@@ -1518,7 +1520,7 @@ private final class RunPodCapturedProcess: @unchecked Sendable {
         stderr.fileHandleForReading.readabilityHandler = nil
         lock.lock()
         didCancel = true
-        let continuation = didResume ? nil : self.continuation
+        let continuation = didResume ? nil : continuation
         if continuation != nil {
             didResume = true
             self.continuation = nil
@@ -1540,7 +1542,7 @@ struct RunPodLaunchConfiguration: Equatable, Sendable {
     var containerDiskGB: Int
     var volumeGB: Int
     var ports: [String] = ["22/tcp", "8888/http"]
-    var sshPrivateKeyPath: String? = nil
+    var sshPrivateKeyPath: String?
 
     func requestBody() throws -> RunPodCreatePodRequest {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1597,7 +1599,7 @@ struct RunPodLaunchConfiguration: Equatable, Sendable {
             "gpu=\(gpuTypeID)",
             "dataCenters=\(dataCenterIDs.isEmpty ? "any" : dataCenterIDs.joined(separator: ","))",
             "containerDiskGB=\(containerDiskGB)",
-            "volumeGB=\(volumeGB)"
+            "volumeGB=\(volumeGB)",
         ].joined(separator: " ")
     }
 }
@@ -1708,7 +1710,9 @@ struct RunPodPodSummary: Identifiable, Decodable, Equatable, Sendable {
         return trimmed.isEmpty ? "root" : trimmed
     }
 
-    var publicIp: String? { sshHost }
+    var publicIp: String? {
+        sshHost
+    }
 
     func sshCommand(sshKeyPath: String) -> String? {
         guard let sshHost, let sshPort else { return nil }
@@ -1782,10 +1786,9 @@ struct RunPodPodSummary: Identifiable, Decodable, Equatable, Sendable {
             "status=\(statusLabel)",
             "gpu=\(gpuLabel)",
             "cost=\(hourlyCostLabel ?? "unknown")",
-            "ssh=\(sshPort == nil ? "unavailable" : "available")"
+            "ssh=\(sshPort == nil ? "unavailable" : "available")",
         ].joined(separator: " ")
     }
-
 }
 
 struct RunPodGPU: Decodable, Equatable, Sendable {
@@ -1803,35 +1806,37 @@ enum RunPodRegion: String, CaseIterable, Identifiable, Sendable {
     case europe
     case oceania
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     var displayName: String {
         switch self {
         case .any:
-            return "Any region"
+            "Any region"
         case .asia:
-            return "Asia"
+            "Asia"
         case .northAmerica:
-            return "North America"
+            "North America"
         case .europe:
-            return "Europe"
+            "Europe"
         case .oceania:
-            return "Oceania"
+            "Oceania"
         }
     }
 
     var systemImage: String {
         switch self {
         case .any:
-            return "globe"
+            "globe"
         case .asia:
-            return "globe.asia.australia"
+            "globe.asia.australia"
         case .northAmerica:
-            return "globe.americas"
+            "globe.americas"
         case .europe:
-            return "globe.europe.africa"
+            "globe.europe.africa"
         case .oceania:
-            return "globe.asia.australia"
+            "globe.asia.australia"
         }
     }
 
@@ -1869,19 +1874,19 @@ enum RunPodStockStatus: String, Equatable, Sendable {
 
     var rank: Int {
         switch self {
-        case .none: return 0
-        case .low: return 1
-        case .medium: return 2
-        case .high: return 3
+        case .none: 0
+        case .low: 1
+        case .medium: 2
+        case .high: 3
         }
     }
 
     var displayName: String {
         switch self {
-        case .none: return "Unavailable"
-        case .low: return "Low stock"
-        case .medium: return "Medium stock"
-        case .high: return "High stock"
+        case .none: "Unavailable"
+        case .low: "Low stock"
+        case .medium: "Medium stock"
+        case .high: "High stock"
         }
     }
 }
@@ -1930,15 +1935,15 @@ struct RunPodDataCenter: Identifiable, Decodable, Equatable, Sendable {
     var catalogRegion: RunPodRegion? {
         switch (region ?? "").trimmingCharacters(in: .whitespacesAndNewlines).uppercased() {
         case "NORTH_AMERICA":
-            return .northAmerica
+            .northAmerica
         case "ASIA":
-            return .asia
+            .asia
         case "EUROPE":
-            return .europe
+            .europe
         case "OCEANIA":
-            return .oceania
+            .oceania
         default:
-            return nil
+            nil
         }
     }
 
@@ -1975,28 +1980,28 @@ struct RunPodGPUAvailability: Decodable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         gpuTypeID =
             try container.decodeIfPresent(String.self, forKey: .gpuTypeID)
-            ?? container.decodeIfPresent(String.self, forKey: .gpuID)
-            ?? container.decode(String.self, forKey: .id)
+                ?? container.decodeIfPresent(String.self, forKey: .gpuID)
+                ?? container.decode(String.self, forKey: .id)
         displayName =
             try container.decodeIfPresent(String.self, forKey: .displayName)
-            ?? container.decodeIfPresent(String.self, forKey: .name)
-            ?? gpuTypeID
+                ?? container.decodeIfPresent(String.self, forKey: .name)
+                ?? gpuTypeID
         stockStatus =
             try container.decodeIfPresent(String.self, forKey: .stockStatus)
-            ?? container.decodeIfPresent(String.self, forKey: .availability)
-            ?? ""
+                ?? container.decodeIfPresent(String.self, forKey: .availability)
+                ?? ""
     }
 
     var stockStatusValue: RunPodStockStatus {
         switch stockStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
         case "high":
-            return .high
+            .high
         case "medium":
-            return .medium
+            .medium
         case "low":
-            return .low
+            .low
         default:
-            return .none
+            .none
         }
     }
 
@@ -2229,18 +2234,18 @@ struct RunPodTemplate: Identifiable, Decodable, Equatable, Sendable {
         name = try container.decodeIfPresent(String.self, forKey: .name)
         imageName =
             try container.decodeIfPresent(String.self, forKey: .image)
-            ?? container.decodeIfPresent(String.self, forKey: .imageName)
+                ?? container.decodeIfPresent(String.self, forKey: .imageName)
         category = try container.decodeIfPresent(String.self, forKey: .category)
         isPublic =
             try container.decodeIfPresent(Bool.self, forKey: .publicFlag)
-            ?? container.decodeIfPresent(Bool.self, forKey: .isPublic)
+                ?? container.decodeIfPresent(Bool.self, forKey: .isPublic)
         isServerless =
             try container.decodeIfPresent(Bool.self, forKey: .serverless)
-            ?? container.decodeIfPresent(Bool.self, forKey: .isServerless)
+                ?? container.decodeIfPresent(Bool.self, forKey: .isServerless)
         isRunpod = try container.decodeIfPresent(Bool.self, forKey: .isRunpod) ?? true
         containerDiskInGb =
             try container.decodeIfPresent(Int.self, forKey: .disk)
-            ?? container.decodeIfPresent(Int.self, forKey: .containerDiskInGb)
+                ?? container.decodeIfPresent(Int.self, forKey: .containerDiskInGb)
         if let mounts = try container.decodeIfPresent(RunPodPodMounts.self, forKey: .mounts) {
             volumeInGb = mounts.persistent?.size
             volumeMountPath = mounts.persistent?.path
@@ -2300,7 +2305,7 @@ struct RunPodTemplate: Identifiable, Decodable, Equatable, Sendable {
         guard supportsNVIDIATrainingTemplate(gpuTypeValue) else { return nil }
 
         return templates
-            .filter { $0.isOfficialPodTemplate }
+            .filter(\.isOfficialPodTemplate)
             .compactMap { template -> (template: RunPodTemplate, score: Int)? in
                 guard let score = template.trainingTemplateScore(for: gpuTypeValue) else {
                     return nil
@@ -2373,11 +2378,15 @@ struct RunPodTemplate: Identifiable, Decodable, Equatable, Sendable {
         guard incompatibilityReason(for: gpuTypeValue) == nil else { return nil }
 
         let searchable = runtimeSearchableText
-        var score = 1_000
-        if searchable.contains("runpod/pytorch") { score += 500 }
-        if searchable.contains("runpod pytorch") { score += 500 }
+        var score = 1000
+        if searchable.contains("runpod/pytorch") {
+            score += 500
+        }
+        if searchable.contains("runpod pytorch") {
+            score += 500
+        }
         if let pytorchVersion {
-            score += pytorchVersion.major * 1_000
+            score += pytorchVersion.major * 1000
             score += pytorchVersion.minor * 100
             score += min(pytorchVersion.patch, 99)
         }
@@ -2386,8 +2395,12 @@ struct RunPodTemplate: Identifiable, Decodable, Equatable, Sendable {
             score += cudaVersion.minor * 10
             score += min(cudaVersion.patch, 9)
         }
-        if searchable.contains("devel") { score += 100 }
-        if searchable.contains("py3.11") { score += 100 }
+        if searchable.contains("devel") {
+            score += 100
+        }
+        if searchable.contains("py3.11") {
+            score += 100
+        }
         if searchable.contains("ubuntu24.04") || searchable.contains("ubuntu2404") {
             score += 100
         } else if searchable.contains("ubuntu22.04") || searchable.contains("ubuntu2204") {
@@ -2422,8 +2435,8 @@ struct RunPodTemplate: Identifiable, Decodable, Equatable, Sendable {
         var searchStart = value.startIndex
         while searchStart < value.endIndex,
               let markerRange = value.range(
-                of: marker,
-                range: searchStart..<value.endIndex
+                  of: marker,
+                  range: searchStart ..< value.endIndex
               ) {
             let suffix = value[markerRange.upperBound...]
             let token = suffix.prefix { $0.isNumber || $0 == "." }
@@ -2448,8 +2461,8 @@ struct RunPodTemplate: Identifiable, Decodable, Equatable, Sendable {
         var searchStart = value.startIndex
         while searchStart < value.endIndex,
               let markerRange = value.range(
-                of: "torch",
-                range: searchStart..<value.endIndex
+                  of: "torch",
+                  range: searchStart ..< value.endIndex
               ) {
             let digits = value[markerRange.upperBound...].prefix { $0.isNumber }
             if digits.count == 3,
@@ -2473,8 +2486,8 @@ struct RunPodTemplate: Identifiable, Decodable, Equatable, Sendable {
         var searchStart = value.startIndex
         while searchStart < value.endIndex,
               let markerRange = value.range(
-                of: "cu",
-                range: searchStart..<value.endIndex
+                  of: "cu",
+                  range: searchStart ..< value.endIndex
               ) {
             let digits = value[markerRange.upperBound...].prefix { $0.isNumber }
             if digits.count >= 3,
@@ -2868,7 +2881,7 @@ struct RunPodAPIClient {
     }
 
     private func validate(response: HTTPURLResponse, data: Data) throws {
-        guard (200..<300).contains(response.statusCode) else {
+        guard (200 ..< 300).contains(response.statusCode) else {
             throw RunPodError.httpStatus(response.statusCode, Self.problemDetail(from: data))
         }
     }
@@ -2878,7 +2891,7 @@ struct RunPodAPIClient {
             var parts: [String] = []
             if let detail = problem.detail?
                 .trimmingCharacters(in: .whitespacesAndNewlines),
-               !detail.isEmpty {
+                !detail.isEmpty {
                 parts.append(detail)
             }
             if let errors = problem.errors {
@@ -2893,7 +2906,7 @@ struct RunPodAPIClient {
             }
             if let title = problem.title?
                 .trimmingCharacters(in: .whitespacesAndNewlines),
-               !title.isEmpty {
+                !title.isEmpty {
                 return title
             }
         }
@@ -2912,13 +2925,13 @@ enum RunPodError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .missingAPIKey:
-            return "RunPod API key is not configured."
-        case .invalidConfiguration(let message):
-            return message
+            "RunPod API key is not configured."
+        case let .invalidConfiguration(message):
+            message
         case .invalidResponse:
-            return "RunPod returned a response PiMP Audio Studio could not read."
-        case .httpStatus(let status, let body):
-            return Self.message(forHTTPStatus: status, body: body)
+            "RunPod returned a response PiMP Audio Studio could not read."
+        case let .httpStatus(status, body):
+            Self.message(forHTTPStatus: status, body: body)
         }
     }
 
@@ -2955,7 +2968,7 @@ enum RunPodError: LocalizedError, Equatable {
             return "RunPod could not find that resource. Refresh pods and try again.\(detail)"
         case 429:
             return "RunPod rate-limited the request. Wait a minute and try again.\(detail)"
-        case 500...599:
+        case 500 ... 599:
             return "RunPod is having trouble right now (HTTP \(status)). Try again shortly.\(detail)"
         default:
             return "RunPod request failed with HTTP \(status).\(detail)"
@@ -2983,7 +2996,7 @@ enum RunPodRemoteWorkerLocator {
     static func defaultDirectoryURL() -> URL {
         if let environmentPath = ProcessInfo.processInfo.environment["PIMP_REMOTE_WORKER_DIR"]?
             .trimmingCharacters(in: .whitespacesAndNewlines),
-           !environmentPath.isEmpty {
+            !environmentPath.isEmpty {
             let environmentURL = URL(fileURLWithPath: NSString(string: environmentPath).expandingTildeInPath)
             if isWorkerDirectory(environmentURL) {
                 return environmentURL

@@ -31,10 +31,10 @@ public struct OmniOutputDiagnostics: Codable, Equatable, Sendable {
         }.count
         let isPathologicalRepetition =
             maximumRepeatedLineCount >= 8
-            || instrumentalLineCount >= 8
-            || (lineCount >= 12 && uniqueLineRatio < 0.25)
+                || instrumentalLineCount >= 8
+                || (lineCount >= 12 && uniqueLineRatio < 0.25)
 
-        self.isEmpty = text.trimmingCharacters(
+        isEmpty = text.trimmingCharacters(
             in: .whitespacesAndNewlines
         ).isEmpty
         self.lineCount = lineCount

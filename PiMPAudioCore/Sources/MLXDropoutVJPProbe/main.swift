@@ -30,11 +30,11 @@ enum ProbeError: Error, CustomStringConvertible {
 
     var description: String {
         switch self {
-        case .missingValue(let key):
+        case let .missingValue(key):
             "Missing value for \(key)"
-        case .invalidValue(let key, let value):
+        case let .invalidValue(key, value):
             "Invalid value for \(key): \(value)"
-        case .unknownArgument(let key):
+        case let .unknownArgument(key):
             "Unknown argument: \(key)"
         }
     }
@@ -65,17 +65,17 @@ func parseArguments(_ arguments: [String]) throws -> ProbeConfig {
             }
             config.mode = mode
         case "--sites":
-            config.sites = try parsePositiveInt(key, try value(after: key))
+            config.sites = try parsePositiveInt(key, value(after: key))
         case "--batch":
-            config.batch = try parsePositiveInt(key, try value(after: key))
+            config.batch = try parsePositiveInt(key, value(after: key))
         case "--tokens":
-            config.tokens = try parsePositiveInt(key, try value(after: key))
+            config.tokens = try parsePositiveInt(key, value(after: key))
         case "--input-dim":
-            config.inputDim = try parsePositiveInt(key, try value(after: key))
+            config.inputDim = try parsePositiveInt(key, value(after: key))
         case "--output-dim":
-            config.outputDim = try parsePositiveInt(key, try value(after: key))
+            config.outputDim = try parsePositiveInt(key, value(after: key))
         case "--dropout":
-            config.dropout = try parseDropout(key, try value(after: key))
+            config.dropout = try parseDropout(key, value(after: key))
         case "--seed":
             let raw = try value(after: key)
             guard let seed = UInt64(raw) else {
@@ -83,7 +83,7 @@ func parseArguments(_ arguments: [String]) throws -> ProbeConfig {
             }
             config.seed = seed
         case "--timeout":
-            config.timeoutSeconds = try parsePositiveInt(key, try value(after: key))
+            config.timeoutSeconds = try parsePositiveInt(key, value(after: key))
         default:
             throw ProbeError.unknownArgument(key)
         }
@@ -263,9 +263,9 @@ func runProbe(_ config: ProbeConfig) {
     case .none, .implicit:
         break
     case .explicitKey:
-        keys = makeSeededKeys(seed: config.seed + 1_000, count: config.sites)
+        keys = makeSeededKeys(seed: config.seed + 1000, count: config.sites)
     case .precomputedMask:
-        let maskKeys = makeSeededKeys(seed: config.seed + 2_000, count: config.sites)
+        let maskKeys = makeSeededKeys(seed: config.seed + 2000, count: config.sites)
         masks = maskKeys.map { key in
             (MLXRandom.uniform(0 ..< 1, inputShape, key: key) .> config.dropout).asType(input.dtype)
         }

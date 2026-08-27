@@ -7,8 +7,8 @@ public enum Precision: String, Codable, Sendable, CaseIterable {
 
     public var mlxDtype: DType {
         switch self {
-        case .float32: return .float32
-        case .float16: return .float16
+        case .float32: .float32
+        case .float16: .float16
         }
     }
 }
@@ -209,18 +209,18 @@ public struct SFXDiffusionConfig: Sendable {
 
 public struct SFXDiTConfig: Sendable {
     // Core architecture dims (from actual SAO weight inspection)
-    public let hiddenSize: Int          // 1536
-    public let numLayers: Int           // 24
-    public let numHeads: Int            // 24 (Q heads + self-attn heads)
-    public let numKVHeads: Int          // 12 (cross-attn KV heads, GQA 2:1)
-    public let headDim: Int             // 64
-    public let latentDim: Int           // 64
-    public let conditioningDim: Int     // 768 (T5-base output → cross-attn)
-    public let ffIntermediateDim: Int   // 6144 (GEGLU up-branch)
-    public let rotaryDim: Int           // 32  (partial RoPE, first 32 of 64 head dims)
+    public let hiddenSize: Int // 1536
+    public let numLayers: Int // 24
+    public let numHeads: Int // 24 (Q heads + self-attn heads)
+    public let numKVHeads: Int // 12 (cross-attn KV heads, GQA 2:1)
+    public let headDim: Int // 64
+    public let latentDim: Int // 64
+    public let conditioningDim: Int // 768 (T5-base output → cross-attn)
+    public let ffIntermediateDim: Int // 6144 (GEGLU up-branch)
+    public let rotaryDim: Int // 32  (partial RoPE, first 32 of 64 head dims)
     public let timestepFeaturesDim: Int // 256 (FourierFeatures output = 2 × halfDim)
-    public let globalCondDim: Int       // 1536 (concat startEmbed[768] + totalEmbed[768])
-    public let condTokenDim: Int        // 768 (prepend-cond token dim, unused in std fwd)
+    public let globalCondDim: Int // 1536 (concat startEmbed[768] + totalEmbed[768])
+    public let condTokenDim: Int // 768 (prepend-cond token dim, unused in std fwd)
 
     /// All new fields default to values derived from the five core params so
     /// existing call sites (`SFXDiTConfig(hiddenSize:numLayers:numHeads:latentDim:conditioningDim:)`)

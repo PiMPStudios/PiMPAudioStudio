@@ -1,8 +1,8 @@
 // PiMPAudioStudio/Services/LoRACoordinator.swift
 import Foundation
 import MLX
-import PiMPAudioCore
 import OSLog
+import PiMPAudioCore
 
 private let logger = Logger(subsystem: "com.pimpstudios.PiMPAudioStudio", category: "LoRACoordinator")
 
@@ -18,22 +18,22 @@ enum AdapterApplicationError: Error, LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .notFound(let id):
-            return "Adapter '\(id)' was not found in the registry."
-        case .incompatible(let id, let adapterBase, let activeBase):
-            return "Adapter '\(id)' was trained for '\(adapterBase)' but the active DiT is '\(activeBase)'."
-        case .mixedKind(let kept, let dropped):
-            return "Cannot mix adapter kinds in one stack. Keeping \(kept); dropped: \(dropped.joined(separator: ", "))."
-        case .loadFailed(let id, let message):
-            return "Failed to load adapter '\(id)': \(message)"
-        case .injectFailed(let id, let message):
-            return "Failed to inject adapter '\(id)': \(message)"
-        case .noValidEntries(let requested):
-            return "None of the requested adapters could be applied: \(requested.joined(separator: ", "))."
-        case .noMatchingWeights(let id):
-            return "Adapter '\(id)' loaded but no weights matched injected DiT layers."
-        case .partialFailure(let applied, let failed):
-            return "Only some adapters applied (\(applied.joined(separator: ", "))); failed: \(failed.joined(separator: ", "))."
+        case let .notFound(id):
+            "Adapter '\(id)' was not found in the registry."
+        case let .incompatible(id, adapterBase, activeBase):
+            "Adapter '\(id)' was trained for '\(adapterBase)' but the active DiT is '\(activeBase)'."
+        case let .mixedKind(kept, dropped):
+            "Cannot mix adapter kinds in one stack. Keeping \(kept); dropped: \(dropped.joined(separator: ", "))."
+        case let .loadFailed(id, message):
+            "Failed to load adapter '\(id)': \(message)"
+        case let .injectFailed(id, message):
+            "Failed to inject adapter '\(id)': \(message)"
+        case let .noValidEntries(requested):
+            "None of the requested adapters could be applied: \(requested.joined(separator: ", "))."
+        case let .noMatchingWeights(id):
+            "Adapter '\(id)' loaded but no weights matched injected DiT layers."
+        case let .partialFailure(applied, failed):
+            "Only some adapters applied (\(applied.joined(separator: ", "))); failed: \(failed.joined(separator: ", "))."
         }
     }
 }
@@ -76,7 +76,10 @@ final class LoRACoordinator {
         )
         if activeBaseID != lastKnownBaseModelID {
             if currentlyInjectedAdapterID != nil {
-                AudioDiagnostics.note("lora/ensureAdapter/baseChanged", "clearing injected=\(currentlyInjectedAdapterID ?? "nil")")
+                AudioDiagnostics.note(
+                    "lora/ensureAdapter/baseChanged",
+                    "clearing injected=\(currentlyInjectedAdapterID ?? "nil")"
+                )
                 await pipeline.removeLoRA()
                 currentlyInjectedAdapterID = nil
                 currentlyInjectedKind = nil
@@ -120,7 +123,9 @@ final class LoRACoordinator {
             }
             AudioDiagnostics.note("lora/ensureAdapter/adapter", diagnosticsAdapterDescription(adapter, strength: 1.0))
             if !isCompatible(adapter: adapter, activeBaseID: activeBaseID, activeSpec: activeSpec) {
-                logger.warning("Adapter '\(adapterID)' was trained for '\(adapter.baseModelID)', active DiT is '\(activeBaseID ?? "unknown")' — skipping injection")
+                logger.warning(
+                    "Adapter '\(adapterID)' was trained for '\(adapter.baseModelID)', active DiT is '\(activeBaseID ?? "unknown")' — skipping injection"
+                )
                 AudioDiagnostics.note(
                     "lora/ensureAdapter/incompatible",
                     "adapter=\(adapterID) adapterBase=\(adapter.baseModelID) activeBase=\(activeBaseID ?? "nil")"
@@ -165,7 +170,10 @@ final class LoRACoordinator {
             AudioDiagnostics.memory("lora/ensureAdapter/end")
         } catch {
             logger.error("LoRA injection failed for '\(adapterID)': \(error.localizedDescription)")
-            AudioDiagnostics.note("lora/ensureAdapter/error", "adapter=\(adapterID) error=\(error.localizedDescription)")
+            AudioDiagnostics.note(
+                "lora/ensureAdapter/error",
+                "adapter=\(adapterID) error=\(error.localizedDescription)"
+            )
             await pipeline.removeLoRA()
             currentlyInjectedAdapterID = nil
             currentlyInjectedKind = nil
@@ -189,7 +197,10 @@ final class LoRACoordinator {
         )
         if activeBaseID != lastKnownBaseModelID {
             if currentlyInjectedAdapterID != nil {
-                AudioDiagnostics.note("lora/ensureStack/baseChanged", "clearing injected=\(currentlyInjectedAdapterID ?? "nil")")
+                AudioDiagnostics.note(
+                    "lora/ensureStack/baseChanged",
+                    "clearing injected=\(currentlyInjectedAdapterID ?? "nil")"
+                )
                 await pipeline.removeLoRA()
                 currentlyInjectedAdapterID = nil
                 currentlyInjectedKind = nil
@@ -200,7 +211,10 @@ final class LoRACoordinator {
 
         if stack.isEmpty {
             if currentlyInjectedAdapterID != nil {
-                AudioDiagnostics.note("lora/ensureStack/empty", "removing current=\(currentlyInjectedAdapterID ?? "nil")")
+                AudioDiagnostics.note(
+                    "lora/ensureStack/empty",
+                    "removing current=\(currentlyInjectedAdapterID ?? "nil")"
+                )
                 await pipeline.removeLoRA()
                 currentlyInjectedAdapterID = nil
                 currentlyInjectedKind = nil
@@ -264,7 +278,10 @@ final class LoRACoordinator {
                     "adapter=\(adapter.id) tensors=\(weights.count) strength=\(String(format: "%.3f", strength)) trainedPaths=\(paths?.count ?? 0)"
                 )
             } catch {
-                AudioDiagnostics.note("lora/ensureStack/loadError", "adapter=\(adapter.id) error=\(error.localizedDescription)")
+                AudioDiagnostics.note(
+                    "lora/ensureStack/loadError",
+                    "adapter=\(adapter.id) error=\(error.localizedDescription)"
+                )
                 throw AdapterApplicationError.loadFailed(id: adapter.id, message: error.localizedDescription)
             }
         }
@@ -306,7 +323,10 @@ final class LoRACoordinator {
                 logger.info("Injected \(primaryAdapter.kind.rawValue.uppercased()) layers for '\(primaryAdapter.id)'")
                 AudioDiagnostics.memory("lora/ensureStack/afterInject")
             } catch {
-                AudioDiagnostics.note("lora/ensureStack/injectError", "adapter=\(primaryAdapter.id) error=\(error.localizedDescription)")
+                AudioDiagnostics.note(
+                    "lora/ensureStack/injectError",
+                    "adapter=\(primaryAdapter.id) error=\(error.localizedDescription)"
+                )
                 currentlyInjectedAdapterID = nil
                 currentlyInjectedKind = nil
                 currentlyInjectedLayerIndices = nil
@@ -357,7 +377,9 @@ final class LoRACoordinator {
                 currentlyInjectedLayerIndices = nil
                 throw AdapterApplicationError.noMatchingWeights(id: entry.adapter.id)
             }
-            logger.info("Added \(entry.adapter.kind.rawValue.uppercased()) contribution '\(entry.adapter.id)' strength=\(entry.strength) matched=\(matched)")
+            logger.info(
+                "Added \(entry.adapter.kind.rawValue.uppercased()) contribution '\(entry.adapter.id)' strength=\(entry.strength) matched=\(matched)"
+            )
         }
         AudioDiagnostics.memory("lora/ensureStack/end")
     }
@@ -365,7 +387,10 @@ final class LoRACoordinator {
     /// Removes any injected adapter and resets all coordinator state.
     /// Call on unloadAllWeights() and training start.
     func clearAll() async {
-        AudioDiagnostics.note("lora/clearAll", "current=\(currentlyInjectedAdapterID ?? "nil") lastBase=\(lastKnownBaseModelID ?? "nil") kind=\(currentlyInjectedKind?.rawValue ?? "nil")")
+        AudioDiagnostics.note(
+            "lora/clearAll",
+            "current=\(currentlyInjectedAdapterID ?? "nil") lastBase=\(lastKnownBaseModelID ?? "nil") kind=\(currentlyInjectedKind?.rawValue ?? "nil")"
+        )
         // Always clear both contribution lists. removeLoRA restores base linears;
         // clearing only LoRA contributions left LoKR contribution arrays orphaned
         // if remove ever failed partway.

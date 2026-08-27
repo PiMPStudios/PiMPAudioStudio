@@ -92,7 +92,7 @@ struct EditorWaveformView: View {
                     }
                 }
 
-                if isSelectionEnabled && selectionEnd > selectionStart {
+                if isSelectionEnabled, selectionEnd > selectionStart {
                     selectionOverlay(in: geo.size)
                 }
 

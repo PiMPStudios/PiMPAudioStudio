@@ -1,6 +1,6 @@
-import SwiftUI
 import AppKit
 import PiMPAudioCore
+import SwiftUI
 
 struct HuggingFaceImportSheet: View {
     @EnvironmentObject private var service: CommunityService
@@ -12,10 +12,10 @@ struct HuggingFaceImportSheet: View {
     @State private var fetchError: String?
     @State private var downloadComplete = false
 
-    // The currently active installed base model category (nil if unknown).
-    // In a real app this would come from AppState; we default to nil for
-    // compatibility checking so the warning only shows on a real mismatch.
-    var installedCategory: ModelCategory? = nil
+    /// The currently active installed base model category (nil if unknown).
+    /// In a real app this would come from AppState; we default to nil for
+    /// compatibility checking so the warning only shows on a real mismatch.
+    var installedCategory: ModelCategory?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -81,9 +81,11 @@ struct HuggingFaceImportSheet: View {
                     ProgressView().controlSize(.small)
                 }
             }
-            Text("Accepts PEFT repos (adapter_config.json + adapter_model.safetensors) and native PiMP Audio Studio repos (adapter.json + adapter.safetensors).")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+            Text(
+                "Accepts PEFT repos (adapter_config.json + adapter_model.safetensors) and native PiMP Audio Studio repos (adapter.json + adapter.safetensors)."
+            )
+            .font(.caption2)
+            .foregroundStyle(.tertiary)
         }
     }
 
@@ -101,9 +103,11 @@ struct HuggingFaceImportSheet: View {
                 .buttonStyle(.bordered)
                 .disabled(isFetching)
 
-                Text("Select a native, PEFT, raw LoKR, or Side-Step LoRA/LoKR run folder. Side-Step imports prefer best/ before final/.")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                Text(
+                    "Select a native, PEFT, raw LoKR, or Side-Step LoRA/LoKR run folder. Side-Step imports prefer best/ before final/."
+                )
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
             }
         }
     }
@@ -121,8 +125,10 @@ struct HuggingFaceImportSheet: View {
                 LabeledRow(label: "Category", value: adapter.baseModelCategory.rawValue)
                 LabeledRow(label: "Rank", value: "r\(adapter.config.rank)")
                 LabeledRow(label: "Base Model", value: adapter.baseModelID)
-                LabeledRow(label: "Created",
-                           value: adapter.createdAt.formatted(date: .abbreviated, time: .omitted))
+                LabeledRow(
+                    label: "Created",
+                    value: adapter.createdAt.formatted(date: .abbreviated, time: .omitted)
+                )
             }
             .padding(10)
             .background(.quaternary.opacity(0.4))
@@ -140,8 +146,8 @@ struct HuggingFaceImportSheet: View {
                             .fontWeight(.semibold)
                         Text(
                             "This adapter targets \u{201c}\(adapter.baseModelCategory.rawValue)\u{201d} " +
-                            "but your installed model is \u{201c}\(installed.rawValue)\u{201d}. " +
-                            "You can still install it, but it may not work correctly."
+                                "but your installed model is \u{201c}\(installed.rawValue)\u{201d}. " +
+                                "You can still install it, but it may not work correctly."
                         )
                         .font(.caption2)
                         .foregroundStyle(.secondary)
@@ -220,7 +226,7 @@ struct HuggingFaceImportSheet: View {
             do {
                 let adapter = try await service.importFromHuggingFace(repoURL: url)
                 fetchedAdapter = adapter
-                downloadComplete = true   // importFromHuggingFace also downloads
+                downloadComplete = true // importFromHuggingFace also downloads
             } catch {
                 fetchError = error.localizedDescription
             }
@@ -254,7 +260,6 @@ struct HuggingFaceImportSheet: View {
             isFetching = false
         }
     }
-
 }
 
 // MARK: - Helpers

@@ -19,14 +19,14 @@ public enum OmniAudioFileLoaderError: LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case .allocationFailed(let detail):
-            return "Audio buffer allocation failed: \(detail)"
-        case .conversionFailed(let detail):
-            return "Audio conversion failed: \(detail)"
+        case let .allocationFailed(detail):
+            "Audio buffer allocation failed: \(detail)"
+        case let .conversionFailed(detail):
+            "Audio conversion failed: \(detail)"
         case .missingFloatData:
-            return "The decoded audio buffer does not contain Float32 channel data."
+            "The decoded audio buffer does not contain Float32 channel data."
         case .emptyAudio:
-            return "The audio file contains no samples."
+            "The audio file contains no samples."
         }
     }
 }
@@ -75,8 +75,7 @@ public enum OmniAudioFileLoader {
         if sourceFormat.sampleRate == Double(sampleRate),
            sourceFormat.channelCount == 1,
            sourceFormat.commonFormat == .pcmFormatFloat32,
-           !sourceFormat.isInterleaved
-        {
+           !sourceFormat.isInterleaved {
             destinationBuffer = sourceBuffer
         } else {
             guard let converter = AVAudioConverter(

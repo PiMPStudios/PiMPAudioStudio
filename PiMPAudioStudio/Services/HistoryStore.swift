@@ -8,8 +8,13 @@ final class HistoryStore: ObservableObject {
     @Published var entries: [HistoryEntry] = []
 
     private let directory: URL
-    var storageDirectory: URL { directory }
-    private var historyFileURL: URL { directory.appending(path: "history.json") }
+    var storageDirectory: URL {
+        directory
+    }
+
+    private var historyFileURL: URL {
+        directory.appending(path: "history.json")
+    }
 
     init(directory: URL) {
         self.directory = directory
@@ -213,7 +218,7 @@ final class HistoryStore: ObservableObject {
     ) {
         guard let index = entries.firstIndex(where: { entry in
             entry.traceFileName == traceFileName ||
-            HistoryEntry.traceFileName(forAudioFileName: entry.fileName) == traceFileName
+                HistoryEntry.traceFileName(forAudioFileName: entry.fileName) == traceFileName
         }) else {
             return
         }
@@ -266,9 +271,13 @@ final class HistoryStore: ObservableObject {
 
         do {
             try fm.moveItem(at: historyFileURL, to: destination)
-            logger.error("History index was unreadable and has been preserved at \(destination.lastPathComponent, privacy: .public): \(cause.localizedDescription, privacy: .public)")
+            logger.error(
+                "History index was unreadable and has been preserved at \(destination.lastPathComponent, privacy: .public): \(cause.localizedDescription, privacy: .public)"
+            )
         } catch {
-            logger.error("Failed to preserve unreadable history index: \(error.localizedDescription, privacy: .public); original load error: \(cause.localizedDescription, privacy: .public)")
+            logger.error(
+                "Failed to preserve unreadable history index: \(error.localizedDescription, privacy: .public); original load error: \(cause.localizedDescription, privacy: .public)"
+            )
         }
     }
 
@@ -292,9 +301,9 @@ enum HistoryStoreError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .missingTrace:
-            return "No trace sidecar was found for this history entry."
-        case .invalidFileName(let name):
-            return "History filename is invalid or escapes the History directory: \(name)."
+            "No trace sidecar was found for this history entry."
+        case let .invalidFileName(name):
+            "History filename is invalid or escapes the History directory: \(name)."
         }
     }
 }

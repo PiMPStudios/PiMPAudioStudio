@@ -9,7 +9,9 @@ public final class AdapterDropoutKeyStream: @unchecked Sendable {
     private let keys: [MLXArray]
     private var nextIndex = 0
 
-    public var count: Int { keys.count }
+    public var count: Int {
+        keys.count
+    }
 
     init(keys: [MLXArray]) {
         self.keys = keys

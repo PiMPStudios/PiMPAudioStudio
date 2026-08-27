@@ -14,11 +14,11 @@ enum LyricWriterError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .requestEncodingFailed(let provider):
+        case let .requestEncodingFailed(provider):
             return "\(provider) lyric request could not be encoded."
-        case .requestFailed(let provider, let detail):
+        case let .requestFailed(provider, detail):
             return "\(provider) lyric request failed: \(detail)"
-        case .providerExited(let provider, let status, let detail):
+        case let .providerExited(provider, status, detail):
             if let detail, !detail.isEmpty {
                 return "\(provider) lyric writer exited with status \(status): \(detail)"
             }
@@ -38,7 +38,7 @@ enum LyricWriterRequest {
 
     static func validate(response: URLResponse, provider: String) throws {
         guard let http = response as? HTTPURLResponse else { return }
-        guard (200..<300).contains(http.statusCode) else {
+        guard (200 ..< 300).contains(http.statusCode) else {
             throw LyricWriterError.requestFailed(provider, "HTTP \(http.statusCode)")
         }
     }
@@ -63,7 +63,7 @@ struct ProviderCLILyricWriter: LyricWriter {
             return nil
         }
 
-        self.id = providerID
+        id = providerID
         self.displayName = displayName
         self.command = command
         self.mode = mode
@@ -299,7 +299,7 @@ enum GrokLyricIsolatedHome {
             realUserHome: realUserHome
         )
         // Caller owns cleanup of the full isolation package; expose HOME root only.
-        guard case .custom(let path) = isolation.homeDirectoryMode else {
+        guard case let .custom(path) = isolation.homeDirectoryMode else {
             throw LyricWriterError.requestFailed("Grok (xAI)", "Failed to prepare isolated home.")
         }
         // Stash cleanup list on a marker file so cleanup(_:) can remove parents.
@@ -382,7 +382,9 @@ enum LyricCLIFailureDetail {
            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let message = object["message"] as? String {
             let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty { return trimmed }
+            if !trimmed.isEmpty {
+                return trimmed
+            }
         }
 
         // Scan for embedded JSON objects with a message field (stderr wrappers, JSONL, etc.).
@@ -392,19 +394,23 @@ enum LyricCLIFailureDetail {
         while index < text.endIndex {
             let ch = text[index]
             if ch == "{" {
-                if depth == 0 { start = index }
+                if depth == 0 {
+                    start = index
+                }
                 depth += 1
             } else if ch == "}" {
                 if depth > 0 {
                     depth -= 1
                     if depth == 0, let start {
                         let end = text.index(after: index)
-                        let slice = String(text[start..<end])
+                        let slice = String(text[start ..< end])
                         if let data = slice.data(using: .utf8),
                            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                            let message = object["message"] as? String {
                             let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
-                            if !trimmed.isEmpty { return trimmed }
+                            if !trimmed.isEmpty {
+                                return trimmed
+                            }
                         }
                     }
                 }
@@ -539,18 +545,17 @@ enum LyricCLIResponseParser {
         let outputs = [result.stdout, result.combinedOutput]
         let objects = outputs.flatMap(jsonObjects)
 
-        let parsed: String?
-        switch providerID {
+        let parsed: String? = switch providerID {
         case "anthropic":
-            parsed = lastStringValue(in: objects, key: "result")
+            lastStringValue(in: objects, key: "result")
         case "openai":
-            parsed = lastCodexAgentMessage(in: objects)
+            lastCodexAgentMessage(in: objects)
         case "google":
-            parsed = lastStringValue(in: objects, key: "response")
+            lastStringValue(in: objects, key: "response")
         case "xai":
-            parsed = lastStringValue(in: objects, key: "text")
+            lastStringValue(in: objects, key: "text")
         default:
-            parsed = nil
+            nil
         }
 
         return clean(parsed ?? result.stdout)
@@ -609,7 +614,7 @@ enum LyricCLIResponseParser {
                 depth -= 1
                 if depth == 0, let objectStartIndex = startIndex {
                     let endIndex = text.index(after: index)
-                    let candidate = String(text[objectStartIndex..<endIndex])
+                    let candidate = String(text[objectStartIndex ..< endIndex])
                     if let object = jsonObject(from: candidate) {
                         objects.append(object)
                     }
@@ -851,7 +856,9 @@ enum LyricOutputSanitizer {
     private static func isBracketedDirective(_ line: String) -> Bool {
         let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.hasPrefix("["), trimmed.hasSuffix("]") else { return false }
-        if isSectionMarker(trimmed) { return false }
+        if isSectionMarker(trimmed) {
+            return false
+        }
 
         let timeRangePattern = #"^\[\d{1,2}:\d{2}(?::\d{2})?\s*[-–]\s*\d{1,2}:\d{2}(?::\d{2})?\]$"#
         if trimmed.range(of: timeRangePattern, options: .regularExpression) != nil {
@@ -875,7 +882,7 @@ enum LyricOutputSanitizer {
             "spoken",
             "whisper",
             "repeat",
-            "hold"
+            "hold",
         ]
         return directiveWords.contains(where: { lowercased.contains($0) })
     }
@@ -903,7 +910,7 @@ enum LyricOutputSanitizer {
             "note:",
             "notes:",
             "explanation:",
-            "i hope "
+            "i hope ",
         ]
 
         if commentaryPrefixes.contains(where: { lowercased.hasPrefix($0) }) {
@@ -916,7 +923,7 @@ enum LyricOutputSanitizer {
             "approximately ",
             " approx.",
             " bpm",
-            " seconds"
+            " seconds",
         ]
         return metaFragments.contains(where: { lowercased.contains($0) })
     }
@@ -972,7 +979,7 @@ enum LyricOutputSanitizer {
         for markerIndex in markers.indices {
             appendLine(markers[markerIndex], to: &repaired)
             let sectionLineCount = baseCount + (markerIndex < extraCount ? 1 : 0)
-            for _ in 0..<sectionLineCount where lyricIndex < lyricLines.count {
+            for _ in 0 ..< sectionLineCount where lyricIndex < lyricLines.count {
                 appendLine(lyricLines[lyricIndex], to: &repaired)
                 lyricIndex += 1
             }
@@ -1020,7 +1027,9 @@ enum LyricOutputSanitizer {
     private static func collapseBlankLines(in lines: [String]) -> [String] {
         var collapsed: [String] = []
         for line in lines {
-            if line.isEmpty, collapsed.last == "" { continue }
+            if line.isEmpty, collapsed.last == "" {
+                continue
+            }
             collapsed.append(line)
         }
         return collapsed

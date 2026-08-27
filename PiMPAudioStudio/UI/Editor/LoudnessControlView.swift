@@ -26,13 +26,15 @@ struct LoudnessControlView: View {
                 title: "Max boost",
                 valueText: String(format: "%.0f dB", parameters.maxBoostDB),
                 value: $parameters.maxBoostDB,
-                range: 0...24
+                range: 0 ... 24
             )
 
-            Text("Raises or lowers level toward the target using the same approximate LUFS meter as the strip, then limits peaks to the ceiling. Best-effort aiming, not broadcast certification.")
-                .font(.system(size: 10))
-                .foregroundStyle(.tertiary)
-                .fixedSize(horizontal: false, vertical: true)
+            Text(
+                "Raises or lowers level toward the target using the same approximate LUFS meter as the strip, then limits peaks to the ceiling. Best-effort aiming, not broadcast certification."
+            )
+            .font(.system(size: 10))
+            .foregroundStyle(.tertiary)
+            .fixedSize(horizontal: false, vertical: true)
         }
     }
 

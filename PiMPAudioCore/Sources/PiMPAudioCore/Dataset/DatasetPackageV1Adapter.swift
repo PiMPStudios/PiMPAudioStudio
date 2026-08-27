@@ -14,7 +14,7 @@ public enum DatasetPackageV1AdapterError: LocalizedError {
             return "The legacy captions file is not a JSON array of objects."
         case .emptyCaptions:
             return "The legacy captions file does not contain any records."
-        case .invalidAdaptedPackage(let issues):
+        case let .invalidAdaptedPackage(issues):
             let summary = issues
                 .filter { $0.severity == .error }
                 .prefix(3)
@@ -343,7 +343,7 @@ public enum DatasetPackageV1Adapter {
     private static func slug(_ value: String) -> String {
         let normalized = value.lowercased().unicodeScalars.map { scalar -> Character in
             let value = scalar.value
-            let isASCIIAlphaNumeric = (48...57).contains(value) || (97...122).contains(value)
+            let isASCIIAlphaNumeric = (48 ... 57).contains(value) || (97 ... 122).contains(value)
             return isASCIIAlphaNumeric ? Character(scalar) : "-"
         }
         let collapsed = String(normalized).split(separator: "-").joined(separator: "-")
@@ -372,35 +372,35 @@ public enum DatasetPackageV1Adapter {
     private static func number(_ value: Any?) -> Double? {
         switch value {
         case let value as NSNumber:
-            return value.doubleValue
+            value.doubleValue
         case let value as String:
-            return Double(value)
+            Double(value)
         default:
-            return nil
+            nil
         }
     }
 
     private static func integer(_ value: Any?) -> Int64? {
         switch value {
         case let value as NSNumber:
-            return value.int64Value
+            value.int64Value
         case let value as String:
-            return Int64(value)
+            Int64(value)
         default:
-            return nil
+            nil
         }
     }
 
     private static func boolean(_ value: Any?) -> Bool? {
         switch value {
         case let value as Bool:
-            return value
+            value
         case let value as NSNumber:
-            return value.boolValue
+            value.boolValue
         case let value as String:
-            return ["true", "yes", "1"].contains(value.lowercased())
+            ["true", "yes", "1"].contains(value.lowercased())
         default:
-            return nil
+            nil
         }
     }
 }

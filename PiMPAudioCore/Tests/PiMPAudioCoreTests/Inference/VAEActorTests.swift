@@ -1,7 +1,7 @@
 import Foundation
-import Testing
 import MLX
 @testable import PiMPAudioCore
+import Testing
 
 @Suite("VAE Actor")
 struct VAEActorTests {
@@ -44,7 +44,11 @@ struct VAEActorTests {
 
     @Test("Decode matches Python reference")
     func decodeMatchesPythonReference() async throws {
-        let weightsPath = ("~/Library/Containers/com.pimpstudios.PiMPAudioStudio/Data/Library/Application Support/PiMP Audio Studio/models/ace-step-vae/vae.safetensors" as NSString).expandingTildeInPath
+        let weightsPath =
+            (
+                "~/Library/Containers/com.pimpstudios.PiMPAudioStudio/Data/Library/Application Support/PiMP Audio Studio/models/ace-step-vae/vae.safetensors" as NSString
+            )
+            .expandingTildeInPath
         let latentPath = "/tmp/vae_test_latent.safetensors"
         guard FileManager.default.fileExists(atPath: weightsPath),
               FileManager.default.fileExists(atPath: latentPath)
@@ -82,9 +86,9 @@ struct VAEActorTests {
         let mean = audio.mean().item(Float.self)
 
         // First 8 samples of left channel: audio[0, 0..<8, 0]
-        let first8 = audio[0, 0..<8, 0]
+        let first8 = audio[0, 0 ..< 8, 0]
         eval(first8)
-        let first8Values = (0..<8).map { first8[$0].item(Float.self) }
+        let first8Values = (0 ..< 8).map { first8[$0].item(Float.self) }
 
         print("[VAE_PARITY_SWIFT] output shape       : \(audio.shape)")
         let durationSec = Float(audio.shape[1]) / 48000.0
@@ -95,7 +99,7 @@ struct VAEActorTests {
         print("[VAE_PARITY_SWIFT] output[0,:8,0]     : \(first8Values.map { String(format: "%.6f", $0) })")
 
         // Sanity assertions
-        #expect(audio.shape[1] == 192000, "Expected 100 frames × 1920 = 192000 samples")
+        #expect(audio.shape[1] == 192_000, "Expected 100 frames × 1920 = 192000 samples")
         #expect(audio.shape[0] == 1)
         #expect(audio.shape[2] == 2)
         #expect(absMean > 0, "abs_mean should be positive")

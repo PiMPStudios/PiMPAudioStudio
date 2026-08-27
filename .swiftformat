@@ -1,6 +1,5 @@
-# Committed for local/CI use. Not enforced in CI yet — formatting the
-# existing 90k-line tree is a dedicated pass. Run:
-#   swiftformat --config .swiftformat PiMPAudioStudio PiMPAudioCore
+# Pin CI to SwiftFormat 0.62.1. Run:
+#   swiftformat --config .swiftformat PiMPAudioStudio PiMPAudioStudioTests PiMPAudioCore
 --swiftversion 5.10
 --indent 4
 --maxwidth 120
@@ -10,4 +9,6 @@
 --trimwhitespace always
 --stripunusedargs closure-only
 --disable wrapMultilineStatementBraces
+--disable noForceUnwrapInTests
+--disable noForceTryInTests
 --exclude .build,DerivedData,Vendor,Spikes

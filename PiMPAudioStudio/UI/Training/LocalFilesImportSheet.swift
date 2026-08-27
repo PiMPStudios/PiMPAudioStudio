@@ -37,7 +37,7 @@ struct LocalFilesImportSheet: View {
                     switch builder.phase {
                     case .idle:
                         EmptyView()
-                    case .failed(let msg):
+                    case let .failed(msg):
                         errorView(msg)
                     case .chunking:
                         progressSection
@@ -56,14 +56,14 @@ struct LocalFilesImportSheet: View {
             allowedContentTypes: [.audio],
             allowsMultipleSelection: true
         ) { result in
-            if case .success(let urls) = result {
+            if case let .success(urls) = result {
                 appendAudioFiles(urls)
-            } else if case .failure(let error) = result {
+            } else if case let .failure(error) = result {
                 sourceNotice = "Could not add audio files: \(error.localizedDescription)"
             }
         }
         .onChange(of: builder.phase) { _, newPhase in
-            if case .complete(let dir, _) = newPhase {
+            if case let .complete(dir, _) = newPhase {
                 reloadEditableClips(from: dir, fallback: builder.resultClips)
                 hasUnsavedCaptionEdits = false
                 enrichment.reset()
@@ -71,7 +71,7 @@ struct LocalFilesImportSheet: View {
             }
         }
         .onChange(of: enrichment.phase) { _, newPhase in
-            if case .complete(let result) = newPhase {
+            if case let .complete(result) = newPhase {
                 reloadEditableClips(from: result.datasetDirectory)
                 hasUnsavedCaptionEdits = false
                 refreshPackageSummary(for: result.datasetDirectory)
@@ -149,8 +149,8 @@ struct LocalFilesImportSheet: View {
                     }
                 }
                 .padding(10)
-                    .background(.quaternary.opacity(0.3))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                .background(.quaternary.opacity(0.3))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
             }
 
             if let sourceNotice {
@@ -183,9 +183,11 @@ struct LocalFilesImportSheet: View {
             TextField("dark blues, slow tempo, minor key, atmospheric guitar", text: $styleTemplate)
                 .textFieldStyle(.roundedBorder)
                 .disabled(isBusy)
-            Text("Applied to every training item as its caption. Leave blank for filename placeholders that Enrich Dataset can replace with native metadata captions.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Text(
+                "Applied to every training item as its caption. Leave blank for filename placeholders that Enrich Dataset can replace with native metadata captions."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
     }
 
@@ -217,7 +219,7 @@ struct LocalFilesImportSheet: View {
                 if config.buildMode == .clipExtraction {
                     LabeledContent("Clip Length") {
                         HStack(spacing: 8) {
-                            Slider(value: $config.clipLength, in: 15...60, step: 5)
+                            Slider(value: $config.clipLength, in: 15 ... 60, step: 5)
                                 .frame(maxWidth: 160)
                                 .disabled(isBusy)
                             Text("\(Int(config.clipLength))s")
@@ -227,11 +229,13 @@ struct LocalFilesImportSheet: View {
                         }
                     }
                     LabeledContent("Clips per File") {
-                        Stepper("\(config.clipsPerTrack)",
-                                value: $config.clipsPerTrack,
-                                in: 1...20)
-                            .disabled(isBusy)
-                            .frame(maxWidth: 130)
+                        Stepper(
+                            "\(config.clipsPerTrack)",
+                            value: $config.clipsPerTrack,
+                            in: 1 ... 20
+                        )
+                        .disabled(isBusy)
+                        .frame(maxWidth: 130)
                     }
                     HStack(spacing: 10) {
                         Text("Sampling")
@@ -263,12 +267,14 @@ struct LocalFilesImportSheet: View {
                         }
                     }
                     LabeledContent("Max Total Clips") {
-                        Stepper("\(config.maxTotalClips)",
-                                value: $config.maxTotalClips,
-                                in: 5...LocalFilesDatasetConfig.maximumTotalClips,
-                                step: 5)
-                            .disabled(isBusy)
-                            .frame(maxWidth: 130)
+                        Stepper(
+                            "\(config.maxTotalClips)",
+                            value: $config.maxTotalClips,
+                            in: 5 ... LocalFilesDatasetConfig.maximumTotalClips,
+                            step: 5
+                        )
+                        .disabled(isBusy)
+                        .frame(maxWidth: 130)
                     }
                     LabeledContent("Clip Format") {
                         Picker("Clip Format", selection: $config.clipFormat) {
@@ -387,8 +393,10 @@ struct LocalFilesImportSheet: View {
 
     private var progressLabel: String {
         switch builder.phase {
-        case .chunking(let idx, let total, _):
-            if idx == 0 { return "Preparing files..." }
+        case let .chunking(idx, total, _):
+            if idx == 0 {
+                return "Preparing files..."
+            }
             return config.buildMode == .wholeTracks
                 ? "Preserving track \(idx) of \(total)"
                 : "Chunking \(idx) of \(total)"
@@ -399,15 +407,15 @@ struct LocalFilesImportSheet: View {
 
     private var progressDetail: String {
         switch builder.phase {
-        case .chunking(_, _, let name): return name
-        default: return ""
+        case let .chunking(_, _, name): name
+        default: ""
         }
     }
 
     @ViewBuilder
     private var progressIndicator: some View {
         switch builder.phase {
-        case .chunking(let idx, let total, _):
+        case let .chunking(idx, total, _):
             ProgressView(value: Double(max(0, idx - 1)), total: Double(max(1, total)))
                 .frame(maxWidth: .infinity)
         default:
@@ -425,10 +433,10 @@ struct LocalFilesImportSheet: View {
                         ? "\(editableClips.count) whole tracks packaged for training"
                         : "\(editableClips.count) clips packaged for training"
                 )
-                    .font(.callout)
-                    .fontWeight(.medium)
+                .font(.callout)
+                .fontWeight(.medium)
                 Spacer()
-                if case .complete(let dir, _) = builder.phase {
+                if case let .complete(dir, _) = builder.phase {
                     Button {
                         NSWorkspace.shared.open(dir)
                     } label: {
@@ -579,7 +587,7 @@ struct LocalFilesImportSheet: View {
         switch enrichment.phase {
         case .idle:
             EmptyView()
-        case .running(let step):
+        case let .running(step):
             HStack(spacing: 10) {
                 ProgressView()
                     .controlSize(.small)
@@ -596,7 +604,7 @@ struct LocalFilesImportSheet: View {
             .padding(10)
             .background(.blue.opacity(0.08))
             .clipShape(RoundedRectangle(cornerRadius: 8))
-        case .complete(let result):
+        case let .complete(result):
             HStack(alignment: .top, spacing: 8) {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundStyle(.green)
@@ -609,7 +617,7 @@ struct LocalFilesImportSheet: View {
             .padding(10)
             .background(.green.opacity(0.08))
             .clipShape(RoundedRectangle(cornerRadius: 8))
-        case .failed(let message):
+        case let .failed(message):
             HStack(alignment: .top, spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
@@ -649,7 +657,7 @@ struct LocalFilesImportSheet: View {
 
     @discardableResult
     private func persistCaptionsIfNeeded() -> Bool {
-        guard case .complete(let dir, _) = builder.phase else { return false }
+        guard case let .complete(dir, _) = builder.phase else { return false }
         guard hasUnsavedCaptionEdits else { return true }
         do {
             try TrainingDatasetPackageWriter.writeLocalPackage(
@@ -681,7 +689,7 @@ struct LocalFilesImportSheet: View {
     }
 
     private func openDatasetReview() {
-        guard case .complete(let dir, _) = builder.phase else { return }
+        guard case let .complete(dir, _) = builder.phase else { return }
         guard persistCaptionsIfNeeded() else { return }
         onOpenDatasetReview(dir)
         dismiss()
@@ -731,7 +739,8 @@ struct LocalFilesImportSheet: View {
     }
 
     private func appendAudioFiles(_ urls: [URL]) {
-        let audioURLs = urls.filter { LocalAudioFileDiscovery.supportedExtensions.contains($0.pathExtension.lowercased()) }
+        let audioURLs = urls
+            .filter { LocalAudioFileDiscovery.supportedExtensions.contains($0.pathExtension.lowercased()) }
         let originalCount = selectedFiles.count
         selectedFiles = mergedURLs(selectedFiles, with: audioURLs)
         let addedCount = selectedFiles.count - originalCount
@@ -752,7 +761,7 @@ struct LocalFilesImportSheet: View {
     }
 
     private func mergedURLs(_ existing: [URL], with incoming: [URL]) -> [URL] {
-        var seen = Set(existing.map { $0.standardizedFileURL.path })
+        var seen = Set(existing.map(\.standardizedFileURL.path))
         var merged = existing
         for url in incoming where seen.insert(url.standardizedFileURL.path).inserted {
             merged.append(url)

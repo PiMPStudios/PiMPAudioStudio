@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 @testable import PiMPAudioStudio
+import Testing
 
 private enum RunPodMockOutcome {
     case response(statusCode: Int, data: Data)
@@ -13,7 +13,7 @@ private final class RunPodMockTransport: RunPodTransport, @unchecked Sendable {
     private(set) var requests: [URLRequest] = []
 
     init(responses: [(statusCode: Int, data: Data)]) {
-        self.outcomes = responses.map { .response(statusCode: $0.statusCode, data: $0.data) }
+        outcomes = responses.map { .response(statusCode: $0.statusCode, data: $0.data) }
     }
 
     init(outcomes: [RunPodMockOutcome]) {
@@ -30,9 +30,9 @@ private final class RunPodMockTransport: RunPodTransport, @unchecked Sendable {
 
         let response: (statusCode: Int, data: Data)
         switch outcome {
-        case .response(let statusCode, let data):
+        case let .response(statusCode, data):
             response = (statusCode, data)
-        case .failure(let error):
+        case let .failure(error):
             throw error
         }
 
@@ -141,8 +141,8 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
         }
         """.utf8)
     )])
-    let client = RunPodAPIClient(
-        baseURL: URL(string: "https://api.runpod.io/v2")!,
+    let client = try RunPodAPIClient(
+        baseURL: #require(URL(string: "https://api.runpod.io/v2")),
         transport: transport
     )
 
@@ -155,7 +155,8 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
     #expect(pods[0].sshHost == "216.81.151.42")
     #expect(pods[0].sshPort == 11646)
     #expect(pods[0].sshUsername == "root")
-    #expect(pods[0].sshCommand(sshKeyPath: "~/.ssh/id_ed25519") == "ssh -p 11646 -i ~/.ssh/id_ed25519 root@216.81.151.42")
+    #expect(pods[0]
+        .sshCommand(sshKeyPath: "~/.ssh/id_ed25519") == "ssh -p 11646 -i ~/.ssh/id_ed25519 root@216.81.151.42")
 
     let archiveURL = URL(filePath: "/Users/test/Training Jobs/job one.zip")
     let workerURL = URL(filePath: "/Users/test/PiMPAudioStudio/remote-worker")
@@ -166,9 +167,18 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
     ))
     #expect(uploadCommand.contains("WORKER_DIR='/Users/test/PiMPAudioStudio/remote-worker'"))
     #expect(uploadCommand.contains("Could not find PiMP remote worker"))
-    #expect(uploadCommand.contains("ssh -p 11646 -i ~/.ssh/id_ed25519 root@216.81.151.42 'mkdir -p /workspace/jobs && rm -rf /workspace/pimp-remote-worker-src'"))
-    #expect(uploadCommand.contains("scp -P 11646 -i ~/.ssh/id_ed25519 '/Users/test/Training Jobs/job one.zip' root@216.81.151.42:/workspace/jobs/"))
-    #expect(uploadCommand.contains("scp -P 11646 -i ~/.ssh/id_ed25519 -r \"$WORKER_DIR\" root@216.81.151.42:/workspace/pimp-remote-worker-src"))
+    #expect(uploadCommand
+        .contains(
+            "ssh -p 11646 -i ~/.ssh/id_ed25519 root@216.81.151.42 'mkdir -p /workspace/jobs && rm -rf /workspace/pimp-remote-worker-src'"
+        ))
+    #expect(uploadCommand
+        .contains(
+            "scp -P 11646 -i ~/.ssh/id_ed25519 '/Users/test/Training Jobs/job one.zip' root@216.81.151.42:/workspace/jobs/"
+        ))
+    #expect(uploadCommand
+        .contains(
+            "scp -P 11646 -i ~/.ssh/id_ed25519 -r \"$WORKER_DIR\" root@216.81.151.42:/workspace/pimp-remote-worker-src"
+        ))
 
     let remoteCommand = try #require(pods[0].remotePackageCommand(archiveURL: archiveURL))
     #expect(remoteCommand.contains("ZIP='job one.zip'"))
@@ -701,8 +711,8 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
             """.utf8)
         ),
     ])
-    let client = RunPodAPIClient(
-        baseURL: URL(string: "https://api.runpod.io/v2")!,
+    let client = try RunPodAPIClient(
+        baseURL: #require(URL(string: "https://api.runpod.io/v2")),
         transport: transport
     )
 
@@ -712,7 +722,7 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
     #expect(gpuTypes.count == 2)
     #expect(catalog.dataCenters.map(\.id) == ["EU-RO-1", "US-TX-1"])
     #expect(catalog.availableGPUTypes(in: .northAmerica).map(\.id) == [
-        "NVIDIA GeForce RTX 4090"
+        "NVIDIA GeForce RTX 4090",
     ])
     #expect(catalog.stockStatus(for: "NVIDIA GeForce RTX 4090", in: .northAmerica) == .low)
     #expect(catalog.stockStatus(for: "NVIDIA GeForce RTX 4090", in: .europe) == .high)
@@ -813,8 +823,8 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
         }
         """.utf8)
     )])
-    let client = RunPodAPIClient(
-        baseURL: URL(string: "https://api.runpod.io/v2")!,
+    let client = try RunPodAPIClient(
+        baseURL: #require(URL(string: "https://api.runpod.io/v2")),
         transport: transport
     )
 
@@ -873,7 +883,7 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
             volumeInGb: 20,
             volumeMountPath: "/workspace",
             ports: ["8888/http"]
-        )
+        ),
     ]
 
     let recommended = RunPodTemplate.recommendedTrainingTemplate(
@@ -990,8 +1000,8 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
         }
         """.utf8)
     )])
-    let client = RunPodAPIClient(
-        baseURL: URL(string: "https://api.runpod.io/v2")!,
+    let client = try RunPodAPIClient(
+        baseURL: #require(URL(string: "https://api.runpod.io/v2")),
         transport: transport
     )
     let configuration = RunPodLaunchConfiguration(
@@ -1034,7 +1044,7 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
     #expect(body["gpuTypeIds"] == nil)
     #expect(body["interruptible"] == nil)
     #expect(body["supportPublicIp"] == nil)
-    #expect(!String(data: bodyData, encoding: .utf8)!.contains("secret-token"))
+    #expect(try !(#require(String(data: bodyData, encoding: .utf8)?.contains("secret-token"))))
 }
 
 @Test func runPodLaunchConfigurationUsesCustomImageInsteadOfTemplateWhenBothAreFilled() throws {
@@ -1074,8 +1084,8 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
         statusCode: 200,
         data: Data()
     )])
-    let client = RunPodAPIClient(
-        baseURL: URL(string: "https://api.runpod.io/v2")!,
+    let client = try RunPodAPIClient(
+        baseURL: #require(URL(string: "https://api.runpod.io/v2")),
         transport: transport
     )
 
@@ -1092,8 +1102,8 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
         statusCode: 401,
         data: Data(#"{"title":"Unauthorized","status":401,"detail":"JWT expired"}"#.utf8)
     )])
-    let client = RunPodAPIClient(
-        baseURL: URL(string: "https://api.runpod.io/v2")!,
+    let client = try RunPodAPIClient(
+        baseURL: #require(URL(string: "https://api.runpod.io/v2")),
         transport: transport
     )
 
@@ -1116,7 +1126,7 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
 
 @Test func runPodSSHPublicKeyMergeAddsMissingKeyAndSkipsDuplicates() {
     let existing = [
-        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexisting comment-one"
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexisting comment-one",
     ]
     let ours = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAInewkey pimp-audio-studio"
     let merged = RunPodSSHPublicKey.merge(existing: existing, inserting: ours)
@@ -1138,8 +1148,8 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
         { "keys": ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexisting one", "\(ours) extra"] }
         """.utf8)
     )])
-    let client = RunPodAPIClient(
-        baseURL: URL(string: "https://api.runpod.io/v2")!,
+    let client = try RunPodAPIClient(
+        baseURL: #require(URL(string: "https://api.runpod.io/v2")),
         transport: transport
     )
 
@@ -1159,11 +1169,14 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
         ),
         (
             statusCode: 200,
-            data: Data(#"{ "keys": ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexisting one", "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAInewkey pimp"] }"#.utf8)
+            data: Data(
+                #"{ "keys": ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexisting one", "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAInewkey pimp"] }"#
+                    .utf8
+            )
         ),
     ])
-    let client = RunPodAPIClient(
-        baseURL: URL(string: "https://api.runpod.io/v2")!,
+    let client = try RunPodAPIClient(
+        baseURL: #require(URL(string: "https://api.runpod.io/v2")),
         transport: transport
     )
 
@@ -1184,8 +1197,8 @@ private func bashSyntaxStatus(for script: String) throws -> Int32 {
         statusCode: 401,
         data: Data(#"{"title":"Unauthorized","status":401,"detail":"nope"}"#.utf8)
     )])
-    let client = RunPodAPIClient(
-        baseURL: URL(string: "https://api.runpod.io/v2")!,
+    let client = try RunPodAPIClient(
+        baseURL: #require(URL(string: "https://api.runpod.io/v2")),
         transport: transport
     )
 

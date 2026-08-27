@@ -37,17 +37,17 @@ struct PitchShiftControlView: View {
                 }
             }
 
-            Slider(value: $parameters.pitch, in: -2400...2400, onEditingChanged: { isEditing in
+            Slider(value: $parameters.pitch, in: -2400 ... 2400, onEditingChanged: { isEditing in
                 isDraggingSlider = isEditing
                 if !isEditing {
                     parameters.pitch = snapped(parameters.pitch)
                 }
             })
-                .tint(qualityColor)
-                .onChange(of: parameters.pitch) { _, newValue in
-                    guard !isDraggingSlider else { return }
-                    parameters.pitch = snapped(newValue)
-                }
+            .tint(qualityColor)
+            .onChange(of: parameters.pitch) { _, newValue in
+                guard !isDraggingSlider else { return }
+                parameters.pitch = snapped(newValue)
+            }
 
             HStack(spacing: 0) {
                 Text("-24 st")
@@ -77,15 +77,23 @@ struct PitchShiftControlView: View {
 
     private var qualityColor: Color {
         let absSemitones = abs(semitones)
-        if absSemitones <= 12 { return .green }
-        if absSemitones <= 18 { return .yellow }
+        if absSemitones <= 12 {
+            return .green
+        }
+        if absSemitones <= 18 {
+            return .yellow
+        }
         return .red
     }
 
     private var qualityText: String {
         let absSemitones = abs(semitones)
-        if absSemitones <= 12 { return "Excellent quality" }
-        if absSemitones <= 18 { return "Good quality, minor artifacts possible" }
+        if absSemitones <= 12 {
+            return "Excellent quality"
+        }
+        if absSemitones <= 18 {
+            return "Good quality, minor artifacts possible"
+        }
         return "Significant artifacts likely"
     }
 

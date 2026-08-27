@@ -521,9 +521,9 @@ public enum DatasetPackageV2Validator {
 
     private static func isIdentifierScalar(_ scalar: UnicodeScalar) -> Bool {
         let value = scalar.value
-        return (48...57).contains(value)
-            || (65...90).contains(value)
-            || (97...122).contains(value)
+        return (48 ... 57).contains(value)
+            || (65 ... 90).contains(value)
+            || (97 ... 122).contains(value)
             || scalar == "."
             || scalar == "_"
             || scalar == "-"
@@ -551,7 +551,7 @@ public enum DatasetPackageV2CodecError: LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case .invalidPackage(let issues):
+        case let .invalidPackage(issues):
             let summary = issues
                 .filter { $0.severity == .error }
                 .prefix(3)

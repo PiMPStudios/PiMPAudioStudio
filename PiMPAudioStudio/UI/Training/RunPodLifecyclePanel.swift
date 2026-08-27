@@ -122,9 +122,11 @@ struct RunPodLifecyclePanel: View {
                 }
             }
 
-            Text("PiMP Audio Studio keeps a protected local copy in its sandbox for automated SSH and SCP. The private key is never added to the remote job zip.")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
+            Text(
+                "PiMP Audio Studio keeps a protected local copy in its sandbox for automated SSH and SCP. The private key is never added to the remote job zip."
+            )
+            .font(.caption2)
+            .foregroundStyle(.secondary)
 
             HStack {
                 Button {
@@ -167,9 +169,11 @@ struct RunPodLifecyclePanel: View {
             }
 
             if !runPodService.hasAPIKey {
-                Text("No RunPod account yet? Create one, generate an API key in RunPod, then paste it here. You can still export the remote job zip without connecting RunPod.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Text(
+                    "No RunPod account yet? Create one, generate an API key in RunPod, then paste it here. You can still export the remote job zip without connecting RunPod."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
         }
     }
@@ -250,8 +254,8 @@ struct RunPodLifecyclePanel: View {
                         )
                     )
                 )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                .font(.caption)
+                .foregroundStyle(.secondary)
             } else if !runPodService.dataCenters.isEmpty,
                       !gpuType.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Text("Selected GPU type is not currently available in \(region.displayName).")
@@ -277,9 +281,11 @@ struct RunPodLifecyclePanel: View {
                     TextField("Template ID", text: $templateID)
                     TextField("Image", text: $imageName)
 
-                    Text("Choose an official template above, enter any template ID, or provide a custom image. A custom image overrides the template ID.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    Text(
+                        "Choose an official template above, enter any template ID, or provide a custom image. A custom image overrides the template ID."
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
 
                     if let selectedRunPodTemplate,
                        let reason = selectedRunPodTemplate.incompatibilityReason(for: gpuType) {
@@ -290,11 +296,11 @@ struct RunPodLifecyclePanel: View {
                 }
             }
 
-            Stepper(value: $containerDiskGB, in: 20...500, step: 10) {
+            Stepper(value: $containerDiskGB, in: 20 ... 500, step: 10) {
                 LabeledContent("Container Disk", value: "\(containerDiskGB) GB")
             }
 
-            Stepper(value: $volumeGB, in: 20...1_000, step: 10) {
+            Stepper(value: $volumeGB, in: 20 ... 1000, step: 10) {
                 LabeledContent("Volume", value: "\(volumeGB) GB")
             }
 
@@ -316,9 +322,11 @@ struct RunPodLifecyclePanel: View {
                 }
             }
 
-            Text("Launch creates the RunPod pod. Once SSH is available, the pod row can upload, start, monitor, download, and import the reviewed job without manual Terminal steps.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Text(
+                "Launch creates the RunPod pod. Once SSH is available, the pod row can upload, start, monitor, download, and import the reviewed job without manual Terminal steps."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
     }
 
@@ -392,7 +400,8 @@ struct RunPodLifecyclePanel: View {
     private var runPodPodsSection: some View {
         Section("Pods") {
             if runPodService.pods.isEmpty {
-                Text(runPodService.hasAPIKey ? "No pods loaded. Refresh to list RunPod pods." : "Add a RunPod API key to list pods.")
+                Text(runPodService
+                    .hasAPIKey ? "No pods loaded. Refresh to list RunPod pods." : "Add a RunPod API key to list pods.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
@@ -411,7 +420,9 @@ struct RunPodLifecyclePanel: View {
                         .lineLimit(1)
                         .truncationMode(.middle)
 
-                    Text(preparedArchiveURL?.deletingLastPathComponent().path(percentEncoded: false) ?? "Create Remote Job fills this automatically. Choose an existing zip after restarting or launching from an older bundle.")
+                    Text(preparedArchiveURL?.deletingLastPathComponent()
+                        .path(percentEncoded: false) ??
+                        "Create Remote Job fills this automatically. Choose an existing zip after restarting or launching from an older bundle.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
@@ -422,25 +433,30 @@ struct RunPodLifecyclePanel: View {
                 Button {
                     onSelectArchiveRequested()
                 } label: {
-                    Label(preparedArchiveURL == nil ? "Choose Job Zip\u{2026}" : "Change\u{2026}", systemImage: "doc.badge.plus")
+                    Label(
+                        preparedArchiveURL == nil ? "Choose Job Zip\u{2026}" : "Change\u{2026}",
+                        systemImage: "doc.badge.plus"
+                    )
                 }
                 .controlSize(.small)
             }
 
-            Text("Upload and extract/run commands use this local zip. If those pod icons are disabled, select the exported remote job zip here first.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Text(
+                "Upload and extract/run commands use this local zip. If those pod icons are disabled, select the exported remote job zip here first."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
     }
 
     private var runPodCredentialStatus: String {
         switch runPodService.keySource {
         case .keychain:
-            return "Configured in Keychain"
+            "Configured in Keychain"
         case .environment:
-            return "From environment (\(APIKeyStore.runPodProvider.envVar))"
+            "From environment (\(APIKeyStore.runPodProvider.envVar))"
         case .none:
-            return "Not configured"
+            "Not configured"
         }
     }
 
@@ -537,8 +553,8 @@ struct RunPodLifecyclePanel: View {
         guard !hasRequestedInitialLaunchOptions,
               runPodService.hasAPIKey,
               runPodService.gpuTypes.isEmpty ||
-                runPodService.dataCenters.isEmpty ||
-                runPodService.podTemplates.isEmpty,
+              runPodService.dataCenters.isEmpty ||
+              runPodService.podTemplates.isEmpty,
               !runPodService.isRefreshingGPUTypes else {
             return
         }
@@ -737,9 +753,11 @@ struct RunPodLifecyclePanel: View {
                         .textSelection(.enabled)
                 }
             } else {
-                Text("No local status is loaded. Monitor reconnects to the selected job already on this pod; Upload replaces it.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                Text(
+                    "No local status is loaded. Monitor reconnects to the selected job already on this pod; Upload replaces it."
+                )
+                .font(.caption2)
+                .foregroundStyle(.secondary)
             }
         }
     }
@@ -749,11 +767,11 @@ struct RunPodLifecyclePanel: View {
     ) -> String {
         switch phase {
         case .uploaded, .succeeded, .downloaded, .imported:
-            return "checkmark.circle.fill"
+            "checkmark.circle.fill"
         case .failed:
-            return "exclamationmark.triangle.fill"
+            "exclamationmark.triangle.fill"
         case .uploading, .starting, .running, .downloading:
-            return "clock.arrow.circlepath"
+            "clock.arrow.circlepath"
         }
     }
 
@@ -762,33 +780,33 @@ struct RunPodLifecyclePanel: View {
     ) -> Color {
         switch phase {
         case .uploaded, .succeeded, .downloaded, .imported:
-            return .green
+            .green
         case .failed:
-            return .orange
+            .orange
         case .uploading, .starting, .running, .downloading:
-            return .secondary
+            .secondary
         }
     }
 
     private func runPodStatusIcon(for pod: RunPodPodSummary) -> String {
         switch pod.statusLabel.uppercased() {
         case "RUNNING":
-            return "checkmark.circle.fill"
+            "checkmark.circle.fill"
         case "EXITED", "TERMINATED":
-            return "pause.circle.fill"
+            "pause.circle.fill"
         default:
-            return "circle.dashed"
+            "circle.dashed"
         }
     }
 
     private func runPodStatusColor(for pod: RunPodPodSummary) -> Color {
         switch pod.statusLabel.uppercased() {
         case "RUNNING":
-            return .green
+            .green
         case "EXITED", "TERMINATED":
-            return .secondary
+            .secondary
         default:
-            return .orange
+            .orange
         }
     }
 

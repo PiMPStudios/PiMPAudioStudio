@@ -34,8 +34,8 @@ public class AudioTokenizer: Module {
         ropeTheta: Float = 1_000_000.0,
         maxPositionEmbeddings: Int = 32768
     ) {
-        self.audioAcousticProj = Linear(audioAcousticHiddenDim, hiddenSize, bias: true)
-        self.attentionPooler = AudioTokenizerPooler(
+        audioAcousticProj = Linear(audioAcousticHiddenDim, hiddenSize, bias: true)
+        attentionPooler = AudioTokenizerPooler(
             hiddenSize: hiddenSize,
             intermediateSize: intermediateSize,
             numAttentionHeads: numAttentionHeads,
@@ -46,7 +46,7 @@ public class AudioTokenizer: Module {
             ropeTheta: ropeTheta,
             maxPositionEmbeddings: maxPositionEmbeddings
         )
-        self.quantizer = ResidualFSQ(hiddenSize: hiddenSize, levels: fsqLevels)
+        quantizer = ResidualFSQ(hiddenSize: hiddenSize, levels: fsqLevels)
         self.poolWindowSize = poolWindowSize
     }
 
@@ -66,10 +66,10 @@ public class AudioTokenizer: Module {
             "AudioTokenizer.forward: T (\(tFrames)) must be divisible by pool_window_size (\(poolWindowSize))"
         )
 
-        let projected = audioAcousticProj(audioLatents)                               // [B, T, hSize]
+        let projected = audioAcousticProj(audioLatents) // [B, T, hSize]
         let nWindows = tFrames / poolWindowSize
-        let windowed = projected.reshaped([bsz, nWindows, poolWindowSize, hSize])     // [B, T/pool, pool, H]
-        let pooled = attentionPooler(windowed)                                         // [B, T/pool, H]
+        let windowed = projected.reshaped([bsz, nWindows, poolWindowSize, hSize]) // [B, T/pool, pool, H]
+        let pooled = attentionPooler(windowed) // [B, T/pool, H]
         return quantizer(pooled)
     }
 }

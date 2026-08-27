@@ -40,48 +40,48 @@ enum DSPEffect: String, CaseIterable, Sendable {
     var requiresParameters: Bool {
         switch self {
         case .trimToSelection, .deleteSelection, .fadeIn, .fadeOut:
-            return false
+            false
         case .normalize, .trimSilence, .highPass, .compress, .limit, .loudness,
              .softGate, .polishForKeep, .eq, .reverb, .timeStretch, .pitchShift:
-            return true
+            true
         }
     }
 
     var requiresSelection: Bool {
         switch self {
         case .trimToSelection, .deleteSelection, .fadeIn, .fadeOut:
-            return true
+            true
         case .normalize, .trimSilence, .highPass, .compress, .limit, .loudness,
              .softGate, .polishForKeep, .eq, .reverb, .timeStretch, .pitchShift:
-            return false
+            false
         }
     }
 
     var displayName: String {
         switch self {
-        case .trimToSelection: return "Trim to Selection"
-        case .deleteSelection: return "Delete Selection"
-        case .fadeIn: return "Fade In"
-        case .fadeOut: return "Fade Out"
-        case .normalize: return "Normalize"
-        case .trimSilence: return "Trim Silence"
-        case .highPass: return "High-Pass"
-        case .compress: return "Compress"
-        case .limit: return "Limit"
-        case .loudness: return "Loudness"
-        case .softGate: return "Soft Gate"
-        case .polishForKeep: return "Polish for Keep"
-        case .eq: return "Parametric EQ"
-        case .reverb: return "Reverb"
-        case .timeStretch: return "Time Stretch"
-        case .pitchShift: return "Pitch Shift"
+        case .trimToSelection: "Trim to Selection"
+        case .deleteSelection: "Delete Selection"
+        case .fadeIn: "Fade In"
+        case .fadeOut: "Fade Out"
+        case .normalize: "Normalize"
+        case .trimSilence: "Trim Silence"
+        case .highPass: "High-Pass"
+        case .compress: "Compress"
+        case .limit: "Limit"
+        case .loudness: "Loudness"
+        case .softGate: "Soft Gate"
+        case .polishForKeep: "Polish for Keep"
+        case .eq: "Parametric EQ"
+        case .reverb: "Reverb"
+        case .timeStretch: "Time Stretch"
+        case .pitchShift: "Pitch Shift"
         }
     }
 
     var isTransform: Bool {
         switch self {
-        case .timeStretch, .pitchShift: return true
-        default: return false
+        case .timeStretch, .pitchShift: true
+        default: false
         }
     }
 }
@@ -136,9 +136,9 @@ enum ReverbPreset: String, CaseIterable {
 
     var parameters: ReverbParameters {
         switch self {
-        case .room: return .room
-        case .hall: return .hall
-        case .plate: return .plate
+        case .room: .room
+        case .hall: .hall
+        case .plate: .plate
         }
     }
 
@@ -162,14 +162,14 @@ struct ReverbParameters: Equatable, Sendable {
 // MARK: - TimeStretchParameters
 
 struct TimeStretchParameters: Equatable, Sendable {
-    var rate: Float          // 0.25-4.0 (1.0 = original speed)
+    var rate: Float // 0.25-4.0 (1.0 = original speed)
     static let `default` = TimeStretchParameters(rate: 1.0)
 }
 
 // MARK: - PitchShiftParameters
 
 struct PitchShiftParameters: Equatable, Sendable {
-    var pitch: Float         // -2400 to +2400 cents (-24 to +24 semitones)
+    var pitch: Float // -2400 to +2400 cents (-24 to +24 semitones)
     static let `default` = PitchShiftParameters(pitch: 0)
 }
 
@@ -184,7 +184,7 @@ struct NormalizeParameters: Equatable, Sendable {
     static let minusThree = NormalizeParameters(targetPeakDBFS: -3.0)
     static let fullScale = NormalizeParameters(targetPeakDBFS: 0.0)
 
-    static let allowedRange: ClosedRange<Float> = -12...0
+    static let allowedRange: ClosedRange<Float> = -12 ... 0
 }
 
 struct TrimSilenceParameters: Equatable, Sendable {
@@ -210,7 +210,7 @@ struct HighPassParameters: Equatable, Sendable {
     var cutoffHz: Float
 
     static let `default` = HighPassParameters(cutoffHz: 40)
-    static let allowedRange: ClosedRange<Float> = 20...200
+    static let allowedRange: ClosedRange<Float> = 20 ... 200
 }
 
 // MARK: - Dynamics (P1)
@@ -260,7 +260,7 @@ struct LimiterParameters: Equatable, Sendable {
     static let louder = LimiterParameters(ceilingDBFS: -0.5, releaseMilliseconds: 40)
     static let `default` = streaming
 
-    static let ceilingRange: ClosedRange<Float> = -6...0
+    static let ceilingRange: ClosedRange<Float> = -6 ... 0
 }
 
 struct LoudnessParameters: Equatable, Sendable {
@@ -285,7 +285,7 @@ struct LoudnessParameters: Equatable, Sendable {
 
     static let `default` = streaming
 
-    static let targetRange: ClosedRange<Float> = -24...(-6)
+    static let targetRange: ClosedRange<Float> = -24 ... -6
 }
 
 /// Downward expander for light noise-floor cleanup. Easy to overuse on full mixes —
@@ -312,7 +312,7 @@ struct SoftGateParameters: Equatable, Sendable {
 
     static let `default` = gentle
 
-    static let thresholdRange: ClosedRange<Float> = -70...(-24)
+    static let thresholdRange: ClosedRange<Float> = -70 ... -24
 }
 
 // MARK: - NormalizeMode
@@ -331,31 +331,31 @@ enum NormalizeMode: Equatable {
 /// MP3, FLAC, and OGG are intentionally excluded — they require third-party
 /// libraries (LAME, libFLAC, libvorbis) not available natively on macOS.
 enum ExportFormat: String, CaseIterable {
-    case wav  = "WAV"
+    case wav = "WAV"
     case aiff = "AIFF"
-    case m4a  = "M4A"
+    case m4a = "M4A"
 
     var fileExtension: String {
         switch self {
-        case .wav:  return "wav"
-        case .aiff: return "aiff"
-        case .m4a:  return "m4a"
+        case .wav: "wav"
+        case .aiff: "aiff"
+        case .m4a: "m4a"
         }
     }
 
     var contentType: UTType {
         switch self {
-        case .wav:  return .wav
-        case .aiff: return .aiff
-        case .m4a:  return UTType("public.mpeg-4-audio") ?? .audio
+        case .wav: .wav
+        case .aiff: .aiff
+        case .m4a: UTType("public.mpeg-4-audio") ?? .audio
         }
     }
 
     var menuLabel: String {
         switch self {
-        case .wav:  return "Export as WAV (lossless)…"
-        case .aiff: return "Export as AIFF (lossless)…"
-        case .m4a:  return "Export as M4A (AAC compressed)…"
+        case .wav: "Export as WAV (lossless)…"
+        case .aiff: "Export as AIFF (lossless)…"
+        case .m4a: "Export as M4A (AAC compressed)…"
         }
     }
 }

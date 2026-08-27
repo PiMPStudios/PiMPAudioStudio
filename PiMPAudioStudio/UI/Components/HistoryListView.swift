@@ -38,7 +38,7 @@ struct HistoryListView: View {
                 .fontWeight(.semibold)
                 .foregroundStyle(.secondary)
 
-            if isSelecting && !selectedIDs.isEmpty {
+            if isSelecting, !selectedIDs.isEmpty {
                 Text("\(selectedIDs.count) selected")
                     .font(.caption2)
                     .foregroundStyle(.blue)
@@ -55,7 +55,9 @@ struct HistoryListView: View {
                             }
                             .buttonStyle(.borderedProminent)
                             .controlSize(.mini)
-                            .help("Reload this take’s prompt, seed, guidance, and adapters into Generate for a quick tweak")
+                            .help(
+                                "Reload this take’s prompt, seed, guidance, and adapters into Generate for a quick tweak"
+                            )
 
                             Button("Edit") {
                                 openSelectedInEditor()
@@ -147,7 +149,7 @@ struct HistoryListView: View {
                             .foregroundStyle(selectedIDs.contains(entry.id) ? Color.accentColor : .secondary)
                     }
                     HistoryRow(entry: entry)
-                    if !isSelecting && canAnalyze(entry) {
+                    if !isSelecting, canAnalyze(entry) {
                         Spacer(minLength: 8)
                         Button {
                             analyzeTrace(for: entry)
@@ -180,7 +182,11 @@ struct HistoryListView: View {
         .listStyle(.plain)
         .alert("Could not open trace", isPresented: Binding(
             get: { traceErrorMessage != nil },
-            set: { if !$0 { traceErrorMessage = nil } }
+            set: {
+                if !$0 {
+                    traceErrorMessage = nil
+                }
+            }
         )) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -403,8 +409,8 @@ struct HistoryListView: View {
             return url
         }
         let base = url.deletingPathExtension().lastPathComponent
-        let ext  = url.pathExtension
-        let dir  = url.deletingLastPathComponent()
+        let ext = url.pathExtension
+        let dir = url.deletingLastPathComponent()
         var n = 2
         while true {
             let candidate = dir.appending(path: "\(base)-\(n).\(ext)")

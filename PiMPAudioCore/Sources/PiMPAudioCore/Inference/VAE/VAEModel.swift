@@ -12,11 +12,11 @@ public class OobleckEncoder: Module, UnaryLayer {
     public init(
         encoderHiddenSize: Int = 128,
         audioChannels: Int = 2,
-        downsamplingRatios: [Int] = [2, 4, 4, 6, 10],   // v1.5 VAE config
+        downsamplingRatios: [Int] = [2, 4, 4, 6, 10], // v1.5 VAE config
         channelMultiples: [Int] = [1, 2, 4, 8, 16]
     ) {
         let cm = [1] + channelMultiples
-        self.conv1 = Conv1d(
+        conv1 = Conv1d(
             inputChannels: audioChannels, outputChannels: encoderHiddenSize,
             kernelSize: 7, padding: 3
         )
@@ -30,8 +30,8 @@ public class OobleckEncoder: Module, UnaryLayer {
         }
         self.blocks = blocks
         let dModel = encoderHiddenSize * cm.last!
-        self.snake1 = Snake1d(hiddenDim: dModel)
-        self.conv2 = Conv1d(
+        snake1 = Snake1d(hiddenDim: dModel)
+        conv2 = Conv1d(
             inputChannels: dModel, outputChannels: encoderHiddenSize,
             kernelSize: 3, padding: 1
         )
@@ -58,11 +58,11 @@ public class OobleckDecoder: Module, UnaryLayer {
         channels: Int = 128,
         inputChannels: Int = 64,
         audioChannels: Int = 2,
-        upsamplingRatios: [Int] = [10, 6, 4, 4, 2],   // reverse of v1.5 downsamplingRatios
+        upsamplingRatios: [Int] = [10, 6, 4, 4, 2], // reverse of v1.5 downsamplingRatios
         channelMultiples: [Int] = [1, 2, 4, 8, 16]
     ) {
         let cm = [1] + channelMultiples
-        self.conv1 = Conv1d(
+        conv1 = Conv1d(
             inputChannels: inputChannels, outputChannels: channels * cm.last!,
             kernelSize: 7, padding: 3
         )
@@ -76,8 +76,8 @@ public class OobleckDecoder: Module, UnaryLayer {
             ))
         }
         self.blocks = blocks
-        self.snake1 = Snake1d(hiddenDim: channels)
-        self.conv2 = Conv1d(
+        snake1 = Snake1d(hiddenDim: channels)
+        conv2 = Conv1d(
             inputChannels: channels, outputChannels: audioChannels,
             kernelSize: 7, padding: 3, bias: false
         )
@@ -115,13 +115,13 @@ public class AutoEncoderOobleck: Module {
     ) {
         self.encoderHiddenSize = encoderHiddenSize
         self.decoderInputChannels = decoderInputChannels
-        self.encoder = OobleckEncoder(
+        encoder = OobleckEncoder(
             encoderHiddenSize: encoderHiddenSize,
             audioChannels: audioChannels,
             downsamplingRatios: downsamplingRatios,
             channelMultiples: channelMultiples
         )
-        self.decoder = OobleckDecoder(
+        decoder = OobleckDecoder(
             channels: decoderChannels,
             inputChannels: decoderInputChannels,
             audioChannels: audioChannels,
@@ -138,11 +138,10 @@ public class AutoEncoderOobleck: Module {
         let mean = splits[0]
         let scale = splits[1]
         let std = log(1.0 + exp(scale)) + 1e-4
-        let noise: MLXArray
-        if let key {
-            noise = MLXRandom.normal(mean.shape, key: key)
+        let noise: MLXArray = if let key {
+            MLXRandom.normal(mean.shape, key: key)
         } else {
-            noise = MLXRandom.normal(mean.shape)
+            MLXRandom.normal(mean.shape)
         }
         return mean + std * noise
     }

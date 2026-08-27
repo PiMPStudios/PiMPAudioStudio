@@ -23,8 +23,12 @@ public enum VAENameMap {
     public static func mapKey(_ key: String) -> String {
         let components = key.split(separator: ".", omittingEmptySubsequences: false).map { component -> String in
             let s = String(component)
-            if Int(s) != nil { return s }                  // numeric layer index
-            if s == "block" { return "blocks" }            // ModuleList plural
+            if Int(s) != nil {
+                return s
+            } // numeric layer index
+            if s == "block" {
+                return "blocks"
+            } // ModuleList plural
             return snakeToCamel(s)
         }
         return components.joined(separator: ".")

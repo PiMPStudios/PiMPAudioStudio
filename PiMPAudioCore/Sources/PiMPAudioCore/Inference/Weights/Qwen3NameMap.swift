@@ -5,7 +5,9 @@ public enum Qwen3NameMap {
         var mapped = key
 
         // Filter out keys we don't need
-        if key.hasPrefix("lm_head.") { return nil }
+        if key.hasPrefix("lm_head.") {
+            return nil
+        }
 
         // Some Qwen3 checkpoints prefix every key with `model.` (the full
         // CausalLM packaging); the ACE-Step v1.5 `Qwen3-Embedding-0.6B`

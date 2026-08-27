@@ -1,5 +1,5 @@
-import Foundation
 import AVFoundation
+import Foundation
 import PiMPAudioCore
 
 extension PiMPAudioCommandFacade {
@@ -22,7 +22,7 @@ extension PiMPAudioCommandFacade {
             "canUndo": canUndo,
             "canRedo": canRedo,
             "currentOperation": currentOperationPayload(kindPrefix: "editor.") ?? NSNull(),
-            "supportedActions": editorActionsPayload()
+            "supportedActions": editorActionsPayload(),
         ]
     }
 
@@ -46,7 +46,7 @@ extension PiMPAudioCommandFacade {
                 "confirmation": confirmationRequirementPayload(toolName: "load_editor_audio"),
                 "request": request,
                 "operationID": NSNull(),
-                "operation": NSNull()
+                "operation": NSNull(),
             ]
         }
 
@@ -75,7 +75,7 @@ extension PiMPAudioCommandFacade {
             "dryRun": false,
             "request": request,
             "operationID": operation.id,
-            "operation": operationPayload(operation)
+            "operation": operationPayload(operation),
         ]
     }
 
@@ -94,7 +94,7 @@ extension PiMPAudioCommandFacade {
                 "confirmation": confirmationRequirementPayload(toolName: "submit_editor_inpaint"),
                 "request": requestPayload,
                 "operationID": NSNull(),
-                "operation": NSNull()
+                "operation": NSNull(),
             ]
         }
 
@@ -126,7 +126,7 @@ extension PiMPAudioCommandFacade {
             "dryRun": false,
             "request": requestPayload,
             "operationID": operation.id,
-            "operation": operationPayload(operation)
+            "operation": operationPayload(operation),
         ]
     }
 
@@ -144,7 +144,7 @@ extension PiMPAudioCommandFacade {
                 "confirmation": confirmationRequirementPayload(toolName: "render_editor_audio"),
                 "request": requestPayload,
                 "operationID": NSNull(),
-                "operation": NSNull()
+                "operation": NSNull(),
             ]
         }
 
@@ -181,7 +181,7 @@ extension PiMPAudioCommandFacade {
             "dryRun": false,
             "request": requestPayload,
             "operationID": operation.id,
-            "operation": operationPayload(operation)
+            "operation": operationPayload(operation),
         ]
     }
 
@@ -200,7 +200,7 @@ extension PiMPAudioCommandFacade {
                 "confirmation": confirmationRequirementPayload(toolName: "apply_editor_effect_chain"),
                 "request": requestPayload,
                 "operationID": NSNull(),
-                "operation": NSNull()
+                "operation": NSNull(),
             ]
         }
 
@@ -231,10 +231,9 @@ extension PiMPAudioCommandFacade {
             "dryRun": false,
             "request": requestPayload,
             "operationID": operation.id,
-            "operation": operationPayload(operation)
+            "operation": operationPayload(operation),
         ]
     }
-
 
     func editorLoadProgressPayload(stage: String, message: String) -> [String: Any] {
         operationProgressPayload(
@@ -256,7 +255,7 @@ extension PiMPAudioCommandFacade {
                 stage: "encoding",
                 message: "Preparing editor latents for regeneration."
             )
-        case .diffusion(let diffusionProgress):
+        case let .diffusion(diffusionProgress):
             var payload = editorInpaintProgressPayload(
                 stage: "diffusion",
                 message: "Regenerating selected editor audio.",
@@ -275,7 +274,7 @@ extension PiMPAudioCommandFacade {
                 stage: "complete",
                 message: "Editor inpaint completed."
             )
-        case .failed(let message):
+        case let .failed(message):
             return editorInpaintProgressPayload(
                 stage: "error",
                 message: message
@@ -321,7 +320,6 @@ extension PiMPAudioCommandFacade {
         )
     }
 
-
     func editorAudioLoadRequestPayload(
         source: EditorAudioLoadSource,
         originalPrompt: String?
@@ -331,7 +329,7 @@ extension PiMPAudioCommandFacade {
             "historyEntryID": source.historyEntryID.map { $0 as Any } ?? NSNull(),
             "path": source.url.path(percentEncoded: false),
             "fileName": source.fileName,
-            "originalPrompt": originalPrompt.map { $0 as Any } ?? NSNull()
+            "originalPrompt": originalPrompt.map { $0 as Any } ?? NSNull(),
         ]
     }
 
@@ -347,7 +345,7 @@ extension PiMPAudioCommandFacade {
             "frameCount": audio.frameCount,
             "latentFrames": audio.latentFrames,
             "originalPrompt": audio.originalPrompt.map { $0 as Any } ?? NSNull(),
-            "loadedAt": dateFormatter.string(from: audio.loadedAt)
+            "loadedAt": dateFormatter.string(from: audio.loadedAt),
         ]
     }
 
@@ -364,7 +362,7 @@ extension PiMPAudioCommandFacade {
                 "frequencyBand": editorFrequencyBandPayload(
                     lowCutHz: edit.lowCutHz,
                     highCutHz: edit.highCutHz
-                )
+                ),
             ],
             "strength": edit.strength.map { $0 as Any } ?? NSNull(),
             "guidanceScale": edit.guidanceScale.map { $0 as Any } ?? NSNull(),
@@ -372,7 +370,7 @@ extension PiMPAudioCommandFacade {
             "dspEffects": edit.dspEffects.map(editorDSPEffectSummaryPayload),
             "beforeDuration": edit.beforeDuration.map { $0 as Any } ?? NSNull(),
             "afterDuration": edit.afterDuration.map { $0 as Any } ?? NSNull(),
-            "completedAt": dateFormatter.string(from: edit.completedAt)
+            "completedAt": dateFormatter.string(from: edit.completedAt),
         ]
     }
 
@@ -385,7 +383,7 @@ extension PiMPAudioCommandFacade {
             "selection": editorSelectionPayload(request.selection),
             "strength": request.strength,
             "guidanceScale": request.guidanceScale,
-            "seed": request.seed.map { $0 as Any } ?? NSNull()
+            "seed": request.seed.map { $0 as Any } ?? NSNull(),
         ]
     }
 
@@ -394,7 +392,7 @@ extension PiMPAudioCommandFacade {
             "format": request.format.rawValue,
             "outputPath": request.outputURL.path(percentEncoded: false),
             "overwrite": request.overwrite,
-            "selection": request.selection.map { editorSelectionPayload($0) as Any } ?? NSNull()
+            "selection": request.selection.map { editorSelectionPayload($0) as Any } ?? NSNull(),
         ]
     }
 
@@ -412,7 +410,7 @@ extension PiMPAudioCommandFacade {
             "channels": buffer.channels,
             "frameCount": buffer.frameCount,
             "selection": request.selection.map { editorSelectionPayload($0) as Any } ?? NSNull(),
-            "sourceLoadedAudio": editorLoadedAudioPayload(sourceAudio)
+            "sourceLoadedAudio": editorLoadedAudioPayload(sourceAudio),
         ]
     }
 
@@ -420,7 +418,7 @@ extension PiMPAudioCommandFacade {
         [
             "effectCount": request.steps.count,
             "description": request.description,
-            "effects": request.steps.map(editorDSPStepPayload)
+            "effects": request.steps.map(editorDSPStepPayload),
         ]
     }
 
@@ -429,7 +427,7 @@ extension PiMPAudioCommandFacade {
             "effect": step.effect.rawValue,
             "displayName": step.effect.displayName,
             "target": editorDSPTargetPayload(step.target),
-            "parameters": editorDSPParametersPayload(step.parameters)
+            "parameters": editorDSPParametersPayload(step.parameters),
         ]
     }
 
@@ -449,7 +447,7 @@ extension PiMPAudioCommandFacade {
             "before": editorAudioBufferPayload(beforeBuffer),
             "after": editorAudioBufferPayload(afterBuffer),
             "canUndo": true,
-            "canRedo": false
+            "canRedo": false,
         ]
     }
 
@@ -458,7 +456,7 @@ extension PiMPAudioCommandFacade {
             "duration": buffer.duration,
             "sampleRate": buffer.sampleRate,
             "channels": buffer.channels,
-            "frameCount": buffer.frameCount
+            "frameCount": buffer.frameCount,
         ]
     }
 
@@ -466,12 +464,11 @@ extension PiMPAudioCommandFacade {
         step: EditorDSPEffectStep,
         description: String
     ) -> EditorDSPEffectSummary {
-        let selection: (start: TimeInterval?, end: TimeInterval?)
-        switch step.target {
-        case .selection(let start, let end):
-            selection = (start, end)
+        let selection: (start: TimeInterval?, end: TimeInterval?) = switch step.target {
+        case let .selection(start, end):
+            (start, end)
         case .wholeTrack:
-            selection = (nil, nil)
+            (nil, nil)
         }
         return EditorDSPEffectSummary(
             effect: step.effect.rawValue,
@@ -492,26 +489,26 @@ extension PiMPAudioCommandFacade {
             "target": summary.target,
             "selection": [
                 "startTime": summary.selectionStart.map { $0 as Any } ?? NSNull(),
-                "endTime": summary.selectionEnd.map { $0 as Any } ?? NSNull()
+                "endTime": summary.selectionEnd.map { $0 as Any } ?? NSNull(),
             ],
-            "parameters": summary.parameters
+            "parameters": summary.parameters,
         ]
     }
 
     func editorDSPTargetPayload(_ target: ApplyTarget) -> [String: Any] {
         switch target {
         case .wholeTrack:
-            return [
+            [
                 "type": "wholeTrack",
-                "selection": NSNull()
+                "selection": NSNull(),
             ]
-        case .selection(let start, let end):
-            return [
+        case let .selection(start, end):
+            [
                 "type": "selection",
                 "selection": [
                     "startTime": start,
-                    "endTime": end
-                ]
+                    "endTime": end,
+                ],
             ]
         }
     }
@@ -519,86 +516,86 @@ extension PiMPAudioCommandFacade {
     func editorDSPTargetName(_ target: ApplyTarget) -> String {
         switch target {
         case .wholeTrack:
-            return "wholeTrack"
+            "wholeTrack"
         case .selection:
-            return "selection"
+            "selection"
         }
     }
 
     func editorDSPParametersPayload(_ parameters: DSPParameters) -> Any {
         switch parameters {
         case .none:
-            return NSNull()
-        case .normalize(let params):
-            return ["targetPeakDBFS": params.targetPeakDBFS]
-        case .trimSilence(let params):
-            return [
+            NSNull()
+        case let .normalize(params):
+            ["targetPeakDBFS": params.targetPeakDBFS]
+        case let .trimSilence(params):
+            [
                 "thresholdDBFS": params.thresholdDBFS,
                 "maxLeadingSeconds": params.maxLeadingSeconds,
                 "maxTrailingSeconds": params.maxTrailingSeconds,
-                "edgeFadeMilliseconds": params.edgeFadeMilliseconds
+                "edgeFadeMilliseconds": params.edgeFadeMilliseconds,
             ]
-        case .highPass(let params):
-            return ["cutoffHz": params.cutoffHz]
-        case .compress(let params):
-            return [
+        case let .highPass(params):
+            ["cutoffHz": params.cutoffHz]
+        case let .compress(params):
+            [
                 "thresholdDBFS": params.thresholdDBFS,
                 "ratio": params.ratio,
                 "attackMilliseconds": params.attackMilliseconds,
                 "releaseMilliseconds": params.releaseMilliseconds,
                 "kneeDB": params.kneeDB,
-                "makeupGainDB": params.makeupGainDB
+                "makeupGainDB": params.makeupGainDB,
             ]
-        case .limit(let params):
-            return [
+        case let .limit(params):
+            [
                 "ceilingDBFS": params.ceilingDBFS,
-                "releaseMilliseconds": params.releaseMilliseconds
+                "releaseMilliseconds": params.releaseMilliseconds,
             ]
-        case .loudness(let params):
-            return [
+        case let .loudness(params):
+            [
                 "targetLUFS": params.targetLUFS,
                 "ceilingDBFS": params.ceilingDBFS,
-                "maxBoostDB": params.maxBoostDB
+                "maxBoostDB": params.maxBoostDB,
             ]
-        case .softGate(let params):
-            return [
+        case let .softGate(params):
+            [
                 "thresholdDBFS": params.thresholdDBFS,
                 "ratio": params.ratio,
                 "attackMilliseconds": params.attackMilliseconds,
                 "releaseMilliseconds": params.releaseMilliseconds,
-                "rangeDB": params.rangeDB
+                "rangeDB": params.rangeDB,
             ]
-        case .polishForKeep(let recipe):
-            return [
+        case let .polishForKeep(recipe):
+            [
                 "target": recipe.target.rawValue,
                 "tone": recipe.tone.rawValue,
                 "glue": recipe.glue.rawValue,
                 "space": recipe.space.rawValue,
-                "trimSilenceAndFades": recipe.trimSilenceAndFades
+                "trimSilenceAndFades": recipe.trimSilenceAndFades,
             ]
-        case .eq(let params):
-            return [
+        case let .eq(params):
+            [
                 "bands": params.bands.map { band in
                     [
                         "frequency": band.frequency,
                         "gain": band.gain,
-                        "q": band.q
+                        "q": band.q,
                     ]
-                }
+                },
             ]
-        case .reverb(let params):
-            return [
+        case let .reverb(params):
+            [
                 "decayTime": params.decayTime,
                 "wetDryMix": params.wetDryMix,
                 "preDelay": params.preDelay,
-                "damping": params.damping
+                "damping": params.damping,
             ]
-        case .timeStretch(let params):
-            return ["rate": params.rate]
-        case .pitchShift(let params):
-            return [
+        case let .timeStretch(params):
+            ["rate": params.rate]
+        case let .pitchShift(params):
+            [
                 "pitch": params.pitch,
-                "semitones": params.pitch / 100.0
+                "semitones": params.pitch / 100.0,
             ]
         }
     }
@@ -607,53 +604,53 @@ extension PiMPAudioCommandFacade {
         switch parameters {
         case .none:
             return [:]
-        case .normalize(let params):
+        case let .normalize(params):
             return ["targetPeakDBFS": Double(params.targetPeakDBFS)]
-        case .trimSilence(let params):
+        case let .trimSilence(params):
             return [
                 "thresholdDBFS": Double(params.thresholdDBFS),
                 "maxLeadingSeconds": Double(params.maxLeadingSeconds),
                 "maxTrailingSeconds": Double(params.maxTrailingSeconds),
-                "edgeFadeMilliseconds": Double(params.edgeFadeMilliseconds)
+                "edgeFadeMilliseconds": Double(params.edgeFadeMilliseconds),
             ]
-        case .highPass(let params):
+        case let .highPass(params):
             return ["cutoffHz": Double(params.cutoffHz)]
-        case .compress(let params):
+        case let .compress(params):
             return [
                 "thresholdDBFS": Double(params.thresholdDBFS),
                 "ratio": Double(params.ratio),
                 "attackMilliseconds": Double(params.attackMilliseconds),
                 "releaseMilliseconds": Double(params.releaseMilliseconds),
                 "kneeDB": Double(params.kneeDB),
-                "makeupGainDB": Double(params.makeupGainDB)
+                "makeupGainDB": Double(params.makeupGainDB),
             ]
-        case .limit(let params):
+        case let .limit(params):
             return [
                 "ceilingDBFS": Double(params.ceilingDBFS),
-                "releaseMilliseconds": Double(params.releaseMilliseconds)
+                "releaseMilliseconds": Double(params.releaseMilliseconds),
             ]
-        case .loudness(let params):
+        case let .loudness(params):
             return [
                 "targetLUFS": Double(params.targetLUFS),
                 "ceilingDBFS": Double(params.ceilingDBFS),
-                "maxBoostDB": Double(params.maxBoostDB)
+                "maxBoostDB": Double(params.maxBoostDB),
             ]
-        case .softGate(let params):
+        case let .softGate(params):
             return [
                 "thresholdDBFS": Double(params.thresholdDBFS),
                 "ratio": Double(params.ratio),
                 "attackMilliseconds": Double(params.attackMilliseconds),
                 "releaseMilliseconds": Double(params.releaseMilliseconds),
-                "rangeDB": Double(params.rangeDB)
+                "rangeDB": Double(params.rangeDB),
             ]
-        case .polishForKeep(let recipe):
+        case let .polishForKeep(recipe):
             return [
                 "trimSilenceAndFades": recipe.trimSilenceAndFades ? 1 : 0,
                 "targetStreaming": recipe.target == .streaming ? 1 : 0,
                 "targetLouder": recipe.target == .louder ? 1 : 0,
-                "targetGentle": recipe.target == .gentle ? 1 : 0
+                "targetGentle": recipe.target == .gentle ? 1 : 0,
             ]
-        case .eq(let params):
+        case let .eq(params):
             var summary: [String: Double] = [:]
             for (index, band) in params.bands.enumerated() {
                 summary["band\(index + 1)Frequency"] = Double(band.frequency)
@@ -661,19 +658,19 @@ extension PiMPAudioCommandFacade {
                 summary["band\(index + 1)Q"] = Double(band.q)
             }
             return summary
-        case .reverb(let params):
+        case let .reverb(params):
             return [
                 "decayTime": Double(params.decayTime),
                 "wetDryMix": Double(params.wetDryMix),
                 "preDelay": Double(params.preDelay),
-                "damping": Double(params.damping)
+                "damping": Double(params.damping),
             ]
-        case .timeStretch(let params):
+        case let .timeStretch(params):
             return ["rate": Double(params.rate)]
-        case .pitchShift(let params):
+        case let .pitchShift(params):
             return [
                 "pitch": Double(params.pitch),
-                "semitones": Double(params.pitch / 100.0)
+                "semitones": Double(params.pitch / 100.0),
             ]
         }
     }
@@ -682,7 +679,7 @@ extension PiMPAudioCommandFacade {
         [
             "startTime": selection.startTime,
             "endTime": selection.endTime,
-            "frequencyBand": selection.frequencyBand.map { editorFrequencyBandPayload($0) as Any } ?? NSNull()
+            "frequencyBand": selection.frequencyBand.map { editorFrequencyBandPayload($0) as Any } ?? NSNull(),
         ]
     }
 
@@ -694,7 +691,7 @@ extension PiMPAudioCommandFacade {
         guard let lowCutHz, let highCutHz else { return NSNull() }
         return [
             "lowCutHz": lowCutHz,
-            "highCutHz": highCutHz
+            "highCutHz": highCutHz,
         ]
     }
 
@@ -710,7 +707,7 @@ extension PiMPAudioCommandFacade {
         let guidanceScale = try editorInpaintGuidanceScale(from: arguments)
         let pipeline = try editorPipelineChoice(from: arguments)
 
-        return InpaintRequest(
+        return try InpaintRequest(
             editMode: editMode,
             selection: selection,
             regionPrompt: regionPrompt,
@@ -718,7 +715,7 @@ extension PiMPAudioCommandFacade {
             strength: strength,
             guidanceScale: guidanceScale,
             pipeline: pipeline,
-            seed: try seedValue(arguments["seed"])
+            seed: seedValue(arguments["seed"])
         )
     }
 
@@ -768,8 +765,12 @@ extension PiMPAudioCommandFacade {
             }
             if let rawItems = rawEffects as? [Any] {
                 let items = rawItems.compactMap { item -> [String: Any]? in
-                    if let object = item as? [String: Any] { return object }
-                    if let name = stringValue(item) { return ["effect": name] }
+                    if let object = item as? [String: Any] {
+                        return object
+                    }
+                    if let name = stringValue(item) {
+                        return ["effect": name]
+                    }
                     return nil
                 }
                 guard items.count == rawItems.count else {
@@ -884,7 +885,8 @@ extension PiMPAudioCommandFacade {
             switch explicitTarget {
             case "whole", "track", "wholetrack", "full", "fulltrack":
                 if effect.requiresSelection {
-                    throw PiMPAudioCommandFacadeError.invalidDSPTarget("Effect '\(effect.rawValue)' requires a selection target.")
+                    throw PiMPAudioCommandFacadeError
+                        .invalidDSPTarget("Effect '\(effect.rawValue)' requires a selection target.")
                 }
                 return .wholeTrack
             case "selection", "selected", "region", "range":
@@ -954,29 +956,29 @@ extension PiMPAudioCommandFacade {
 
         switch effect {
         case .normalize:
-            return .normalize(try editorNormalizeParameters(parameterArguments, fallback: topLevel))
+            return try .normalize(editorNormalizeParameters(parameterArguments, fallback: topLevel))
         case .trimSilence:
-            return .trimSilence(try editorTrimSilenceParameters(parameterArguments, fallback: topLevel))
+            return try .trimSilence(editorTrimSilenceParameters(parameterArguments, fallback: topLevel))
         case .highPass:
-            return .highPass(try editorHighPassParameters(parameterArguments, fallback: topLevel))
+            return try .highPass(editorHighPassParameters(parameterArguments, fallback: topLevel))
         case .compress:
-            return .compress(try editorCompressorParameters(parameterArguments, fallback: topLevel))
+            return try .compress(editorCompressorParameters(parameterArguments, fallback: topLevel))
         case .limit:
-            return .limit(try editorLimiterParameters(parameterArguments, fallback: topLevel))
+            return try .limit(editorLimiterParameters(parameterArguments, fallback: topLevel))
         case .loudness:
-            return .loudness(try editorLoudnessParameters(parameterArguments, fallback: topLevel))
+            return try .loudness(editorLoudnessParameters(parameterArguments, fallback: topLevel))
         case .softGate:
-            return .softGate(try editorSoftGateParameters(parameterArguments, fallback: topLevel))
+            return try .softGate(editorSoftGateParameters(parameterArguments, fallback: topLevel))
         case .polishForKeep:
-            return .polishForKeep(try editorPolishForKeepParameters(parameterArguments, fallback: topLevel))
+            return try .polishForKeep(editorPolishForKeepParameters(parameterArguments, fallback: topLevel))
         case .eq:
-            return .eq(try editorEQParameters(parameterArguments, fallback: topLevel))
+            return try .eq(editorEQParameters(parameterArguments, fallback: topLevel))
         case .reverb:
-            return .reverb(try editorReverbParameters(parameterArguments, fallback: topLevel))
+            return try .reverb(editorReverbParameters(parameterArguments, fallback: topLevel))
         case .timeStretch:
-            return .timeStretch(try editorTimeStretchParameters(parameterArguments, fallback: topLevel))
+            return try .timeStretch(editorTimeStretchParameters(parameterArguments, fallback: topLevel))
         case .pitchShift:
-            return .pitchShift(try editorPitchShiftParameters(parameterArguments, fallback: topLevel))
+            return try .pitchShift(editorPitchShiftParameters(parameterArguments, fallback: topLevel))
         case .trimToSelection, .deleteSelection, .fadeIn, .fadeOut:
             return .none
         }
@@ -1002,10 +1004,12 @@ extension PiMPAudioCommandFacade {
         if let v = doubleValue(parameters["ratio"] ?? fallback["ratio"]) {
             result.ratio = Float(max(1.001, v))
         }
-        if let v = doubleValue(parameters["attackMilliseconds"] ?? parameters["attack"] ?? fallback["attackMilliseconds"]) {
+        if let v =
+            doubleValue(parameters["attackMilliseconds"] ?? parameters["attack"] ?? fallback["attackMilliseconds"]) {
             result.attackMilliseconds = Float(max(0.1, v))
         }
-        if let v = doubleValue(parameters["releaseMilliseconds"] ?? parameters["release"] ?? fallback["releaseMilliseconds"]) {
+        if let v =
+            doubleValue(parameters["releaseMilliseconds"] ?? parameters["release"] ?? fallback["releaseMilliseconds"]) {
             result.releaseMilliseconds = Float(max(1, v))
         }
         if let v = doubleValue(parameters["kneeDB"] ?? parameters["knee"] ?? fallback["kneeDB"]) {
@@ -1040,7 +1044,8 @@ extension PiMPAudioCommandFacade {
             }
             result.ceilingDBFS = ceiling
         }
-        if let v = doubleValue(parameters["releaseMilliseconds"] ?? parameters["release"] ?? fallback["releaseMilliseconds"]) {
+        if let v =
+            doubleValue(parameters["releaseMilliseconds"] ?? parameters["release"] ?? fallback["releaseMilliseconds"]) {
             result.releaseMilliseconds = Float(max(1, v))
         }
         return result
@@ -1071,10 +1076,12 @@ extension PiMPAudioCommandFacade {
         if let v = doubleValue(parameters["ratio"] ?? fallback["ratio"]) {
             result.ratio = Float(max(1.001, v))
         }
-        if let v = doubleValue(parameters["attackMilliseconds"] ?? parameters["attack"] ?? fallback["attackMilliseconds"]) {
+        if let v =
+            doubleValue(parameters["attackMilliseconds"] ?? parameters["attack"] ?? fallback["attackMilliseconds"]) {
             result.attackMilliseconds = Float(max(0.1, v))
         }
-        if let v = doubleValue(parameters["releaseMilliseconds"] ?? parameters["release"] ?? fallback["releaseMilliseconds"]) {
+        if let v =
+            doubleValue(parameters["releaseMilliseconds"] ?? parameters["release"] ?? fallback["releaseMilliseconds"]) {
             result.releaseMilliseconds = Float(max(1, v))
         }
         if let v = doubleValue(parameters["rangeDB"] ?? parameters["range"] ?? fallback["rangeDB"]) {
@@ -1292,8 +1299,9 @@ extension PiMPAudioCommandFacade {
         let bands = try bandObjects.map { band -> EQBand in
             guard let frequency = doubleValue(band["frequency"] ?? band["freq"] ?? band["hz"]),
                   frequency > 0,
-                  frequency <= 24_000 else {
-                throw PiMPAudioCommandFacadeError.invalidDSPParameters("EQ band frequency must be between 0 and 24000 Hz.")
+                  frequency <= 24000 else {
+                throw PiMPAudioCommandFacadeError
+                    .invalidDSPParameters("EQ band frequency must be between 0 and 24000 Hz.")
             }
             guard let gain = doubleValue(band["gain"] ?? band["gainDB"] ?? band["db"]),
                   gain >= -48,
@@ -1331,8 +1339,9 @@ extension PiMPAudioCommandFacade {
 
         let decayTime = doubleValue(parameters["decayTime"] ?? fallback["decayTime"])
             .map(Float.init) ?? presetParams.decayTime
-        let wetDryMix = doubleValue(parameters["wetDryMix"] ?? parameters["mix"] ?? fallback["wetDryMix"] ?? fallback["mix"])
-            .map(Float.init) ?? presetParams.wetDryMix
+        let wetDryMix =
+            doubleValue(parameters["wetDryMix"] ?? parameters["mix"] ?? fallback["wetDryMix"] ?? fallback["mix"])
+                .map(Float.init) ?? presetParams.wetDryMix
         let preDelay = doubleValue(parameters["preDelay"] ?? fallback["preDelay"])
             .map(Float.init) ?? presetParams.preDelay
         let damping = doubleValue(parameters["damping"] ?? fallback["damping"])
@@ -1358,7 +1367,8 @@ extension PiMPAudioCommandFacade {
         _ parameters: [String: Any],
         fallback: [String: Any]
     ) throws -> TimeStretchParameters {
-        let rate = doubleValue(parameters["rate"] ?? parameters["ratio"] ?? fallback["rate"] ?? fallback["ratio"]) ?? 1.0
+        let rate = doubleValue(parameters["rate"] ?? parameters["ratio"] ?? fallback["rate"] ?? fallback["ratio"]) ??
+            1.0
         guard rate >= 0.25, rate <= 4.0 else {
             throw PiMPAudioCommandFacadeError.invalidDSPParameters("Time-stretch rate must be between 0.25 and 4.0.")
         }
@@ -1369,10 +1379,13 @@ extension PiMPAudioCommandFacade {
         _ parameters: [String: Any],
         fallback: [String: Any]
     ) throws -> PitchShiftParameters {
-        let centsValue = doubleValue(parameters["pitch"] ?? parameters["cents"] ?? fallback["pitch"] ?? fallback["cents"])
-        let semitoneValue = doubleValue(parameters["semitones"] ?? parameters["semitone"] ?? fallback["semitones"] ?? fallback["semitone"])
+        let centsValue =
+            doubleValue(parameters["pitch"] ?? parameters["cents"] ?? fallback["pitch"] ?? fallback["cents"])
+        let semitoneValue =
+            doubleValue(parameters["semitones"] ?? parameters["semitone"] ?? fallback["semitones"] ??
+                fallback["semitone"])
         let pitch = centsValue ?? semitoneValue.map { $0 * 100.0 } ?? 0
-        guard pitch >= -2_400, pitch <= 2_400 else {
+        guard pitch >= -2400, pitch <= 2400 else {
             throw PiMPAudioCommandFacadeError.invalidDSPParameters("Pitch shift must be between -2400 and 2400 cents.")
         }
         return PitchShiftParameters(pitch: Float(pitch))
@@ -1410,21 +1423,20 @@ extension PiMPAudioCommandFacade {
     ) throws -> URL {
         if let rawPath = stringValue(arguments["outputPath"] ?? arguments["path"])?
             .trimmingCharacters(in: .whitespacesAndNewlines),
-           !rawPath.isEmpty {
+            !rawPath.isEmpty {
             return urlWithRenderExtension(localFileURL(from: rawPath), format: format)
         }
 
-        let directory: URL
-        if let rawDirectory = stringValue(arguments["outputDirectory"] ?? arguments["directory"])?
+        let directory: URL = if let rawDirectory = stringValue(arguments["outputDirectory"] ?? arguments["directory"])?
             .trimmingCharacters(in: .whitespacesAndNewlines),
-           !rawDirectory.isEmpty {
-            directory = localFileURL(from: rawDirectory)
+            !rawDirectory.isEmpty {
+            localFileURL(from: rawDirectory)
         } else if let sourcePath = loadedAudio?.path {
-            directory = URL(fileURLWithPath: sourcePath)
+            URL(fileURLWithPath: sourcePath)
                 .deletingLastPathComponent()
                 .appending(path: "MCPExports")
         } else {
-            directory = FileManager.default.temporaryDirectory.appending(path: "PiMPAudioMCPExports")
+            FileManager.default.temporaryDirectory.appending(path: "PiMPAudioMCPExports")
         }
 
         let fileName = stringValue(arguments["fileName"])?
@@ -1529,10 +1541,10 @@ extension PiMPAudioCommandFacade {
             throw PiMPAudioCommandFacadeError.missingRequiredArgument("selectionStart")
         }
 
-        let selection = InpaintSelection(
+        let selection = try InpaintSelection(
             startTime: startTime,
             endTime: endTime,
-            frequencyBand: try editorFrequencyBand(
+            frequencyBand: editorFrequencyBand(
                 from: arguments,
                 selectionArguments: selectionArguments
             )
@@ -1640,7 +1652,7 @@ extension PiMPAudioCommandFacade {
     func editorInpaintPreset(from arguments: [String: Any]) throws -> InpaintPreset? {
         guard let rawValue = stringValue(arguments["preset"])?
             .trimmingCharacters(in: .whitespacesAndNewlines),
-              !rawValue.isEmpty else {
+            !rawValue.isEmpty else {
             return nil
         }
         guard let preset = InpaintPreset(rawValue: rawValue.lowercased()) else {
@@ -1670,9 +1682,9 @@ extension PiMPAudioCommandFacade {
         )?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if !id.isEmpty {
             let entry = try resolveHistoryEntry(id)
-            return EditorAudioLoadSource(
+            return try EditorAudioLoadSource(
                 kind: "history",
-                url: try historyStore.fileURL(for: entry),
+                url: historyStore.fileURL(for: entry),
                 fileName: entry.fileName,
                 historyEntryID: entry.id.uuidString,
                 originalPrompt: entry.prompt
@@ -1697,29 +1709,29 @@ extension PiMPAudioCommandFacade {
                 "tool": "load_editor_audio",
                 "operationKind": "editor.loadAudio",
                 "status": "implemented",
-                "description": "Load a local audio file into the editor coordinator. VAE latents are encoded lazily on the first AI edit."
+                "description": "Load a local audio file into the editor coordinator. VAE latents are encoded lazily on the first AI edit.",
             ],
             [
                 "id": "inpaint",
                 "tool": "submit_editor_inpaint",
                 "operationKind": "editor.inpaint",
                 "status": "implemented",
-                "description": "Regenerate a selected region with explicit confirmation and pollable progress."
+                "description": "Regenerate a selected region with explicit confirmation and pollable progress.",
             ],
             [
                 "id": "applyEffectChain",
                 "tool": "apply_editor_effect_chain",
                 "operationKind": "editor.applyEffectChain",
                 "status": "implemented",
-                "description": "Apply confirmed bounded DSP effect chains to the loaded editor buffer."
+                "description": "Apply confirmed bounded DSP effect chains to the loaded editor buffer.",
             ],
             [
                 "id": "renderAudio",
                 "tool": "render_editor_audio",
                 "operationKind": "editor.renderAudio",
                 "status": "implemented",
-                "description": "Bounce a selected region or full editor buffer to a lossless output file."
-            ]
+                "description": "Bounce a selected region or full editor buffer to a lossless output file.",
+            ],
         ]
     }
 
@@ -1736,6 +1748,4 @@ extension PiMPAudioCommandFacade {
             throw PiMPAudioCommandFacadeError.editorAudioFileNotFound(path)
         }
     }
-
-
 }

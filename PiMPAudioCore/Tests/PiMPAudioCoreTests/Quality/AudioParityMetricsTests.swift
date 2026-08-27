@@ -1,8 +1,11 @@
 import MLX
-import Testing
 @testable import PiMPAudioCore
+import Testing
 
-@Suite("Audio parity metrics", .disabled("SwiftPM test bundles cannot load MLX default.metallib reliably; QualityEval is build-verified instead."))
+@Suite(
+    "Audio parity metrics",
+    .disabled("SwiftPM test bundles cannot load MLX default.metallib reliably; QualityEval is build-verified instead.")
+)
 struct AudioParityMetricsTests {
     @Test("Identical audio has zero difference")
     func identicalAudioHasZeroDifference() throws {
@@ -12,7 +15,7 @@ struct AudioParityMetricsTests {
             let metrics = try AudioParityMetrics.compare(
                 swiftAudio: audio,
                 referenceAudio: audio,
-                sampleRate: 48_000,
+                sampleRate: 48000,
                 envelopeWindowFrames: 4
             )
 
@@ -40,7 +43,7 @@ struct AudioParityMetricsTests {
     }
 
     @Test("Reports channel mismatch")
-    func reportsChannelMismatch() throws {
+    func reportsChannelMismatch() {
         Device.withDefaultDevice(.cpu) {
             let stereo = MLXArray.zeros([1, 8, 2])
             let mono = MLXArray.zeros([1, 8, 1])
@@ -49,7 +52,7 @@ struct AudioParityMetricsTests {
                 _ = try AudioParityMetrics.compare(
                     swiftAudio: stereo,
                     referenceAudio: mono,
-                    sampleRate: 48_000
+                    sampleRate: 48000
                 )
             }
         }

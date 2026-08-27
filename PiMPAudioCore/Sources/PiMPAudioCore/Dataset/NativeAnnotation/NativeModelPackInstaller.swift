@@ -43,12 +43,12 @@ public enum NativeModelPackCatalog {
         task: .caption,
         displayName: "ACE Captioner 4-bit",
         repositoryID:
-            "DaRealDahoodie/pimp-audio-ace-captioner-4bit-v1",
+        "DaRealDahoodie/pimp-audio-ace-captioner-4bit-v1",
         revision:
-            "e47dac2f8fd9a6a2bfe2b3f158a1850770fcc1ec",
+        "e47dac2f8fd9a6a2bfe2b3f158a1850770fcc1ec",
         packID: "ace-caption-4bit-v1",
         destinationDirectoryName:
-            NativeACEDatasetAnnotationBackend.captionerDirectoryName,
+        NativeACEDatasetAnnotationBackend.captionerDirectoryName,
         expectedSizeBytes: 4_668_775_088
     )
 
@@ -56,12 +56,12 @@ public enum NativeModelPackCatalog {
         task: .transcribe,
         displayName: "ACE Transcriber 4-bit",
         repositoryID:
-            "DaRealDahoodie/pimp-audio-ace-transcriber-4bit-v1",
+        "DaRealDahoodie/pimp-audio-ace-transcriber-4bit-v1",
         revision:
-            "528f8addaf9298e855bb4deb11c7cd30443ed775",
+        "528f8addaf9298e855bb4deb11c7cd30443ed775",
         packID: "ace-transcribe-4bit-v1",
         destinationDirectoryName:
-            NativeACEDatasetAnnotationBackend.transcriberDirectoryName,
+        NativeACEDatasetAnnotationBackend.transcriberDirectoryName,
         expectedSizeBytes: 4_668_775_115
     )
 
@@ -75,9 +75,9 @@ public enum NativeModelPackCatalog {
     ) -> NativeModelPackCatalogEntry {
         switch task {
         case .caption:
-            return captioner
+            captioner
         case .transcribe:
-            return transcriber
+            transcriber
         }
     }
 }
@@ -120,14 +120,14 @@ protocol NativeModelPackDownloading: Sendable {
 }
 
 public actor NativeModelPackInstaller {
-    private static let diskSafetyMarginBytes: Int64 = 256 * 1_024 * 1_024
+    private static let diskSafetyMarginBytes: Int64 = 256 * 1024 * 1024
 
     private let modelsDirectory: URL
     private let downloader: any NativeModelPackDownloading
 
     public init(modelsDirectory: URL) {
         self.modelsDirectory = modelsDirectory
-        self.downloader = DownloadClient()
+        downloader = DownloadClient()
     }
 
     init(
@@ -246,7 +246,7 @@ public actor NativeModelPackInstaller {
                         NativeModelPackInstallProgress(
                             stage: .downloading,
                             fractionCompleted:
-                                downloadedBytes
+                            downloadedBytes
                                 / Double(manifest.expectedSizeBytes),
                             currentFile: record.path
                         )
@@ -299,12 +299,11 @@ public actor NativeModelPackInstaller {
         _ manifest: NativeModelPackManifest,
         against source: NativeModelPackCatalogEntry
     ) throws {
-        let expectedTask: OmniAnnotationTask
-        switch source.task {
+        let expectedTask: OmniAnnotationTask = switch source.task {
         case .caption:
-            expectedTask = .caption
+            .caption
         case .transcribe:
-            expectedTask = .transcribe
+            .transcribe
         }
         guard manifest.task == expectedTask else {
             throw NativeModelPackInstallError.taskMismatch(
@@ -399,21 +398,21 @@ public enum NativeModelPackInstallError: LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case .taskMismatch(let expected, let actual):
-            return "Downloaded \(actual) pack cannot be installed as the "
+        case let .taskMismatch(expected, actual):
+            "Downloaded \(actual) pack cannot be installed as the "
                 + "\(expected.rawValue) model."
-        case .packIDMismatch(let expected, let actual):
-            return "Downloaded native model pack ID \(actual) does not match "
+        case let .packIDMismatch(expected, actual):
+            "Downloaded native model pack ID \(actual) does not match "
                 + "the catalog ID \(expected)."
-        case .packSizeMismatch(let expected, let actual):
-            return "Downloaded native model pack declares \(actual) bytes; "
+        case let .packSizeMismatch(expected, actual):
+            "Downloaded native model pack declares \(actual) bytes; "
                 + "the catalog expects \(expected) bytes."
-        case .insufficientDiskSpace(let required, let available):
-            return "Not enough disk space for the native model pack. "
+        case let .insufficientDiskSpace(required, available):
+            "Not enough disk space for the native model pack. "
                 + "\(Self.format(required)) is required and "
                 + "\(Self.format(available)) is available."
-        case .replacementFailed(let installError, let restoreError):
-            return "Could not install the native model pack "
+        case let .replacementFailed(installError, restoreError):
+            "Could not install the native model pack "
                 + "(\(installError)) or restore the previous copy "
                 + "(\(restoreError))."
         }

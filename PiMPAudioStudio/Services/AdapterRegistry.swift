@@ -1,8 +1,8 @@
 import Foundation
-import PiMPAudioCore
 import MLX
+import PiMPAudioCore
 
-struct AdapterRegistry {
+enum AdapterRegistry {
     static let trainingRunLogFileName = "training_log.json"
 
     static var adaptersDirectory: URL {
@@ -50,8 +50,8 @@ struct AdapterRegistry {
                   let adapter = try? decoder.decode(LoRAAdapter.self, from: data),
                   let expectedDirectory = try? adapterDirectory(id: adapter.id),
                   fileSystemPathsEqual(
-                    expectedDirectory.standardizedFileURL,
-                    itemURL.standardizedFileURL
+                      expectedDirectory.standardizedFileURL,
+                      itemURL.standardizedFileURL
                   ) else {
                 continue
             }
@@ -163,20 +163,20 @@ struct AdapterRegistry {
 
         var errorDescription: String? {
             switch self {
-            case .nameExists(let name):
-                return "An adapter named '\(name)' already exists"
-            case .notFound(let id):
-                return "Adapter '\(id)' not found"
-            case .invalidIdentifier(let id):
-                return "Adapter identifier '\(id)' is not a safe directory name"
-            case .rankMismatch(let a, let b):
-                return "Cannot merge adapters with different ranks (\(a) vs \(b))"
-            case .kindMismatch(let a, let b):
-                return "Cannot merge \(a.rawValue.uppercased()) and \(b.rawValue.uppercased()) adapters"
-            case .unsupportedMergeKind(let kind):
-                return "Merging \(kind.rawValue.uppercased()) adapters is not supported yet"
-            case .mergeFailed(let message):
-                return message
+            case let .nameExists(name):
+                "An adapter named '\(name)' already exists"
+            case let .notFound(id):
+                "Adapter '\(id)' not found"
+            case let .invalidIdentifier(id):
+                "Adapter identifier '\(id)' is not a safe directory name"
+            case let .rankMismatch(a, b):
+                "Cannot merge adapters with different ranks (\(a) vs \(b))"
+            case let .kindMismatch(a, b):
+                "Cannot merge \(a.rawValue.uppercased()) and \(b.rawValue.uppercased()) adapters"
+            case let .unsupportedMergeKind(kind):
+                "Merging \(kind.rawValue.uppercased()) adapters is not supported yet"
+            case let .mergeFailed(message):
+                message
             }
         }
     }
@@ -196,7 +196,7 @@ struct AdapterRegistry {
         let destDir = try adapterDirectory(id: newID)
 
         // Check collision
-        if newID != adapterID && fm.fileExists(atPath: destDir.path(percentEncoded: false)) {
+        if newID != adapterID, fm.fileExists(atPath: destDir.path(percentEncoded: false)) {
             throw AdapterError.nameExists(newName)
         }
 
@@ -426,7 +426,7 @@ struct AdapterRegistry {
             try? optimizerStateURL(adapterID: adapterID),
             try? legacyOptimizerStateURL(adapterID: adapterID),
             try? currentWeightsURL(adapterID: adapterID),
-            try? bestWeightsURL(adapterID: adapterID)
+            try? bestWeightsURL(adapterID: adapterID),
         ].compactMap { $0 }
         for url in urls {
             try? fm.removeItem(at: url)

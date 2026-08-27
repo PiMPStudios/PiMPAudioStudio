@@ -11,7 +11,7 @@ public enum VAEActorError: Error, LocalizedError, Sendable {
 
     public var errorDescription: String? {
         switch self {
-        case .weightsNotLoaded: return "VAE weights have not been loaded."
+        case .weightsNotLoaded: "VAE weights have not been loaded."
         }
     }
 }
@@ -36,7 +36,10 @@ public actor VAEActor {
         let absA = MLX.abs(resolved)
         let absMean = absA.mean().item(Float.self)
         let absMax = absA.max().item(Float.self)
-        vaeLogger.info("[VAEActor.decode] in shape=\(latents.shape) → out shape=\(resolved.shape) abs_mean=\(absMean) abs_max=\(absMax)")
+        vaeLogger
+            .info(
+                "[VAEActor.decode] in shape=\(latents.shape) → out shape=\(resolved.shape) abs_mean=\(absMean) abs_max=\(absMax)"
+            )
 
         return resolved
     }
@@ -61,14 +64,21 @@ public actor VAEActor {
         }
 
         // Diagnostic: same matched/unmatched key check as DiTActor.
-        let modelKeys = Set(vae!.parameters().flattened().map { $0.0 })
-        let suppliedKeys = Set(weights.map { $0.0 })
+        let modelKeys = Set(vae!.parameters().flattened().map(\.0))
+        let suppliedKeys = Set(weights.map(\.0))
         let matched = suppliedKeys.intersection(modelKeys).count
         let supExtra = suppliedKeys.subtracting(modelKeys)
         let modExtra = modelKeys.subtracting(suppliedKeys)
-        vaeLogger.info("[VAEActor.loadWeights] supplied=\(suppliedKeys.count) model=\(modelKeys.count) matched=\(matched)")
-        vaeLogger.info("[VAEActor.loadWeights] supplied-but-no-model-param (first 12): \(Array(supExtra.sorted().prefix(12)))")
-        vaeLogger.info("[VAEActor.loadWeights] model-param-but-no-supplied (first 12): \(Array(modExtra.sorted().prefix(12)))")
+        vaeLogger
+            .info("[VAEActor.loadWeights] supplied=\(suppliedKeys.count) model=\(modelKeys.count) matched=\(matched)")
+        vaeLogger
+            .info(
+                "[VAEActor.loadWeights] supplied-but-no-model-param (first 12): \(Array(supExtra.sorted().prefix(12)))"
+            )
+        vaeLogger
+            .info(
+                "[VAEActor.loadWeights] model-param-but-no-supplied (first 12): \(Array(modExtra.sorted().prefix(12)))"
+            )
 
         vae!.update(parameters: ModuleParameters.unflattened(weights))
         eval(vae!.parameters())
@@ -88,7 +98,7 @@ public actor VAEActor {
     private static func logAudioEnvelope(_ audio: MLXArray) {
         guard AudioDiagnostics.isEnabled, audio.shape.count >= 3 else { return }
 
-        let framesPerSecond = 48_000
+        let framesPerSecond = 48000
         let frameCount = audio.shape[1]
         guard frameCount > 0 else { return }
 
@@ -98,12 +108,12 @@ public actor VAEActor {
         absMeans.reserveCapacity(seconds)
         absMaxes.reserveCapacity(seconds)
 
-        for second in 0..<seconds {
+        for second in 0 ..< seconds {
             let start = second * framesPerSecond
             let end = min(start + framesPerSecond, frameCount)
             guard start < end else { break }
 
-            let chunk = audio[0..., start..<end, 0...].asType(.float32)
+            let chunk = audio[0..., start ..< end, 0...].asType(.float32)
             let absChunk = MLX.abs(chunk)
             absMeans.append(absChunk.mean().item(Float.self))
             absMaxes.append(absChunk.max().item(Float.self))

@@ -1,7 +1,7 @@
 // PiMPAudioStudio/Services/SFXModelManager.swift
 import Foundation
-import PiMPAudioCore
 import MLXNN
+import PiMPAudioCore
 
 enum SFXDownloadState: Equatable, Sendable {
     case notDownloaded
@@ -34,7 +34,9 @@ final class SFXModelManager: ObservableObject {
             .appendingPathComponent("stable-audio-open", isDirectory: true)
     }
 
-    var isReady: Bool { pipeline != nil }
+    var isReady: Bool {
+        pipeline != nil
+    }
 
     init(registry: ModelRegistry) {
         self.registry = registry
@@ -81,9 +83,9 @@ final class SFXModelManager: ObservableObject {
                 }
             }
         }
-        _ = baseURL  // intentionally unused now — registry handles URLs
-        _ = session  // intentionally unused now — registry uses DownloadClient
-        _ = fm       // intentionally unused now
+        _ = baseURL // intentionally unused now — registry handles URLs
+        _ = session // intentionally unused now — registry uses DownloadClient
+        _ = fm // intentionally unused now
 
         downloadState = .downloaded
     }
@@ -93,7 +95,7 @@ final class SFXModelManager: ObservableObject {
         let activeID = await registry.activeModelID(for: .stableAudio)
         guard let activeID else { return }
 
-        if activeID != loadedModelID && pipeline != nil {
+        if activeID != loadedModelID, pipeline != nil {
             // Active model changed — unload current pipeline
             pipeline = nil
         }
@@ -126,17 +128,21 @@ final class SFXModelManager: ObservableObject {
         guard isModelDownloaded() else { return }
 
         let converter = WeightConverter()
-        let ditWeights = try await converter.loadSFXDiTWeights(from: modelPath.appendingPathComponent("model.safetensors"))
-        let vaeWeights = try await converter.loadSFXVAEWeights(from: modelPath.appendingPathComponent("vae.safetensors"))
+        let ditWeights = try await converter
+            .loadSFXDiTWeights(from: modelPath.appendingPathComponent("model.safetensors"))
+        let vaeWeights = try await converter
+            .loadSFXVAEWeights(from: modelPath.appendingPathComponent("vae.safetensors"))
 
         // T5-base text encoder.
-        let t5Weights = try await converter.loadT5Weights(from: modelPath.appendingPathComponent("text_encoder.safetensors"))
+        let t5Weights = try await converter
+            .loadT5Weights(from: modelPath.appendingPathComponent("text_encoder.safetensors"))
 
         let t5 = T5Encoder(config: .t5Base)
         t5.update(parameters: ModuleParameters.unflattened(t5Weights))
 
         // SAO number conditioner (seconds_start + seconds_total timing).
-        let conditionerWeights = try await converter.loadSAOProjectionWeights(from: modelPath.appendingPathComponent("projection.safetensors"))
+        let conditionerWeights = try await converter
+            .loadSAOProjectionWeights(from: modelPath.appendingPathComponent("projection.safetensors"))
 
         let conditioner = SAONumberConditioner()
         conditioner.update(parameters: ModuleParameters.unflattened(conditionerWeights))
@@ -157,11 +163,11 @@ final class SFXModelManager: ObservableObject {
         // T5 tokenizer ships at `tokenizer/tokenizer.json` upstream; saved
         // locally as `tokenizer.json` alongside the other SAO model files.
         let tokenizerURL = modelPath.appendingPathComponent("tokenizer.json")
-        self.tokenizer = try PiMPAudioTokenizer(configURL: tokenizerURL)
+        tokenizer = try PiMPAudioTokenizer(configURL: tokenizerURL)
 
-        self.sfxVAE = vae
-        self.sfxDiffusion = diffusion
-        self.pipeline = SoundFXPipeline(
+        sfxVAE = vae
+        sfxDiffusion = diffusion
+        pipeline = SoundFXPipeline(
             t5: t5,
             conditioner: conditioner,
             diffusion: diffusion,

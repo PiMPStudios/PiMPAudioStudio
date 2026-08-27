@@ -1,5 +1,5 @@
-import SwiftUI
 import PiMPAudioCore
+import SwiftUI
 
 struct EditorPromptArea: View {
     @ObservedObject var state: EditorState

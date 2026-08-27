@@ -1,8 +1,8 @@
-import Testing
 import Foundation
 import MLX
 import MLXNN
 @testable import PiMPAudioCore
+import Testing
 
 private func makeTestDecoder() -> DiTDecoder {
     DiTDecoder(
@@ -27,7 +27,6 @@ private func makeTestDecoder() -> DiTDecoder {
 
 @Suite("LoRA Injector")
 struct LoRAInjectorTests {
-
     private func makeContribution(path: String, id: String) -> LoRAContribution {
         LoRAContribution(
             adapterID: id,

@@ -1,5 +1,5 @@
-import Foundation
 import CryptoKit
+import Foundation
 
 public actor DownloadClient: NativeModelPackDownloading {
     public init() {}
@@ -50,7 +50,9 @@ public actor DownloadClient: NativeModelPackDownloading {
         guard let hash = Self.checksumToVerify(expectedHash) else { return }
 
         let verified = await verifySHA256(file: destination, expected: hash)
-        if verified { return }
+        if verified {
+            return
+        }
 
         // First verification failed — delete and retry once
         try? FileManager.default.removeItem(at: destination)
@@ -59,7 +61,9 @@ public actor DownloadClient: NativeModelPackDownloading {
         try await downloadFile(from: source, to: destination, bearerToken: bearerToken, onProgress: onProgress)
 
         let retryVerified = await verifySHA256(file: destination, expected: hash)
-        if retryVerified { return }
+        if retryVerified {
+            return
+        }
 
         // Second verification failed — hard fail
         try? FileManager.default.removeItem(at: destination)
@@ -76,7 +80,7 @@ public actor DownloadClient: NativeModelPackDownloading {
         onProgress: @Sendable @escaping (Double) -> Void
     ) async throws {
         try await downloadFile(
-            from: try huggingFaceURL(
+            from: huggingFaceURL(
                 repo: repo,
                 revision: revision,
                 file: file
@@ -132,7 +136,10 @@ public actor DownloadClient: NativeModelPackDownloading {
         let (tempURL, response): (URL, URLResponse)
         do {
             (tempURL, response) = try await withTaskCancellationHandler {
-                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<(URL, URLResponse), Error>) in
+                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<
+                    (URL, URLResponse),
+                    Error
+                >) in
                     orchestrator.start(downloadTask: downloadTask, continuation: continuation)
                 }
             } onCancel: {
@@ -147,7 +154,7 @@ public actor DownloadClient: NativeModelPackDownloading {
         session.invalidateAndCancel()
 
         guard let httpResponse = response as? HTTPURLResponse,
-              (200...299).contains(httpResponse.statusCode) else {
+              (200 ... 299).contains(httpResponse.statusCode) else {
             try? FileManager.default.removeItem(at: tempURL)
             throw DownloadError.httpError(
                 statusCode: (response as? HTTPURLResponse)?.statusCode ?? -1
@@ -173,7 +180,7 @@ public actor DownloadClient: NativeModelPackDownloading {
             defer { try? handle.close() }
 
             var hasher = SHA256()
-            let bufferSize = 1_024 * 1_024  // 1 MB chunks
+            let bufferSize = 1024 * 1024 // 1 MB chunks
 
             while true {
                 let chunk: Data? = autoreleasepool {
@@ -200,25 +207,24 @@ public enum DownloadError: Error, Sendable, LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case .httpError(let statusCode):
-            let meaning: String
-            switch statusCode {
-            case 401: meaning = "Unauthorized — authentication or model access may be required"
-            case 403: meaning = "Forbidden — you may need to accept the model's license on HuggingFace"
-            case 404: meaning = "Not Found — the model repository or file does not exist"
-            case 429: meaning = "Too Many Requests — rate limited, please try again later"
-            case 500...599: meaning = "Server error — HuggingFace may be experiencing issues"
-            case -1: meaning = "Unknown — no HTTP response received"
-            default: meaning = HTTPURLResponse.localizedString(forStatusCode: statusCode)
+        case let .httpError(statusCode):
+            let meaning: String = switch statusCode {
+            case 401: "Unauthorized — authentication or model access may be required"
+            case 403: "Forbidden — you may need to accept the model's license on HuggingFace"
+            case 404: "Not Found — the model repository or file does not exist"
+            case 429: "Too Many Requests — rate limited, please try again later"
+            case 500 ... 599: "Server error — HuggingFace may be experiencing issues"
+            case -1: "Unknown — no HTTP response received"
+            default: HTTPURLResponse.localizedString(forStatusCode: statusCode)
             }
             return "Download failed (HTTP \(statusCode)): \(meaning)"
-        case .checksumMismatch(let file):
+        case let .checksumMismatch(file):
             return "Checksum verification failed for '\(file)' — the file may be corrupted"
-        case .authRequired(let repo):
+        case let .authRequired(repo):
             return "\(repo) is a gated model. Add a HuggingFace access token in Settings → Models, and accept the model's license on huggingface.co."
-        case .authForbidden(let repo):
+        case let .authForbidden(repo):
             return "HuggingFace rejected the access token for \(repo). Verify the token is valid and that the model license has been accepted."
-        case .invalidURL(let spec):
+        case let .invalidURL(spec):
             return "Invalid Hugging Face URL for \(spec)"
         }
     }
@@ -234,7 +240,7 @@ private final class DownloadOrchestrator: NSObject, URLSessionDownloadDelegate, 
     private var continuation: CheckedContinuation<(URL, URLResponse), Error>?
     private var resolved = false
     private var lastFiredAt: Date = .distantPast
-    private static let throttleInterval: TimeInterval = 0.1   // 10 Hz
+    private static let throttleInterval: TimeInterval = 0.1 // 10 Hz
 
     init(onProgress: @Sendable @escaping (Double) -> Void) {
         self.onProgress = onProgress
@@ -261,8 +267,8 @@ private final class DownloadOrchestrator: NSObject, URLSessionDownloadDelegate, 
         lock.unlock()
 
         switch result {
-        case .success(let pair): continuation.resume(returning: pair)
-        case .failure(let err):  continuation.resume(throwing: err)
+        case let .success(pair): continuation.resume(returning: pair)
+        case let .failure(err): continuation.resume(throwing: err)
         }
     }
 
@@ -314,7 +320,9 @@ private final class DownloadOrchestrator: NSObject, URLSessionDownloadDelegate, 
         let now = Date()
         let elapsed = now.timeIntervalSince(lastFiredAt)
         let shouldFire = progress >= 1.0 || elapsed >= Self.throttleInterval
-        if shouldFire { lastFiredAt = now }
+        if shouldFire {
+            lastFiredAt = now
+        }
         lock.unlock()
 
         guard shouldFire else { return }

@@ -1,8 +1,8 @@
-import AVFoundation
 import Accelerate
+import AVFoundation
 import MLX
 
-struct AudioBufferConverter {
+enum AudioBufferConverter {
     enum ConversionError: LocalizedError {
         case invalidData
         case bufferCreationFailed
@@ -10,9 +10,9 @@ struct AudioBufferConverter {
         var errorDescription: String? {
             switch self {
             case .invalidData:
-                return "The audio data is not in a supported PCM layout."
+                "The audio data is not in a supported PCM layout."
             case .bufferCreationFailed:
-                return "Could not create an AVAudioPCMBuffer for this audio."
+                "Could not create an AVAudioPCMBuffer for this audio."
             }
         }
     }
@@ -22,7 +22,7 @@ struct AudioBufferConverter {
         var int16Samples = [Int16](repeating: 0, count: int16Count)
         buffer.data.withUnsafeBytes { raw in
             let src = raw.bindMemory(to: Int16.self)
-            for i in 0..<int16Count {
+            for i in 0 ..< int16Count {
                 int16Samples[i] = src[i]
             }
         }
@@ -61,7 +61,7 @@ struct AudioBufferConverter {
     /// reproduce its own input. With one factor both ways `i → float → i` is exact, so
     /// a DSP stage that changes nothing really does change nothing. The cost is that
     /// the single most-negative code (−32768) clamps to −32767.
-    private static let fullScale: Float = 32_767.0
+    private static let fullScale: Float = 32767.0
 
     static func toPCMBuffer(_ buffer: AudioBuffer) throws -> AVAudioPCMBuffer {
         try toPCMBuffer(FloatAudio(buffer))
@@ -91,9 +91,9 @@ struct AudioBufferConverter {
                 pcmBuffer.floatChannelData![0].update(from: src.baseAddress!, count: Int(frameCount))
             }
         } else {
-            for ch in 0..<channels {
+            for ch in 0 ..< channels {
                 let channelPtr = pcmBuffer.floatChannelData![ch]
-                for frame in 0..<Int(frameCount) {
+                for frame in 0 ..< Int(frameCount) {
                     channelPtr[frame] = floats[frame * channels + ch]
                 }
             }
@@ -117,7 +117,7 @@ struct AudioBufferConverter {
     /// back to an `AudioBuffer`.  The batch dimension (if present) is dropped first.
     static func fromMLXArray(_ array: MLXArray, sampleRate: Int) -> AudioBuffer {
         // Normalise: accept [1, L, C] or [L, C]
-        let framesChannels: MLXArray = array.ndim == 3 ? array[0] : array  // [L, C]
+        let framesChannels: MLXArray = array.ndim == 3 ? array[0] : array // [L, C]
         eval(framesChannels)
         let channelCount = framesChannels.ndim >= 2 ? framesChannels.shape[1] : 1
         // Row-major [L, C] bytes are already interleaved — same layout as toFloats output.
@@ -141,12 +141,12 @@ struct AudioBufferConverter {
 
         if channels == 1 {
             let src = pcmBuffer.floatChannelData![0]
-            for i in 0..<frameCount {
+            for i in 0 ..< frameCount {
                 interleaved[i] = src[i]
             }
         } else {
-            for frame in 0..<frameCount {
-                for ch in 0..<channels {
+            for frame in 0 ..< frameCount {
+                for ch in 0 ..< channels {
                     interleaved[frame * channels + ch] = pcmBuffer.floatChannelData![ch][frame]
                 }
             }

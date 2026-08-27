@@ -1,12 +1,12 @@
-import Testing
 import Foundation
 import MLX
 @testable import PiMPAudioCore
+import Testing
 
 @Suite("LLMActor Tests")
 struct LLMActorTests {
     @Test("init sets modelPath and isLoaded false")
-    func testInitialState() async {
+    func initialState() async {
         let path = FileManager.default.temporaryDirectory.appending(path: "fake-model")
         let actor = LLMActor(modelPath: path)
         let loaded = await actor.isLoaded
@@ -14,7 +14,7 @@ struct LLMActorTests {
     }
 
     @Test("loadModel throws when model directory does not exist")
-    func testLoadModelMissingDirectory() async {
+    func loadModelMissingDirectory() async {
         let path = FileManager.default.temporaryDirectory.appending(path: "nonexistent-\(UUID())")
         let actor = LLMActor(modelPath: path)
         do {
@@ -26,7 +26,7 @@ struct LLMActorTests {
     }
 
     @Test("classify returns unavailable message when lazy load fails")
-    func testClassifyWithoutLoad() async {
+    func classifyWithoutLoad() async {
         let path = FileManager.default.temporaryDirectory.appending(path: "fake-model")
         let actor = LLMActor(modelPath: path)
         let result = await actor.classify(systemPrompt: "Classify this.", userPrompt: "test")
@@ -35,19 +35,21 @@ struct LLMActorTests {
     }
 
     @Test("generate returns unavailable token when lazy load fails")
-    func testGenerateWithoutLoad() async {
+    func generateWithoutLoad() async {
         let path = FileManager.default.temporaryDirectory.appending(path: "fake-model")
         let actor = LLMActor(modelPath: path)
         let stream = await actor.generate(systemPrompt: "Write.", userPrompt: "test")
         var tokens: [String] = []
-        for await token in stream { tokens.append(token) }
+        for await token in stream {
+            tokens.append(token)
+        }
         #expect(tokens.count == 1)
         #expect(tokens[0].contains("Lyric writer unavailable"))
         #expect(tokens[0].contains("Model directory not found"))
     }
 
     @Test("KV cache tracks per-layer sequence length")
-    func testKVCacheTracksSequenceLength() {
+    func kVCacheTracksSequenceLength() {
         let cache = LLMKeyValueCache()
         #expect(cache.sequenceLength == 0)
 

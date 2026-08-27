@@ -197,9 +197,9 @@ public actor NativeACEDatasetAnnotationBackend: DatasetAnnotationBackend {
     private func modelDirectory(for task: DatasetAnnotationTask) -> URL {
         switch task {
         case .caption:
-            return captionerDirectory
+            captionerDirectory
         case .transcribe:
-            return transcriberDirectory
+            transcriberDirectory
         }
     }
 
@@ -275,9 +275,9 @@ public enum NativeACEDatasetAnnotationBackendError: LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .engineUnavailable:
-            return "The native ACE annotation engine did not finish loading."
-        case .taskMismatch(let expected, let actual):
-            return "The \(actual.rawValue) model pack cannot run a \(expected.rawValue) request."
+            "The native ACE annotation engine did not finish loading."
+        case let .taskMismatch(expected, actual):
+            "The \(actual.rawValue) model pack cannot run a \(expected.rawValue) request."
         }
     }
 }
@@ -286,9 +286,9 @@ private extension DatasetAnnotationTask {
     var omniTask: OmniAnnotationTask {
         switch self {
         case .caption:
-            return .caption
+            .caption
         case .transcribe:
-            return .transcribe
+            .transcribe
         }
     }
 }
@@ -297,9 +297,9 @@ private extension OmniAnnotationTask {
     var datasetTask: DatasetAnnotationTask {
         switch self {
         case .caption:
-            return .caption
+            .caption
         case .transcribe:
-            return .transcribe
+            .transcribe
         }
     }
 }

@@ -14,7 +14,9 @@ struct DatasetPackageSummary: Identifiable, Hashable {
     let keyStatus: String
     let timeSignatureStatus: String
 
-    var id: String { directory.standardizedFileURL.path(percentEncoded: false) }
+    var id: String {
+        directory.standardizedFileURL.path(percentEncoded: false)
+    }
 }
 
 struct DatasetPackageDocument {
@@ -23,7 +25,7 @@ struct DatasetPackageDocument {
     var createdAt: String?
     var clips: [DatasetClipReview]
     var validation: TrainingDatasetPackageValidationResult
-    var packageV2: DatasetPackageV2? = nil
+    var packageV2: DatasetPackageV2?
     var hasUnsavedChanges: Bool = false
 
     var approvedCount: Int {
@@ -223,8 +225,12 @@ struct DatasetClipReview: Identifiable {
             .compactMapValues { $0 as? String }
         let generationSettings = (existingAnnotation["generation_settings"] as? [String: Any] ?? [:])
             .compactMapValues { value -> String? in
-                if let string = value as? String { return string }
-                if let number = value as? NSNumber { return number.stringValue }
+                if let string = value as? String {
+                    return string
+                }
+                if let number = value as? NSNumber {
+                    return number.stringValue
+                }
                 return nil
             }
         object["annotation"] = DatasetAnnotationMetadata(
@@ -288,8 +294,12 @@ struct DatasetClipReview: Identifiable {
         let quantization = existingAnnotation["quantization"] as? String
         let generationSettings = (existingAnnotation["generation_settings"] as? [String: Any] ?? [:])
             .compactMapValues { value -> String? in
-                if let string = value as? String { return string }
-                if let number = value as? NSNumber { return number.stringValue }
+                if let string = value as? String {
+                    return string
+                }
+                if let number = value as? NSNumber {
+                    return number.stringValue
+                }
                 return nil
             }
         let elapsedSeconds = (existingAnnotation["elapsed_seconds"] as? NSNumber)?.doubleValue
@@ -301,8 +311,12 @@ struct DatasetClipReview: Identifiable {
             existingTranscription["generation_settings"] as? [String: Any] ?? [:]
         )
         .compactMapValues { value -> String? in
-            if let string = value as? String { return string }
-            if let number = value as? NSNumber { return number.stringValue }
+            if let string = value as? String {
+                return string
+            }
+            if let number = value as? NSNumber {
+                return number.stringValue
+            }
             return nil
         }
         let lyricsElapsedSeconds = (
@@ -372,7 +386,9 @@ struct DatasetPackageIssue: Identifiable, Hashable {
     let severity: DatasetPackageIssueSeverity
     let message: String
 
-    var id: String { "\(severity.rawValue):\(message)" }
+    var id: String {
+        "\(severity.rawValue):\(message)"
+    }
 }
 
 enum TrainingDatasetPackageEditorError: LocalizedError {
@@ -383,14 +399,14 @@ enum TrainingDatasetPackageEditorError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .missingCaptions(let url):
-            return "\(url.lastPathComponent) does not contain a captions.json file."
-        case .invalidCaptions(let url):
-            return "\(url.lastPathComponent)'s captions.json is not a readable clip list."
-        case .missingManifest(let url):
-            return "\(url.lastPathComponent) does not contain a dataset_manifest.json file."
-        case .invalidManifest(let url):
-            return "\(url.lastPathComponent)'s dataset_manifest.json is not a supported dataset package."
+        case let .missingCaptions(url):
+            "\(url.lastPathComponent) does not contain a captions.json file."
+        case let .invalidCaptions(url):
+            "\(url.lastPathComponent)'s captions.json is not a readable clip list."
+        case let .missingManifest(url):
+            "\(url.lastPathComponent) does not contain a dataset_manifest.json file."
+        case let .invalidManifest(url):
+            "\(url.lastPathComponent)'s dataset_manifest.json is not a supported dataset package."
         }
     }
 }
@@ -585,7 +601,10 @@ enum TrainingDatasetPackageEditor {
             return
         }
 
-        try writeJSONArray(records, to: document.directory.appendingPathComponent(TrainingDatasetPackageWriter.captionsFileName))
+        try writeJSONArray(
+            records,
+            to: document.directory.appendingPathComponent(TrainingDatasetPackageWriter.captionsFileName)
+        )
         try TrainingDatasetPackageWriter.refreshTrainingBundles(at: document.directory)
 
         if records.contains(where: { clip in
@@ -746,8 +765,8 @@ enum TrainingDatasetPackageEditor {
             || clip.assets["instrumental"] != nil
             || separation != nil
         if hasDeclaredStemAssets,
-           (clip.role == DatasetAssetRoleV2.fullMix.rawValue
-                || clip.role == DatasetAssetRoleV2.clip.rawValue),
+           clip.role == DatasetAssetRoleV2.fullMix.rawValue
+           || clip.role == DatasetAssetRoleV2.clip.rawValue,
            clip.separationStatus == "not_run" || clip.separationStatus.isEmpty {
             issues.append(DatasetPackageIssue(severity: .warning, message: "Stem separation has not been recorded."))
         }
@@ -770,7 +789,8 @@ enum TrainingDatasetPackageEditor {
     }
 
     private static func summary(for directory: URL) -> DatasetPackageSummary {
-        let manifest = readJSONObject(from: directory.appendingPathComponent(TrainingDatasetPackageWriter.datasetManifestFileName))
+        let manifest = readJSONObject(from: directory
+            .appendingPathComponent(TrainingDatasetPackageWriter.datasetManifestFileName))
         let validation = TrainingDatasetPackageWriter.validatePackage(at: directory)
         let records = readJSONArray(
             from: directory.appendingPathComponent(
@@ -811,7 +831,7 @@ enum TrainingDatasetPackageEditor {
                     || firstString(
                         record["analysis"] as? [String: Any] ?? [:],
                         keys: ["key", "keyscale"]
-                ) != nil
+                    ) != nil
             }
         )
         let derivedTimeSignatureStatus = metadataStatus(
@@ -1037,11 +1057,21 @@ enum TrainingDatasetPackageEditor {
         }
 
         var audio: [String: Any] = object["audio"] as? [String: Any] ?? [:]
-        if let format = asset.file.format { audio["format"] = format }
-        if let byteSize = asset.file.byteSize { audio["byte_size"] = byteSize }
-        if let duration = asset.file.durationSeconds { audio["duration_seconds"] = duration }
-        if let sampleRate = asset.file.sampleRate { audio["sample_rate"] = sampleRate }
-        if let channels = asset.file.channels { audio["channels"] = channels }
+        if let format = asset.file.format {
+            audio["format"] = format
+        }
+        if let byteSize = asset.file.byteSize {
+            audio["byte_size"] = byteSize
+        }
+        if let duration = asset.file.durationSeconds {
+            audio["duration_seconds"] = duration
+        }
+        if let sampleRate = asset.file.sampleRate {
+            audio["sample_rate"] = sampleRate
+        }
+        if let channels = asset.file.channels {
+            audio["channels"] = channels
+        }
         object["audio"] = audio
         if let duration = asset.file.durationSeconds {
             object["clip_length_seconds"] = duration
@@ -1128,8 +1158,14 @@ enum TrainingDatasetPackageEditor {
         guard let assets = stringDictionary(object["assets"]) else {
             return "not_run"
         }
-        let hasVocals = assets["vocals"].map { FileManager.default.fileExists(atPath: resolve($0, relativeTo: datasetDirectory).path(percentEncoded: false)) } ?? false
-        let hasInstrumental = assets["instrumental"].map { FileManager.default.fileExists(atPath: resolve($0, relativeTo: datasetDirectory).path(percentEncoded: false)) } ?? false
+        let hasVocals = assets["vocals"].map { FileManager.default.fileExists(atPath: resolve(
+            $0,
+            relativeTo: datasetDirectory
+        ).path(percentEncoded: false)) } ?? false
+        let hasInstrumental = assets["instrumental"].map { FileManager.default.fileExists(atPath: resolve(
+            $0,
+            relativeTo: datasetDirectory
+        ).path(percentEncoded: false)) } ?? false
         if hasVocals && hasInstrumental {
             return "complete"
         }
@@ -1283,7 +1319,7 @@ enum TrainingDatasetPackageEditor {
                 } else {
                     isQuoted.toggle()
                 }
-            } else if char == "," && !isQuoted {
+            } else if char == ",", !isQuoted {
                 fields.append(current)
                 current = ""
             } else {
@@ -1311,7 +1347,7 @@ enum TrainingDatasetPackageEditor {
     private static func readTrimmedText(from url: URL?) -> String? {
         guard let url,
               let text = try? String(contentsOf: url, encoding: .utf8)
-                .trimmingCharacters(in: .whitespacesAndNewlines),
+              .trimmingCharacters(in: .whitespacesAndNewlines),
               !text.isEmpty else {
             return nil
         }
@@ -1394,65 +1430,71 @@ enum TrainingDatasetPackageEditor {
     private static func stringValue(_ value: Any?) -> String? {
         switch value {
         case let string as String:
-            return string
+            string
         case let number as NSNumber:
-            return number.stringValue
+            number.stringValue
         case let double as Double:
-            return String(double)
+            String(double)
         case let int as Int:
-            return String(int)
+            String(int)
         default:
-            return nil
+            nil
         }
     }
 
     private static func doubleValue(_ value: Any?) -> Double? {
         switch value {
         case let number as NSNumber:
-            return number.doubleValue
+            number.doubleValue
         case let double as Double:
-            return double
+            double
         case let float as Float:
-            return Double(float)
+            Double(float)
         case let int as Int:
-            return Double(int)
+            Double(int)
         case let string as String:
-            return Double(string)
+            Double(string)
         default:
-            return nil
+            nil
         }
     }
 
     private static func intValue(_ value: Any?) -> Int? {
         switch value {
         case let number as NSNumber:
-            return number.intValue
+            number.intValue
         case let int as Int:
-            return int
+            int
         case let string as String:
-            return Int(string)
+            Int(string)
         default:
-            return nil
+            nil
         }
     }
 
     private static func boolValue(_ value: Any?) -> Bool? {
         switch value {
         case let bool as Bool:
-            return bool
+            bool
         case let number as NSNumber:
-            return number.boolValue
+            number.boolValue
         case let string as String:
-            return ["true", "yes", "1"].contains(string.lowercased())
+            ["true", "yes", "1"].contains(string.lowercased())
         default:
-            return nil
+            nil
         }
     }
 
     private static func inferredRole(from assets: [String: String]) -> String {
-        if assets["full_mix"] != nil { return "full_mix" }
-        if assets["vocals"] != nil { return "vocal" }
-        if assets["instrumental"] != nil { return "instrumental" }
+        if assets["full_mix"] != nil {
+            return "full_mix"
+        }
+        if assets["vocals"] != nil {
+            return "vocal"
+        }
+        if assets["instrumental"] != nil {
+            return "instrumental"
+        }
         return "full_mix"
     }
 
@@ -1510,7 +1552,7 @@ private extension DatasetClipReview {
         changed += update(&timeSignature, with: fields.timeSignature)
         changed += update(&role, with: fields.role)
         changed += update(&notes, with: fields.notes)
-        if changed > 0 && !isApproved {
+        if changed > 0, !isApproved {
             reviewStatus = "needs_review"
         }
         return changed
@@ -1519,11 +1561,11 @@ private extension DatasetClipReview {
     private func backendName(for source: String?) -> String {
         switch source {
         case "csv":
-            return "metadata_csv"
+            "metadata_csv"
         case "sidecar":
-            return "sidecar_import"
+            "sidecar_import"
         default:
-            return source ?? "manual"
+            source ?? "manual"
         }
     }
 

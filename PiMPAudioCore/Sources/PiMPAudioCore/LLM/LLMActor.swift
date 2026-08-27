@@ -16,12 +16,12 @@ public enum LLMError: Error, LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case .modelNotFound(let url):
-            return "Model directory not found: \(url.path)"
-        case .missingFile(let name):
-            return "Required file missing: \(name)"
-        case .generationFailed(let reason):
-            return "Generation failed: \(reason)"
+        case let .modelNotFound(url):
+            "Model directory not found: \(url.path)"
+        case let .missingFile(name):
+            "Required file missing: \(name)"
+        case let .generationFailed(reason):
+            "Generation failed: \(reason)"
         }
     }
 }
@@ -62,19 +62,19 @@ public struct LLMConfig: Codable, Sendable {
 
     public init(from decoder: Swift.Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.vocabSize = try c.decode(Int.self, forKey: CodingKeys.vocabSize)
-        self.hiddenSize = try c.decode(Int.self, forKey: CodingKeys.hiddenSize)
-        self.numHiddenLayers = try c.decode(Int.self, forKey: CodingKeys.numHiddenLayers)
-        self.numAttentionHeads = try c.decode(Int.self, forKey: CodingKeys.numAttentionHeads)
-        self.numKeyValueHeads = try c.decodeIfPresent(Int.self, forKey: CodingKeys.numKeyValueHeads) ?? numAttentionHeads
-        self.headDim = try c.decodeIfPresent(Int.self, forKey: CodingKeys.headDim) ?? (hiddenSize / numAttentionHeads)
-        self.intermediateSize = try c.decodeIfPresent(Int.self, forKey: CodingKeys.intermediateSize)
-        self.maxPositionEmbeddings = try c.decodeIfPresent(Int.self, forKey: CodingKeys.maxPositionEmbeddings)
-        self.rmsNormEps = try c.decodeIfPresent(Float.self, forKey: CodingKeys.rmsNormEps) ?? 1e-5
-        self.ropeTheta = try c.decodeIfPresent(Float.self, forKey: CodingKeys.ropeTheta)
-        self.quantization = try c.decodeIfPresent(QuantizationConfig.self, forKey: CodingKeys.quantization)
-        self.quantizationConfig = try c.decodeIfPresent(QuantizationConfig.self, forKey: CodingKeys.quantizationConfig)
-        self.tieWordEmbeddings = try c.decodeIfPresent(Bool.self, forKey: CodingKeys.tieWordEmbeddings)
+        vocabSize = try c.decode(Int.self, forKey: CodingKeys.vocabSize)
+        hiddenSize = try c.decode(Int.self, forKey: CodingKeys.hiddenSize)
+        numHiddenLayers = try c.decode(Int.self, forKey: CodingKeys.numHiddenLayers)
+        numAttentionHeads = try c.decode(Int.self, forKey: CodingKeys.numAttentionHeads)
+        numKeyValueHeads = try c.decodeIfPresent(Int.self, forKey: CodingKeys.numKeyValueHeads) ?? numAttentionHeads
+        headDim = try c.decodeIfPresent(Int.self, forKey: CodingKeys.headDim) ?? (hiddenSize / numAttentionHeads)
+        intermediateSize = try c.decodeIfPresent(Int.self, forKey: CodingKeys.intermediateSize)
+        maxPositionEmbeddings = try c.decodeIfPresent(Int.self, forKey: CodingKeys.maxPositionEmbeddings)
+        rmsNormEps = try c.decodeIfPresent(Float.self, forKey: CodingKeys.rmsNormEps) ?? 1e-5
+        ropeTheta = try c.decodeIfPresent(Float.self, forKey: CodingKeys.ropeTheta)
+        quantization = try c.decodeIfPresent(QuantizationConfig.self, forKey: CodingKeys.quantization)
+        quantizationConfig = try c.decodeIfPresent(QuantizationConfig.self, forKey: CodingKeys.quantizationConfig)
+        tieWordEmbeddings = try c.decodeIfPresent(Bool.self, forKey: CodingKeys.tieWordEmbeddings)
     }
 }
 
@@ -130,7 +130,7 @@ public actor LLMActor {
     private var arrays: [String: MLXArray]?
 
     /// Llama 3 EOS token IDs.
-    private static let eosTokens: Set<Int> = [128001, 128008, 128009]
+    private static let eosTokens: Set<Int> = [128_001, 128_008, 128_009]
 
     /// Whether the model and tokenizer have been loaded successfully.
     public var isLoaded: Bool {
@@ -173,7 +173,7 @@ public actor LLMActor {
 
         // Parse config.json
         let configData = try Data(contentsOf: configURL)
-        self.config = try JSONDecoder().decode(LLMConfig.self, from: configData)
+        config = try JSONDecoder().decode(LLMConfig.self, from: configData)
 
         // Load tokenizer
         let tokenizerData = try Data(contentsOf: tokenizerURL)
@@ -197,7 +197,7 @@ public actor LLMActor {
             baseConfig = Config(["tokenizer_class": "PreTrainedTokenizer"] as [NSString: Any])
         }
 
-        self.tokenizer = try AutoTokenizer.from(
+        tokenizer = try AutoTokenizer.from(
             tokenizerConfig: baseConfig,
             tokenizerData: tokenizerConfig
         )
@@ -220,7 +220,7 @@ public actor LLMActor {
               loadedArrays["model.norm.weight"] != nil else {
             throw LLMError.missingFile("Llama model weights")
         }
-        self.arrays = loadedArrays
+        arrays = loadedArrays
     }
 
     // MARK: - Generation
@@ -254,14 +254,14 @@ public actor LLMActor {
                 }
                 do {
                     try Task.checkCancellation()
-                    try await self.ensureLoaded()
+                    try await ensureLoaded()
                     try Task.checkCancellation()
-                    guard let tokenizer = await self.tokenizer else {
+                    guard let tokenizer = await tokenizer else {
                         continuation.finish()
                         return
                     }
                     let inputIds = tokenizer.encode(text: prompt)
-                    try await self.runGeneration(
+                    try await runGeneration(
                         inputIds: inputIds,
                         maxTokens: maxTokens,
                         temperature: temperature,
@@ -332,7 +332,7 @@ public actor LLMActor {
         var nextInputIds = inputIds
         var key = MLXRandom.key(UInt64(Date().timeIntervalSince1970))
 
-        for _ in 0..<maxTokens {
+        for _ in 0 ..< maxTokens {
             try Task.checkCancellation()
 
             let logits = try forward(inputIds: nextInputIds, cache: cache)
@@ -352,7 +352,9 @@ public actor LLMActor {
             eval(nextArray)
 
             let nextToken = nextArray.item(Int.self)
-            if Self.eosTokens.contains(nextToken) { break }
+            if Self.eosTokens.contains(nextToken) {
+                break
+            }
 
             nextInputIds = [nextToken]
             continuation.yield(tokenizer.decode(tokens: [nextToken]))
@@ -367,10 +369,14 @@ public actor LLMActor {
         let ids = MLXArray(inputIds.map(Int32.init)).reshaped([1, inputIds.count])
         var hidden = try embed(ids, arrays: arrays, config: config)
         let cachedLength = cache?.sequenceLength ?? 0
-        let mask = causalMask(queryLength: inputIds.count, keyLength: cachedLength + inputIds.count, queryOffset: cachedLength)
+        let mask = causalMask(
+            queryLength: inputIds.count,
+            keyLength: cachedLength + inputIds.count,
+            queryOffset: cachedLength
+        )
         let rotary = rotaryEmbedding(seqLen: inputIds.count, positionOffset: cachedLength, config: config)
 
-        for layer in 0..<config.numHiddenLayers {
+        for layer in 0 ..< config.numHiddenLayers {
             hidden = try llamaLayer(
                 hidden,
                 layer: layer,
@@ -383,7 +389,7 @@ public actor LLMActor {
         }
 
         hidden = try rmsNorm(hidden, weightKey: "model.norm.weight", arrays: arrays, eps: config.rmsNormEps)
-        let lastHidden = hidden[0..., (hidden.shape[1] - 1)..<hidden.shape[1], 0...]
+        let lastHidden = hidden[0..., (hidden.shape[1] - 1) ..< hidden.shape[1], 0...]
         let logits = try outputLogits(lastHidden, arrays: arrays, config: config)
         if let cache {
             eval(cache.arrays + [logits])
@@ -401,7 +407,12 @@ public actor LLMActor {
         cache: LLMKeyValueCache?
     ) throws -> MLXArray {
         let prefix = "model.layers.\(layer)"
-        let normed = try rmsNorm(hidden, weightKey: "\(prefix).input_layernorm.weight", arrays: arrays, eps: config.rmsNormEps)
+        let normed = try rmsNorm(
+            hidden,
+            weightKey: "\(prefix).input_layernorm.weight",
+            arrays: arrays,
+            eps: config.rmsNormEps
+        )
         let attn = try attention(
             normed,
             prefix: "\(prefix).self_attn",
@@ -414,7 +425,12 @@ public actor LLMActor {
         )
         var h = hidden + attn
 
-        let post = try rmsNorm(h, weightKey: "\(prefix).post_attention_layernorm.weight", arrays: arrays, eps: config.rmsNormEps)
+        let post = try rmsNorm(
+            h,
+            weightKey: "\(prefix).post_attention_layernorm.weight",
+            arrays: arrays,
+            eps: config.rmsNormEps
+        )
         let gate = try qLinear(post, prefix: "\(prefix).mlp.gate_proj", arrays: arrays, config: config)
         let up = try qLinear(post, prefix: "\(prefix).mlp.up_proj", arrays: arrays, config: config)
         let mlp = try qLinear(silu(gate) * up, prefix: "\(prefix).mlp.down_proj", arrays: arrays, config: config)
@@ -542,11 +558,11 @@ public actor LLMActor {
 
     private func causalMask(queryLength: Int, keyLength: Int, queryOffset: Int) -> MLXArray? {
         guard keyLength > 1 else { return nil }
-        if queryLength == 1 && queryOffset == keyLength - 1 {
+        if queryLength == 1, queryOffset == keyLength - 1 {
             return nil
         }
-        let queryPositions = MLXArray(Array(queryOffset..<(queryOffset + queryLength)).map(Float.init))
-        let keyPositions = MLXArray(Array(0..<keyLength).map(Float.init))
+        let queryPositions = MLXArray(Array(queryOffset ..< (queryOffset + queryLength)).map(Float.init))
+        let keyPositions = MLXArray(Array(0 ..< keyLength).map(Float.init))
         let row = queryPositions.expandedDimensions(axis: 1)
         let col = keyPositions.expandedDimensions(axis: 0)
         let zeros = MLXArray.zeros([queryLength, keyLength])
@@ -565,7 +581,7 @@ public actor LLMActor {
             MLXArray(base),
             MLXArray(stride(from: 0, to: headDim, by: 2).map { Float($0) / Float(headDim) })
         )
-        let positions = MLXArray(Array(positionOffset..<(positionOffset + seqLen)).map(Float.init))
+        let positions = MLXArray(Array(positionOffset ..< (positionOffset + seqLen)).map(Float.init))
         let freqs = positions.expandedDimensions(axis: 1) * invFreq.expandedDimensions(axis: 0)
         let freqsFull = concatenated([freqs, freqs], axis: 1)
         let c = cos(freqsFull).reshaped([1, 1, seqLen, headDim])
@@ -574,7 +590,9 @@ public actor LLMActor {
     }
 
     private func repeatKV(_ x: MLXArray, nRep: Int) -> MLXArray {
-        if nRep == 1 { return x }
+        if nRep == 1 {
+            return x
+        }
         let (b, nKV, seqLen, dim) = (x.shape[0], x.shape[1], x.shape[2], x.shape[3])
         let expanded = x.expandedDimensions(axis: 2)
         let broadcasted = broadcast(expanded, to: [b, nKV, nRep, seqLen, dim])

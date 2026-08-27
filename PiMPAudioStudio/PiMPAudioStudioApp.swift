@@ -1,7 +1,7 @@
-import SwiftUI
 import AppKit
 import MLX
 import PiMPAudioCore
+import SwiftUI
 
 @main
 struct PiMPAudioStudioApp: App {
@@ -212,9 +212,9 @@ final class AppServices: ObservableObject {
         self.sfxModelManager = sfxModelManager
         self.registry = registry
         self.llmManager = llmManager
-        self.currentOutputManager = outputManager
-        self.currentDirectory = outputManager.directory
-        self.traceMonitor = GenerationTraceMonitor()
+        currentOutputManager = outputManager
+        currentDirectory = outputManager.directory
+        traceMonitor = GenerationTraceMonitor()
 
         // Cap MLX's recycled GPU free-list. Without this, a single full-track VAE
         // encode can leave 40–50 GiB of `cache` memory charged to the process on a
@@ -230,9 +230,9 @@ final class AppServices: ObservableObject {
         let diffusion = DiffusionActor(dit: dit)
         // In-memory stub tokenizer — cannot fail (no disk / sandbox path).
         let conditioning = ConditioningActor.stub()
-        self.vaeActor = vae
-        self.diffusionActor = diffusion
-        self.conditioningActor = conditioning
+        vaeActor = vae
+        diffusionActor = diffusion
+        conditioningActor = conditioning
 
         // Wire the editor service with the full pipeline (VAE + DiT diffusion +
         // conditioning + SAO pipeline). The SAO pipeline is nil until weights
@@ -245,9 +245,9 @@ final class AppServices: ObservableObject {
             conditioningActor: conditioning,
             sfxModelManager: sfxModelManager
         )
-        self.editorService = editorSvc
+        editorService = editorSvc
 
-        self.trainingService = TrainingService(
+        trainingService = TrainingService(
             pipeline: MusicPipeline(vae: vae, diffusion: diffusion),
             vae: vae,
             conditioning: conditioning,
@@ -256,7 +256,7 @@ final class AppServices: ObservableObject {
 
         let dir = outputManager.directory ?? FileManager.default.temporaryDirectory
         let store = HistoryStore(directory: dir)
-        self.historyStore = store
+        historyStore = store
         let facade = PiMPAudioCommandFacade(
             registry: registry,
             historyStore: store,
@@ -264,10 +264,10 @@ final class AppServices: ObservableObject {
             lyricWriterManager: lyricWriterManager
         )
         facade.configure(editorService: editorSvc)
-        facade.configure(trainingService: self.trainingService)
+        facade.configure(trainingService: trainingService)
         facade.configure(runPodService: runPodService)
-        self.commandFacade = facade
-        self.mcpServer = PiMPAudioMCPServer(facade: facade)
+        commandFacade = facade
+        mcpServer = PiMPAudioMCPServer(facade: facade)
         let generationService = Self.makeGenerationService(
             vaeActor: vae,
             diffusionActor: diffusion,
@@ -277,12 +277,12 @@ final class AppServices: ObservableObject {
             sfxModelManager: sfxModelManager,
             registry: registry,
             llmManager: llmManager,
-            trainingService: self.trainingService,
+            trainingService: trainingService,
             editorService: editorSvc,
             traceMonitor: traceMonitor
         )
-        generationService.trainingService = self.trainingService
-        self.trainingService.generationService = generationService
+        generationService.trainingService = trainingService
+        trainingService.generationService = generationService
         self.generationService = generationService
         facade.configure(generationService: generationService)
         llmMemoryCoordinator.start(
@@ -297,7 +297,7 @@ final class AppServices: ObservableObject {
     /// initial appear (no-op since `init` already wired the real manager) and
     /// again whenever the user picks a new directory.
     func configure(outputManager: OutputDirectoryManager) {
-        if currentOutputManager === outputManager && currentDirectory == outputManager.directory {
+        if currentOutputManager === outputManager, currentDirectory == outputManager.directory {
             return
         }
         currentOutputManager = outputManager
@@ -305,7 +305,7 @@ final class AppServices: ObservableObject {
 
         let dir = outputManager.directory ?? FileManager.default.temporaryDirectory
         let store = HistoryStore(directory: dir)
-        self.historyStore = store
+        historyStore = store
         commandFacade.configure(historyStore: store)
         let generationService = Self.makeGenerationService(
             vaeActor: vaeActor,
@@ -316,12 +316,12 @@ final class AppServices: ObservableObject {
             sfxModelManager: sfxModelManager,
             registry: registry,
             llmManager: llmManager,
-            trainingService: self.trainingService,
-            editorService: self.editorService,
+            trainingService: trainingService,
+            editorService: editorService,
             traceMonitor: traceMonitor
         )
-        generationService.trainingService = self.trainingService
-        self.trainingService.generationService = generationService
+        generationService.trainingService = trainingService
+        trainingService.generationService = generationService
         self.generationService = generationService
         commandFacade.configure(generationService: generationService)
     }

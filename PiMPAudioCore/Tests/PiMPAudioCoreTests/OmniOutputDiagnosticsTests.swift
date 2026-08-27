@@ -1,5 +1,5 @@
-import XCTest
 @testable import PiMPAudioCore
+import XCTest
 
 final class OmniOutputDiagnosticsTests: XCTestCase {
     func testEmptyOutputIsReportedWithoutRepetition() {

@@ -1,6 +1,6 @@
-import Testing
 import MLX
 @testable import PiMPAudioCore
+import Testing
 
 @Suite("CrossAttentionCache")
 struct CrossAttentionCacheTests {
@@ -23,8 +23,8 @@ struct CrossAttentionCacheTests {
 
         let result = cache.get(layerIdx: 5)
         #expect(result != nil)
-        #expect(result!.key.shape == [1, 4, 10, 128])
-        #expect(result!.value.shape == [1, 4, 10, 128])
+        #expect(result?.key.shape == [1, 4, 10, 128])
+        #expect(result?.value.shape == [1, 4, 10, 128])
     }
 
     @Test("Reset clears all entries")
@@ -43,7 +43,7 @@ struct CrossAttentionCacheTests {
     }
 
     @Test("Multiple layers independent")
-    func multipleLayers() {
+    func multipleLayers() throws {
         let cache = CrossAttentionCache()
         let k0 = MLXArray.zeros([1, 4, 10, 128])
         let v0 = MLXArray.zeros([1, 4, 10, 128])
@@ -53,8 +53,8 @@ struct CrossAttentionCacheTests {
         cache.update(key: k0, value: v0, layerIdx: 0)
         cache.update(key: k1, value: v1, layerIdx: 1)
 
-        let r0 = cache.get(layerIdx: 0)!
-        let r1 = cache.get(layerIdx: 1)!
+        let r0 = try #require(cache.get(layerIdx: 0))
+        let r1 = try #require(cache.get(layerIdx: 1))
         #expect(r0.key.shape[2] == 10)
         #expect(r1.key.shape[2] == 20)
     }

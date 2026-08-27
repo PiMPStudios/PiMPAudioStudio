@@ -13,11 +13,11 @@ enum DSPEffectCategory {
 
     var accentColor: Color {
         switch self {
-        case .edit: return .mint
-        case .spectral: return .blue
-        case .dynamics: return .orange
-        case .spatial: return .purple
-        case .transform: return .indigo
+        case .edit: .mint
+        case .spectral: .blue
+        case .dynamics: .orange
+        case .spatial: .purple
+        case .transform: .indigo
         }
     }
 }
@@ -26,36 +26,36 @@ extension DSPEffect {
     var category: DSPEffectCategory {
         switch self {
         case .trimToSelection, .deleteSelection, .fadeIn, .fadeOut, .normalize, .trimSilence:
-            return .edit
+            .edit
         case .highPass, .eq:
-            return .spectral
+            .spectral
         case .compress, .limit, .loudness, .softGate, .polishForKeep:
-            return .dynamics
+            .dynamics
         case .reverb:
-            return .spatial
+            .spatial
         case .timeStretch, .pitchShift:
-            return .transform
+            .transform
         }
     }
 
     var iconName: String {
         switch self {
-        case .trimToSelection: return "scissors"
-        case .deleteSelection: return "trash"
-        case .fadeIn: return "arrow.up.right"
-        case .fadeOut: return "arrow.down.right"
-        case .normalize: return "gauge"
-        case .trimSilence: return "timeline.selection"
-        case .highPass: return "waveform.badge.minus"
-        case .compress: return "waveform.path.ecg"
-        case .limit: return "arrow.down.to.line"
-        case .loudness: return "speaker.wave.3"
-        case .softGate: return "door.left.hand.closed"
-        case .polishForKeep: return "sparkles"
-        case .eq: return "slider.horizontal.3"
-        case .reverb: return "waveform.path"
-        case .timeStretch: return "timer"
-        case .pitchShift: return "tuningfork"
+        case .trimToSelection: "scissors"
+        case .deleteSelection: "trash"
+        case .fadeIn: "arrow.up.right"
+        case .fadeOut: "arrow.down.right"
+        case .normalize: "gauge"
+        case .trimSilence: "timeline.selection"
+        case .highPass: "waveform.badge.minus"
+        case .compress: "waveform.path.ecg"
+        case .limit: "arrow.down.to.line"
+        case .loudness: "speaker.wave.3"
+        case .softGate: "door.left.hand.closed"
+        case .polishForKeep: "sparkles"
+        case .eq: "slider.horizontal.3"
+        case .reverb: "waveform.path"
+        case .timeStretch: "timer"
+        case .pitchShift: "tuningfork"
         }
     }
 }

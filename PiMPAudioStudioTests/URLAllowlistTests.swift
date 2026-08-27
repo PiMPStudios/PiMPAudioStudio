@@ -1,8 +1,8 @@
 import Foundation
-import Testing
 @testable import PiMPAudioStudio
+import Testing
 
-@Test func youTubeURLPolicyAllowsHTTPSYouTubeHosts() {
+@Test func youTubeURLPolicyAllowsHTTPSYouTubeHosts() throws {
     let allowed = [
         "https://www.youtube.com/@channel",
         "https://youtube.com/playlist?list=PLabc",
@@ -12,12 +12,12 @@ import Testing
         "https://www.youtu.be/dQw4w9WgXcQ",
     ]
     for raw in allowed {
-        let url = URL(string: raw)!
+        let url = try #require(URL(string: raw))
         #expect(YouTubeURLPolicy.isAllowed(url), "expected allowed: \(raw)")
     }
 }
 
-@Test func youTubeURLPolicyRejectsNonYouTubeAndNonHTTPS() {
+@Test func youTubeURLPolicyRejectsNonYouTubeAndNonHTTPS() throws {
     let rejected = [
         "http://www.youtube.com/@channel",
         "file:///etc/passwd",
@@ -28,7 +28,7 @@ import Testing
         "ftp://youtube.com/watch?v=dQw4w9WgXcQ",
     ]
     for raw in rejected {
-        let url = URL(string: raw)!
+        let url = try #require(URL(string: raw))
         #expect(YouTubeURLPolicy.isAllowed(url) == false, "expected rejected: \(raw)")
     }
 }
@@ -42,7 +42,7 @@ import Testing
     #expect(YouTubeURLPolicy.isSafeVideoID("id;rm -rf") == false)
 }
 
-@Test func huggingFaceURLPolicyAllowsOfficialHosts() {
+@Test func huggingFaceURLPolicyAllowsOfficialHosts() throws {
     let allowed = [
         "https://huggingface.co/user/repo",
         "https://www.huggingface.co/user/repo",
@@ -50,12 +50,12 @@ import Testing
         "https://www.hf.co/user/repo",
     ]
     for raw in allowed {
-        let url = URL(string: raw)!
+        let url = try #require(URL(string: raw))
         #expect(HuggingFaceURLPolicy.isAllowed(url), "expected allowed: \(raw)")
     }
 }
 
-@Test func huggingFaceURLPolicyRejectsOtherHostsAndSchemes() {
+@Test func huggingFaceURLPolicyRejectsOtherHostsAndSchemes() throws {
     let rejected = [
         "http://huggingface.co/user/repo",
         "https://example.com/user/repo",
@@ -65,7 +65,7 @@ import Testing
         "https://cdn-lfs.huggingface.co/file",
     ]
     for raw in rejected {
-        let url = URL(string: raw)!
+        let url = try #require(URL(string: raw))
         #expect(HuggingFaceURLPolicy.isAllowed(url) == false, "expected rejected: \(raw)")
     }
 }

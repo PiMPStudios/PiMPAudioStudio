@@ -9,7 +9,7 @@ struct BackgroundDownloadIndicator: View {
         case .idle:
             EmptyView()
 
-        case .downloading(let modelName, let progress):
+        case let .downloading(modelName, progress):
             HStack(spacing: 8) {
                 ProgressView()
                     .controlSize(.small)
@@ -33,7 +33,7 @@ struct BackgroundDownloadIndicator: View {
             .padding(.vertical, 6)
             .background(.regularMaterial, in: Capsule())
 
-        case .failed(let message):
+        case let .failed(message):
             Button(action: { onRetry?() }) {
                 HStack(spacing: 6) {
                     Image(systemName: "exclamationmark.triangle.fill")

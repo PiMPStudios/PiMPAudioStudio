@@ -47,9 +47,9 @@ public class AudioTokenDetokenizer: Module {
     ) {
         self.hiddenSize = hiddenSize
         self.poolWindowSize = poolWindowSize
-        self.embedTokens = Linear(hiddenSize, hiddenSize, bias: true)
-        self.specialTokens = MLXArray.zeros([1, poolWindowSize, hiddenSize])
-        self.layers = (0..<numLayers).map { _ in
+        embedTokens = Linear(hiddenSize, hiddenSize, bias: true)
+        specialTokens = MLXArray.zeros([1, poolWindowSize, hiddenSize])
+        layers = (0 ..< numLayers).map { _ in
             Qwen3Layer(
                 hiddenSize: hiddenSize,
                 intermediateSize: intermediateSize,
@@ -59,13 +59,13 @@ public class AudioTokenDetokenizer: Module {
                 rmsNormEps: rmsNormEps
             )
         }
-        self.norm = RMSNorm(dimensions: hiddenSize, eps: rmsNormEps)
-        self.rotaryEmbedding = RotaryEmbedding(
+        norm = RMSNorm(dimensions: hiddenSize, eps: rmsNormEps)
+        rotaryEmbedding = RotaryEmbedding(
             headDim: headDim,
             maxLen: maxPositionEmbeddings,
             base: ropeTheta
         )
-        self.projOut = Linear(hiddenSize, audioAcousticHiddenDim, bias: true)
+        projOut = Linear(hiddenSize, audioAcousticHiddenDim, bias: true)
     }
 
     /// Detokenize 5 Hz hidden states into 25 Hz acoustic features.
@@ -74,15 +74,15 @@ public class AudioTokenDetokenizer: Module {
     public func callAsFunction(_ lmHints5Hz: MLXArray) -> MLXArray {
         let bsz = lmHints5Hz.shape[0]
         let t5Hz = lmHints5Hz.shape[1]
-        let hSize = self.hiddenSize
-        let pool = self.poolWindowSize
+        let hSize = hiddenSize
+        let pool = poolWindowSize
 
         // Linear-project the LM hidden states
-        var x = embedTokens(lmHints5Hz)                                                // [B, T, H]
+        var x = embedTokens(lmHints5Hz) // [B, T, H]
 
         // Expand each token into `pool` patches and add learnable special_tokens
-        x = x.expandedDimensions(axis: 2)                                              // [B, T, 1, H]
-        x = MLX.broadcast(x, to: [bsz, t5Hz, pool, hSize])                             // [B, T, pool, H]
+        x = x.expandedDimensions(axis: 2) // [B, T, 1, H]
+        x = MLX.broadcast(x, to: [bsz, t5Hz, pool, hSize]) // [B, T, pool, H]
         let special = MLX.broadcast(specialTokens, to: [bsz, t5Hz, pool, hSize])
         x = x + special
 
@@ -100,7 +100,7 @@ public class AudioTokenDetokenizer: Module {
             )
         }
         h = norm(h)
-        let acoustic = projOut(h)                                                       // [B*T, pool, 64]
+        let acoustic = projOut(h) // [B*T, pool, 64]
 
         // Reshape back to a flat 25 Hz stream
         let outDim = acoustic.shape[2]

@@ -1,5 +1,5 @@
-import SwiftUI
 import PiMPAudioCore
+import SwiftUI
 
 /// Dropdown picker for selecting a LoRA adapter in the Generate view.
 struct AdapterPicker: View {
@@ -57,8 +57,10 @@ struct AdapterPicker: View {
                 ForEach(adapters) { adapter in
                     HStack {
                         Text(adapter.name)
-                        Text("\(adapter.kind.rawValue.uppercased()) \(adapterDimensionLabel(adapter)) \u{2022} \(adapter.sampleCount) tracks")
-                            .foregroundStyle(.secondary)
+                        Text(
+                            "\(adapter.kind.rawValue.uppercased()) \(adapterDimensionLabel(adapter)) \u{2022} \(adapter.sampleCount) tracks"
+                        )
+                        .foregroundStyle(.secondary)
                     }
                     .tag(Optional(adapter.id))
                 }
@@ -91,7 +93,9 @@ struct AdapterPicker: View {
             Task { await refreshActiveModel() }
         }
         .onReceive(trainingService.$state) { newState in
-            if case .complete = newState { adapterListVersion += 1 }
+            if case .complete = newState {
+                adapterListVersion += 1
+            }
             normalizeSelection()
         }
     }
@@ -114,9 +118,9 @@ struct AdapterPicker: View {
     private func adapterDimensionLabel(_ adapter: LoRAAdapter) -> String {
         switch adapter.kind {
         case .lora:
-            return "rank \(adapter.config.rank)"
+            "rank \(adapter.config.rank)"
         case .lokr:
-            return "dim \(adapter.lokrConfig?.linearDim ?? adapter.config.rank)"
+            "dim \(adapter.lokrConfig?.linearDim ?? adapter.config.rank)"
         }
     }
 }

@@ -38,8 +38,7 @@ protocol DatasetLyricsAligning: Sendable {
 actor LyricsTranscriptionService:
     DatasetLyricsTranscribing,
     DatasetLyricsTranscriptionEvicting,
-    DatasetLyricsAligning
-{
+    DatasetLyricsAligning {
     private let transcriber: QwenLyricsTranscriber
     private let options: LyricsTranscriptionOptions
 
@@ -263,7 +262,8 @@ actor LyricsTranscriptionService:
         var currentWords: [LyricsTranscriptionWord] = []
         for word in result.words {
             currentWords.append(word)
-            let shouldBreak = currentWords.count >= 8 || word.text.range(of: #"[.!?]$"#, options: .regularExpression) != nil
+            let shouldBreak = currentWords.count >= 8 || word.text
+                .range(of: #"[.!?]$"#, options: .regularExpression) != nil
             if shouldBreak {
                 lines.append(lrcLine(from: currentWords))
                 currentWords.removeAll(keepingCapacity: true)
@@ -303,4 +303,3 @@ actor LyricsTranscriptionService:
         return (value * scale).rounded() / scale
     }
 }
-

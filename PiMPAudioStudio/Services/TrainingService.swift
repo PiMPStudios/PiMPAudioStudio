@@ -1,8 +1,8 @@
+import Darwin
 import Foundation
-import PiMPAudioCore
 import MLX
 import OSLog
-import Darwin
+import PiMPAudioCore
 
 private let trainingLogger = Logger(
     subsystem: "com.pimpstudios.PiMPAudioStudio",
@@ -58,7 +58,9 @@ private struct TrainingPreprocessResult {
 private struct TrainingMemoryGuardError: LocalizedError {
     let message: String
 
-    var errorDescription: String? { message }
+    var errorDescription: String? {
+        message
+    }
 }
 
 struct TrainingLocalPreflightReport {
@@ -133,7 +135,9 @@ final class TrainingService: ObservableObject {
     weak var generationService: GenerationService?
 
     /// True while a local training task is running.
-    var isTrainingActive: Bool { trainingTask != nil }
+    var isTrainingActive: Bool {
+        trainingTask != nil
+    }
 
     init(
         pipeline: MusicPipeline,
@@ -212,13 +216,12 @@ final class TrainingService: ObservableObject {
         lokrConfig: LoKRConfig?,
         resumeAdapterID: String?
     ) {
-        let effectiveResumeAdapterID: String?
-        if let resumeAdapterID {
-            effectiveResumeAdapterID = resumeAdapterID
+        let effectiveResumeAdapterID: String? = if let resumeAdapterID {
+            resumeAdapterID
         } else if case .paused = state {
-            effectiveResumeAdapterID = Self.adapterID(from: adapterName)
+            Self.adapterID(from: adapterName)
         } else {
-            effectiveResumeAdapterID = nil
+            nil
         }
 
         guard trainingTask == nil else {
@@ -274,8 +277,8 @@ final class TrainingService: ObservableObject {
 
             do {
                 let totalSamples = entries.count + importedFiles.count
-                self.state = .loadingModels
-                self.logTrainingPhase(
+                state = .loadingModels
+                logTrainingPhase(
                     "loadingModels/begin",
                     kind: kind,
                     adapterID: adapterID,
@@ -286,15 +289,15 @@ final class TrainingService: ObservableObject {
                     try Task.checkCancellation()
                     AudioDiagnostics.memory("training/loadingModels/afterEnsureLoaded")
                 }
-                guard self.isConditioningReady else {
+                guard isConditioningReady else {
                     AudioDiagnostics.note(
                         "training/loadingModels/notReady",
                         "kind=\(kind.rawValue) adapterID=\(adapterID)"
                     )
-                    self.state = .failed("Could not load the ACE-Step models needed for training.")
+                    state = .failed("Could not load the ACE-Step models needed for training.")
                     return
                 }
-                let activeModelID = await self.registry.activeModelID(
+                let activeModelID = await registry.activeModelID(
                     for: .aceStepDiT
                 ) ?? "unknown"
                 try Task.checkCancellation()
@@ -302,7 +305,7 @@ final class TrainingService: ObservableObject {
                     "training/baseModel",
                     "kind=\(kind.rawValue) adapterID=\(adapterID) activeModel=\(activeModelID)"
                 )
-                try self.validateLocalTrainingMemory(
+                try validateLocalTrainingMemory(
                     phase: "afterEnsureLoaded",
                     kind: kind,
                     activeModelID: activeModelID,
@@ -310,7 +313,7 @@ final class TrainingService: ObservableObject {
                     config: config,
                     lokrConfig: lokrConfig
                 )
-                self.logTrainingPhase(
+                logTrainingPhase(
                     "loadingModels/end",
                     kind: kind,
                     adapterID: adapterID,
@@ -318,18 +321,18 @@ final class TrainingService: ObservableObject {
                 )
 
                 // Clear inference adapter stack during training (restore after).
-                if let sm = self.stackManager {
+                if let sm = stackManager {
                     if let primary = sm.primaryAdapter {
-                        self.savedPrimary = (primary, sm.primaryStrength)
+                        savedPrimary = (primary, sm.primaryStrength)
                     } else {
-                        self.savedPrimary = nil
+                        savedPrimary = nil
                     }
-                    self.savedStack = sm.additionalAdapters
-                    if self.savedPrimary != nil || !self.savedStack.isEmpty {
+                    savedStack = sm.additionalAdapters
+                    if savedPrimary != nil || !savedStack.isEmpty {
                         sm.clearAll()
                         AudioDiagnostics.note(
                             "training/clearStack",
-                            "kind=\(kind.rawValue) adapterID=\(adapterID) primary=\(self.savedPrimary?.adapter.id ?? "nil") additional=\(self.savedStack.count)"
+                            "kind=\(kind.rawValue) adapterID=\(adapterID) primary=\(savedPrimary?.adapter.id ?? "nil") additional=\(savedStack.count)"
                         )
                     }
                 }
@@ -350,7 +353,7 @@ final class TrainingService: ObservableObject {
                             "training/resume/missingCheckpoint",
                             "kind=\(kind.rawValue) adapterID=\(resumeAdapterID)"
                         )
-                        self.state = .failed("No paused training checkpoint found for this adapter.")
+                        state = .failed("No paused training checkpoint found for this adapter.")
                         return
                     }
                     guard checkpoint.baseModelID == activeModelID else {
@@ -358,7 +361,7 @@ final class TrainingService: ObservableObject {
                             "training/resume/modelMismatch",
                             "kind=\(kind.rawValue) adapterID=\(resumeAdapterID) expected=\(checkpoint.baseModelID) actual=\(activeModelID)"
                         )
-                        self.state = .failed(
+                        state = .failed(
                             CheckpointError.modelMismatch(
                                 expected: checkpoint.baseModelID,
                                 actual: activeModelID
@@ -387,7 +390,7 @@ final class TrainingService: ObservableObject {
                         "training/resume/end",
                         "kind=\(kind.rawValue) adapterID=\(resumeAdapterID) checkpointStep=\(checkpoint.globalStep) checkpointEpoch=\(checkpoint.epoch) currentWeights=\(initialWeights?.count ?? 0) bestWeights=\(initialBestWeights?.count ?? 0) lokrConfig=\(sessionLoKRConfig != nil)"
                     )
-                    try self.validateLocalTrainingMemory(
+                    try validateLocalTrainingMemory(
                         phase: "afterResumeConfig",
                         kind: kind,
                         activeModelID: activeModelID,
@@ -411,7 +414,7 @@ final class TrainingService: ObservableObject {
                 }
 
                 // 1. Prepare dataset
-                self.state = .preparingDataset(current: 0, total: totalSamples)
+                state = .preparingDataset(current: 0, total: totalSamples)
                 AudioDiagnostics.note(
                     "training/dataset/begin",
                     "kind=\(kind.rawValue) adapterID=\(adapterID) historyEntries=\(entries.count) importedFiles=\(importedFiles.count) total=\(totalSamples)"
@@ -426,7 +429,7 @@ final class TrainingService: ObservableObject {
                 for (idx, entry) in entries.enumerated() {
                     try Task.checkCancellation()
                     let url = audioURLs[idx]
-                    let preprocessResult = try await self.preprocessSample(
+                    let preprocessResult = try await preprocessSample(
                         audioURL: url,
                         prompt: entry.prompt,
                         lyrics: entry.lyrics,
@@ -438,7 +441,7 @@ final class TrainingService: ObservableObject {
                     )
                     let sample = preprocessResult.sample
                     samples.append(sample)
-                    self.logPreparedSample(
+                    logPreparedSample(
                         sample,
                         kind: kind,
                         adapterID: adapterID,
@@ -448,12 +451,12 @@ final class TrainingService: ObservableObject {
                         cacheHit: preprocessResult.cacheHit,
                         audioURL: url
                     )
-                    self.state = .preparingDataset(current: idx + 1, total: totalSamples)
+                    state = .preparingDataset(current: idx + 1, total: totalSamples)
                 }
 
                 for (idx, imported) in importedFiles.enumerated() {
                     try Task.checkCancellation()
-                    let preprocessResult = try await self.preprocessSample(
+                    let preprocessResult = try await preprocessSample(
                         audioURL: imported.url,
                         prompt: imported.description,
                         lyrics: imported.lyrics,
@@ -467,7 +470,7 @@ final class TrainingService: ObservableObject {
                     )
                     let sample = preprocessResult.sample
                     samples.append(sample)
-                    self.logPreparedSample(
+                    logPreparedSample(
                         sample,
                         kind: kind,
                         adapterID: adapterID,
@@ -477,7 +480,7 @@ final class TrainingService: ObservableObject {
                         cacheHit: preprocessResult.cacheHit,
                         audioURL: imported.url
                     )
-                    self.state = .preparingDataset(
+                    state = .preparingDataset(
                         current: entries.count + idx + 1,
                         total: totalSamples
                     )
@@ -488,7 +491,7 @@ final class TrainingService: ObservableObject {
                         "training/dataset/empty",
                         "kind=\(kind.rawValue) adapterID=\(adapterID)"
                     )
-                    self.state = .failed("No valid training samples")
+                    state = .failed("No valid training samples")
                     return
                 }
                 AudioDiagnostics.note(
@@ -496,7 +499,7 @@ final class TrainingService: ObservableObject {
                     "kind=\(kind.rawValue) adapterID=\(adapterID) samples=\(samples.count) \(Self.trainingDatasetShapeSummary(samples))"
                 )
                 AudioDiagnostics.memory("training/dataset/end")
-                try self.validateLocalTrainingMemory(
+                try validateLocalTrainingMemory(
                     phase: "beforeTraining",
                     kind: kind,
                     activeModelID: activeModelID,
@@ -508,7 +511,7 @@ final class TrainingService: ObservableObject {
                     historyEntryIDs: entries.map(\.id),
                     importedFiles: importedFiles
                 )
-                self.activeRunLog = TrainingRunLog(
+                activeRunLog = TrainingRunLog(
                     adapterID: adapterID,
                     adapterName: adapterName,
                     adapterKind: kind,
@@ -518,7 +521,7 @@ final class TrainingService: ObservableObject {
                     lokrConfig: sessionLoKRConfig,
                     resumedFromCheckpoint: resumeCheckpoint != nil
                 )
-                self.logTrainingStart(
+                logTrainingStart(
                     kind: kind,
                     adapterName: adapterName,
                     activeModelID: activeModelID,
@@ -529,8 +532,8 @@ final class TrainingService: ObservableObject {
 
                 // 2. Run training through pipeline
                 try Task.checkCancellation()
-                self.lastTrainingProgressLogStep = 0
-                self.logTrainingPhase(
+                lastTrainingProgressLogStep = 0
+                logTrainingPhase(
                     "run/begin",
                     kind: kind,
                     adapterID: adapterID,
@@ -541,9 +544,9 @@ final class TrainingService: ObservableObject {
                 // a previous generate. trainLoRA/trainLoKR inject directly and
                 // skip already-wrapped linears, which silently trains the wrong
                 // surface (or nothing) if generation adapters are still attached.
-                await self.pipeline.clearLoRAContributions()
-                await self.pipeline.clearLoKRContributions()
-                await self.pipeline.removeLoRA()
+                await pipeline.clearLoRAContributions()
+                await pipeline.clearLoKRContributions()
+                await pipeline.removeLoRA()
                 AudioDiagnostics.note(
                     "training/run/clearedInferenceAdapters",
                     "kind=\(kind.rawValue) adapterID=\(adapterID)"
@@ -562,7 +565,7 @@ final class TrainingService: ObservableObject {
                 let result: LoRATrainingResult
                 switch kind {
                 case .lora:
-                    let trained = try await self.pipeline.trainLoRA(
+                    let trained = try await pipeline.trainLoRA(
                         samples: samples,
                         config: sessionConfig,
                         resumeFrom: resumeCheckpoint,
@@ -581,10 +584,10 @@ final class TrainingService: ObservableObject {
                     )
                 case .lokr:
                     guard let sessionLoKRConfig else {
-                        self.state = .failed("LoKR training configuration was missing.")
+                        state = .failed("LoKR training configuration was missing.")
                         return
                     }
-                    let trained = try await self.pipeline.trainLoKR(
+                    let trained = try await pipeline.trainLoKR(
                         samples: samples,
                         config: sessionLoKRConfig,
                         resumeFrom: resumeCheckpoint,
@@ -602,7 +605,7 @@ final class TrainingService: ObservableObject {
                         wasCancelled: trained.wasCancelled
                     )
                 }
-                self.logTrainingPhase(
+                logTrainingPhase(
                     "run/end",
                     kind: kind,
                     adapterID: adapterID,
@@ -625,8 +628,8 @@ final class TrainingService: ObservableObject {
                     trainedLayerIndices: LoRAAdapter.layerIndices(from: result.trainedPaths)
                 )
 
-                if self.isStopping {
-                    if self.shouldSaveCheckpointOnStop {
+                if isStopping {
+                    if shouldSaveCheckpointOnStop {
                         AudioDiagnostics.note(
                             "training/saveCheckpoint/begin",
                             "kind=\(kind.rawValue) adapterID=\(adapterID)"
@@ -634,7 +637,7 @@ final class TrainingService: ObservableObject {
                         trainingLogger.info("Training paused and checkpoint saved for '\(adapterName)'")
                         let currentURL = try AdapterRegistry.currentWeightsURL(adapterID: adapterID)
                         let bestURL = try AdapterRegistry.bestWeightsURL(adapterID: adapterID)
-                        let checkpoint = try self.makeCheckpoint(
+                        let checkpoint = try makeCheckpoint(
                             adapterID: adapterID,
                             config: sessionConfig,
                             activeModelID: activeModelID,
@@ -657,35 +660,35 @@ final class TrainingService: ObservableObject {
                         try AdapterRegistry.saveOptimizerState(result.optimizerState, adapterID: adapterID)
                         AdapterRegistry.saveManifest(manifest, adapterID: adapterID)
                         try AdapterRegistry.saveCheckpoint(checkpoint, adapterID: adapterID)
-                        self.finishActiveRunLog(
+                        finishActiveRunLog(
                             status: .paused,
                             result: result,
                             message: "Training paused and checkpoint saved."
                         )
-                        self.saveActiveRunLog(adapterID: adapterID)
+                        saveActiveRunLog(adapterID: adapterID)
                         AudioDiagnostics.note(
                             "training/saveCheckpoint/end",
                             "kind=\(kind.rawValue) adapterID=\(adapterID) weights=\(result.weights.count) paths=\(result.trainedPaths.count)"
                         )
-                        self.state = .paused(checkpoint)
+                        state = .paused(checkpoint)
                     } else {
                         trainingLogger.info("Training cancelled for '\(adapterName)'")
                         AudioDiagnostics.note(
                             "training/cancelled",
                             "kind=\(kind.rawValue) adapterID=\(adapterID) saveCheckpoint=false"
                         )
-                        self.finishActiveRunLog(
+                        finishActiveRunLog(
                             status: .cancelled,
                             result: result,
                             message: "Training stopped without saving a checkpoint."
                         )
-                        self.state = .cancelled
+                        state = .cancelled
                     }
                     return
                 }
 
                 // 3. Save adapter
-                self.state = .saving
+                state = .saving
                 AudioDiagnostics.note(
                     "training/save/begin",
                     "kind=\(kind.rawValue) adapterID=\(adapterID) weights=\(result.weights.count) paths=\(result.trainedPaths.count)"
@@ -699,17 +702,17 @@ final class TrainingService: ObservableObject {
                 // later for retraining with the same (or expanded) dataset.
                 AdapterRegistry.saveManifest(manifest, adapterID: adapterID)
                 AdapterRegistry.deleteCheckpoint(adapterID: adapterID)
-                self.logTrainingComplete(
+                logTrainingComplete(
                     kind: kind,
                     adapterName: adapterName,
                     result: result
                 )
-                self.finishActiveRunLog(
+                finishActiveRunLog(
                     status: .completed,
                     result: result,
                     message: "Training completed and adapter was saved."
                 )
-                self.saveActiveRunLog(adapterID: adapterID)
+                saveActiveRunLog(adapterID: adapterID)
                 let adapterDirectory = try AdapterRegistry.adapterDirectory(id: adapterID)
                 AudioDiagnostics.note(
                     "training/save/end",
@@ -717,7 +720,7 @@ final class TrainingService: ObservableObject {
                 )
                 AudioDiagnostics.memory("training/save/end")
 
-                self.state = .complete(adapter)
+                state = .complete(adapter)
 
             } catch is CancellationError {
                 trainingLogger.info("Training task cancelled")
@@ -725,22 +728,22 @@ final class TrainingService: ObservableObject {
                     "training/cancelled",
                     "kind=\(kind.rawValue) adapterID=\(adapterID) taskCancellation=true"
                 )
-                self.finishActiveRunLog(
+                finishActiveRunLog(
                     status: .cancelled,
                     message: "Training task was cancelled."
                 )
-                self.saveActiveRunLogIfAdapterDirectoryExists(adapterID: adapterID)
-                self.state = .cancelled
+                saveActiveRunLogIfAdapterDirectoryExists(adapterID: adapterID)
+                state = .cancelled
             } catch {
                 trainingLogger.error("Training failed: \(error.localizedDescription)")
                 AudioDiagnostics.note("training/error", "error=\(error.localizedDescription)")
-                self.finishActiveRunLog(
+                finishActiveRunLog(
                     status: .failed,
                     message: "Training failed.",
                     errorMessage: error.localizedDescription
                 )
-                self.saveActiveRunLogIfAdapterDirectoryExists(adapterID: adapterID)
-                self.state = .failed(error.localizedDescription)
+                saveActiveRunLogIfAdapterDirectoryExists(adapterID: adapterID)
+                state = .failed(error.localizedDescription)
             }
         }
     }
@@ -975,11 +978,10 @@ final class TrainingService: ObservableObject {
     /// Stop training. When requested, persists the current adapter weights and checkpoint.
     func stopTraining(saveCheckpoint: Bool = false) {
         guard trainingTask != nil else { return }
-        let trainerIsRunning: Bool
-        if case .training = state {
-            trainerIsRunning = true
+        let trainerIsRunning = if case .training = state {
+            true
         } else {
-            trainerIsRunning = false
+            false
         }
         let willSaveCheckpoint = saveCheckpoint && canSaveOnStop
         isStopping = true
@@ -1000,7 +1002,7 @@ final class TrainingService: ObservableObject {
     /// Whether training can produce a persisted pause checkpoint on stop.
     var canSaveOnStop: Bool {
         guard activeAdapterKind == .lora || activeAdapterKind == .lokr else { return false }
-        if case .training(let uiState) = state {
+        if case let .training(uiState) = state {
             return uiState.step > 0
         }
         return false
@@ -1086,11 +1088,10 @@ final class TrainingService: ObservableObject {
         fallback: TrainingCheckpoint?,
         hasBestWeights: Bool
     ) throws -> TrainingCheckpoint {
-        let uiState: TrainingUIState?
-        if case .training(let current) = state {
-            uiState = current
+        let uiState: TrainingUIState? = if case let .training(current) = state {
+            current
         } else {
-            uiState = nil
+            nil
         }
 
         let effectiveSampleCount = max(1, AdapterTrainingSplit.trainingSampleCount(total: sampleCount))
@@ -1100,16 +1101,16 @@ final class TrainingService: ObservableObject {
         let lossHistory = uiState?.lossHistory ?? fallback?.lossHistory ?? []
         let validationHistory = uiState?.validationHistory ?? fallback?.validationHistory ?? []
 
-        return TrainingCheckpoint(
+        return try TrainingCheckpoint(
             epoch: uiState?.epoch ?? fallback?.epoch ?? 0,
             globalStep: uiState?.step ?? fallback?.globalStep ?? 0,
             totalSteps: totalSteps,
             bestLoss: bestLoss ?? fallback?.bestLoss ?? validationHistory.map(\.loss).min() ?? lossHistory.min(),
             lossHistory: lossHistory,
             validationHistory: validationHistory,
-            weightsURL: try AdapterRegistry.currentWeightsURL(adapterID: adapterID),
-            bestWeightsURL: hasBestWeights ? try AdapterRegistry.bestWeightsURL(adapterID: adapterID) : nil,
-            optimizerStateURL: try AdapterRegistry.optimizerStateURL(adapterID: adapterID),
+            weightsURL: AdapterRegistry.currentWeightsURL(adapterID: adapterID),
+            bestWeightsURL: hasBestWeights ? AdapterRegistry.bestWeightsURL(adapterID: adapterID) : nil,
+            optimizerStateURL: AdapterRegistry.optimizerStateURL(adapterID: adapterID),
             config: config,
             baseModelID: activeModelID
         )
@@ -1189,11 +1190,10 @@ final class TrainingService: ObservableObject {
         let effectiveHeadroom = min(processHeadroom, systemAvailableMemory ?? processHeadroom)
         let layerCount = max(1, min(lokrConfig?.trainingLayerCount ?? config.trainingLayerCount ?? 4, 32))
         let projectionCount = injectionPatterns.count
-        let dimension: Int
-        if kind == .lokr {
-            dimension = max(1, lokrConfig?.linearDim ?? config.rank)
+        let dimension: Int = if kind == .lokr {
+            max(1, lokrConfig?.linearDim ?? config.rank)
         } else {
-            dimension = max(1, config.rank)
+            max(1, config.rank)
         }
 
         let unsupportedMessage: String? = nil
@@ -1215,23 +1215,41 @@ final class TrainingService: ObservableObject {
             warnings.append("MLX cache was cleared before measuring local training headroom.")
         }
         if projectionCount >= 8 {
-            warnings.append("Full Q/K/V/O attention has a much larger local memory and first-backward graph footprint than Q/V.")
+            warnings
+                .append(
+                    "Full Q/K/V/O attention has a much larger local memory and first-backward graph footprint than Q/V."
+                )
         }
         if kind == .lora, hasFullAttention, layerCount >= 12 {
-            warnings.append("Full Q/K/V/O LoRA across 12+ local XL layers is a large local shape; Q/V projections or Last 8 remain the safer starting point.")
+            warnings
+                .append(
+                    "Full Q/K/V/O LoRA across 12+ local XL layers is a large local shape; Q/V projections or Last 8 remain the safer starting point."
+                )
         }
         if kind == .lokr, hasFullAttention, layerCount >= 16 {
-            warnings.append("LoKR across 16+ local layers is sensitive on XL models; Q/V projection coverage is recommended.")
+            warnings
+                .append(
+                    "LoKR across 16+ local layers is sensitive on XL models; Q/V projection coverage is recommended."
+                )
         }
         if kind == .lokr, hasFullAttention, dimension > 32 {
-            warnings.append("Full Q/K/V/O LoKR above Linear Dim 32 is a large local shape; Linear Dim 32 or Q/V projections are recommended.")
+            warnings
+                .append(
+                    "Full Q/K/V/O LoKR above Linear Dim 32 is a large local shape; Linear Dim 32 or Q/V projections are recommended."
+                )
         }
         let requestedDropout = lokrConfig?.dropout ?? config.dropout
         if requestedDropout > 0 {
-            warnings.append("Local Swift/MLX adapter dropout uses explicit per-step MLX keys to avoid the confirmed implicit-RNG first-backward VJP stall.")
+            warnings
+                .append(
+                    "Local Swift/MLX adapter dropout uses explicit per-step MLX keys to avoid the confirmed implicit-RNG first-backward VJP stall."
+                )
         }
         if sampleCount >= 500 {
-            warnings.append("Large datasets raise the preflight reserve because preprocessing and optimizer state stay hot during training.")
+            warnings
+                .append(
+                    "Large datasets raise the preflight reserve because preprocessing and optimizer state stay hot during training."
+                )
         }
 
         return TrainingLocalPreflightReport(
@@ -1244,7 +1262,8 @@ final class TrainingService: ObservableObject {
             projectionCount: projectionCount,
             injectionPatterns: injectionPatterns,
             estimatedTrainablePathCount: layerCount * projectionCount,
-            estimatedTrainableTensorCount: layerCount * projectionCount * (kind == .lokr && lokrConfig?.weightDecompose == true ? 3 : 2),
+            estimatedTrainableTensorCount: layerCount * projectionCount *
+                (kind == .lokr && lokrConfig?.weightDecompose == true ? 3 : 2),
             cacheBeforeClearBytes: UInt64(max(0, beforeClear.cacheMemory)),
             activeMemoryBytes: activeMemory,
             cacheMemoryBytes: cacheMemory,
@@ -1269,11 +1288,10 @@ final class TrainingService: ObservableObject {
     ) -> UInt64 {
         let layerCount = max(1, min(lokrConfig?.trainingLayerCount ?? config.trainingLayerCount ?? 4, 32))
         let projectionCount = max(1, (lokrConfig?.injectionPatterns ?? config.injectionPatterns).count)
-        let dimension: Int
-        if kind == .lokr {
-            dimension = max(1, lokrConfig?.linearDim ?? config.rank)
+        let dimension: Int = if kind == .lokr {
+            max(1, lokrConfig?.linearDim ?? config.rank)
         } else {
-            dimension = max(1, config.rank)
+            max(1, config.rank)
         }
 
         var requirement = minimumTrainingHeadroomBytes
@@ -1289,7 +1307,7 @@ final class TrainingService: ObservableObject {
         if dimension >= 96 {
             requirement += bytesPerGiB
         }
-        if kind == .lokr && lokrConfig?.weightDecompose == true && layerCount >= 16 {
+        if kind == .lokr, lokrConfig?.weightDecompose == true, layerCount >= 16 {
             requirement += bytesPerGiB
         }
         if sampleCount >= 500 {
@@ -1387,7 +1405,7 @@ final class TrainingService: ObservableObject {
         var arraysToMaterialize = [
             frozenLatent,
             frozenEncoderStates,
-            frozenContextLatents
+            frozenContextLatents,
         ]
         arraysToMaterialize.append(frozenEncoderMask)
         eval(arraysToMaterialize)
@@ -1434,7 +1452,7 @@ final class TrainingService: ObservableObject {
         let start: Int
         if maxStart > 0 {
             var rng = SeededWindowRandomNumberGenerator(seed: seed)
-            start = Int.random(in: 0...maxStart, using: &rng)
+            start = Int.random(in: 0 ... maxStart, using: &rng)
         } else {
             start = 0
         }
@@ -1445,8 +1463,8 @@ final class TrainingService: ObservableObject {
         )
 
         return (
-            latent[0..., start..<end, 0...],
-            contextLatents[0..., start..<end, 0...]
+            latent[0..., start ..< end, 0...],
+            contextLatents[0..., start ..< end, 0...]
         )
     }
 
@@ -1455,12 +1473,12 @@ final class TrainingService: ObservableObject {
     /// but still selects different windows for different clips.
     static func windowSeed(trainingSeed: UInt64, clipIdentifier: String) -> UInt64 {
         // FNV-1a over "seed|clipIdentifier"
-        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        var hash: UInt64 = 0xCBF2_9CE4_8422_2325
         for byte in "\(trainingSeed)|\(clipIdentifier)".utf8 {
             hash ^= UInt64(byte)
             hash = hash &* 0x0000_0100_0000_01B3
         }
-        return hash == 0 ? 0x9e37_79b9_7f4a_7c15 : hash
+        return hash == 0 ? 0x9E37_79B9_7F4A_7C15 : hash
     }
 
     /// SplitMix64 — deterministic RNG for window selection.
@@ -1468,14 +1486,14 @@ final class TrainingService: ObservableObject {
         private var state: UInt64
 
         init(seed: UInt64) {
-            self.state = seed == 0 ? 0x9e37_79b9_7f4a_7c15 : seed
+            state = seed == 0 ? 0x9E37_79B9_7F4A_7C15 : seed
         }
 
         mutating func next() -> UInt64 {
-            state &+= 0x9e37_79b9_7f4a_7c15
+            state &+= 0x9E37_79B9_7F4A_7C15
             var z = state
-            z = (z ^ (z >> 30)) &* 0xbf58_476d_1ce4_e5b9
-            z = (z ^ (z >> 27)) &* 0x94d0_49bb_1331_11eb
+            z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+            z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
             return z ^ (z >> 31)
         }
     }
@@ -1608,7 +1626,7 @@ enum TrainingError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .noSamples:
-            return "No valid training samples"
+            "No valid training samples"
         }
     }
 }

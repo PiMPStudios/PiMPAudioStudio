@@ -16,20 +16,22 @@ public actor SFXVAEActor {
     private var loaded = false
 
     public init(config: SFXVAEConfig) {
-        self.model = SFXVAEModel(config: config)
+        model = SFXVAEModel(config: config)
     }
 
-    public var isLoaded: Bool { loaded }
+    public var isLoaded: Bool {
+        loaded
+    }
 
     public func loadWeights(_ weights: [(String, MLXArray)]) {
-        let suppliedKeys = Set(weights.map { $0.0 })
+        let suppliedKeys = Set(weights.map(\.0))
         model.update(parameters: ModuleParameters.unflattened(weights))
         eval(model.parameters())
 
-        let modelKeys = Set(model.parameters().flattened().map { $0.0 })
-        let matched   = suppliedKeys.intersection(modelKeys).count
-        let supplied  = suppliedKeys.count
-        let inModel   = modelKeys.count
+        let modelKeys = Set(model.parameters().flattened().map(\.0))
+        let matched = suppliedKeys.intersection(modelKeys).count
+        let supplied = suppliedKeys.count
+        let inModel = modelKeys.count
         AudioDiagnostics.note(
             "SFX_VAE_LOAD",
             "supplied=\(supplied) model=\(inModel) matched=\(matched)"
@@ -67,7 +69,10 @@ public actor SFXVAEActor {
             let ch1 = result[0..., 0..., 1]
             let dc0 = ch0.mean().item(Float.self)
             let dc1 = ch1.mean().item(Float.self)
-            AudioDiagnostics.note("SFX_VAE_DC", "ch0_mean=\(String(format:"%.4f",dc0)) ch1_mean=\(String(format:"%.4f",dc1))")
+            AudioDiagnostics.note(
+                "SFX_VAE_DC",
+                "ch0_mean=\(String(format: "%.4f", dc0)) ch1_mean=\(String(format: "%.4f", dc1))"
+            )
         }
         return result
     }

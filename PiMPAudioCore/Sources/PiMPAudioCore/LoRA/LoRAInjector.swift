@@ -4,7 +4,6 @@ import MLXNN
 
 /// Static utility for injecting and removing LoRA adapters from DiTDecoder layers.
 public enum LoRAInjector {
-
     // MARK: - Public API
 
     /// Inject LoRA adapters into the model's target layers, replacing Linear with LoRALinear.
@@ -201,20 +200,20 @@ public enum LoRAInjector {
 
     private static func resolveAttentionProj(_ attn: DiTAttention, proj: String) -> Linear? {
         switch proj {
-        case "qProj": return attn.qProj
-        case "kProj": return attn.kProj
-        case "vProj": return attn.vProj
-        case "oProj": return attn.oProj
-        default: return nil
+        case "qProj": attn.qProj
+        case "kProj": attn.kProj
+        case "vProj": attn.vProj
+        case "oProj": attn.oProj
+        default: nil
         }
     }
 
     private static func resolveMLPProj(_ mlp: SwiGLUMLP, proj: String) -> Linear? {
         switch proj {
-        case "gateProj": return mlp.gateProj
-        case "upProj": return mlp.upProj
-        case "downProj": return mlp.downProj
-        default: return nil
+        case "gateProj": mlp.gateProj
+        case "upProj": mlp.upProj
+        case "downProj": mlp.downProj
+        default: nil
         }
     }
 
@@ -264,8 +263,7 @@ public enum LoRAInjector {
 
 // MARK: - Multi-Adapter Stacking
 
-extension LoRAInjector {
-
+public extension LoRAInjector {
     /// Apply a full adapter stack to the model. Replaces all current contributions
     /// on every LoRALinear layer matching the given paths.
     ///
@@ -274,7 +272,7 @@ extension LoRAInjector {
     /// layer being updated are attached. (Previously every contribution was
     /// attached to every layer, which would matmul wrong-shaped / wrong-layer
     /// tensors at inference.)
-    public static func applyStack(
+    static func applyStack(
         model: DiTDecoder,
         contributions: [LoRAContribution],
         paths: [String]
@@ -298,7 +296,7 @@ extension LoRAInjector {
     /// Weights are keyed by path (e.g. "layers.0.selfAttn.qProj.loraA").
     /// - Returns: Number of paths that received weights.
     @discardableResult
-    public static func addContribution(
+    static func addContribution(
         model: DiTDecoder,
         adapterID: String,
         displayName: String?,
@@ -368,7 +366,7 @@ extension LoRAInjector {
     }
 
     /// Remove all contributions from every LoRALinear layer (revert to base model behavior).
-    public static func clearContributions(model: DiTDecoder, paths: [String]) {
+    static func clearContributions(model: DiTDecoder, paths: [String]) {
         for path in paths {
             guard let (layerIdx, subPath) = parsePath(path),
                   layerIdx < model.layers.count else { continue }
@@ -381,7 +379,7 @@ extension LoRAInjector {
     }
 
     /// Update strength for a single adapter across all LoRALinear layers.
-    public static func setStrength(
+    static func setStrength(
         model: DiTDecoder,
         adapterID: String,
         strength: Float,
@@ -399,7 +397,7 @@ extension LoRAInjector {
     }
 
     /// Remove a specific adapter's contributions from all LoRALinear layers.
-    public static func removeContribution(
+    static func removeContribution(
         model: DiTDecoder,
         adapterID: String,
         paths: [String]

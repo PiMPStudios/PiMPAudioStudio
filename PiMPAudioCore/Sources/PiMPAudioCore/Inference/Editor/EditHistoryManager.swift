@@ -9,24 +9,30 @@ public class EditHistoryManager: @unchecked Sendable {
     private let maxSnapshotsLimit: Int
 
     public init(maxSnapshots: Int = 20) {
-        self.maxSnapshotsLimit = maxSnapshots
+        maxSnapshotsLimit = maxSnapshots
     }
 
     /// Whether there is a previous snapshot to revert to.
-    public var canUndo: Bool { currentIndex > 0 }
+    public var canUndo: Bool {
+        currentIndex > 0
+    }
 
     /// Whether there is a next snapshot to advance to.
-    public var canRedo: Bool { currentIndex < stack.count - 1 }
+    public var canRedo: Bool {
+        currentIndex < stack.count - 1
+    }
 
     /// Total number of snapshots currently stored in the stack.
-    public var stackCount: Int { stack.count }
+    public var stackCount: Int {
+        stack.count
+    }
 
     /// Returns the most recent snapshots (up to 5) up to and including the current position.
     public var recentEdits: [EditSnapshot] {
         guard !stack.isEmpty else { return [] }
         let end = currentIndex + 1
         let start = max(0, end - 5)
-        return Array(stack[start..<end])
+        return Array(stack[start ..< end])
     }
 
     /// The snapshot at the current position, or `nil` if the stack is empty.

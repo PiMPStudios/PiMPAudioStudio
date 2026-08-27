@@ -1,5 +1,5 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 
 struct DatasetReviewView: View {
     @EnvironmentObject private var playerService: AudioPlayerService
@@ -121,7 +121,6 @@ struct DatasetReviewView: View {
         .padding()
     }
 
-    @ViewBuilder
     private func reviewBody(_ document: DatasetPackageDocument) -> some View {
         VStack(spacing: 0) {
             readinessStrip(document)
@@ -194,7 +193,7 @@ struct DatasetReviewView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-            case .running(let step):
+            case let .running(step):
                 HStack(spacing: 8) {
                     ProgressView()
                         .controlSize(.small)
@@ -204,11 +203,11 @@ struct DatasetReviewView: View {
                     Button("Stop", role: .destructive) { enrichment.cancel() }
                         .controlSize(.mini)
                 }
-            case .complete(let result):
+            case let .complete(result):
                 Text(result.summary)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-            case .failed(let message):
+            case let .failed(message):
                 Text(message)
                     .font(.caption)
                     .foregroundStyle(.orange)
@@ -267,12 +266,12 @@ struct DatasetReviewView: View {
                     ? (clip.isApproved ? "checkmark.circle.fill" : "waveform")
                     : "circle.dashed"
             )
-                .foregroundStyle(
-                    clip.includeInTraining
-                        ? (clip.isApproved ? .green : .secondary)
-                        : Color.secondary.opacity(0.55)
-                )
-                .frame(width: 18)
+            .foregroundStyle(
+                clip.includeInTraining
+                    ? (clip.isApproved ? .green : .secondary)
+                    : Color.secondary.opacity(0.55)
+            )
+            .frame(width: 18)
             VStack(alignment: .leading, spacing: 3) {
                 Text(clip.displayName)
                     .font(.callout)
@@ -384,9 +383,12 @@ struct DatasetReviewView: View {
             } else {
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach(issues) { issue in
-                        Label(issue.message, systemImage: issue.severity == .blocker ? "xmark.octagon" : "exclamationmark.triangle")
-                            .font(.caption)
-                            .foregroundStyle(issue.severity == .blocker ? .red : .orange)
+                        Label(
+                            issue.message,
+                            systemImage: issue.severity == .blocker ? "xmark.octagon" : "exclamationmark.triangle"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(issue.severity == .blocker ? .red : .orange)
                     }
                 }
             }
@@ -513,7 +515,7 @@ struct DatasetReviewView: View {
                     GridRow {
                         Text("Effective Range")
                             .foregroundStyle(.secondary)
-                        Text("\(duration.formatted(.number.precision(.fractionLength(0...2))))s")
+                        Text("\(duration.formatted(.number.precision(.fractionLength(0 ... 2))))s")
                     }
                 }
                 if let sourceTrackID = clip.sourceTrackID {
@@ -714,20 +716,18 @@ struct DatasetReviewView: View {
 
     private func sourceBadge(_ text: String) -> some View {
         let source = text.isEmpty ? "unknown" : text
-        let color: Color = {
-            switch source {
-            case "manual", "dataset_review":
-                return .blue
-            case "sidecar", "csv":
-                return .teal
-            case "native-qwen3-asr", "ace-step-transcriber", "ace-step-captioner":
-                return .purple
-            case "none":
-                return .secondary
-            default:
-                return .orange
-            }
-        }()
+        let color: Color = switch source {
+        case "manual", "dataset_review":
+            .blue
+        case "sidecar", "csv":
+            .teal
+        case "native-qwen3-asr", "ace-step-transcriber", "ace-step-captioner":
+            .purple
+        case "none":
+            .secondary
+        default:
+            .orange
+        }
         return badge(source, color: color)
     }
 

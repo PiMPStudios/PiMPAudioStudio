@@ -1,12 +1,11 @@
 import Foundation
-import Testing
 @testable import PiMPAudioCore
+import Testing
 
 // MARK: - EditHistoryManager Tests
 
 @Suite("EditHistoryManager")
 struct EditHistoryManagerTests {
-
     // MARK: Helpers
 
     private func makeSnapshot(description: String) -> EditSnapshot {
@@ -92,7 +91,7 @@ struct EditHistoryManagerTests {
     @Test("Stack count is capped at maxSnapshots")
     func maxSnapshotsCap() {
         let manager = EditHistoryManager(maxSnapshots: 5)
-        for i in 1...10 {
+        for i in 1 ... 10 {
             manager.push(makeSnapshot(description: "snap\(i)"))
         }
         #expect(manager.stackCount == 5)
@@ -105,7 +104,7 @@ struct EditHistoryManagerTests {
     @Test("recentEdits returns up to 5 most recent snapshots")
     func recentEditsReturnsLastFive() {
         let manager = EditHistoryManager()
-        for i in 1...8 {
+        for i in 1 ... 8 {
             manager.push(makeSnapshot(description: "edit\(i)"))
         }
         let recent = manager.recentEdits

@@ -1,8 +1,8 @@
-import Testing
 import AVFoundation
 import Foundation
 import MLX
 @testable import PiMPAudioCore
+import Testing
 
 @Suite("WAVWriter")
 struct WAVWriterTests {
@@ -20,16 +20,16 @@ struct WAVWriterTests {
         let expectedSize = 44 + (2 * numFrames * 2)
         #expect(data.count == expectedSize)
 
-        let riff = String(data: data[0..<4], encoding: .ascii)
+        let riff = String(data: data[0 ..< 4], encoding: .ascii)
         #expect(riff == "RIFF")
 
-        let wave = String(data: data[8..<12], encoding: .ascii)
+        let wave = String(data: data[8 ..< 12], encoding: .ascii)
         #expect(wave == "WAVE")
 
-        let sampleRate = data[24...27].withUnsafeBytes { $0.load(as: UInt32.self) }
+        let sampleRate = data[24 ... 27].withUnsafeBytes { $0.load(as: UInt32.self) }
         #expect(sampleRate == 44100)
 
-        let channels = data[22...23].withUnsafeBytes { $0.load(as: UInt16.self) }
+        let channels = data[22 ... 23].withUnsafeBytes { $0.load(as: UInt16.self) }
         #expect(channels == 2)
     }
 
@@ -53,7 +53,7 @@ struct WAVWriterTests {
     func producesAVFoundationReadableWAV() throws {
         let sampleRate = 44100
         let numFrames = 4096
-        let tone = (0..<numFrames).map { index in
+        let tone = (0 ..< numFrames).map { index in
             Double((index % 64) - 32) / 128.0
         }
         let samples = MLXArray(converting: tone, [1, numFrames])
@@ -79,8 +79,8 @@ struct WAVWriterTests {
         defer { try? FileManager.default.removeItem(at: url) }
 
         let data = try Data(contentsOf: url)
-        let firstSample = data[44...45].withUnsafeBytes { $0.load(as: Int16.self) }
-        let secondSample = data[46...47].withUnsafeBytes { $0.load(as: Int16.self) }
+        let firstSample = data[44 ... 45].withUnsafeBytes { $0.load(as: Int16.self) }
+        let secondSample = data[46 ... 47].withUnsafeBytes { $0.load(as: Int16.self) }
         #expect(firstSample == 32767)
         #expect(secondSample == -32767)
     }

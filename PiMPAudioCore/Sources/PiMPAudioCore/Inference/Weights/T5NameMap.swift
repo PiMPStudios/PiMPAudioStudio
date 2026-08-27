@@ -38,13 +38,21 @@ import Foundation
 public enum T5NameMap {
     public static func mapKey(_ key: String) -> String? {
         // Always-keep top-level shared embedding.
-        if key == "shared.weight" { return "shared.weight" }
+        if key == "shared.weight" {
+            return "shared.weight"
+        }
         // @ModuleInfo key is "final_layer_norm", NOT the Swift property name "finalLayerNorm".
-        if key == "encoder.final_layer_norm.weight" { return "final_layer_norm.weight" }
+        if key == "encoder.final_layer_norm.weight" {
+            return "final_layer_norm.weight"
+        }
 
         // Drop decoder + lm_head (T5 encoder-only usage).
-        if key.hasPrefix("decoder.") { return nil }
-        if key.hasPrefix("lm_head.") { return nil }
+        if key.hasPrefix("decoder.") {
+            return nil
+        }
+        if key.hasPrefix("lm_head.") {
+            return nil
+        }
 
         // encoder.block.N.layer.0.* → blocks.N.layer0_*
         // encoder.block.N.layer.1.* → blocks.N.layer1_*
@@ -53,13 +61,13 @@ public enum T5NameMap {
         // rest: "N.layer.X.<...>"
         guard let firstDot = rest.firstIndex(of: ".") else { return nil }
         let blockIdx = String(rest[..<firstDot])
-        rest = String(rest[rest.index(after: firstDot)...])  // "layer.X.<...>"
+        rest = String(rest[rest.index(after: firstDot)...]) // "layer.X.<...>"
 
         guard rest.hasPrefix("layer.") else { return nil }
-        rest = String(rest.dropFirst("layer.".count))  // "X.<...>"
+        rest = String(rest.dropFirst("layer.".count)) // "X.<...>"
         guard let layerDot = rest.firstIndex(of: ".") else { return nil }
-        let layerIdx = String(rest[..<layerDot])  // "0" or "1"
-        rest = String(rest[rest.index(after: layerDot)...])  // remaining
+        let layerIdx = String(rest[..<layerDot]) // "0" or "1"
+        rest = String(rest[rest.index(after: layerDot)...]) // remaining
 
         switch layerIdx {
         case "0":

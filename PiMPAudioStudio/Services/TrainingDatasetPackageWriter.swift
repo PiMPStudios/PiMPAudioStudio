@@ -112,10 +112,10 @@ enum TrainingDatasetPackageError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidPackage(let message):
-            return "Dataset package is not ready to export: \(message)"
-        case .exportFailed(let message):
-            return "Dataset package export failed: \(message)"
+        case let .invalidPackage(message):
+            "Dataset package is not ready to export: \(message)"
+        case let .exportFailed(message):
+            "Dataset package export failed: \(message)"
         }
     }
 }
@@ -928,12 +928,24 @@ enum TrainingDatasetPackageWriter {
 
     private static func audioFileJSONObject(_ file: DatasetAudioFileV2) -> [String: Any] {
         var object: [String: Any] = [:]
-        if let format = file.format { object["format"] = format }
-        if let byteSize = file.byteSize { object["byte_size"] = byteSize }
-        if let duration = file.durationSeconds { object["duration_seconds"] = seconds(duration) }
-        if let sampleRate = file.sampleRate { object["sample_rate"] = sampleRate }
-        if let channels = file.channels { object["channels"] = channels }
-        if let sha256 = file.sha256 { object["sha256"] = sha256 }
+        if let format = file.format {
+            object["format"] = format
+        }
+        if let byteSize = file.byteSize {
+            object["byte_size"] = byteSize
+        }
+        if let duration = file.durationSeconds {
+            object["duration_seconds"] = seconds(duration)
+        }
+        if let sampleRate = file.sampleRate {
+            object["sample_rate"] = sampleRate
+        }
+        if let channels = file.channels {
+            object["channels"] = channels
+        }
+        if let sha256 = file.sha256 {
+            object["sha256"] = sha256
+        }
         return object
     }
 
@@ -1102,7 +1114,7 @@ enum TrainingDatasetPackageWriter {
         }
 
         for index in package.assets.indices
-        where package.assets[index].role == .fullMix || package.assets[index].role == .clip {
+            where package.assets[index].role == .fullMix || package.assets[index].role == .clip {
             let asset = package.assets[index]
             guard let record = recordsByID[asset.id] ?? recordsByFile[asset.file.path] else { continue }
             package.assets[index].annotation = packageV2Annotation(
@@ -1232,7 +1244,10 @@ enum TrainingDatasetPackageWriter {
         if FileManager.default.fileExists(atPath: backupDirectory.path(percentEncoded: false)) {
             backupDirectory = outputDirectory
                 .appendingPathComponent(reviewBackupsDirectoryName, isDirectory: true)
-                .appendingPathComponent("\(timestamp)_\(slug(reason))_\(UUID().uuidString.prefix(8))", isDirectory: true)
+                .appendingPathComponent(
+                    "\(timestamp)_\(slug(reason))_\(UUID().uuidString.prefix(8))",
+                    isDirectory: true
+                )
         }
 
         let filesToCopy = [
@@ -1298,16 +1313,15 @@ enum TrainingDatasetPackageWriter {
 
         let statuses = manifests.compactMap { $0["status"] as? String }
         let nonWaitingStatuses = statuses.filter { $0 != "waiting_for_bundle" }
-        let manifestStatus: String
-        if statuses.contains("ready_for_preprocess") {
-            manifestStatus = "ready_for_preprocess"
+        let manifestStatus = if statuses.contains("ready_for_preprocess") {
+            "ready_for_preprocess"
         } else if statuses.contains("partial") ||
             (!nonWaitingStatuses.isEmpty && nonWaitingStatuses.count < statuses.count) {
-            manifestStatus = "partial"
-        } else if !nonWaitingStatuses.isEmpty && nonWaitingStatuses.allSatisfy({ $0 == "complete" }) {
-            manifestStatus = "complete"
+            "partial"
+        } else if !nonWaitingStatuses.isEmpty, nonWaitingStatuses.allSatisfy({ $0 == "complete" }) {
+            "complete"
         } else {
-            manifestStatus = "waiting_for_bundles"
+            "waiting_for_bundles"
         }
 
         let manifest: [String: Any] = [
@@ -1365,7 +1379,10 @@ enum TrainingDatasetPackageWriter {
 
         let stagingRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("PiMPAudioPackageExport-\(UUID().uuidString)", isDirectory: true)
-        let stagedPackageDirectory = stagingRoot.appendingPathComponent(outputDirectory.lastPathComponent, isDirectory: true)
+        let stagedPackageDirectory = stagingRoot.appendingPathComponent(
+            outputDirectory.lastPathComponent,
+            isDirectory: true
+        )
         try FileManager.default.createDirectory(at: stagedPackageDirectory, withIntermediateDirectories: true)
         defer {
             try? FileManager.default.removeItem(at: stagingRoot)
@@ -1472,7 +1489,8 @@ enum TrainingDatasetPackageWriter {
         guard shouldIncludeArchiveItem(named: name) else { return }
 
         var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: sourceURL.path(percentEncoded: false), isDirectory: &isDirectory) else {
+        guard FileManager.default.fileExists(atPath: sourceURL.path(percentEncoded: false), isDirectory: &isDirectory)
+        else {
             return
         }
 
@@ -1498,9 +1516,15 @@ enum TrainingDatasetPackageWriter {
 
     private static func shouldIncludeArchiveItem(named name: String) -> Bool {
         guard !name.isEmpty else { return false }
-        if name == ".DS_Store" { return false }
-        if name.hasPrefix("._") { return false }
-        if name == reviewBackupsDirectoryName { return false }
+        if name == ".DS_Store" {
+            return false
+        }
+        if name.hasPrefix("._") {
+            return false
+        }
+        if name == reviewBackupsDirectoryName {
+            return false
+        }
         return true
     }
 
@@ -1854,13 +1878,12 @@ enum TrainingDatasetPackageWriter {
         let durations = metadata.compactMap(\.durationSeconds)
         let byteSizes = metadata.compactMap(\.byteSize)
         let collectedCount = metadata.filter { $0.status == "ok" }.count
-        let status: String
-        if metadata.isEmpty || collectedCount == 0 {
-            status = "audio_properties_unavailable"
+        let status = if metadata.isEmpty || collectedCount == 0 {
+            "audio_properties_unavailable"
         } else if collectedCount == metadata.count {
-            status = "audio_properties_collected"
+            "audio_properties_collected"
         } else {
-            status = "partial_audio_properties"
+            "partial_audio_properties"
         }
 
         var durationSummary: [String: Any] = [
@@ -2183,15 +2206,14 @@ enum TrainingDatasetPackageWriter {
         let index = readJSONObject(from: outputDirectory.appendingPathComponent(indexFile))
         let cachedEntries = index?["entries"] as? [[String: Any]] ?? []
         let cachedCount = cachedEntries.count
-        let status: String
-        if exists, !clips.isEmpty, cachedCount >= clips.count {
-            status = "complete"
+        let status = if exists, !clips.isEmpty, cachedCount >= clips.count {
+            "complete"
         } else if exists, !clips.isEmpty, cachedCount > 0 {
-            status = "partial"
+            "partial"
         } else if exists, !clips.isEmpty {
-            status = "ready_for_preprocess"
+            "ready_for_preprocess"
         } else {
-            status = "waiting_for_bundle"
+            "waiting_for_bundle"
         }
         return [
             "name": name,
@@ -2377,17 +2399,17 @@ enum TrainingDatasetPackageWriter {
     private static func doubleValue(_ value: Any?) -> Double? {
         switch value {
         case let number as NSNumber:
-            return number.doubleValue
+            number.doubleValue
         case let double as Double:
-            return double
+            double
         case let float as Float:
-            return Double(float)
+            Double(float)
         case let int as Int:
-            return Double(int)
+            Double(int)
         case let string as String:
-            return Double(string)
+            Double(string)
         default:
-            return nil
+            nil
         }
     }
 
@@ -2535,13 +2557,13 @@ enum TrainingDatasetPackageWriter {
     private static func boolValue(_ value: Any?) -> Bool? {
         switch value {
         case let bool as Bool:
-            return bool
+            bool
         case let number as NSNumber:
-            return number.boolValue
+            number.boolValue
         case let string as String:
-            return ["true", "yes", "1"].contains(string.lowercased())
+            ["true", "yes", "1"].contains(string.lowercased())
         default:
-            return nil
+            nil
         }
     }
 

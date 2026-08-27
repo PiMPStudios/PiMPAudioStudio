@@ -1,6 +1,6 @@
-import SwiftUI
-import PiMPAudioCore
 import AppKit
+import PiMPAudioCore
+import SwiftUI
 
 struct MainShellView: View {
     @EnvironmentObject private var appState: AppState
@@ -176,9 +176,13 @@ struct MainShellView: View {
                 }
                 LabeledContent("Guidance") {
                     HStack(spacing: 6) {
-                        TextField("7.5", value: $generationParameters.guidanceScale, format: .number.precision(.fractionLength(1)))
-                            .multilineTextAlignment(.trailing)
-                            .disabled(generationParameters.guidancePreset.overridesGuidanceScale)
+                        TextField(
+                            "7.5",
+                            value: $generationParameters.guidanceScale,
+                            format: .number.precision(.fractionLength(1))
+                        )
+                        .multilineTextAlignment(.trailing)
+                        .disabled(generationParameters.guidancePreset.overridesGuidanceScale)
                         if let override = generationParameters.guidancePreset.guidanceScaleOverride {
                             Text("→ \(String(format: "%.1f", override))")
                                 .font(.caption)
@@ -188,9 +192,11 @@ struct MainShellView: View {
                     }
                 }
                 if generationParameters.guidancePreset.overridesGuidanceScale {
-                    Text("\(generationParameters.guidancePreset.displayName) forces guidance \(String(format: "%.1f", generationParameters.guidancePreset.guidanceScaleOverride ?? 0))")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                    Text(
+                        "\(generationParameters.guidancePreset.displayName) forces guidance \(String(format: "%.1f", generationParameters.guidancePreset.guidanceScaleOverride ?? 0))"
+                    )
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
                 }
             }
             ModelInspectorSection()
@@ -201,9 +207,9 @@ struct MainShellView: View {
 
     private var resolvedPipelineName: String {
         switch generationParameters.pipelineOverride {
-        case .aceStep: return "ACE-Step"
-        case .stableAudio: return "Stable Audio"
-        case .auto: return "Auto"
+        case .aceStep: "ACE-Step"
+        case .stableAudio: "Stable Audio"
+        case .auto: "Auto"
         }
     }
 }
@@ -251,11 +257,13 @@ private struct BuildDatasetsView: View {
                             .foregroundStyle(.secondary)
                         Text("Select a Dataset")
                             .font(.headline)
-                        Text("Build or open a package to review captions, lyrics, BPM, key, stems, and training readiness.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                            .frame(maxWidth: 420)
+                        Text(
+                            "Build or open a package to review captions, lyrics, BPM, key, stems, and training readiness."
+                        )
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 420)
                     }
                     .padding()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -265,10 +273,14 @@ private struct BuildDatasetsView: View {
         .onAppear(perform: refreshPackages)
         .onChange(of: outputManager.directory) { _, _ in refreshPackages() }
         .onChange(of: showingLocalFilesSheet) { _, isShowing in
-            if !isShowing { refreshPackages() }
+            if !isShowing {
+                refreshPackages()
+            }
         }
         .onChange(of: showingYouTubeSheet) { _, isShowing in
-            if !isShowing { refreshPackages() }
+            if !isShowing {
+                refreshPackages()
+            }
         }
         .sheet(isPresented: $showingLocalFilesSheet) {
             LocalFilesImportSheet { directory in
@@ -557,7 +569,9 @@ private struct BuildTrainingView: View {
                 Task { await runPodService.terminatePod(id: pod.id) }
             }
         } message: {
-            Text("This permanently deletes the RunPod pod and releases its storage billing. Download anything you need from the pod first; data not stored in a network volume can be lost.")
+            Text(
+                "This permanently deletes the RunPod pod and releases its storage billing. Download anything you need from the pod first; data not stored in a network volume can be lost."
+            )
         }
         .onChange(of: outputManager.directory) { _, _ in
             refreshRemotePackages()
@@ -593,7 +607,8 @@ private struct BuildTrainingView: View {
                 Label("Train from Files\u{2026}", systemImage: "graduationcap")
             }
             .buttonStyle(.borderedProminent)
-            .disabled(selectedTrainingMode.localAdapterKind == nil || !canStartNewTraining || trainingPresentation != nil)
+            .disabled(selectedTrainingMode
+                .localAdapterKind == nil || !canStartNewTraining || trainingPresentation != nil)
         }
         .padding()
     }
@@ -660,7 +675,7 @@ private struct BuildTrainingView: View {
             emptyStatus("Ready", systemImage: "graduationcap")
         case .loadingModels:
             progressStatus(title: "Loading Models", detail: "Preparing ACE-Step training models.")
-        case .preparingDataset(let current, let total):
+        case let .preparingDataset(current, total):
             VStack(spacing: 12) {
                 Text("Preparing Dataset")
                     .font(.headline)
@@ -671,7 +686,7 @@ private struct BuildTrainingView: View {
                     .frame(maxWidth: 320)
             }
             .padding()
-        case .training(let uiState):
+        case let .training(uiState):
             VStack(spacing: 14) {
                 Text("Training")
                     .font(.headline)
@@ -696,7 +711,7 @@ private struct BuildTrainingView: View {
             .padding()
         case .saving:
             progressStatus(title: "Saving Adapter", detail: "Writing adapter weights.")
-        case .complete(let adapter):
+        case let .complete(adapter):
             VStack(spacing: 10) {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.largeTitle)
@@ -710,7 +725,7 @@ private struct BuildTrainingView: View {
             .padding()
         case .paused:
             emptyStatus("Paused", systemImage: "pause.circle")
-        case .failed(let message):
+        case let .failed(message):
             statusMessage("Training Failed", message: message, systemImage: "exclamationmark.triangle", color: .red)
         case .cancelled:
             emptyStatus("Cancelled", systemImage: "xmark.circle")
@@ -720,9 +735,9 @@ private struct BuildTrainingView: View {
     private var canStartNewTraining: Bool {
         switch trainingService.state {
         case .loadingModels, .preparingDataset, .training, .saving:
-            return false
+            false
         default:
-            return true
+            true
         }
     }
 
@@ -862,7 +877,8 @@ private struct BuildTrainingView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
-                .disabled(selectedRemotePackage == nil || selectedRemotePackage?.isValid == false || isExportingRemotePackage)
+                .disabled(selectedRemotePackage == nil || selectedRemotePackage?
+                    .isValid == false || isExportingRemotePackage)
             }
             .padding()
 
@@ -939,13 +955,13 @@ private struct BuildTrainingView: View {
             }
 
             Section("Run") {
-                Stepper(value: $remoteEpochs, in: 1...300, step: 10) {
+                Stepper(value: $remoteEpochs, in: 1 ... 300, step: 10) {
                     LabeledContent("Epochs", value: "\(remoteEpochs)")
                 }
-                Stepper(value: $remoteSaveEvery, in: 1...50, step: 1) {
+                Stepper(value: $remoteSaveEvery, in: 1 ... 50, step: 1) {
                     LabeledContent("Save Every", value: "\(remoteSaveEvery)")
                 }
-                Stepper(value: $remoteSeed, in: 0...999_999, step: 1) {
+                Stepper(value: $remoteSeed, in: 0 ... 999_999, step: 1) {
                     LabeledContent("Seed", value: "\(remoteSeed)")
                 }
             }
@@ -988,9 +1004,11 @@ private struct BuildTrainingView: View {
             )
 
             Section {
-                Text("The zip includes the reviewed package, remote_job.json, README_REMOTE_GPU.md, and run_remote_training.sh. Provider secrets are not included.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Text(
+                    "The zip includes the reviewed package, remote_job.json, README_REMOTE_GPU.md, and run_remote_training.sh. Provider secrets are not included."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
@@ -1284,9 +1302,9 @@ private struct BuildTrainingView: View {
     private func adapterTitle(for adapterKind: AdapterKind) -> String {
         switch adapterKind {
         case .lora:
-            return "LoRA"
+            "LoRA"
         case .lokr:
-            return "LoKR"
+            "LoKR"
         }
     }
 
@@ -1472,24 +1490,26 @@ private enum BuildTrainingMode: String, CaseIterable, Identifiable {
     case lokr
     case remote
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     var title: String {
         switch self {
-        case .lora: return "LoRA"
-        case .lokr: return "LoKR"
-        case .remote: return "Remote GPU"
+        case .lora: "LoRA"
+        case .lokr: "LoKR"
+        case .remote: "Remote GPU"
         }
     }
 
     var localAdapterKind: AdapterKind? {
         switch self {
         case .lora:
-            return .lora
+            .lora
         case .lokr:
-            return .lokr
+            .lokr
         case .remote:
-            return nil
+            nil
         }
     }
 }
@@ -1498,19 +1518,21 @@ private enum RemoteJobRecipe: String, CaseIterable, Identifiable {
     case narrow
     case wide
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     var title: String {
         switch self {
-        case .narrow: return "Narrow"
-        case .wide: return "Wide"
+        case .narrow: "Narrow"
+        case .wide: "Wide"
         }
     }
 
     func settings(for adapterKind: AdapterKind) -> RemoteJobRecipeSettings {
         switch (adapterKind, self) {
         case (.lora, .narrow):
-            return RemoteJobRecipeSettings(
+            RemoteJobRecipeSettings(
                 rank: 64,
                 alpha: 64,
                 lokrLinearDim: nil,
@@ -1528,7 +1550,7 @@ private enum RemoteJobRecipe: String, CaseIterable, Identifiable {
                 maxDurationSeconds: 240
             )
         case (.lora, .wide):
-            return RemoteJobRecipeSettings(
+            RemoteJobRecipeSettings(
                 rank: 96,
                 alpha: 192,
                 lokrLinearDim: nil,
@@ -1546,7 +1568,7 @@ private enum RemoteJobRecipe: String, CaseIterable, Identifiable {
                 maxDurationSeconds: 240
             )
         case (.lokr, .narrow):
-            return RemoteJobRecipeSettings(
+            RemoteJobRecipeSettings(
                 rank: 32,
                 alpha: 64,
                 lokrLinearDim: 32,
@@ -1564,7 +1586,7 @@ private enum RemoteJobRecipe: String, CaseIterable, Identifiable {
                 maxDurationSeconds: 240
             )
         case (.lokr, .wide):
-            return RemoteJobRecipeSettings(
+            RemoteJobRecipeSettings(
                 rank: 128,
                 alpha: 256,
                 lokrLinearDim: 128,
@@ -1608,24 +1630,26 @@ private enum RemoteJobBundle: String, CaseIterable, Identifiable {
     case instrumental
     case vocals
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     var title: String {
         switch self {
-        case .fullMix: return "Full Mix"
-        case .instrumental: return "Instrumental"
-        case .vocals: return "Vocals"
+        case .fullMix: "Full Mix"
+        case .instrumental: "Instrumental"
+        case .vocals: "Vocals"
         }
     }
 
     var fileName: String {
         switch self {
         case .fullMix:
-            return TrainingDatasetPackageWriter.fullMixBundleFileName
+            TrainingDatasetPackageWriter.fullMixBundleFileName
         case .instrumental:
-            return TrainingDatasetPackageWriter.instrumentalBundleFileName
+            TrainingDatasetPackageWriter.instrumentalBundleFileName
         case .vocals:
-            return TrainingDatasetPackageWriter.vocalBundleFileName
+            TrainingDatasetPackageWriter.vocalBundleFileName
         }
     }
 }
@@ -1635,29 +1659,31 @@ private enum RemoteJobBaseModel: String, CaseIterable, Identifiable {
     case xlBase
     case xlTurbo
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     var title: String {
         switch self {
-        case .xlSFT: return "ACE-Step XL SFT"
-        case .xlBase: return "ACE-Step XL Base"
-        case .xlTurbo: return "ACE-Step XL Turbo"
+        case .xlSFT: "ACE-Step XL SFT"
+        case .xlBase: "ACE-Step XL Base"
+        case .xlTurbo: "ACE-Step XL Turbo"
         }
     }
 
     var appModelID: String {
         switch self {
-        case .xlSFT: return "ace-step-dit-xl-sft"
-        case .xlBase: return "ace-step-dit-xl-base"
-        case .xlTurbo: return "ace-step-dit-xl-turbo"
+        case .xlSFT: "ace-step-dit-xl-sft"
+        case .xlBase: "ace-step-dit-xl-base"
+        case .xlTurbo: "ace-step-dit-xl-turbo"
         }
     }
 
     var workerVariant: String {
         switch self {
-        case .xlSFT: return "ace-step-xl-sft"
-        case .xlBase: return "ace-step-xl-base"
-        case .xlTurbo: return "ace-step-xl-turbo"
+        case .xlSFT: "ace-step-xl-sft"
+        case .xlBase: "ace-step-xl-base"
+        case .xlTurbo: "ace-step-xl-turbo"
         }
     }
 }
@@ -1706,7 +1732,6 @@ private struct ModelInspectorSection: View {
 
     // MARK: ACE-Step row
 
-    @ViewBuilder
     private var aceStepRow: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
@@ -1747,7 +1772,6 @@ private struct ModelInspectorSection: View {
 
     // MARK: Stable Audio row
 
-    @ViewBuilder
     private var sfxRow: some View {
         HStack(spacing: 6) {
             statusDot(sfxStatusColor)
@@ -1772,42 +1796,42 @@ private struct ModelInspectorSection: View {
     private var activeDiTStatusColor: Color {
         guard let id = activeDiTID else { return .secondary }
         switch ditStatuses[id] {
-        case .ready:           return .green
-        case .downloading:     return .yellow
-        case .failed:          return .red
-        case .verifying:       return .yellow
+        case .ready: return .green
+        case .downloading: return .yellow
+        case .failed: return .red
+        case .verifying: return .yellow
         case .notDownloaded, nil: return .secondary
         }
     }
 
     private var sfxStatusColor: Color {
         switch sfxModelManager.downloadState {
-        case .downloaded:      return .green
-        case .downloading:     return .yellow
-        case .error:           return .red
-        case .notDownloaded:   return .secondary
+        case .downloaded: .green
+        case .downloading: .yellow
+        case .error: .red
+        case .notDownloaded: .secondary
         }
     }
 
     private var sfxStatusLabel: String {
         switch sfxModelManager.downloadState {
-        case .downloaded:             return "Ready"
-        case .downloading(let p):     return "\(Int(p * 100))%"
-        case .error(let msg):         return msg
-        case .notDownloaded:          return "Not downloaded"
+        case .downloaded: "Ready"
+        case let .downloading(p): "\(Int(p * 100))%"
+        case let .error(msg): msg
+        case .notDownloaded: "Not downloaded"
         }
     }
 
     private func shortVariantName(_ spec: ModelSpec) -> String {
         switch spec.id {
-        case "ace-step-dit-turbo":    return "Turbo  –  8 steps"
-        case "ace-step-dit-base":     return "Full  –  50 steps"
-        case "ace-step-dit-sft":      return "SFT  –  50 steps"
-        case "ace-step-dit-xl-turbo": return "XL Turbo  –  8 steps"
-        case "ace-step-dit-xl-base":  return "XL Base  –  50 steps"
-        case "ace-step-dit-xl-sft":   return "XL SFT  –  50 steps"
+        case "ace-step-dit-turbo": "Turbo  –  8 steps"
+        case "ace-step-dit-base": "Full  –  50 steps"
+        case "ace-step-dit-sft": "SFT  –  50 steps"
+        case "ace-step-dit-xl-turbo": "XL Turbo  –  8 steps"
+        case "ace-step-dit-xl-base": "XL Base  –  50 steps"
+        case "ace-step-dit-xl-sft": "XL SFT  –  50 steps"
         default:
-            return spec.id.contains("xl") ? "XL  –  50 steps" : spec.displayName
+            spec.id.contains("xl") ? "XL  –  50 steps" : spec.displayName
         }
     }
 
@@ -1821,24 +1845,30 @@ private struct ModelInspectorSection: View {
     }
 
     private func modelTierRank(_ id: String) -> Int {
-        if id.contains("turbo") { return 0 }
-        if id.contains("base") { return 1 }
-        if id.contains("sft") { return 2 }
+        if id.contains("turbo") {
+            return 0
+        }
+        if id.contains("base") {
+            return 1
+        }
+        if id.contains("sft") {
+            return 2
+        }
         return 50
     }
 
     private func loadModelInfo() async {
         let registry = appState.registry
         let allSpecs = await registry.specs(for: .aceStepDiT)
-        let runnable  = allSpecs.filter { $0.isRunnable }
-        let activeID  = await registry.activeModelID(for: .aceStepDiT)
+        let runnable = allSpecs.filter(\.isRunnable)
+        let activeID = await registry.activeModelID(for: .aceStepDiT)
         var statuses: [String: ModelStatus] = [:]
         for spec in runnable {
             statuses[spec.id] = await registry.status(for: spec.id)
         }
-        ditSpecs      = runnable
-        activeDiTID   = activeID
-        ditStatuses   = statuses
+        ditSpecs = runnable
+        activeDiTID = activeID
+        ditStatuses = statuses
     }
 
     private func switchDiT(to id: String) {

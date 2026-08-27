@@ -1,13 +1,13 @@
-import Testing
-import Foundation
 import AVFoundation
+import Foundation
 import MLX
 import MLXNN
 import MLXOptimizers
-@testable import PiMPAudioStudio
 @testable import PiMPAudioCore
+@testable import PiMPAudioStudio
+import Testing
 
-private func silentWAVData(sampleRate: Int = 22_050, channels: Int = 1, frameCount: Int = 2_205) -> Data {
+private func silentWAVData(sampleRate: Int = 22050, channels: Int = 1, frameCount: Int = 2205) -> Data {
     let bitsPerSample = 16
     let blockAlign = channels * bitsPerSample / 8
     let byteRate = sampleRate * blockAlign
@@ -45,7 +45,7 @@ private func silentWAVData(sampleRate: Int = 22_050, channels: Int = 1, frameCou
     return data
 }
 
-private func pcm16WAVData(sampleRate: Int = 22_050, samples: [Float]) -> Data {
+private func pcm16WAVData(sampleRate: Int = 22050, samples: [Float]) -> Data {
     let bitsPerSample = 16
     let channels = 1
     let blockAlign = channels * bitsPerSample / 8
@@ -94,7 +94,7 @@ private func pcm16WAVData(sampleRate: Int = 22_050, samples: [Float]) -> Data {
 }
 
 private func rhythmicChordWAVData(
-    sampleRate: Int = 22_050,
+    sampleRate: Int = 22050,
     durationSeconds: Int = 8,
     bpm: Double = 120,
     beatsPerBar: Int = 4
@@ -105,9 +105,9 @@ private func rhythmicChordWAVData(
         let time = Double(index) / Double(sampleRate)
         let chord =
             0.18 * sin(2 * Double.pi * 82.407 * time)
-            + 0.10 * sin(2 * Double.pi * 123.471 * time)
-            + 0.10 * sin(2 * Double.pi * 164.814 * time)
-            + 0.05 * sin(2 * Double.pi * 246.942 * time)
+                + 0.10 * sin(2 * Double.pi * 123.471 * time)
+                + 0.10 * sin(2 * Double.pi * 164.814 * time)
+                + 0.05 * sin(2 * Double.pi * 246.942 * time)
         samples[index] = Float(chord)
     }
 
@@ -123,7 +123,7 @@ private func rhythmicChordWAVData(
         let amplitude: Float = beatIndex.isMultiple(of: beatsPerBar)
             ? 0.85
             : 0.38
-        for tap in 0..<256 where beatStart + tap < frameCount {
+        for tap in 0 ..< 256 where beatStart + tap < frameCount {
             let envelope = 1 - (Float(tap) / 256)
             samples[beatStart + tap] += amplitude * envelope
         }
@@ -656,7 +656,7 @@ private func makeTestCommandFacade(root: URL) -> PiMPAudioCommandFacade {
         ),
         lossHistory: [1.5, 1.25],
         validationHistory: [
-            TrainingValidationPoint(epoch: 2, step: 25, loss: 1.125)
+            TrainingValidationPoint(epoch: 2, step: 25, loss: 1.125),
         ]
     )
     log.finish(
@@ -715,7 +715,7 @@ private func makeTestCommandFacade(root: URL) -> PiMPAudioCommandFacade {
     #expect((updateNorm ?? 0) > 0)
 }
 
-@Test func datasetAnnotationMetadataBuilderUsesSharedBackendDescriptor() throws {
+@Test func datasetAnnotationMetadataBuilderUsesSharedBackendDescriptor() {
     let metadata = DatasetAnnotationMetadata(
         updatedAt: Date(timeIntervalSince1970: 10),
         backend: DatasetAnnotationBackendDescriptor(
@@ -1004,8 +1004,8 @@ private func makeTestCommandFacade(root: URL) -> PiMPAudioCommandFacade {
 
     let sourceURL = datasetDir.appendingPathComponent("source.wav")
     let clipURL = clipsDir.appendingPathComponent("f001_clip_001.wav")
-    try silentWAVData(sampleRate: 22_050, channels: 1, frameCount: 2_205).write(to: sourceURL)
-    try silentWAVData(sampleRate: 22_050, channels: 1, frameCount: 2_205).write(to: clipURL)
+    try silentWAVData(sampleRate: 22050, channels: 1, frameCount: 2205).write(to: sourceURL)
+    try silentWAVData(sampleRate: 22050, channels: 1, frameCount: 2205).write(to: clipURL)
 
     try TrainingDatasetPackageWriter.writeLocalPackage(
         outputDirectory: datasetDir,
@@ -1021,10 +1021,10 @@ private func makeTestCommandFacade(root: URL) -> PiMPAudioCommandFacade {
     let clipAsset = try #require(package.assets.first { $0.role == .clip })
 
     #expect(sourceFile.format == "wav")
-    #expect(sourceFile.sampleRate == 22_050)
+    #expect(sourceFile.sampleRate == 22050)
     #expect(sourceFile.channels == 1)
     #expect(clipAsset.file.format == "wav")
-    #expect(clipAsset.file.sampleRate == 22_050)
+    #expect(clipAsset.file.sampleRate == 22050)
     #expect(clipAsset.file.channels == 1)
     #expect(clipAsset.annotation?.caption?.source == "filename")
     let duration = clipAsset.file.durationSeconds ?? 0
@@ -1648,8 +1648,8 @@ func localDatasetEnrichmentAnalyzesTempoKeyAndMeterFromAudio(
     #expect(imported.config.alpha == 4)
     #expect(imported.config.exactInjectionPatterns == ["selfAttn.qProj"])
 
-    let installed = Dictionary(
-        try await AdapterRegistry.loadWeights(adapterID: imported.id),
+    let installed = try await Dictionary(
+        AdapterRegistry.loadWeights(adapterID: imported.id),
         uniquingKeysWith: { _, last in last }
     )
     #expect(installed["layers.0.selfAttn.qProj.loraA"] != nil)
@@ -1816,8 +1816,10 @@ func localDatasetEnrichmentAnalyzesTempoKeyAndMeterFromAudio(
     let captionsData = try Data(contentsOf: datasetDir.appendingPathComponent("captions.json"))
     let captions = try JSONSerialization.jsonObject(with: captionsData) as? [[String: Any]]
     let record = captions?.first
-    #expect(record?["caption"] as? String == "dark blues stem package, very slow 72 BPM, E minor, full mix with vocals and instrumental backing")
-    #expect(record?["prompt"] as? String == "dark blues stem package, very slow 72 BPM, E minor, full mix with vocals and instrumental backing")
+    #expect(record?["caption"] as? String ==
+        "dark blues stem package, very slow 72 BPM, E minor, full mix with vocals and instrumental backing")
+    #expect(record?["prompt"] as? String ==
+        "dark blues stem package, very slow 72 BPM, E minor, full mix with vocals and instrumental backing")
     #expect(record?["caption_source"] as? String == "native")
     #expect(record?["lyrics"] as? String == "I keep singing low")
     #expect(record?["transcript"] as? String == "I keep singing low")
@@ -2247,7 +2249,7 @@ func localDatasetEnrichmentAnalyzesTempoKeyAndMeterFromAudio(
     defer { try? FileManager.default.removeItem(at: tempRoot) }
 
     let sourceURL = tempRoot.appendingPathComponent("source.wav")
-    try silentWAVData(sampleRate: 22_050, channels: 1, frameCount: 6_615).write(to: sourceURL)
+    try silentWAVData(sampleRate: 22050, channels: 1, frameCount: 6615).write(to: sourceURL)
 
     let result = try await LocalFilesDatasetBuilder.run(
         sourceFiles: [sourceURL],
@@ -2269,8 +2271,8 @@ func localDatasetEnrichmentAnalyzesTempoKeyAndMeterFromAudio(
     #expect(imported.count == 2)
     #expect(imported.allSatisfy { $0.url.pathExtension == "wav" })
     #expect(imported[0].sourceClip?.fileName == "source.wav")
-    #expect(imported[0].sourceClip?.startFrame == 1_102)
-    #expect(abs((imported[0].sourceClip?.startSeconds ?? 0) - (Double(1_102) / 22_050.0)) < 0.001)
+    #expect(imported[0].sourceClip?.startFrame == 1102)
+    #expect(abs((imported[0].sourceClip?.startSeconds ?? 0) - (Double(1102) / 22050.0)) < 0.001)
 
     let package = try TrainingDatasetPackageEditor.loadPackageV2(at: result.outputDirectory)
     #expect(package.pimpAudioDatasetVersion == "2.0")
@@ -2296,7 +2298,7 @@ func localDatasetEnrichmentAnalyzesTempoKeyAndMeterFromAudio(
     let captionsData = try Data(contentsOf: result.outputDirectory.appendingPathComponent("captions.json"))
     let captionsJSON = try JSONSerialization.jsonObject(with: captionsData) as? [[String: Any]]
     let firstCaption = captionsJSON?.first
-    #expect((firstCaption?["source_start_frame"] as? NSNumber)?.int64Value == 1_102)
+    #expect((firstCaption?["source_start_frame"] as? NSNumber)?.int64Value == 1102)
     #expect((firstCaption?["source"] as? [String: Any])?["file_name"] as? String == "source.wav")
 }
 
@@ -2307,9 +2309,9 @@ func localDatasetEnrichmentAnalyzesTempoKeyAndMeterFromAudio(
     defer { try? FileManager.default.removeItem(at: tempRoot) }
 
     let sourceURL = tempRoot.appendingPathComponent("complete-song.wav")
-    let frameCount = 241 * 8_000
+    let frameCount = 241 * 8000
     let sourceData = silentWAVData(
-        sampleRate: 8_000,
+        sampleRate: 8000,
         channels: 1,
         frameCount: frameCount
     )
@@ -2370,7 +2372,7 @@ func localDatasetEnrichmentAnalyzesTempoKeyAndMeterFromAudio(
     defer { try? FileManager.default.removeItem(at: datasetDir) }
 
     let sourceURL = datasetDir.appendingPathComponent("source-input.wav")
-    try silentWAVData(sampleRate: 22_050, channels: 1, frameCount: 4_410).write(to: sourceURL)
+    try silentWAVData(sampleRate: 22050, channels: 1, frameCount: 4410).write(to: sourceURL)
     _ = try TrainingDatasetPackageWriter.writeLocalPackage(
         outputDirectory: datasetDir,
         clips: [
@@ -2638,7 +2640,7 @@ func localDatasetEnrichmentAnalyzesTempoKeyAndMeterFromAudio(
     defer { try? FileManager.default.removeItem(at: tempRoot) }
 
     let sourceURL = tempRoot.appendingPathComponent("first-source-file.wav")
-    try silentWAVData(sampleRate: 22_050, channels: 1, frameCount: 2_205).write(to: sourceURL)
+    try silentWAVData(sampleRate: 22050, channels: 1, frameCount: 2205).write(to: sourceURL)
 
     let result = try await LocalFilesDatasetBuilder.run(
         sourceFiles: [sourceURL],
@@ -2656,7 +2658,7 @@ func localDatasetEnrichmentAnalyzesTempoKeyAndMeterFromAudio(
     #expect((manifestJSON?["name"] as? String)?.hasPrefix("my-custom-dataset_local_") == true)
 }
 
-@Test func localClipSamplerEvenlySpreadsLongSources() throws {
+@Test func localClipSamplerEvenlySpreadsLongSources() {
     let totalSeconds = 90.0 * 60.0
     let clipLength = 35.0
     let starts = LocalDatasetClipSampler.startTimes(
@@ -2679,7 +2681,7 @@ func localDatasetEnrichmentAnalyzesTempoKeyAndMeterFromAudio(
     #expect(starts[1] > starts[0])
 }
 
-@Test func localClipSamplerRandomSeedIsDeterministicAndSorted() throws {
+@Test func localClipSamplerRandomSeedIsDeterministicAndSorted() {
     let totalSeconds = 90.0 * 60.0
     let clipLength = 35.0
     func starts(seed: Int) -> [Double] {
@@ -2752,7 +2754,7 @@ func localDatasetEnrichmentAnalyzesTempoKeyAndMeterFromAudio(
     try Data("notes".utf8).write(to: ignoredURL)
 
     let discovered = LocalAudioFileDiscovery.audioFiles(in: [rootDir])
-    let paths = discovered.map { $0.standardizedFileURL.path }
+    let paths = discovered.map(\.standardizedFileURL.path)
     let expectedPaths = [
         wavURL.standardizedFileURL.path,
         m4aURL.standardizedFileURL.path,
@@ -2903,8 +2905,7 @@ func localDatasetEnrichmentAnalyzesTempoKeyAndMeterFromAudio(
 private actor FakeDatasetLyricsTranscriber:
     DatasetLyricsTranscribing,
     DatasetLyricsTranscriptionEvicting,
-    DatasetLyricsAligning
-{
+    DatasetLyricsAligning {
     private(set) var evictionCount = 0
 
     func evictModels() async {
@@ -2996,8 +2997,7 @@ private actor FakeDatasetLyricsTranscriber:
 }
 
 private actor FakeNativeACEDatasetAnnotationBackend:
-    DatasetAnnotationBackend
-{
+    DatasetAnnotationBackend {
     nonisolated let backendID = "test-native-ace"
     private(set) var requestedTasks: [DatasetAnnotationTask] = []
     private(set) var evictionCount = 0
@@ -3093,7 +3093,7 @@ private extension DatasetAnnotationTask {
             state: .authenticated,
             detail: "Signed in with grok.com",
             lastChecked: Date()
-        )
+        ),
     ])
     let manager = LyricWriterManager(
         apiKeyStore: APIKeyStore(),
@@ -3203,7 +3203,7 @@ private extension DatasetAnnotationTask {
         realUserHome: realHome.path
     )
     defer { grok.cleanup(fileManager: fileManager) }
-    guard case .custom(let grokHomePath) = grok.homeDirectoryMode else {
+    guard case let .custom(grokHomePath) = grok.homeDirectoryMode else {
         #expect(Bool(false), "expected custom home for grok")
         return
     }
@@ -3218,7 +3218,7 @@ private extension DatasetAnnotationTask {
         realUserHome: realHome.path
     )
     defer { codex.cleanup(fileManager: fileManager) }
-    guard case .custom(let codexHomePath) = codex.homeDirectoryMode else {
+    guard case let .custom(codexHomePath) = codex.homeDirectoryMode else {
         #expect(Bool(false), "expected custom home for codex")
         return
     }
@@ -3248,7 +3248,7 @@ private extension DatasetAnnotationTask {
     }
 }
 
-@Test func historyEntryBuildsGeneratePresetFromTrace() {
+@Test func historyEntryBuildsGeneratePresetFromTrace() throws {
     let entry = HistoryEntry(
         id: UUID(),
         createdAt: Date(),
@@ -3275,7 +3275,7 @@ private extension DatasetAnnotationTask {
                 source: "imported",
                 rank: 64,
                 baseModelID: "ace-step-dit-xl-sft"
-            )
+            ),
         ],
         listeningNote: nil,
         isPreferred: nil
@@ -3297,11 +3297,11 @@ private extension DatasetAnnotationTask {
         coverStrength: 0.55,
         referenceAudioFileName: nil
     )
-    let trace = GenerationTrace(
+    let trace = try GenerationTrace(
         historyEntryID: entry.id,
         createdAt: entry.createdAt,
         audioFileName: entry.fileName,
-        traceFileName: entry.traceFileName!,
+        traceFileName: #require(entry.traceFileName),
         pipeline: "aceStep",
         prompt: entry.prompt,
         originalPrompt: entry.originalPrompt,
@@ -3322,7 +3322,7 @@ private extension DatasetAnnotationTask {
             totalTime: 2
         ),
         audio: GenerationTraceAudioSnapshot(
-            sampleRate: 48_000,
+            sampleRate: 48000,
             duration: 120,
             sampleShape: [2, 1],
             absMean: 0.1,
@@ -3490,8 +3490,10 @@ private extension DatasetAnnotationTask {
     let baseURL = URL(fileURLWithPath: "/tmp/edited-render")
     let wrongExtensionURL = URL(fileURLWithPath: "/tmp/edited-render.caf")
 
-    #expect(EditorAudioExporter.normalizedDestinationURL(for: baseURL, format: .wav).lastPathComponent == "edited-render.wav")
-    #expect(EditorAudioExporter.normalizedDestinationURL(for: wrongExtensionURL, format: .m4a).lastPathComponent == "edited-render.m4a")
+    #expect(EditorAudioExporter.normalizedDestinationURL(for: baseURL, format: .wav)
+        .lastPathComponent == "edited-render.wav")
+    #expect(EditorAudioExporter.normalizedDestinationURL(for: wrongExtensionURL, format: .m4a)
+        .lastPathComponent == "edited-render.m4a")
 }
 
 @Test func editorAudioExporterWritesReadableWAV() async throws {
@@ -3518,13 +3520,13 @@ private extension DatasetAnnotationTask {
 }
 
 private func editorExportTestBuffer(
-    sampleRate: Int = 22_050,
+    sampleRate: Int = 22050,
     channels: Int = 1,
-    frameCount: Int = 2_205
+    frameCount: Int = 2205
 ) -> PiMPAudioStudio.AudioBuffer {
     var samples = [Int16](repeating: 0, count: frameCount * channels)
     for index in samples.indices {
-        samples[index] = Int16((index % 128) * 128 - 8_192)
+        samples[index] = Int16((index % 128) * 128 - 8192)
     }
     let data = samples.withUnsafeBufferPointer { Data(buffer: $0) }
     return PiMPAudioStudio.AudioBuffer(data: data, sampleRate: sampleRate, channels: channels)
@@ -3576,7 +3578,7 @@ private func traceForComparison(
                     source: "imported",
                     rank: 128,
                     baseModelID: "ace-step-dit-xl-sft"
-                )
+                ),
             ]
         } ?? [],
         featureFlags: GenerationTraceFeatureFlags(
@@ -3608,14 +3610,14 @@ private func traceForComparison(
     let recommendation = TrainingPlanRecommendation.make(
         adapterKind: .lora,
         sampleCount: 200,
-        knownDuration: 6_000
+        knownDuration: 6000
     )
 
     #expect(recommendation?.rank == 64)
     #expect(recommendation?.epochs == 20)
     #expect(recommendation?.layerCount == 12)
     #expect(recommendation?.gradientAccumulationSteps == 2)
-    #expect(recommendation?.estimatedOptimizerUpdates == 2_000)
+    #expect(recommendation?.estimatedOptimizerUpdates == 2000)
     #expect(recommendation?.summary.contains("~100m audio") == true)
 }
 
@@ -3630,7 +3632,7 @@ private func traceForComparison(
     #expect(recommendation?.epochs == 10)
     #expect(recommendation?.layerCount == 8)
     #expect(recommendation?.gradientAccumulationSteps == 2)
-    #expect(recommendation?.estimatedOptimizerUpdates == 1_000)
+    #expect(recommendation?.estimatedOptimizerUpdates == 1000)
 }
 
 @Test func trainingPlanRecommendationIgnoresSparseDurationCoverage() {
@@ -3830,7 +3832,7 @@ private func traceForComparison(
     let facade = makeTestCommandFacade(root: tempRoot)
     let detail = try facade.inspectTrainingDataset(arguments: [
         "path": packageDirectory.path(percentEncoded: false),
-        "sampleLimit": 1
+        "sampleLimit": 1,
     ])
     let profile = detail["profile"] as? [String: Any]
     let annotations = detail["annotations"] as? [String: Any]

@@ -14,49 +14,51 @@ enum GuidancePreset: String, CaseIterable, Codable, Identifiable, Sendable, Equa
     /// and to avoid late-only Soft Late kinks on 50-step XL schedules.
     static let xlDefaultSelection: GuidancePreset = .constant
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     var displayName: String {
         switch self {
-        case .constant: return "Constant"
-        case .lateEmphasis: return "Late Emphasis"
-        case .midToLate: return "Mid-to-Late"
-        case .softLate: return "Soft Late"
+        case .constant: "Constant"
+        case .lateEmphasis: "Late Emphasis"
+        case .midToLate: "Mid-to-Late"
+        case .softLate: "Soft Late"
         }
     }
 
     var detail: String {
         switch self {
         case .constant:
-            return "CFG across the full schedule"
+            "CFG across the full schedule"
         case .lateEmphasis:
-            return "CFG only for t <= 0.5"
+            "CFG only for t <= 0.5"
         case .midToLate:
-            return "CFG only for t <= 0.75"
+            "CFG only for t <= 0.75"
         case .softLate:
-            return "Forces guidance 6.0; CFG only for t <= 0.6 (late steps)"
+            "Forces guidance 6.0; CFG only for t <= 0.6 (late steps)"
         }
     }
 
     var cfgInterval: (start: Float, end: Float) {
         switch self {
         case .constant:
-            return (0.0, 1.0)
+            (0.0, 1.0)
         case .lateEmphasis:
-            return (0.0, 0.5)
+            (0.0, 0.5)
         case .midToLate:
-            return (0.0, 0.75)
+            (0.0, 0.75)
         case .softLate:
-            return (0.0, 0.6)
+            (0.0, 0.6)
         }
     }
 
     var guidanceScaleOverride: Float? {
         switch self {
         case .softLate:
-            return 6.0
+            6.0
         case .constant, .lateEmphasis, .midToLate:
-            return nil
+            nil
         }
     }
 
@@ -103,7 +105,7 @@ final class GenerationParameters: ObservableObject {
     @Published var duration: Double = 30
     @Published var seedText: String = ""
     @Published var guidanceScale: Double = 7.5
-    @Published var guidancePreset: GuidancePreset = GuidancePreset.defaultSelection
+    @Published var guidancePreset: GuidancePreset = .defaultSelection
     @Published var pipelineOverride: PipelineChoice = .auto
 
     /// Parsed seed; nil = random.

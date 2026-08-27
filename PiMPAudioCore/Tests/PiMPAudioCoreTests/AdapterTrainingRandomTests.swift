@@ -1,5 +1,5 @@
-import Testing
 @testable import PiMPAudioCore
+import Testing
 
 @Test func validationSeedIsStableAcrossEpochs() {
     let runSeed: UInt64 = 42
@@ -7,7 +7,7 @@ import Testing
 
     // Epoch must not enter the validation seed — otherwise epoch scores are
     // not comparable for best-checkpoint selection.
-    for epoch in 1...20 {
+    for epoch in 1 ... 20 {
         let mixedWithEpoch = AdapterTrainingRandom.mix(runSeed, UInt64(truncatingIfNeeded: epoch))
         #expect(fixed != mixedWithEpoch)
         #expect(AdapterTrainingRandom.validationSeed(runSeed: runSeed) == fixed)

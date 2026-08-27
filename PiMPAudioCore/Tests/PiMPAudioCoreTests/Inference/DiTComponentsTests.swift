@@ -1,8 +1,8 @@
-import Testing
 import MLX
-import MLXNN
 import MLXFast
+import MLXNN
 @testable import PiMPAudioCore
+import Testing
 
 @Suite("DiT Components")
 struct DiTComponentsTests {

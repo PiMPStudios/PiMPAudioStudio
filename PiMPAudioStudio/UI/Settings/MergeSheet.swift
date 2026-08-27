@@ -1,5 +1,5 @@
-import SwiftUI
 import PiMPAudioCore
+import SwiftUI
 
 struct MergeSheet: View {
     @Environment(\.dismiss) private var dismiss
@@ -19,9 +19,11 @@ struct MergeSheet: View {
             Text("Merge Two Adapters")
                 .font(.headline)
 
-            Text("Creates a new adapter by blending LoRA deltas: \u{03B1}\u{00B7}\u{0394}A + (1-\u{03B1})\u{00B7}\u{0394}B (rank concatenation).")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Text(
+                "Creates a new adapter by blending LoRA deltas: \u{03B1}\u{00B7}\u{0394}A + (1-\u{03B1})\u{00B7}\u{0394}B (rank concatenation)."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
 
             // Adapter A picker
             LabeledContent("Adapter A") {
@@ -54,7 +56,7 @@ struct MergeSheet: View {
                             get: { Double(alpha) },
                             set: { alpha = Float($0) }
                         ),
-                        in: 0...1,
+                        in: 0 ... 1,
                         step: 0.05
                     )
                     .frame(maxWidth: 200)

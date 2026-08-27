@@ -100,7 +100,7 @@ public final class OmniAnnotationEngine {
     public private(set) var modelPackTask: OmniAnnotationTask?
 
     public init() throws {
-        self.featureExtractor = try OmniAudioFeatureExtractor()
+        featureExtractor = try OmniAudioFeatureExtractor()
     }
 
     public var isLoaded: Bool {
@@ -139,7 +139,7 @@ public final class OmniAnnotationEngine {
             audioTower = towerLoad.tower
             promptBuilder = builder
             self.modelDirectory = modelDirectory
-            self.modelPackTask = manifest?.task
+            modelPackTask = manifest?.task
             let report = OmniEngineLoadReport(
                 thinker: thinkerLoad.report,
                 audioTower: towerLoad.report,
@@ -225,7 +225,7 @@ public final class OmniAnnotationEngine {
         )
         let finalLogits = logits[
             0,
-            (logits.dim(1) - 1),
+            logits.dim(1) - 1,
             0...
         ].asType(.float32)
         let logProbabilities = logSoftmax(finalLogits, axis: -1)
@@ -299,11 +299,11 @@ public final class OmniAnnotationEngine {
         var generated: [Int] = []
         generated.reserveCapacity(options.maxTokens)
 
-        for _ in 0..<options.maxTokens {
+        for _ in 0 ..< options.maxTokens {
             try cancellationCheck()
             let finalLogits = logits[
                 0,
-                (logits.dim(1) - 1),
+                logits.dim(1) - 1,
                 0...
             ]
             let next = try Self.selectToken(
@@ -354,8 +354,7 @@ public final class OmniAnnotationEngine {
     ) throws -> Int {
         if options.temperature == 0,
            options.topP == 0,
-           options.repetitionPenalty == nil
-        {
+           options.repetitionPenalty == nil {
             return Int(
                 argMax(logits, axis: -1)
                     .asType(.int32)
@@ -368,8 +367,8 @@ public final class OmniAnnotationEngine {
             for token in Set(generated) where values.indices.contains(token) {
                 values[token] =
                     values[token] < 0
-                    ? values[token] * penalty
-                    : values[token] / penalty
+                        ? values[token] * penalty
+                        : values[token] / penalty
             }
         }
         if options.temperature <= 0 {
@@ -406,7 +405,7 @@ public final class OmniAnnotationEngine {
         let candidateTotal = candidates.reduce(Float(0)) {
             $0 + probabilities[$1]
         }
-        var draw = Float.random(in: 0..<candidateTotal)
+        var draw = Float.random(in: 0 ..< candidateTotal)
         for candidate in candidates {
             draw -= probabilities[candidate]
             if draw <= 0 {
@@ -468,15 +467,15 @@ public enum OmniAnnotationEngineError: LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .notLoaded:
-            return "The native Omni annotation engine is not loaded."
+            "The native Omni annotation engine is not loaded."
         case .emptyLogits:
-            return "The language model produced no logits."
+            "The language model produced no logits."
         case .invalidProbabilities:
-            return "The language-model sampling probabilities are invalid."
-        case .invalidGenerationOptions(let detail):
-            return "Invalid generation options: \(detail)"
-        case .modelPackTaskMismatch(let expected, let actual):
-            return "The \(expected.rawValue) model pack cannot run a "
+            "The language-model sampling probabilities are invalid."
+        case let .invalidGenerationOptions(detail):
+            "Invalid generation options: \(detail)"
+        case let .modelPackTaskMismatch(expected, actual):
+            "The \(expected.rawValue) model pack cannot run a "
                 + "\(actual.rawValue) request."
         }
     }
@@ -509,7 +508,7 @@ private extension OmniGenerationOptions {
 
 private extension Duration {
     var secondsValue: Double {
-        let components = self.components
+        let components = components
         return Double(components.seconds)
             + Double(components.attoseconds) / 1_000_000_000_000_000_000
     }

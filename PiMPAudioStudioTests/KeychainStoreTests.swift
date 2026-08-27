@@ -1,7 +1,7 @@
 import Foundation
+@testable import PiMPAudioStudio
 import Security
 import Testing
-@testable import PiMPAudioStudio
 
 @Test func keychainAddQueryPinsThisDeviceOnlyAccessibility() {
     let data = Data("secret".utf8)
@@ -23,7 +23,8 @@ import Testing
     let attributes = KeychainItemQuery.updateAttributes(data: data)
 
     #expect(attributes[kSecValueData as String] as? Data == data)
-    #expect(cfString(attributes[kSecAttrAccessible as String]) == (kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String))
+    #expect(cfString(attributes[kSecAttrAccessible as String]) ==
+        (kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String))
 }
 
 private func cfString(_ value: Any?) -> String? {

@@ -1,6 +1,6 @@
 import Foundation
-import XCTest
 @testable import PiMPAudioCore
+import XCTest
 
 final class NativeModelPackInstallerTests: XCTestCase {
     func testProductionCatalogPinsPublishedRepositories() {
@@ -222,11 +222,9 @@ final class NativeModelPackInstallerTests: XCTestCase {
         )
 
         for path in NativeModelPackValidator.requiredFiles.values
-            where path != "model.safetensors.index.json"
-        {
-            let data: Data
-            if path == "annotation-prompts.json" {
-                data = try JSONSerialization.data(
+            where path != "model.safetensors.index.json" {
+            let data: Data = if path == "annotation-prompts.json" {
+                try JSONSerialization.data(
                     withJSONObject: [
                         "schemaVersion": 1,
                         "caption": OmniAnnotationTask.caption.prompt,
@@ -235,7 +233,7 @@ final class NativeModelPackInstallerTests: XCTestCase {
                     options: [.prettyPrinted, .sortedKeys]
                 )
             } else {
-                data = Data(path.utf8)
+                Data(path.utf8)
             }
             try data.write(
                 to: directory.appendingPathComponent(path),
@@ -298,8 +296,7 @@ private struct NativeModelPackDownloadRequest: Sendable {
 }
 
 private actor FixtureNativeModelPackDownloader:
-    NativeModelPackDownloading
-{
+    NativeModelPackDownloading {
     private let sourceDirectory: URL
     private var capturedRequests: [NativeModelPackDownloadRequest] = []
 
@@ -350,8 +347,7 @@ private actor FixtureNativeModelPackDownloader:
 }
 
 private final class NativeModelPackProgressRecorder:
-    @unchecked Sendable
-{
+    @unchecked Sendable {
     private let lock = NSLock()
     private var capturedEvents: [NativeModelPackInstallProgress] = []
 

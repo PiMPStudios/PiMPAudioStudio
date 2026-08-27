@@ -10,7 +10,6 @@ import PiMPAudioCore
 /// `TrainingService` (LoRA dataset preparation) so that AVFoundation-based
 /// resampling isn't duplicated across the two callers.
 enum AudioFileLoader {
-
     enum Error: Swift.Error, LocalizedError {
         case allocationFailed(String)
         case converterFailed(String)
@@ -18,9 +17,9 @@ enum AudioFileLoader {
 
         var errorDescription: String? {
             switch self {
-            case .allocationFailed(let msg): return "Audio buffer allocation failed: \(msg)"
-            case .converterFailed(let msg):  return "Audio conversion failed: \(msg)"
-            case .noFloatData:               return "PCM buffer contains no float channel data"
+            case let .allocationFailed(msg): "Audio buffer allocation failed: \(msg)"
+            case let .converterFailed(msg): "Audio conversion failed: \(msg)"
+            case .noFloatData: "PCM buffer contains no float channel data"
             }
         }
     }
@@ -47,7 +46,7 @@ enum AudioFileLoader {
         }
         try file.read(into: srcBuffer, frameCount: srcFrameCount)
 
-        let targetRate = Double(MusicPipeline.defaultSampleRate)   // 48 000 Hz
+        let targetRate = Double(MusicPipeline.defaultSampleRate) // 48 000 Hz
         let targetCh: AVAudioChannelCount = 2
 
         guard let dstFormat = AVAudioFormat(
@@ -58,7 +57,7 @@ enum AudioFileLoader {
         }
 
         // Fast path: already in target format.
-        if srcFormat.sampleRate == targetRate && srcFormat.channelCount == targetCh {
+        if srcFormat.sampleRate == targetRate, srcFormat.channelCount == targetCh {
             return try bufferToMLX(srcBuffer)
         }
 
@@ -86,7 +85,9 @@ enum AudioFileLoader {
             return srcBuffer
         }
 
-        if let e = convError { throw e }
+        if let e = convError {
+            throw e
+        }
         guard status != .error else {
             throw Error.converterFailed("AVAudioConverter returned error status \(status.rawValue)")
         }
@@ -106,7 +107,7 @@ enum AudioFileLoader {
         var interleaved = [Float](repeating: 0, count: frames * 2)
         let ch0 = floatData[0]
         let ch1 = channels >= 2 ? floatData[1] : floatData[0]
-        for i in 0..<frames {
+        for i in 0 ..< frames {
             interleaved[i * 2] = ch0[i]
             interleaved[i * 2 + 1] = ch1[i]
         }

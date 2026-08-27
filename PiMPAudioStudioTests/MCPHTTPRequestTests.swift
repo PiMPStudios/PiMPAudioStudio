@@ -1,7 +1,7 @@
 import Darwin
 import Foundation
-import Testing
 @testable import PiMPAudioStudio
+import Testing
 
 @Test func rawHTTPRequestParsesGETHealth() {
     let request = """
@@ -135,9 +135,11 @@ import Testing
     #expect(request(origin: "https://evil.example").hasTrustedOrigin(allowNonLocalOrigins: true))
 
     #expect(request(origin: nil).corsAllowedOrigin(allowNonLocalOrigins: false) == nil)
-    #expect(request(origin: "http://127.0.0.1:38765").corsAllowedOrigin(allowNonLocalOrigins: false) == "http://127.0.0.1:38765")
+    #expect(request(origin: "http://127.0.0.1:38765")
+        .corsAllowedOrigin(allowNonLocalOrigins: false) == "http://127.0.0.1:38765")
     #expect(request(origin: "https://evil.example").corsAllowedOrigin(allowNonLocalOrigins: false) == nil)
-    #expect(request(origin: "https://evil.example").corsAllowedOrigin(allowNonLocalOrigins: true) == "https://evil.example")
+    #expect(request(origin: "https://evil.example")
+        .corsAllowedOrigin(allowNonLocalOrigins: true) == "https://evil.example")
 }
 
 @Test func mcpTokenIsRequiredWhenBoundToAllInterfaces() {
@@ -151,7 +153,7 @@ import Testing
     #expect(MCPHTTPServer.tokensMatch("secret-token", "secret-token"))
     #expect(MCPHTTPServer.tokensMatch("secret-token", "secret-tokex") == false)
     #expect(MCPHTTPServer.tokensMatch("short", "much-longer-token") == false)
-    #expect(MCPHTTPServer.tokensMatch("", "") )
+    #expect(MCPHTTPServer.tokensMatch("", ""))
 }
 
 @Test func mcpAcceptRetriesTransientErrnos() {
@@ -174,8 +176,8 @@ import Testing
 
 @Test func mcpOperationTrimEvictsOldestTerminalAndKeepsLive() {
     let order = ["live-new", "done-new", "live-old", "done-mid", "done-old"]
-    let pinned: Set<String> = ["live-old"]
-    let terminal: Set<String> = ["done-new", "done-mid", "done-old"]
+    let pinned: Set = ["live-old"]
+    let terminal: Set = ["done-new", "done-mid", "done-old"]
     let trimmed = PiMPAudioCommandFacade.trimmedOperationOrder(
         order: order,
         isPinned: { pinned.contains($0) },

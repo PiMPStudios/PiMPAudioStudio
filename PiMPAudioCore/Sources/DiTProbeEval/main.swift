@@ -124,17 +124,37 @@ private struct Options {
             case "--case":
                 options.caseID = try value(after: argument, in: arguments, at: &index)
             case "--inputs":
-                options.inputsURL = URL(fileURLWithPath: expandPath(try value(after: argument, in: arguments, at: &index)))
+                options.inputsURL = try URL(fileURLWithPath: expandPath(value(
+                    after: argument,
+                    in: arguments,
+                    at: &index
+                )))
             case "--reference":
-                options.referenceURL = URL(fileURLWithPath: expandPath(try value(after: argument, in: arguments, at: &index)))
+                options.referenceURL = try URL(fileURLWithPath: expandPath(value(
+                    after: argument,
+                    in: arguments,
+                    at: &index
+                )))
             case "--weights":
-                options.weightsURL = URL(fileURLWithPath: expandPath(try value(after: argument, in: arguments, at: &index)))
+                options.weightsURL = try URL(fileURLWithPath: expandPath(value(
+                    after: argument,
+                    in: arguments,
+                    at: &index
+                )))
             case "--config":
-                options.configURL = URL(fileURLWithPath: expandPath(try value(after: argument, in: arguments, at: &index)))
+                options.configURL = try URL(fileURLWithPath: expandPath(value(
+                    after: argument,
+                    in: arguments,
+                    at: &index
+                )))
             case "--report":
-                options.reportURL = URL(fileURLWithPath: expandPath(try value(after: argument, in: arguments, at: &index)))
+                options.reportURL = try URL(fileURLWithPath: expandPath(value(
+                    after: argument,
+                    in: arguments,
+                    at: &index
+                )))
             case "--layers":
-                options.layerIndices = try parseLayerList(try value(after: argument, in: arguments, at: &index))
+                options.layerIndices = try parseLayerList(value(after: argument, in: arguments, at: &index))
             default:
                 throw DiTProbeEvalError.invalidArgument("Unknown argument: \(argument)")
             }
@@ -170,14 +190,14 @@ private enum DiTProbeEvalError: Error, LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidArgument(let message):
-            return message
-        case .missingFile(let url):
-            return "File does not exist: \(url.path(percentEncoded: false))"
-        case .missingTensor(let path, let aliases):
-            return "None of \(aliases) found in \(path.path(percentEncoded: false))"
-        case .emptyTimestep(let path, let key):
-            return "Timestep tensor '\(key)' is empty in \(path.path(percentEncoded: false))"
+        case let .invalidArgument(message):
+            message
+        case let .missingFile(url):
+            "File does not exist: \(url.path(percentEncoded: false))"
+        case let .missingTensor(path, aliases):
+            "None of \(aliases) found in \(path.path(percentEncoded: false))"
+        case let .emptyTimestep(path, key):
+            "Timestep tensor '\(key)' is empty in \(path.path(percentEncoded: false))"
         }
     }
 }
@@ -253,11 +273,10 @@ private func loadReferenceTensors(_ optionalURL: URL?) throws -> [String: MLXArr
 private func loadConvertedWeights(_ weightsURL: URL) async throws -> [(String, MLXArray)] {
     try requireFile(weightsURL)
     let converter = WeightConverter()
-    let rawWeights: [(String, MLXArray)]
-    if weightsURL.lastPathComponent == "model.safetensors.index.json" {
-        rawWeights = try await converter.loadShardedSafetensors(indexURL: weightsURL)
+    let rawWeights: [(String, MLXArray)] = if weightsURL.lastPathComponent == "model.safetensors.index.json" {
+        try await converter.loadShardedSafetensors(indexURL: weightsURL)
     } else {
-        rawWeights = try await converter.loadSafetensors(from: weightsURL)
+        try await converter.loadSafetensors(from: weightsURL)
     }
     return try await converter.convertDiTWeights(stateDict: rawWeights)
 }
@@ -280,20 +299,36 @@ private func makeMarkdownReport(
     lines.append("- Weights: `\(options.weightsURL.path(percentEncoded: false))`")
     lines.append("- Config: `\(options.configURL.path(percentEncoded: false))`")
     lines.append("- Layers: `\(options.layerIndices.sorted().map(String.init).joined(separator: ","))`")
-    lines.append("- DiT variant: `\(config.variantFamily)` (`hiddenSize=\(config.hiddenSize)`, `layers=\(config.numHiddenLayers)`, `heads=\(config.numAttentionHeads)`, `kvHeads=\(config.numKeyValueHeads)`)")
+    lines
+        .append(
+            "- DiT variant: `\(config.variantFamily)` (`hiddenSize=\(config.hiddenSize)`, `layers=\(config.numHiddenLayers)`, `heads=\(config.numAttentionHeads)`, `kvHeads=\(config.numKeyValueHeads)`)"
+        )
     lines.append("")
     lines.append("## Tensor Comparisons")
     lines.append("")
-    lines.append("| Tensor | Shape Match | Swift Shape | Reference Shape | Elements | MAE | RMSE | Max Abs Diff | Swift | Ref | Cosine |")
+    lines
+        .append(
+            "| Tensor | Shape Match | Swift Shape | Reference Shape | Elements | MAE | RMSE | Max Abs Diff | Swift | Ref | Cosine |"
+        )
     lines.append("| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |")
 
-    for key in orderedKeys(layerIndices: options.layerIndices, swiftTensors: swiftTensors, referenceTensors: referenceTensors) {
+    for key in orderedKeys(
+        layerIndices: options.layerIndices,
+        swiftTensors: swiftTensors,
+        referenceTensors: referenceTensors
+    ) {
         guard let swiftTensor = swiftTensors[key] else {
-            lines.append("| `\(key)` | missing-swift | - | \(shapeString(referenceTensors[key]?.shape)) | - | - | - | - | - | - | - |")
+            lines
+                .append(
+                    "| `\(key)` | missing-swift | - | \(shapeString(referenceTensors[key]?.shape)) | - | - | - | - | - | - | - |"
+                )
             continue
         }
         guard let referenceTensor = referenceTensors[key] else {
-            lines.append("| `\(key)` | missing-reference | \(shapeString(swiftTensor.shape)) | - | - | - | - | - | - | - | - |")
+            lines
+                .append(
+                    "| `\(key)` | missing-reference | \(shapeString(swiftTensor.shape)) | - | - | - | - | - | - | - | - |"
+                )
             continue
         }
 
@@ -311,8 +346,14 @@ private func makeMarkdownReport(
     lines.append("## How To Read This")
     lines.append("")
     lines.append("- A bad `proj_in` row points at input packing, patching, or Conv1d weight layout.")
-    lines.append("- A good `proj_in` row but bad early `layers.N` row points at attention, q/k norms, RoPE, GQA repeat, or masks.")
-    lines.append("- Good early rows but diverging late rows points at accumulated attention/mask drift or timestep/modulation details.")
+    lines
+        .append(
+            "- A good `proj_in` row but bad early `layers.N` row points at attention, q/k norms, RoPE, GQA repeat, or masks."
+        )
+    lines
+        .append(
+            "- Good early rows but diverging late rows points at accumulated attention/mask drift or timestep/modulation details."
+        )
     lines.append("- Good `post_norm_out` but bad `output` points at `projOut` / de-patchify layout.")
     lines.append("")
 
@@ -421,7 +462,9 @@ private func expandPath(_ path: String) -> String {
 
 private func defaultModelCacheRoot() -> URL {
     FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Containers/com.pimpstudios.PiMPAudioStudio/Data/Library/Application Support/PiMP Audio Studio/models")
+        .appendingPathComponent(
+            "Library/Containers/com.pimpstudios.PiMPAudioStudio/Data/Library/Application Support/PiMP Audio Studio/models"
+        )
 }
 
 private func defaultDiTWeightsURL() -> URL {

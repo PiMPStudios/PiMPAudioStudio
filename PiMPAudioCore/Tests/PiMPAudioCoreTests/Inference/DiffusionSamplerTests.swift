@@ -1,7 +1,7 @@
-import Testing
 import MLX
 import MLXRandom
 @testable import PiMPAudioCore
+import Testing
 
 @Suite("Diffusion Sampler")
 struct DiffusionSamplerTests {

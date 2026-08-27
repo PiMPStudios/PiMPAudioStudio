@@ -20,11 +20,13 @@ public actor MusicPipeline {
         self.diffusion = diffusion
     }
 
-    public var state: PipelineState { _state }
+    public var state: PipelineState {
+        _state
+    }
 
     public func makeProgressStream() -> AsyncStream<GenerationProgress> {
         let (stream, continuation) = AsyncStream<GenerationProgress>.makeStream()
-        self.progressContinuation = continuation
+        progressContinuation = continuation
         return stream
     }
 
@@ -224,7 +226,7 @@ public actor MusicPipeline {
         // in ACEStepGenerationService only ever sees step-0 and then .decoding,
         // so the UI progress bar never advances past "0/N".
         let diffProgressStream = await diffusion.makeProgressStream()
-        let outerContinuation = self.progressContinuation   // Sendable capture
+        let outerContinuation = progressContinuation // Sendable capture
         let diffRelayTask = Task {
             for await dp in diffProgressStream {
                 outerContinuation?.yield(.diffusion(dp))

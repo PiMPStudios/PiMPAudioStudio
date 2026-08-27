@@ -9,7 +9,7 @@ public class ConditionEncoder: Module {
     static let hiddenSize = 2048
 
     override public init() {
-        self.textProjection = Linear(Self.textInputDim, Self.hiddenSize, bias: false)
+        textProjection = Linear(Self.textInputDim, Self.hiddenSize, bias: false)
     }
 
     public func callAsFunction(

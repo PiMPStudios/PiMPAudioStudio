@@ -11,7 +11,9 @@ public enum AudioTokenDetokenizerNameMap {
 
         let components = stripped.split(separator: ".", omittingEmptySubsequences: false).map { component -> String in
             let s = String(component)
-            if Int(s) != nil { return s }
+            if Int(s) != nil {
+                return s
+            }
             return snakeToCamel(s)
         }
         var mapped = components.joined(separator: ".")

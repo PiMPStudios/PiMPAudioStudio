@@ -44,15 +44,15 @@ public actor SoundFXPipeline {
         diffusion: SFXDiffusionActor,
         vae: SFXVAEActor
     ) {
-        self.t5          = t5
+        self.t5 = t5
         self.conditioner = conditioner
-        self.diffusion   = diffusion
-        self.vae         = vae
+        self.diffusion = diffusion
+        self.vae = vae
     }
 
     public func makeProgressStream() -> AsyncStream<GenerationProgress> {
         let (stream, continuation) = AsyncStream<GenerationProgress>.makeStream()
-        self.progressContinuation = continuation
+        progressContinuation = continuation
         return stream
     }
 
@@ -76,13 +76,13 @@ public actor SoundFXPipeline {
         // and keeping CFG-amplification in-bounds.  With our Swift zero-pad
         // approach the EOS hidden state dominates cross-attention for the
         // uncond branch and v_uncond blows up ~72 % above v_cond.
-        let (rawTextIds,  rawTextMask)  = tokenizer.encodeText(text, maxLength: 128)
-        let (rawEmptyIds, rawEmptyMask) = tokenizer.encodeText("",   maxLength: 128)
+        let (rawTextIds, rawTextMask) = tokenizer.encodeText(text, maxLength: 128)
+        let (rawEmptyIds, rawEmptyMask) = tokenizer.encodeText("", maxLength: 128)
 
-        let (paddedTextIds,  paddedTextMask)  = Self.padTokensTo128(rawTextIds,  mask: rawTextMask)
+        let (paddedTextIds, paddedTextMask) = Self.padTokensTo128(rawTextIds, mask: rawTextMask)
         let (paddedEmptyIds, paddedEmptyMask) = Self.padTokensTo128(rawEmptyIds, mask: rawEmptyMask)
 
-        let textHidden  = t5(inputIds: paddedTextIds,  attentionMask: paddedTextMask)  // [1, 128, 768]
+        let textHidden = t5(inputIds: paddedTextIds, attentionMask: paddedTextMask) // [1, 128, 768]
         let emptyHidden = t5(inputIds: paddedEmptyIds, attentionMask: paddedEmptyMask) // [1, 128, 768]
         AudioDiagnostics.tensor("SFX_T5_TEXT_HIDDEN", textHidden)
         AudioDiagnostics.tensor("SFX_T5_EMPTY_HIDDEN", emptyHidden)
@@ -123,12 +123,15 @@ public actor SoundFXPipeline {
             startSeconds: 0.0,
             totalSeconds: Float(clampedDuration)
         )
-        AudioDiagnostics.note("SFX_COND", "duration=\(clampedDuration)s steps=\(config.steps) guidance=\(config.guidanceScale) sigmaMax=\(config.sigmaMax)")
+        AudioDiagnostics.note(
+            "SFX_COND",
+            "duration=\(clampedDuration)s steps=\(config.steps) guidance=\(config.guidanceScale) sigmaMax=\(config.sigmaMax)"
+        )
         AudioDiagnostics.tensor("SFX_START_EMB", startEmb)
         AudioDiagnostics.tensor("SFX_TOTAL_EMB", totalEmb)
 
         // globalCond: [total, start] order matches mlx-audiogen Conditioners output.
-        let globalCond = concatenated([totalEmb, startEmb], axis: -1)  // [1, 1536]
+        let globalCond = concatenated([totalEmb, startEmb], axis: -1) // [1, 1536]
         AudioDiagnostics.tensor("SFX_GLOBAL_COND", globalCond)
 
         // Cross-attention tokens: T5[:64] + total_time_token + start_time_token.
@@ -143,16 +146,16 @@ public actor SoundFXPipeline {
         // T5 output is shorter than 64 tokens.  Passing fewer tokens shifts the time
         // tokens to wrong positions and corrupts every cross-attention block, causing
         // the velocity field to diverge (latents explode).
-        let totalToken = totalEmb.expandedDimensions(axis: 1)   // [1, 1, 768]
-        let startToken = startEmb.expandedDimensions(axis: 1)   // [1, 1, 768]
-        let t5Text  = Self.t5Pad64(textHidden)                   // [1, 64, 768]
+        let totalToken = totalEmb.expandedDimensions(axis: 1) // [1, 1, 768]
+        let startToken = startEmb.expandedDimensions(axis: 1) // [1, 1, 768]
+        let t5Text = Self.t5Pad64(textHidden) // [1, 64, 768]
         let crossCond = concatenated([t5Text, totalToken, startToken], axis: 1) // [1, 66, 768]
         AudioDiagnostics.tensor("SFX_CROSS_COND", crossCond)
 
         // Unconditioned tokens: same time tokens, empty-string T5 prefix.
         // Python: uncond_tokens uses the same seconds_total/start values.
         let uncrossCondTokens: MLXArray? = uncondText.map { uc -> MLXArray in
-            let t5Uncond = Self.t5Pad64(uc)                      // [1, 64, 768]
+            let t5Uncond = Self.t5Pad64(uc) // [1, 64, 768]
             return concatenated([t5Uncond, totalToken, startToken], axis: 1) // [1, 66, 768]
         }
         if let uc = uncrossCondTokens {
@@ -170,7 +173,7 @@ public actor SoundFXPipeline {
         // as MusicPipeline/DiffusionActor. Without this the upstream progressTask
         // only ever sees step-0 then .decoding, so the UI bar never advances.
         let diffProgressStream = await diffusion.makeProgressStream()
-        let outerContinuation = self.progressContinuation   // Sendable capture
+        let outerContinuation = progressContinuation // Sendable capture
         let diffRelayTask = Task {
             for await progress in diffProgressStream {
                 outerContinuation?.yield(progress)
@@ -218,12 +221,12 @@ public actor SoundFXPipeline {
     ) async -> SFXInpaintConditioning {
         let clampedDuration = min(duration, Self.maxDuration)
 
-        let (rawTextIds,  rawTextMask)  = tokenizer.encodeText(text, maxLength: 128)
-        let (rawEmptyIds, rawEmptyMask) = tokenizer.encodeText("",   maxLength: 128)
-        let (paddedTextIds,  paddedTextMask)  = Self.padTokensTo128(rawTextIds,  mask: rawTextMask)
+        let (rawTextIds, rawTextMask) = tokenizer.encodeText(text, maxLength: 128)
+        let (rawEmptyIds, rawEmptyMask) = tokenizer.encodeText("", maxLength: 128)
+        let (paddedTextIds, paddedTextMask) = Self.padTokensTo128(rawTextIds, mask: rawTextMask)
         let (paddedEmptyIds, paddedEmptyMask) = Self.padTokensTo128(rawEmptyIds, mask: rawEmptyMask)
 
-        let textHidden  = t5(inputIds: paddedTextIds,  attentionMask: paddedTextMask)
+        let textHidden = t5(inputIds: paddedTextIds, attentionMask: paddedTextMask)
         let emptyHidden = t5(inputIds: paddedEmptyIds, attentionMask: paddedEmptyMask)
 
         let (startEmb, totalEmb) = conditioner(
@@ -231,10 +234,10 @@ public actor SoundFXPipeline {
             totalSeconds: Float(clampedDuration)
         )
 
-        let globalCond  = concatenated([totalEmb, startEmb], axis: -1)  // [1, 1536]
-        let totalToken  = totalEmb.expandedDimensions(axis: 1)           // [1, 1, 768]
-        let startToken  = startEmb.expandedDimensions(axis: 1)           // [1, 1, 768]
-        let crossCond   = concatenated([Self.t5Pad64(textHidden),  totalToken, startToken], axis: 1) // [1, 66, 768]
+        let globalCond = concatenated([totalEmb, startEmb], axis: -1) // [1, 1536]
+        let totalToken = totalEmb.expandedDimensions(axis: 1) // [1, 1, 768]
+        let startToken = startEmb.expandedDimensions(axis: 1) // [1, 1, 768]
+        let crossCond = concatenated([Self.t5Pad64(textHidden), totalToken, startToken], axis: 1) // [1, 66, 768]
         let uncrossCond = concatenated([Self.t5Pad64(emptyHidden), totalToken, startToken], axis: 1) // [1, 66, 768]
 
         return SFXInpaintConditioning(
@@ -259,7 +262,7 @@ public actor SoundFXPipeline {
         let seqLen = hidden.shape[1]
         let target = 64
         if seqLen >= target {
-            return hidden[0..., 0..<target, 0...]   // truncate
+            return hidden[0..., 0 ..< target, 0...] // truncate
         }
         let B = hidden.shape[0]
         let D = hidden.shape[2]
@@ -275,14 +278,16 @@ public actor SoundFXPipeline {
     private static func padTokensTo128(_ ids: MLXArray, mask: MLXArray) -> (MLXArray, MLXArray) {
         let currentLen = ids.shape[1]
         let target = 128
-        if currentLen >= target { return (ids, mask) }
-        let B    = ids.shape[0]
+        if currentLen >= target {
+            return (ids, mask)
+        }
+        let B = ids.shape[0]
         let nPad = target - currentLen
         // PAD token ID = 0, PAD mask = 0 (matches T5 tokenizer convention).
-        let padIds  = MLXArray.zeros([B, nPad]).asType(.int32)
+        let padIds = MLXArray.zeros([B, nPad]).asType(.int32)
         let padMask = MLXArray.zeros([B, nPad]).asType(.int32)
         return (
-            concatenated([ids,  padIds],  axis: 1),
+            concatenated([ids, padIds], axis: 1),
             concatenated([mask, padMask], axis: 1)
         )
     }

@@ -317,18 +317,18 @@ struct DSPPaletteView: View {
 
     private func parameters(for effect: DSPEffect) -> DSPParameters {
         switch effect {
-        case .normalize: return .normalize(state.normalizeParameters)
-        case .trimSilence: return .trimSilence(state.trimSilenceParameters)
-        case .highPass: return .highPass(state.highPassParameters)
-        case .compress: return .compress(state.compressorParameters)
-        case .limit: return .limit(state.limiterParameters)
-        case .loudness: return .loudness(state.loudnessParameters)
-        case .softGate: return .softGate(state.softGateParameters)
-        case .eq: return .eq(state.eqParameters)
-        case .reverb: return .reverb(state.reverbParameters)
-        case .timeStretch: return .timeStretch(state.timeStretchParameters)
-        case .pitchShift: return .pitchShift(state.pitchShiftParameters)
-        default: return .none
+        case .normalize: .normalize(state.normalizeParameters)
+        case .trimSilence: .trimSilence(state.trimSilenceParameters)
+        case .highPass: .highPass(state.highPassParameters)
+        case .compress: .compress(state.compressorParameters)
+        case .limit: .limit(state.limiterParameters)
+        case .loudness: .loudness(state.loudnessParameters)
+        case .softGate: .softGate(state.softGateParameters)
+        case .eq: .eq(state.eqParameters)
+        case .reverb: .reverb(state.reverbParameters)
+        case .timeStretch: .timeStretch(state.timeStretchParameters)
+        case .pitchShift: .pitchShift(state.pitchShiftParameters)
+        default: .none
         }
     }
 

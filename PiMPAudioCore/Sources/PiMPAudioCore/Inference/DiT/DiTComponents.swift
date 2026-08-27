@@ -1,7 +1,7 @@
 import Foundation
 import MLX
-import MLXNN
 import MLXFast
+import MLXNN
 
 // MARK: - Rotary Position Embedding
 
@@ -11,14 +11,14 @@ public class RotaryEmbedding: Module {
 
     public init(headDim: Int, maxLen: Int = 32768, base: Float = 1_000_000.0) {
         self.headDim = headDim
-        self.invFreq = 1.0 / pow(
+        invFreq = 1.0 / pow(
             MLXArray(base),
             MLXArray(stride(from: 0, to: headDim, by: 2).map { Float($0) / Float(headDim) })
         )
     }
 
     public func forward(seqLen: Int) -> (cos: MLXArray, sin: MLXArray) {
-        let positions = MLXArray(Array(0..<seqLen).map { Float($0) })
+        let positions = MLXArray(Array(0 ..< seqLen).map { Float($0) })
         let freqs = positions.expandedDimensions(axis: 1) * invFreq.expandedDimensions(axis: 0)
         let freqsFull = concatenated([freqs, freqs], axis: 1)
         let c = cos(freqsFull).reshaped([1, 1, seqLen, headDim])
@@ -31,7 +31,7 @@ public class RotaryEmbedding: Module {
 
 func rotateHalf(_ x: MLXArray) -> MLXArray {
     let half = x.shape.last! / 2
-    let x1 = x[.ellipsis, 0..<half]
+    let x1 = x[.ellipsis, 0 ..< half]
     let x2 = x[.ellipsis, half...]
     return concatenated([-x2, x1], axis: -1)
 }
@@ -47,11 +47,11 @@ func applyRotaryPosEmb(
 // MARK: - Sliding Window Mask
 
 public func createSlidingWindowMask(seqLen: Int, windowSize: Int, dtype: DType = .float32)
-    -> MLXArray
-{
-    let indices = MLXArray(Array(0..<seqLen).map { Float($0) })
+    -> MLXArray {
+    let indices = MLXArray(Array(0 ..< seqLen).map { Float($0) })
     let diff = abs(
-        indices.expandedDimensions(axis: 1) - indices.expandedDimensions(axis: 0))
+        indices.expandedDimensions(axis: 1) - indices.expandedDimensions(axis: 0)
+    )
     let zeros = MLXArray.zeros([seqLen, seqLen])
     let negInf = MLXArray.full([seqLen, seqLen], values: MLXArray(Float(-1e9)))
     let mask = which(diff .< Float(windowSize + 1), zeros, negInf)
@@ -66,9 +66,9 @@ public class SwiGLUMLP: Module, UnaryLayer {
     @ModuleInfo var downProj: Linear
 
     public init(hiddenSize: Int, intermediateSize: Int) {
-        self._gateProj.wrappedValue = Linear(hiddenSize, intermediateSize, bias: false)
-        self._upProj.wrappedValue = Linear(hiddenSize, intermediateSize, bias: false)
-        self._downProj.wrappedValue = Linear(intermediateSize, hiddenSize, bias: false)
+        _gateProj.wrappedValue = Linear(hiddenSize, intermediateSize, bias: false)
+        _upProj.wrappedValue = Linear(hiddenSize, intermediateSize, bias: false)
+        _downProj.wrappedValue = Linear(intermediateSize, hiddenSize, bias: false)
     }
 
     public func callAsFunction(_ x: MLXArray) -> MLXArray {
@@ -108,25 +108,27 @@ public class DiTAttention: Module {
         slidingWindow: Int? = nil
     ) {
         self.hiddenSize = hiddenSize
-        self.numHeads = numAttentionHeads
-        self.numKVHeads = numKeyValueHeads
+        numHeads = numAttentionHeads
+        numKVHeads = numKeyValueHeads
         self.headDim = headDim
-        self.nRep = numAttentionHeads / numKeyValueHeads
-        self.scale = pow(Float(headDim), -0.5)
+        nRep = numAttentionHeads / numKeyValueHeads
+        scale = pow(Float(headDim), -0.5)
         self.layerIdx = layerIdx
         self.isCrossAttention = isCrossAttention
         self.slidingWindow = slidingWindow
 
-        self._qProj.wrappedValue = Linear(hiddenSize, numAttentionHeads * headDim, bias: attentionBias)
-        self._kProj.wrappedValue = Linear(hiddenSize, numKeyValueHeads * headDim, bias: attentionBias)
-        self._vProj.wrappedValue = Linear(hiddenSize, numKeyValueHeads * headDim, bias: attentionBias)
-        self._oProj.wrappedValue = Linear(numAttentionHeads * headDim, hiddenSize, bias: attentionBias)
-        self.qNorm = RMSNorm(dimensions: headDim, eps: rmsNormEps)
-        self.kNorm = RMSNorm(dimensions: headDim, eps: rmsNormEps)
+        _qProj.wrappedValue = Linear(hiddenSize, numAttentionHeads * headDim, bias: attentionBias)
+        _kProj.wrappedValue = Linear(hiddenSize, numKeyValueHeads * headDim, bias: attentionBias)
+        _vProj.wrappedValue = Linear(hiddenSize, numKeyValueHeads * headDim, bias: attentionBias)
+        _oProj.wrappedValue = Linear(numAttentionHeads * headDim, hiddenSize, bias: attentionBias)
+        qNorm = RMSNorm(dimensions: headDim, eps: rmsNormEps)
+        kNorm = RMSNorm(dimensions: headDim, eps: rmsNormEps)
     }
 
     private func repeatKV(_ x: MLXArray, nRep: Int) -> MLXArray {
-        if nRep == 1 { return x }
+        if nRep == 1 {
+            return x
+        }
         let (b, nKV, seqL, d) = (x.shape[0], x.shape[1], x.shape[2], x.shape[3])
         let expanded = x.expandedDimensions(axis: 2)
         let broadcasted = broadcast(expanded, to: [b, nKV, nRep, seqL, d])
@@ -152,7 +154,7 @@ public class DiTAttention: Module {
         var v: MLXArray
 
         if isCrossAttention, let enc = encoderHiddenStates {
-            if let cache = cache, cache.isUpdated(layerIdx: layerIdx) {
+            if let cache, cache.isUpdated(layerIdx: layerIdx) {
                 let cached = cache.get(layerIdx: layerIdx)!
                 k = cached.key
                 v = cached.value
@@ -162,7 +164,7 @@ public class DiTAttention: Module {
                 k = kNorm(k.reshaped([b, encL, numKVHeads, headDim]))
                 k = k.transposed(0, 2, 1, 3)
                 v = vProj(enc).reshaped([b, encL, numKVHeads, headDim]).transposed(0, 2, 1, 3)
-                if let cache = cache, useCache {
+                if let cache, useCache {
                     cache.update(key: k, value: v, layerIdx: layerIdx)
                 }
             }
@@ -201,10 +203,10 @@ public class TimestepEmbedding: Module {
 
     public init(inChannels: Int = 256, timeEmbedDim: Int = 2048, scale: Float = 1000.0) {
         self.inChannels = inChannels
-        self.tsScale = scale
-        self.linear1 = Linear(inChannels, timeEmbedDim, bias: true)
-        self.linear2 = Linear(timeEmbedDim, timeEmbedDim, bias: true)
-        self.timeProj = Linear(timeEmbedDim, timeEmbedDim * 6, bias: true)
+        tsScale = scale
+        linear1 = Linear(inChannels, timeEmbedDim, bias: true)
+        linear2 = Linear(timeEmbedDim, timeEmbedDim, bias: true)
+        timeProj = Linear(timeEmbedDim, timeEmbedDim * 6, bias: true)
     }
 
     private func sinusoidalEmbedding(_ t: MLXArray, dim: Int, maxPeriod: Int = 10000) -> MLXArray {
@@ -212,13 +214,14 @@ public class TimestepEmbedding: Module {
         let half = dim / 2
         let freqs = exp(
             -log(Float(maxPeriod))
-                * MLXArray(Array(0..<half).map { Float($0) / Float(half) })
+                * MLXArray(Array(0 ..< half).map { Float($0) / Float(half) })
         )
         let args = scaled.expandedDimensions(axis: 1) * freqs.expandedDimensions(axis: 0)
         var embedding = concatenated([cos(args), sin(args)], axis: -1)
         if dim % 2 != 0 {
             embedding = concatenated(
-                [embedding, MLXArray.zeros([embedding.shape[0], 1])], axis: -1)
+                [embedding, MLXArray.zeros([embedding.shape[0], 1])], axis: -1
+            )
         }
         return embedding
     }
@@ -261,23 +264,23 @@ public class DiTLayer: Module {
         self.layerType = layerType
         let sw: Int? = layerType == "sliding_attention" ? slidingWindow : nil
 
-        self.selfAttnNorm = RMSNorm(dimensions: hiddenSize, eps: rmsNormEps)
-        self.selfAttn = DiTAttention(
+        selfAttnNorm = RMSNorm(dimensions: hiddenSize, eps: rmsNormEps)
+        selfAttn = DiTAttention(
             hiddenSize: hiddenSize, numAttentionHeads: numAttentionHeads,
             numKeyValueHeads: numKeyValueHeads, headDim: headDim,
             rmsNormEps: rmsNormEps, attentionBias: attentionBias,
             layerIdx: layerIdx, isCrossAttention: false, slidingWindow: sw
         )
-        self.crossAttnNorm = RMSNorm(dimensions: hiddenSize, eps: rmsNormEps)
-        self.crossAttn = DiTAttention(
+        crossAttnNorm = RMSNorm(dimensions: hiddenSize, eps: rmsNormEps)
+        crossAttn = DiTAttention(
             hiddenSize: hiddenSize, numAttentionHeads: numAttentionHeads,
             numKeyValueHeads: numKeyValueHeads, headDim: headDim,
             rmsNormEps: rmsNormEps, attentionBias: attentionBias,
             layerIdx: layerIdx, isCrossAttention: true, slidingWindow: nil
         )
-        self.mlpNorm = RMSNorm(dimensions: hiddenSize, eps: rmsNormEps)
-        self.mlp = SwiGLUMLP(hiddenSize: hiddenSize, intermediateSize: intermediateSize)
-        self.scaleShiftTable = MLXArray.zeros([1, 6, hiddenSize])
+        mlpNorm = RMSNorm(dimensions: hiddenSize, eps: rmsNormEps)
+        mlp = SwiGLUMLP(hiddenSize: hiddenSize, intermediateSize: intermediateSize)
+        scaleShiftTable = MLXArray.zeros([1, 6, hiddenSize])
     }
 
     public func callAsFunction(

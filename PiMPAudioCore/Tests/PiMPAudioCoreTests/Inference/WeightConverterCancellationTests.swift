@@ -1,16 +1,15 @@
 // PiMPAudioCore/Tests/PiMPAudioCoreTests/Inference/WeightConverterCancellationTests.swift
-import Testing
 import MLX
 @testable import PiMPAudioCore
+import Testing
 
 @Suite("WeightConverter Cancellation")
 struct WeightConverterCancellationTests {
-
     @Test("convertVAEWeights respects task cancellation")
     func vaeWeightsCancellation() async {
         // Build a large enough state dict to trigger at least one cancellation check (>50 entries)
         var stateDict: [(String, MLXArray)] = []
-        for i in 0..<60 {
+        for i in 0 ..< 60 {
             stateDict.append(("layer.\(i).weight", MLXArray.zeros([4, 4])))
         }
 
@@ -23,7 +22,7 @@ struct WeightConverterCancellationTests {
         // The key assertion is that the task finishes without hanging.
         let result = await task.result
         switch result {
-        case .success(let weights):
+        case let .success(weights):
             #expect(weights.count >= 0)
         case .failure:
             // CancellationError is expected when cancellation wins the race
@@ -34,7 +33,7 @@ struct WeightConverterCancellationTests {
     @Test("convertDiTWeights respects task cancellation")
     func ditWeightsCancellation() async {
         var stateDict: [(String, MLXArray)] = []
-        for i in 0..<60 {
+        for i in 0 ..< 60 {
             stateDict.append(("layers.\(i).weight", MLXArray.zeros([4, 4])))
         }
 
@@ -45,7 +44,7 @@ struct WeightConverterCancellationTests {
         task.cancel()
         let result = await task.result
         switch result {
-        case .success(let weights):
+        case let .success(weights):
             #expect(weights.count >= 0)
         case .failure:
             // CancellationError is expected when cancellation wins the race
@@ -56,7 +55,7 @@ struct WeightConverterCancellationTests {
     @Test("Cancelled convertDiTWeights finishes the progress stream")
     func ditWeightsCancellationFinishesProgress() async {
         var stateDict: [(String, MLXArray)] = []
-        for i in 0..<60 {
+        for i in 0 ..< 60 {
             stateDict.append(("layers.\(i).weight", MLXArray.zeros([4, 4])))
         }
 

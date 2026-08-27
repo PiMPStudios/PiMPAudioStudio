@@ -1,5 +1,5 @@
-import Foundation
 import Darwin
+import Foundation
 import MCP
 
 final class MCPHTTPServer {
@@ -11,7 +11,10 @@ final class MCPHTTPServer {
     private let onFailed: @MainActor (Error) -> Void
     private let handler: @MainActor (MCP.HTTPRequest) async -> MCP.HTTPResponse
     private let acceptQueue = DispatchQueue(label: "com.pimpstudios.PiMPAudioStudio.mcp.http.accept")
-    private let clientQueue = DispatchQueue(label: "com.pimpstudios.PiMPAudioStudio.mcp.http.client", attributes: .concurrent)
+    private let clientQueue = DispatchQueue(
+        label: "com.pimpstudios.PiMPAudioStudio.mcp.http.client",
+        attributes: .concurrent
+    )
     private let stateLock = NSLock()
     private var listenSocket: Int32 = -1
     /// Live client FDs keyed by identity generation. Generation prevents a
@@ -75,7 +78,7 @@ final class MCPHTTPServer {
         let right = Array(rhs.utf8)
         var diff: UInt8 = left.count == right.count ? 0 : 1
         let count = max(left.count, right.count)
-        for index in 0..<count {
+        for index in 0 ..< count {
             let a = index < left.count ? left[index] : 0
             let b = index < right.count ? right[index] : 0
             diff |= a ^ b
@@ -276,7 +279,7 @@ final class MCPHTTPServer {
             if byteCount > 0 {
                 buffer.append(contentsOf: chunk.prefix(byteCount))
                 switch RawHTTPRequest.parse(buffer) {
-                case .ready(let request):
+                case let .ready(request):
                     Task {
                         let response = await self.respond(to: request)
                         await self.send(response, on: client, generation: generation)
@@ -333,7 +336,7 @@ final class MCPHTTPServer {
         if request.method == "GET", request.path == "/health" {
             return .json([
                 "status": "ok",
-                "endpoint": "/mcp"
+                "endpoint": "/mcp",
             ], corsOrigin: corsOrigin)
         }
 
@@ -364,9 +367,9 @@ final class MCPHTTPServer {
     ) async {
         guard isClientLive(client, generation: generation) else { return }
         switch response {
-        case .fixed(let data):
+        case let .fixed(data):
             _ = sendData(data, on: client, generation: generation)
-        case .stream(let header, let stream):
+        case let .stream(header, stream):
             guard sendData(header, on: client, generation: generation) else { return }
             do {
                 for try await chunk in stream {
@@ -395,7 +398,9 @@ final class MCPHTTPServer {
         generation: UInt64
     ) -> Bool {
         guard isClientLive(client, generation: generation) else { return false }
-        if data.isEmpty { return true }
+        if data.isEmpty {
+            return true
+        }
         return data.withUnsafeBytes { pointer in
             guard var address = pointer.baseAddress, pointer.count > 0 else { return true }
             var remaining = pointer.count
@@ -407,7 +412,7 @@ final class MCPHTTPServer {
                     address += sent
                     continue
                 }
-                if sent < 0 && errno == EINTR {
+                if sent < 0, errno == EINTR {
                     continue
                 }
                 return false
@@ -444,7 +449,7 @@ struct RawHTTPRequest {
 
     init?(data: Data) {
         switch Self.parse(data) {
-        case .ready(let request):
+        case let .ready(request):
             self = request
         case .incomplete, .notImplemented:
             return nil
@@ -487,7 +492,7 @@ struct RawHTTPRequest {
                 method: parts[0],
                 path: parts[1].split(separator: "?", maxSplits: 1).first.map(String.init) ?? parts[1],
                 headers: headers,
-                body: Data(data[bodyStart..<(bodyStart + contentLength)])
+                body: Data(data[bodyStart ..< (bodyStart + contentLength)])
             )
         )
     }
@@ -560,12 +565,14 @@ private enum RawHTTPResponse {
         statusText: String = "OK",
         corsOrigin: String? = nil
     ) -> RawHTTPResponse {
-        let body: Data
-        if JSONSerialization.isValidJSONObject(object),
-           let encoded = try? JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys]) {
-            body = encoded
+        let body: Data = if JSONSerialization.isValidJSONObject(object),
+                            let encoded = try? JSONSerialization.data(
+                                withJSONObject: object,
+                                options: [.prettyPrinted, .sortedKeys]
+                            ) {
+            encoded
         } else {
-            body = Data("{\"error\":\"Invalid JSON response\"}".utf8)
+            Data("{\"error\":\"Invalid JSON response\"}".utf8)
         }
         return response(
             statusCode: statusCode,
@@ -603,7 +610,7 @@ private enum RawHTTPResponse {
     }
 
     static func sdk(_ response: MCP.HTTPResponse, corsOrigin: String? = nil) -> RawHTTPResponse {
-        if case .stream(let stream, let headers) = response {
+        if case let .stream(stream, headers) = response {
             let contentType = headers[MCP.HTTPHeaderName.contentType] ?? "text/event-stream"
             return self.stream(
                 statusCode: response.statusCode,
@@ -678,7 +685,7 @@ private enum RawHTTPResponse {
             "Content-Type": contentType,
             "Connection": connection,
             "MCP-Protocol-Version": "2025-06-18",
-            "Allow": "POST, GET, DELETE, OPTIONS"
+            "Allow": "POST, GET, DELETE, OPTIONS",
         ]
         if let contentLength {
             headers["Content-Length"] = contentLength

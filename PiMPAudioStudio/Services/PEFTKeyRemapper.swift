@@ -13,7 +13,6 @@ import PiMPAudioCore
 /// Keys that cannot be mapped (embedding LoRA, bias terms, unknown projections)
 /// are silently dropped — the injector skips weights it doesn't recognise anyway.
 enum PEFTKeyRemapper {
-
     // MARK: - Detection
 
     /// Returns `true` if the weight dictionary contains LoRA A/B matrices in either
@@ -21,7 +20,7 @@ enum PEFTKeyRemapper {
     /// e.g. `transformer.layers.0.self_attn.q_proj.lora_A.weight`).
     static func isPEFT(_ keys: [String]) -> Bool {
         keys.contains { $0.hasPrefix("base_model.model.") } ||
-        keys.contains { $0.contains(".lora_A.") || $0.contains(".lora_B.") }
+            keys.contains { $0.contains(".lora_A.") || $0.contains(".lora_B.") }
     }
 
     // MARK: - Weight Remapping
@@ -96,8 +95,8 @@ enum PEFTKeyRemapper {
         let peftSuffixes: [(String, String)] = [
             (".lora_A.default.weight", ".loraA"),
             (".lora_B.default.weight", ".loraB"),
-            (".lora_A.weight",         ".loraA"),
-            (".lora_B.weight",         ".loraB"),
+            (".lora_A.weight", ".loraA"),
+            (".lora_B.weight", ".loraB"),
         ]
         var loraSuffix: String?
         for (peft, pimpAudio) in peftSuffixes {
@@ -178,9 +177,9 @@ enum PEFTKeyRemapper {
         var errorDescription: String? {
             switch self {
             case .noConvertibleWeights:
-                return "No compatible LoKR weights were found."
-            case .unsupportedVariant(let detail):
-                return detail
+                "No compatible LoKR weights were found."
+            case let .unsupportedVariant(detail):
+                detail
             }
         }
     }
@@ -189,9 +188,9 @@ enum PEFTKeyRemapper {
     static func isLyCORISLoKR(_ keys: [String]) -> Bool {
         keys.contains { key in
             splitLoKRSuffix(key) != nil ||
-            key.contains(".lokr_w1") ||
-            key.contains(".lokr_w2") ||
-            key.contains(".dora_scale")
+                key.contains(".lokr_w1") ||
+                key.contains(".lokr_w2") ||
+                key.contains(".dora_scale")
         }
     }
 
@@ -220,18 +219,18 @@ enum PEFTKeyRemapper {
         for prefix in prefixes.sorted() {
             guard let nativePath = mapLyCORISLoKRPrefix(prefix),
                   let w1 = loKRTensorOrProduct(
-                    dict,
-                    prefix: prefix,
-                    direct: "lokr_w1",
-                    left: "lokr_w1_a",
-                    right: "lokr_w1_b"
+                      dict,
+                      prefix: prefix,
+                      direct: "lokr_w1",
+                      left: "lokr_w1_a",
+                      right: "lokr_w1_b"
                   ),
                   let w2 = loKRTensorOrProduct(
-                    dict,
-                    prefix: prefix,
-                    direct: "lokr_w2",
-                    left: "lokr_w2_a",
-                    right: "lokr_w2_b"
+                      dict,
+                      prefix: prefix,
+                      direct: "lokr_w2",
+                      left: "lokr_w2_a",
+                      right: "lokr_w2_b"
                   ) else {
                 continue
             }
@@ -294,8 +293,16 @@ enum PEFTKeyRemapper {
 
     /// Scan raw PEFT key strings for known projection names (e.g. `q_proj`, `v_proj`).
     private static func extractTargetModules(from keys: [String]) -> [String] {
-        let known = ["q_proj", "k_proj", "v_proj", "o_proj", "out_proj",
-                     "gate_proj", "up_proj", "down_proj"]
+        let known = [
+            "q_proj",
+            "k_proj",
+            "v_proj",
+            "o_proj",
+            "out_proj",
+            "gate_proj",
+            "up_proj",
+            "down_proj",
+        ]
         var found = Set<String>()
         for key in keys {
             for name in known where key.contains(".\(name).") {
@@ -309,18 +316,22 @@ enum PEFTKeyRemapper {
 
     /// Infer the closest `Set<TargetLayer>` from PEFT `target_modules`.
     static func inferTargetLayers(from targetModules: [String]) -> Set<TargetLayer> {
-        let attnModules: Set<String> = [
+        let attnModules: Set = [
             "q_proj", "k_proj", "v_proj", "o_proj", "out_proj",
             "q", "k", "v", "o", "to_q", "to_k", "to_v", "to_out",
         ]
-        let mlpModules: Set<String> = [
+        let mlpModules: Set = [
             "gate_proj", "up_proj", "down_proj", "w1", "w2", "w3", "fc1", "fc2",
         ]
 
         var layers = Set<TargetLayer>()
         for module in targetModules {
-            if attnModules.contains(module) { layers.insert(.selfAttention) }
-            if mlpModules.contains(module)  { layers.insert(.mlp) }
+            if attnModules.contains(module) {
+                layers.insert(.selfAttention)
+            }
+            if mlpModules.contains(module) {
+                layers.insert(.mlp)
+            }
         }
         // Default to self-attention when target_modules lists nothing recognisable
         return layers.isEmpty ? [.selfAttention] : layers
@@ -367,13 +378,23 @@ enum PEFTKeyRemapper {
             return path
         }
         if lower.contains("xl") {
-            if lower.contains("turbo") { return "ace-step-dit-xl-turbo" }
-            if lower.contains("sft") { return "ace-step-dit-xl-sft" }
-            if lower.contains("base") || lower.contains("full") { return "ace-step-dit-xl-base" }
+            if lower.contains("turbo") {
+                return "ace-step-dit-xl-turbo"
+            }
+            if lower.contains("sft") {
+                return "ace-step-dit-xl-sft"
+            }
+            if lower.contains("base") || lower.contains("full") {
+                return "ace-step-dit-xl-base"
+            }
             return "ace-step-dit-xl"
         }
-        if lower.contains("turbo") { return "ace-step-dit-turbo" }
-        if lower.contains("sft")   { return "ace-step-dit-sft" }
+        if lower.contains("turbo") {
+            return "ace-step-dit-turbo"
+        }
+        if lower.contains("sft") {
+            return "ace-step-dit-sft"
+        }
         return "ace-step-dit-base"
     }
 
@@ -485,7 +506,7 @@ enum PEFTKeyRemapper {
     private static func inferLoKRLinearDim(fromRemappedWeights weights: [String: MLXArray]) -> Int {
         let inferred = weights
             .filter { $0.key.hasSuffix(".lokrW1") || $0.key.hasSuffix(".lokrW2") }
-            .flatMap { $0.value.shape }
+            .flatMap(\.value.shape)
             .max() ?? 64
         return max(1, inferred)
     }
@@ -518,52 +539,50 @@ enum PEFTKeyRemapper {
 
     private static func mapAttnProj(_ name: String) -> String? {
         switch name {
-        case "q_proj", "q", "to_q":                          return "qProj"
-        case "k_proj", "k", "to_k":                          return "kProj"
-        case "v_proj", "v", "to_v":                          return "vProj"
-        case "o_proj", "out_proj", "proj_out", "to_out", "o": return "oProj"
-        default: return nil
+        case "q_proj", "q", "to_q": "qProj"
+        case "k_proj", "k", "to_k": "kProj"
+        case "v_proj", "v", "to_v": "vProj"
+        case "o_proj", "out_proj", "proj_out", "to_out", "o": "oProj"
+        default: nil
         }
     }
 
     private static func mapMLPProj(_ name: String) -> String? {
         switch name {
-        case "gate_proj", "w1", "wi_0": return "gateProj"
-        case "up_proj",   "w3", "wi_1": return "upProj"
-        case "down_proj", "w2", "wo":   return "downProj"
-        default: return nil
+        case "gate_proj", "w1", "wi_0": "gateProj"
+        case "up_proj", "w3", "wi_1": "upProj"
+        case "down_proj", "w2", "wo": "downProj"
+        default: nil
         }
     }
 
     private static func patternSortKey(_ pattern: String) -> String {
-        let moduleRank: String
-        if pattern.hasPrefix("selfAttn.") {
-            moduleRank = "0"
+        let moduleRank = if pattern.hasPrefix("selfAttn.") {
+            "0"
         } else if pattern.hasPrefix("crossAttn.") {
-            moduleRank = "1"
+            "1"
         } else if pattern.hasPrefix("mlp.") {
-            moduleRank = "2"
+            "2"
         } else {
-            moduleRank = "9"
+            "9"
         }
 
-        let projectionRank: String
-        if pattern.hasSuffix(".qProj") {
-            projectionRank = "0"
+        let projectionRank = if pattern.hasSuffix(".qProj") {
+            "0"
         } else if pattern.hasSuffix(".kProj") {
-            projectionRank = "1"
+            "1"
         } else if pattern.hasSuffix(".vProj") {
-            projectionRank = "2"
+            "2"
         } else if pattern.hasSuffix(".oProj") {
-            projectionRank = "3"
+            "3"
         } else if pattern.hasSuffix(".gateProj") {
-            projectionRank = "4"
+            "4"
         } else if pattern.hasSuffix(".upProj") {
-            projectionRank = "5"
+            "5"
         } else if pattern.hasSuffix(".downProj") {
-            projectionRank = "6"
+            "6"
         } else {
-            projectionRank = "9"
+            "9"
         }
 
         return "\(moduleRank).\(projectionRank).\(pattern)"

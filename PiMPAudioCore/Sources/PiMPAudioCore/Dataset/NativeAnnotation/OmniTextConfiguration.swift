@@ -14,9 +14,9 @@ public struct OmniTextConfiguration: Codable, Equatable, Sendable {
     public let maxPositionEmbeddings: Int
 
     public init(
-        hiddenSize: Int = 3_584,
+        hiddenSize: Int = 3584,
         hiddenLayers: Int = 28,
-        intermediateSize: Int = 18_944,
+        intermediateSize: Int = 18944,
         attentionHeads: Int = 28,
         keyValueHeads: Int = 4,
         rmsNormEpsilon: Float = 1e-6,
@@ -24,7 +24,7 @@ public struct OmniTextConfiguration: Codable, Equatable, Sendable {
         ropeTheta: Float = 1_000_000,
         ropeTraditional: Bool = false,
         tieWordEmbeddings: Bool = false,
-        maxPositionEmbeddings: Int = 32_768
+        maxPositionEmbeddings: Int = 32768
     ) {
         self.hiddenSize = hiddenSize
         self.hiddenLayers = hiddenLayers
@@ -90,9 +90,9 @@ public enum OmniTextConfigurationError: LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .invalidDimensions:
-            return "The Omni Thinker text configuration contains invalid dimensions."
+            "The Omni Thinker text configuration contains invalid dimensions."
         case .invalidNumerics:
-            return "The Omni Thinker text configuration contains invalid numeric values."
+            "The Omni Thinker text configuration contains invalid numeric values."
         }
     }
 }

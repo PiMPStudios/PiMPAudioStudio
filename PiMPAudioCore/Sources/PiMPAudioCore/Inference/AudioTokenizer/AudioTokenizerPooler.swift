@@ -47,9 +47,9 @@ public class AudioTokenizerPooler: Module {
         maxPositionEmbeddings: Int
     ) {
         self.hiddenSize = hiddenSize
-        self.embedTokens = Linear(hiddenSize, hiddenSize, bias: true)
-        self.specialToken = MLXArray.zeros([1, 1, hiddenSize])
-        self.layers = (0..<numLayers).map { _ in
+        embedTokens = Linear(hiddenSize, hiddenSize, bias: true)
+        specialToken = MLXArray.zeros([1, 1, hiddenSize])
+        layers = (0 ..< numLayers).map { _ in
             Qwen3Layer(
                 hiddenSize: hiddenSize,
                 intermediateSize: intermediateSize,
@@ -59,8 +59,8 @@ public class AudioTokenizerPooler: Module {
                 rmsNormEps: rmsNormEps
             )
         }
-        self.norm = RMSNorm(dimensions: hiddenSize, eps: rmsNormEps)
-        self.rotaryEmbedding = RotaryEmbedding(
+        norm = RMSNorm(dimensions: hiddenSize, eps: rmsNormEps)
+        rotaryEmbedding = RotaryEmbedding(
             headDim: headDim,
             maxLen: maxPositionEmbeddings,
             base: ropeTheta
@@ -80,7 +80,7 @@ public class AudioTokenizerPooler: Module {
 
         // Prepend cls (broadcast special_token across the [B*num_windows] axis)
         let cls = MLX.broadcast(specialToken, to: [bsz * nWindows, 1, hSize])
-        var h = MLX.concatenated([cls, projected], axis: 1)               // [B*N, 1+poolWin, H]
+        var h = MLX.concatenated([cls, projected], axis: 1) // [B*N, 1+poolWin, H]
 
         let seqLen = h.shape[1]
         let positionCosSin = rotaryEmbedding.forward(seqLen: seqLen)
@@ -94,7 +94,7 @@ public class AudioTokenizerPooler: Module {
         h = norm(h)
 
         // Read out cls position (index 0), reshape back to [B, num_windows, H]
-        let cls_out = h[0..., 0..<1, 0...]                                 // [B*N, 1, H]
+        let cls_out = h[0..., 0 ..< 1, 0...] // [B*N, 1, H]
         return cls_out.reshaped([bsz, nWindows, hSize])
     }
 }

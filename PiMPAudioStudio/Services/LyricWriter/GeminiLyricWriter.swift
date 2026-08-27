@@ -32,14 +32,14 @@ struct GeminiLyricWriter: LyricWriter {
 
                     let body: [String: Any] = [
                         "system_instruction": [
-                            "parts": [["text": plan.systemPrompt]]
+                            "parts": [["text": plan.systemPrompt]],
                         ],
                         "generationConfig": [
-                            "maxOutputTokens": plan.maxTokens
+                            "maxOutputTokens": plan.maxTokens,
                         ],
                         "contents": [
-                            ["parts": [["text": plan.userPrompt(prompt: prompt, style: style)]]]
-                        ]
+                            ["parts": [["text": plan.userPrompt(prompt: prompt, style: style)]]],
+                        ],
                     ]
 
                     request.httpBody = try LyricWriterRequest.jsonBody(body, provider: displayName)
@@ -48,7 +48,9 @@ struct GeminiLyricWriter: LyricWriter {
                     try LyricWriterRequest.validate(response: response, provider: displayName)
 
                     for try await line in bytes.lines {
-                        if Task.isCancelled { break }
+                        if Task.isCancelled {
+                            break
+                        }
                         guard line.hasPrefix("data: ") else { continue }
                         let json = String(line.dropFirst(6))
                         guard let data = json.data(using: .utf8),
@@ -80,7 +82,7 @@ struct GeminiLyricWriter: LyricWriter {
         components.host = "generativelanguage.googleapis.com"
         components.path = "/v1beta/models/gemini-2.0-flash:streamGenerateContent"
         components.queryItems = [
-            URLQueryItem(name: "alt", value: "sse")
+            URLQueryItem(name: "alt", value: "sse"),
         ]
         guard let url = components.url else {
             throw LyricWriterError.requestFailed(

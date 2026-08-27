@@ -11,16 +11,16 @@ public enum OmniWeightLoaderError: LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case .missingIndex(let url):
-            return "Missing safetensors index at \(url.path)."
-        case .missingShard(let url):
-            return "Missing checkpoint shard at \(url.path)."
-        case .missingTensor(let name):
-            return "Checkpoint shard does not contain \(name)."
-        case .incorrectTensorCount(let expected, let actual):
-            return "Loaded \(actual) audio-tower tensors; expected \(expected)."
-        case .unsupportedConvShape(let name, let shape):
-            return "Unsupported \(name) Conv1d weight shape \(shape)."
+        case let .missingIndex(url):
+            "Missing safetensors index at \(url.path)."
+        case let .missingShard(url):
+            "Missing checkpoint shard at \(url.path)."
+        case let .missingTensor(name):
+            "Checkpoint shard does not contain \(name)."
+        case let .incorrectTensorCount(expected, actual):
+            "Loaded \(actual) audio-tower tensors; expected \(expected)."
+        case let .unsupportedConvShape(name, shape):
+            "Unsupported \(name) Conv1d weight shape \(shape)."
         }
     }
 }
@@ -173,7 +173,7 @@ public enum OmniWeightLoader {
 
         let expectedCount =
             manifest?.tensorCounts.audioTower
-            ?? tower.parameters().flattened().count
+                ?? tower.parameters().flattened().count
         guard selected.count == expectedCount else {
             throw OmniWeightLoaderError.incorrectTensorCount(
                 expected: expectedCount,
@@ -221,7 +221,7 @@ public final class OmniAudioTowerHandle {
     private var storage: Qwen25OmniAudioTower?
 
     public init(tower: Qwen25OmniAudioTower) {
-        self.storage = tower
+        storage = tower
     }
 
     public var isLoaded: Bool {

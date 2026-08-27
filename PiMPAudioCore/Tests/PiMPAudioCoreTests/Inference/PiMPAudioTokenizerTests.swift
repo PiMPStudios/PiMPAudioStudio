@@ -1,6 +1,6 @@
-import Testing
 import MLX
 @testable import PiMPAudioCore
+import Testing
 
 @Suite("PiMP Audio Tokenizer")
 struct PiMPAudioTokenizerTests {

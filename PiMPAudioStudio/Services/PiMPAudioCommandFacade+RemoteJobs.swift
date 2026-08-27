@@ -94,7 +94,7 @@ extension PiMPAudioCommandFacade {
             "destinationPath": destination.path(percentEncoded: false),
             "selectedAssetCount": validation.selectedAssetCount,
             "assetRoles": validation.assetRoles,
-            "submitted": false
+            "submitted": false,
         ]
 
         guard !dryRun else {
@@ -185,7 +185,7 @@ extension PiMPAudioCommandFacade {
         var pod: RunPodPodSummary?
         if let podID = stringValue(arguments["podID"] ?? arguments["pod"] ?? arguments["id"])?
             .trimmingCharacters(in: .whitespacesAndNewlines),
-           !podID.isEmpty {
+            !podID.isEmpty {
             pod = try resolveRunPodPod(arguments: arguments, service: runPodService)
         }
 
@@ -202,11 +202,10 @@ extension PiMPAudioCommandFacade {
             await runPodService.refreshPods()
         }
 
-        let state: RunPodRemoteJobState?
-        if let pod {
-            state = runPodService.remoteJobState(for: pod, archiveURL: archiveURL)
+        let state: RunPodRemoteJobState? = if let pod {
+            runPodService.remoteJobState(for: pod, archiveURL: archiveURL)
         } else {
-            state = nil
+            nil
         }
 
         return [
@@ -219,7 +218,7 @@ extension PiMPAudioCommandFacade {
                 return entry
             },
             "lastMessage": runPodService.lastMessage ?? NSNull(),
-            "lastError": runPodService.lastError ?? NSNull()
+            "lastError": runPodService.lastError ?? NSNull(),
         ]
     }
 
@@ -252,7 +251,7 @@ extension PiMPAudioCommandFacade {
             "finalAdapterPath": pullback.finalAdapterURL.path(percentEncoded: false),
             "resultStatus": pullback.result.status.rawValue,
             "adapterNameFromResult": pullback.result.adapterName ?? NSNull(),
-            "imported": false
+            "imported": false,
         ]
 
         if importAdapter {
@@ -271,7 +270,7 @@ extension PiMPAudioCommandFacade {
                 "id": adapter.id,
                 "name": adapter.name,
                 "kind": adapter.kind.rawValue,
-                "baseModelID": adapter.baseModelID
+                "baseModelID": adapter.baseModelID,
             ]
         }
 
@@ -306,7 +305,7 @@ extension PiMPAudioCommandFacade {
                 ?? arguments["outputPath"]
                 ?? arguments["archivePath"]
         )?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !raw.isEmpty {
+            !raw.isEmpty {
             let url = URL(fileURLWithPath: NSString(string: raw).expandingTildeInPath)
             if url.pathExtension.lowercased() == "zip" {
                 return url
@@ -330,7 +329,7 @@ extension PiMPAudioCommandFacade {
                 ?? arguments["zipPath"]
                 ?? arguments["path"]
         )?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !raw.isEmpty {
+            !raw.isEmpty {
             let url = URL(fileURLWithPath: NSString(string: raw).expandingTildeInPath)
             guard FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) else {
                 throw PiMPAudioCommandFacadeError.invalidTrainingConfiguration(
@@ -342,7 +341,7 @@ extension PiMPAudioCommandFacade {
 
         if let remembered = UserDefaults.standard.string(forKey: AppUserDefaultsKeys.runPodLastArchivePath)?
             .trimmingCharacters(in: .whitespacesAndNewlines),
-           !remembered.isEmpty {
+            !remembered.isEmpty {
             let url = URL(fileURLWithPath: remembered)
             if FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) {
                 return url
@@ -357,7 +356,7 @@ extension PiMPAudioCommandFacade {
     func resolveMCPSSHKeyPath(arguments: [String: Any]) throws -> String {
         if let raw = stringValue(arguments["sshKeyPath"] ?? arguments["sshKey"] ?? arguments["privateKeyPath"])?
             .trimmingCharacters(in: .whitespacesAndNewlines),
-           !raw.isEmpty {
+            !raw.isEmpty {
             return raw
         }
 
@@ -370,7 +369,7 @@ extension PiMPAudioCommandFacade {
         // Fall back to the same defaults key the Remote GPU UI uses.
         if let stored = UserDefaults.standard.string(forKey: AppUserDefaultsKeys.runPodSSHKeyPath)?
             .trimmingCharacters(in: .whitespacesAndNewlines),
-           !stored.isEmpty {
+            !stored.isEmpty {
             return stored
         }
 
@@ -401,7 +400,7 @@ extension PiMPAudioCommandFacade {
                 ?? arguments["outputDirectory"]
                 ?? arguments["destinationPath"]
         )?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !raw.isEmpty {
+            !raw.isEmpty {
             let url = URL(fileURLWithPath: NSString(string: raw).expandingTildeInPath, isDirectory: true)
             try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
             return url
@@ -430,7 +429,7 @@ extension PiMPAudioCommandFacade {
             "job": service.remoteJobState(for: pod, archiveURL: archiveURL)
                 .map(remoteJobStatePayload) ?? NSNull(),
             "lastMessage": service.lastMessage ?? NSNull(),
-            "lastError": service.lastError ?? NSNull()
+            "lastError": service.lastError ?? NSNull(),
         ]
     }
 
@@ -443,7 +442,7 @@ extension PiMPAudioCommandFacade {
             "localArtifactsPath": state.localArtifactsPath ?? NSNull(),
             "importedAdapterName": state.importedAdapterName ?? NSNull(),
             "resultStatus": state.result?.status.rawValue ?? NSNull(),
-            "resultAdapterName": state.result?.adapterName ?? NSNull()
+            "resultAdapterName": state.result?.adapterName ?? NSNull(),
         ]
     }
 
@@ -455,7 +454,7 @@ extension PiMPAudioCommandFacade {
     ) -> String {
         if let name = stringValue(arguments["adapterName"] ?? arguments["name"])?
             .trimmingCharacters(in: .whitespacesAndNewlines),
-           !name.isEmpty {
+            !name.isEmpty {
             return name
         }
         let friendly = packageName.replacingOccurrences(of: "_local_", with: " ")
@@ -524,15 +523,15 @@ private enum MCPRemoteJobRecipe: String {
 
     var title: String {
         switch self {
-        case .narrow: return "Narrow"
-        case .wide: return "Wide"
+        case .narrow: "Narrow"
+        case .wide: "Wide"
         }
     }
 
     func settings(for adapterKind: AdapterKind) -> MCPRemoteJobRecipeSettings {
         switch (adapterKind, self) {
         case (.lora, .narrow):
-            return MCPRemoteJobRecipeSettings(
+            MCPRemoteJobRecipeSettings(
                 rank: 64, alpha: 64, lokrLinearDim: nil, lokrLinearAlpha: nil,
                 lokrWeightDecompose: false, epochs: 100, saveEvery: 10, batchSize: 1,
                 gradientAccumulationSteps: 2, learningRate: 0.00008, dropout: 0,
@@ -540,7 +539,7 @@ private enum MCPRemoteJobRecipe: String {
                 cfgRatio: 0.15, maxDurationSeconds: 240
             )
         case (.lora, .wide):
-            return MCPRemoteJobRecipeSettings(
+            MCPRemoteJobRecipeSettings(
                 rank: 96, alpha: 192, lokrLinearDim: nil, lokrLinearAlpha: nil,
                 lokrWeightDecompose: false, epochs: 150, saveEvery: 10, batchSize: 1,
                 gradientAccumulationSteps: 2, learningRate: 0.000065, dropout: 0,
@@ -548,7 +547,7 @@ private enum MCPRemoteJobRecipe: String {
                 cfgRatio: 0.15, maxDurationSeconds: 240
             )
         case (.lokr, .narrow):
-            return MCPRemoteJobRecipeSettings(
+            MCPRemoteJobRecipeSettings(
                 rank: 32, alpha: 64, lokrLinearDim: 32, lokrLinearAlpha: 64,
                 lokrWeightDecompose: true, epochs: 80, saveEvery: 10, batchSize: 1,
                 gradientAccumulationSteps: 2, learningRate: 0.00008, dropout: 0,
@@ -556,7 +555,7 @@ private enum MCPRemoteJobRecipe: String {
                 cfgRatio: 0.15, maxDurationSeconds: 240
             )
         case (.lokr, .wide):
-            return MCPRemoteJobRecipeSettings(
+            MCPRemoteJobRecipeSettings(
                 rank: 128, alpha: 256, lokrLinearDim: 128, lokrLinearAlpha: 256,
                 lokrWeightDecompose: true, epochs: 150, saveEvery: 10, batchSize: 1,
                 gradientAccumulationSteps: 2, learningRate: 0.000065, dropout: 0,
@@ -592,20 +591,20 @@ private enum MCPRemoteJobBundle: String {
 
     var title: String {
         switch self {
-        case .fullMix: return "Full Mix"
-        case .instrumental: return "Instrumental"
-        case .vocals: return "Vocals"
+        case .fullMix: "Full Mix"
+        case .instrumental: "Instrumental"
+        case .vocals: "Vocals"
         }
     }
 
     var fileName: String {
         switch self {
         case .fullMix:
-            return TrainingDatasetPackageWriter.fullMixBundleFileName
+            TrainingDatasetPackageWriter.fullMixBundleFileName
         case .instrumental:
-            return TrainingDatasetPackageWriter.instrumentalBundleFileName
+            TrainingDatasetPackageWriter.instrumentalBundleFileName
         case .vocals:
-            return TrainingDatasetPackageWriter.vocalBundleFileName
+            TrainingDatasetPackageWriter.vocalBundleFileName
         }
     }
 }
@@ -617,25 +616,25 @@ private enum MCPRemoteJobBaseModel {
 
     var title: String {
         switch self {
-        case .xlSFT: return "ACE-Step XL SFT"
-        case .xlBase: return "ACE-Step XL Base"
-        case .xlTurbo: return "ACE-Step XL Turbo"
+        case .xlSFT: "ACE-Step XL SFT"
+        case .xlBase: "ACE-Step XL Base"
+        case .xlTurbo: "ACE-Step XL Turbo"
         }
     }
 
     var appModelID: String {
         switch self {
-        case .xlSFT: return "ace-step-dit-xl-sft"
-        case .xlBase: return "ace-step-dit-xl-base"
-        case .xlTurbo: return "ace-step-dit-xl-turbo"
+        case .xlSFT: "ace-step-dit-xl-sft"
+        case .xlBase: "ace-step-dit-xl-base"
+        case .xlTurbo: "ace-step-dit-xl-turbo"
         }
     }
 
     var workerVariant: String {
         switch self {
-        case .xlSFT: return "ace-step-xl-sft"
-        case .xlBase: return "ace-step-xl-base"
-        case .xlTurbo: return "ace-step-xl-turbo"
+        case .xlSFT: "ace-step-xl-sft"
+        case .xlBase: "ace-step-xl-base"
+        case .xlTurbo: "ace-step-xl-turbo"
         }
     }
 }

@@ -1,6 +1,6 @@
-import Testing
 import Foundation
 @testable import PiMPAudioCore
+import Testing
 
 @Test func registryReturnsAllSpecs() async {
     let registry = ModelRegistry(baseDirectory: FileManager.default.temporaryDirectory)
@@ -89,7 +89,7 @@ import Foundation
     defer { try? FileManager.default.removeItem(at: tempDir) }
 
     let registry = ModelRegistry(baseDirectory: tempDir)
-    let spec = await registry.allSpecs.first(where: { $0.id == "ace-step-dit-turbo" })!
+    let spec = try await #require(registry.allSpecs.first(where: { $0.id == "ace-step-dit-turbo" }))
 
     let modelDir = spec.localDirectory(base: tempDir)
     try FileManager.default.createDirectory(at: modelDir, withIntermediateDirectories: true)
@@ -104,7 +104,7 @@ import Foundation
 @Test func registryReturnsFailedForUnknownModel() async {
     let registry = ModelRegistry(baseDirectory: FileManager.default.temporaryDirectory)
     let status = await registry.status(for: "nonexistent-model-id")
-    if case .failed(_) = status {
+    if case .failed = status {
         // expected
     } else {
         Issue.record("Expected .failed status for unknown model ID, got \(status)")
@@ -213,7 +213,7 @@ import Foundation
     #expect(stable?.files.contains { $0.sha256 == nil } == true)
 }
 
-@Test func registryRemovesRetiredLyricLLMDirectoryEvenAfterMigration() async throws {
+@Test func registryRemovesRetiredLyricLLMDirectoryEvenAfterMigration() throws {
     let tempDir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
     try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: tempDir) }
@@ -228,7 +228,7 @@ import Foundation
     #expect(!FileManager.default.fileExists(atPath: leftover.path(percentEncoded: false)))
 }
 
-@Test func registryDropsRetiredLyricLLMActiveEntry() async throws {
+@Test func registryDropsRetiredLyricLLMActiveEntry() throws {
     let tempDir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
     try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: tempDir) }

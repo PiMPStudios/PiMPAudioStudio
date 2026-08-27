@@ -1,5 +1,5 @@
-import Foundation
 @preconcurrency import DemucsMLX
+import Foundation
 
 public struct DemucsStemSeparationOutput: Sendable, Equatable {
     public let backend: String
@@ -28,8 +28,8 @@ public enum DemucsStemSeparatorError: LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case .invalidOutput(let message):
-            return "Demucs stem output is invalid: \(message)"
+        case let .invalidOutput(message):
+            "Demucs stem output is invalid: \(message)"
         }
     }
 }

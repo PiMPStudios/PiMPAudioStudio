@@ -1,6 +1,6 @@
-import SwiftUI
 import AVFoundation
 import PiMPAudioCore
+import SwiftUI
 
 /// Identifies a finished DSP apply. The token makes two consecutive applies of the
 /// same effect distinguishable so the UI can react to each one.
@@ -24,7 +24,7 @@ class EditorState: ObservableObject {
     @Published var highCutHz: Float = 4000
 
     /// Shared slider span for frequency-band cuts.
-    static let frequencyCutRange: ClosedRange<Float> = 20...20_000
+    static let frequencyCutRange: ClosedRange<Float> = 20 ... 20000
     /// Minimum non-empty bandwidth enforced by the paired low/high bindings.
     static let minimumFrequencyBandwidthHz: Float = 50
 
@@ -97,6 +97,7 @@ class EditorState: ObservableObject {
     }
 
     // MARK: - Preview playback
+
     @Published var isPlayingPreview = false
     @Published var previewCurrentTime: TimeInterval = 0
     private var previewPlayer: AVAudioPlayer?
@@ -171,15 +172,15 @@ class EditorState: ObservableObject {
 
     var actionButtonTitle: String {
         switch editMode {
-        case .inpaint: return "Inpaint Selection"
-        case .repaint: return "Repaint Track"
+        case .inpaint: "Inpaint Selection"
+        case .repaint: "Repaint Track"
         }
     }
 
     var regionPromptLabel: String {
         switch editMode {
-        case .inpaint: return "Region Prompt"
-        case .repaint: return "Target Style"
+        case .inpaint: "Region Prompt"
+        case .repaint: "Target Style"
         }
     }
 
@@ -275,20 +276,20 @@ class EditorState: ObservableObject {
 
                 await MainActor.run { [weak self] in
                     guard let self else { return }
-                    self.pushUndoSnapshot(buffer)
-                    self.redoStack.removeAll()
-                    self.canUndo = true
-                    self.canRedo = false
+                    pushUndoSnapshot(buffer)
+                    redoStack.removeAll()
+                    canUndo = true
+                    canRedo = false
 
-                    self.invalidatePreviewPlayer()
-                    self.audioBuffer = result
-                    self.duration = result.duration
-                    self.noteBufferMutation()
-                    self.refreshWaveformPeaks(from: result)
-                    self.refreshLevelMetrics()
-                    self.selectionStart = 0
-                    self.selectionEnd = 0
-                    self.polishAppliedConfirmation = true
+                    invalidatePreviewPlayer()
+                    audioBuffer = result
+                    duration = result.duration
+                    noteBufferMutation()
+                    refreshWaveformPeaks(from: result)
+                    refreshLevelMetrics()
+                    selectionStart = 0
+                    selectionEnd = 0
+                    polishAppliedConfirmation = true
                 }
 
                 try? await Task.sleep(for: .milliseconds(800))
@@ -341,30 +342,30 @@ class EditorState: ObservableObject {
                 await MainActor.run { [weak self] in
                     guard let self else { return }
                     // Commit: save pre-op buffer so it can be restored by undo.
-                    self.pushUndoSnapshot(buffer)
-                    self.redoStack.removeAll()
-                    self.canUndo = true
-                    self.canRedo = false
+                    pushUndoSnapshot(buffer)
+                    redoStack.removeAll()
+                    canUndo = true
+                    canRedo = false
 
-                    self.invalidatePreviewPlayer()
-                    self.audioBuffer = result
-                    self.duration = result.duration
-                    self.noteBufferMutation()
-                    self.refreshWaveformPeaks(from: result)
-                    self.refreshLevelMetrics()
+                    invalidatePreviewPlayer()
+                    audioBuffer = result
+                    duration = result.duration
+                    noteBufferMutation()
+                    refreshWaveformPeaks(from: result)
+                    refreshLevelMetrics()
 
                     if effect == .trimToSelection
                         || effect == .deleteSelection
                         || effect == .timeStretch
                         || effect == .trimSilence {
-                        self.selectionStart = 0
-                        self.selectionEnd = 0
+                        selectionStart = 0
+                        selectionEnd = 0
                     }
 
-                    self.applyToken += 1
-                    self.lastCompletedApply = CompletedDSPApply(
+                    applyToken += 1
+                    lastCompletedApply = CompletedDSPApply(
                         effect: effect,
-                        token: self.applyToken
+                        token: applyToken
                     )
                 }
             } catch is CancellationError {
@@ -506,15 +507,15 @@ class EditorState: ObservableObject {
         previewTimer?.invalidate()
         previewTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
-                guard let self, let player = self.previewPlayer else { return }
-                self.previewCurrentTime = player.currentTime
-                self.playbackProgress = player.duration > 0
+                guard let self, let player = previewPlayer else { return }
+                previewCurrentTime = player.currentTime
+                playbackProgress = player.duration > 0
                     ? player.currentTime / player.duration : 0
-                if !player.isPlaying && self.isPlayingPreview {
-                    self.isPlayingPreview = false
-                    self.previewCurrentTime = 0
-                    self.playbackProgress = 0
-                    self.stopPreviewTimer()
+                if !player.isPlaying, isPlayingPreview {
+                    isPlayingPreview = false
+                    previewCurrentTime = 0
+                    playbackProgress = 0
+                    stopPreviewTimer()
                 }
             }
         }
@@ -568,13 +569,13 @@ class EditorState: ObservableObject {
     private static func makeWAVHeader(dataSize: UInt32, sampleRate: UInt32, channels: UInt16) -> Data {
         let sr = sampleRate
         let ch = channels
-        let bps   = UInt16(16)
-        let rate  = sr * UInt32(ch) * UInt32(bps) / 8
+        let bps = UInt16(16)
+        let rate = sr * UInt32(ch) * UInt32(bps) / 8
         let align = ch * bps / 8
 
         var h = Data()
         h.reserveCapacity(44)
-        func le<T: FixedWidthInteger>(_ v: T) {
+        func le(_ v: some FixedWidthInteger) {
             var x = v.littleEndian; withUnsafeBytes(of: &x) { h.append(contentsOf: $0) }
         }
         h.append(contentsOf: "RIFF".utf8); le(36 + dataSize)
@@ -634,13 +635,13 @@ class EditorState: ObservableObject {
 
         buffer.data.withUnsafeBytes { rawBuffer in
             let samples = rawBuffer.bindMemory(to: Int16.self)
-            for bucket in 0..<outputCount {
+            for bucket in 0 ..< outputCount {
                 let start = bucket * chunkSize
                 let end = bucket == outputCount - 1
                     ? sampleCount
                     : min(start + chunkSize, sampleCount)
                 var maxMagnitude = 0
-                for index in start..<end {
+                for index in start ..< end {
                     let sample = Int(samples[index])
                     let magnitude = sample == Int(Int16.min) ? 32768 : abs(sample)
                     if magnitude > maxMagnitude {
@@ -667,8 +668,8 @@ class EditorState: ObservableObject {
 
         var errorDescription: String? {
             switch self {
-            case .invalidBuffer(let reason):
-                return "The editor buffer is invalid: \(reason)."
+            case let .invalidBuffer(reason):
+                "The editor buffer is invalid: \(reason)."
             }
         }
     }

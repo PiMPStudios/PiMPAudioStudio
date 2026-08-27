@@ -1,9 +1,9 @@
 // PiMPAudioStudio/Services/CoverSongCoordinator.swift
 import Foundation
-import PiMPAudioCore
 import MLX
 import MLXNN
 import OSLog
+import PiMPAudioCore
 
 private let logger = Logger(subsystem: "com.pimpstudios.PiMPAudioStudio", category: "CoverSongCoordinator")
 
@@ -116,7 +116,7 @@ actor CoverSongCoordinator {
                         * MusicPipeline.hopLength
                     if audioNLC.shape[1] > maxSourceSamples {
                         let originalFrames = audioNLC.shape[1]
-                        audioNLC = audioNLC[0..., 0..<maxSourceSamples, 0...]
+                        audioNLC = audioNLC[0..., 0 ..< maxSourceSamples, 0...]
                         AudioDiagnostics.note(
                             "cover/sourceTrim",
                             "sourceSamples=\(originalFrames) trimmedTo=\(maxSourceSamples) requestDuration=\(request.duration)"
@@ -150,7 +150,7 @@ actor CoverSongCoordinator {
                     let loadedDiTID = self.currentlyLoadedDiTModelID ?? ""
                     let autoSteps: Int =
                         (self.currentlyLoadedDiTConfig?.isTurbo == true ||
-                         loadedDiTID.contains("turbo")) ? 8 : 50
+                            loadedDiTID.contains("turbo")) ? 8 : 50
                     let inferSteps = request.stepsOverride ?? autoSteps
                     let shift: Float = request.shiftOverride ?? 3.0
                     let config = DiffusionConfig(
@@ -174,7 +174,7 @@ actor CoverSongCoordinator {
                     let progressStream = await self.pipeline.makeProgressStream()
                     let progressTask = Task {
                         for await progress in progressStream {
-                            if case .diffusion(let dp) = progress {
+                            if case let .diffusion(dp) = progress {
                                 let perStep = dp.currentStep > 0
                                     ? dp.elapsedTime / Double(dp.currentStep) : 0
                                 let eta = perStep * Double(dp.totalSteps - dp.currentStep)
@@ -265,7 +265,7 @@ actor CoverSongCoordinator {
         if paddedT == T {
             padded = srcLatents
         } else {
-            let lastFrame = srcLatents[0..., (T - 1)..<T, 0...]
+            let lastFrame = srcLatents[0..., (T - 1) ..< T, 0...]
             let padding = MLX.broadcast(
                 lastFrame,
                 to: [srcLatents.shape[0], paddedT - T, srcLatents.shape[2]]
@@ -310,7 +310,7 @@ actor CoverSongCoordinator {
         // Trim padding back to original T
         let lmHints = source.paddedLength == source.originalLength
             ? upsampled
-            : upsampled[0..., 0..<source.originalLength, 0...]
+            : upsampled[0..., 0 ..< source.originalLength, 0...]
         AudioDiagnostics.tensor("cover/lmHintsTrimmed25Hz", lmHints)
 
         // Blend: (1 − strength) × src + strength × acoustic hints
@@ -407,7 +407,9 @@ actor CoverSongCoordinator {
                     let silence = try SilenceLatentLoader.load(from: silencePath)
                     await conditioning.setSilenceLatent(silence)
                 } catch {
-                    logger.warning("[CoverSongCoordinator] silence_latent load failed — zeros: \(error.localizedDescription)")
+                    logger.warning(
+                        "[CoverSongCoordinator] silence_latent load failed — zeros: \(error.localizedDescription)"
+                    )
                     await conditioning.setSilenceLatent(nil)
                 }
             } else {
@@ -424,7 +426,7 @@ actor CoverSongCoordinator {
             let tok = AudioTokenizer()
             tok.update(parameters: ModuleParameters.unflattened(tokWeights))
             eval(tok.parameters())
-            self.audioTokenizer = tok
+            audioTokenizer = tok
             logger.info("[CoverSongCoordinator] loaded AudioTokenizer weights=\(tokWeights.count)")
 
             // Load AudioTokenDetokenizer (detokenizer.* subtree)
@@ -437,7 +439,7 @@ actor CoverSongCoordinator {
             let detok = AudioTokenDetokenizer()
             detok.update(parameters: ModuleParameters.unflattened(detokWeights))
             eval(detok.parameters())
-            self.audioDetokenizer = detok
+            audioDetokenizer = detok
             logger.info("[CoverSongCoordinator] loaded AudioTokenDetokenizer weights=\(detokWeights.count)")
 
             // Only mark DiT loaded after conditioning + tokenizer stack succeed.
@@ -510,11 +512,11 @@ enum CoverSongError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .noSourceAudio:
-            return "No source audio file selected for cover song generation"
-        case .audioLoadFailed(let message):
-            return "Could not load source audio: \(message)"
+            "No source audio file selected for cover song generation"
+        case let .audioLoadFailed(message):
+            "Could not load source audio: \(message)"
         case .coverPreprocessorNotReady:
-            return "Cover song preprocessing is not ready. Load ACE-Step DiT and VAE models before generating a cover."
+            "Cover song preprocessing is not ready. Load ACE-Step DiT and VAE models before generating a cover."
         }
     }
 }

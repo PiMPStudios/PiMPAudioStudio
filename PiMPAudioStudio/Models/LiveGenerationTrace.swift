@@ -8,10 +8,10 @@ enum LiveGenerationTraceStatus: String, Sendable, Equatable {
 
     var displayName: String {
         switch self {
-        case .running: return "Running"
-        case .complete: return "Complete"
-        case .failed: return "Failed"
-        case .cancelled: return "Cancelled"
+        case .running: "Running"
+        case .complete: "Complete"
+        case .failed: "Failed"
+        case .cancelled: "Cancelled"
         }
     }
 }
@@ -29,8 +29,8 @@ enum LiveGenerationTraceSource: String, Sendable, Equatable {
 
     var displayName: String {
         switch self {
-        case .live: return "Live Run"
-        case .saved: return "Saved Trace"
+        case .live: "Live Run"
+        case .saved: "Saved Trace"
         }
     }
 }
@@ -202,7 +202,7 @@ final class GenerationTraceMonitor: ObservableObject {
     }
 
     func updateLoadingWeights(progress: Float) {
-        let fraction = Double(progress.clamped(to: 0...1))
+        let fraction = Double(progress.clamped(to: 0 ... 1))
         updateProgress(
             label: "Loading model weights",
             fraction: fraction,
@@ -434,7 +434,7 @@ final class GenerationTraceMonitor: ObservableObject {
                 detail: trace.audioFileName,
                 progress: 1,
                 level: .success
-            )
+            ),
         ] : traceEvents
 
         return LiveGenerationTraceSession(

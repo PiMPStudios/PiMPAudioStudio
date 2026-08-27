@@ -25,7 +25,7 @@ import Foundation
 public enum SAOProjectionNameMap {
     public static func mapKey(_ key: String) -> String? {
         guard key.hasPrefix("start_number_conditioner.") ||
-              key.hasPrefix("end_number_conditioner.") else { return nil }
+            key.hasPrefix("end_number_conditioner.") else { return nil }
 
         var k = key
         // Unwrap Sequential .0 (FourierFeatures) → fourierEmbedding property name

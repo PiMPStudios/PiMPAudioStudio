@@ -1,5 +1,5 @@
-import SwiftUI
 import PiMPAudioCore
+import SwiftUI
 
 struct PresetsView: View {
     @EnvironmentObject private var presetStore: PresetStore
@@ -30,7 +30,11 @@ struct PresetsView: View {
         }
         .alert("Rename Preset", isPresented: Binding(
             get: { renamingPreset != nil },
-            set: { if !$0 { renamingPreset = nil } }
+            set: {
+                if !$0 {
+                    renamingPreset = nil
+                }
+            }
         )) {
             TextField("New name", text: $renameText)
             Button("Cancel", role: .cancel) { renamingPreset = nil }

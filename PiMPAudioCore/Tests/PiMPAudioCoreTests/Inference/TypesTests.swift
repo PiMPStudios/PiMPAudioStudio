@@ -1,5 +1,5 @@
-import Testing
 @testable import PiMPAudioCore
+import Testing
 
 @Suite("Inference Types")
 struct TypesTests {
@@ -54,7 +54,7 @@ struct TypesTests {
     @Test("PipelineState cases")
     func pipelineStateCases() {
         let state = PipelineState.generating(step: 2, totalSteps: 8)
-        if case .generating(let step, let total) = state {
+        if case let .generating(step, total) = state {
             #expect(step == 2)
             #expect(total == 8)
         } else {

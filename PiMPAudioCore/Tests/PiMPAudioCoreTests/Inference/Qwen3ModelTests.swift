@@ -1,7 +1,7 @@
-import Testing
 import MLX
 import MLXNN
 @testable import PiMPAudioCore
+import Testing
 
 @Suite("Qwen3 Components")
 struct Qwen3ModelTests {

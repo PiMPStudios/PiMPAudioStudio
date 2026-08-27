@@ -16,12 +16,12 @@ public class AceStepLM: Module {
     public let hiddenSize: Int
 
     public init(config: AceStepLMConfig) {
-        self.hiddenSize = config.hiddenSize
-        self.embedTokens = Embedding(
+        hiddenSize = config.hiddenSize
+        embedTokens = Embedding(
             embeddingCount: config.vocabSize,
             dimensions: config.hiddenSize
         )
-        self.layers = (0..<config.numHiddenLayers).map { _ in
+        layers = (0 ..< config.numHiddenLayers).map { _ in
             Qwen3Layer(
                 hiddenSize: config.hiddenSize,
                 intermediateSize: config.intermediateSize,
@@ -31,8 +31,8 @@ public class AceStepLM: Module {
                 rmsNormEps: config.rmsNormEps
             )
         }
-        self.norm = RMSNorm(dimensions: config.hiddenSize, eps: config.rmsNormEps)
-        self.rotaryEmbedding = RotaryEmbedding(
+        norm = RMSNorm(dimensions: config.hiddenSize, eps: config.rmsNormEps)
+        rotaryEmbedding = RotaryEmbedding(
             headDim: config.headDim,
             maxLen: config.maxPositionEmbeddings,
             base: config.ropeTheta
@@ -44,7 +44,7 @@ public class AceStepLM: Module {
     /// - Parameter attentionMask: `[B, T_5Hz]` 1.0 for valid, 0.0 for PAD.
     /// - Returns: `[B, T_5Hz, hidden_size]` final hidden states (post-norm).
     public func callAsFunction(inputTokenIDs: MLXArray, attentionMask: MLXArray?) -> MLXArray {
-        var h = embedTokens(inputTokenIDs)                               // [B, T, H]
+        var h = embedTokens(inputTokenIDs) // [B, T, H]
         let b = h.shape[0]
         let seqLen = h.shape[1]
         let positionCosSin = rotaryEmbedding.forward(seqLen: seqLen)
@@ -89,7 +89,7 @@ public class AceStepLM: Module {
         let hidden = self(inputTokenIDs: inputTokenIDs, attentionMask: nil)
 
         let audioCodeEmbeddings = embedTokens.weight[
-            vocabulary.tokenStartID..<vocabulary.tokenEndID,
+            vocabulary.tokenStartID ..< vocabulary.tokenEndID,
             0...
         ]
         let logits = matmul(hidden.asType(audioCodeEmbeddings.dtype), audioCodeEmbeddings.T)
@@ -99,8 +99,8 @@ public class AceStepLM: Module {
         if seqLen == 1 {
             conditionedCodes = packedCodes.asType(.int32)
         } else {
-            let firstSourceCode = packedCodes[0..., 0..<1].asType(.int32)
-            let shiftedPredictions = greedyNextCodes[0..., 0..<(seqLen - 1)]
+            let firstSourceCode = packedCodes[0..., 0 ..< 1].asType(.int32)
+            let shiftedPredictions = greedyNextCodes[0..., 0 ..< (seqLen - 1)]
             conditionedCodes = MLX.concatenated([firstSourceCode, shiftedPredictions], axis: 1)
         }
         eval(conditionedCodes)
@@ -112,7 +112,7 @@ public class AceStepLM: Module {
         seqLen: Int,
         attentionMask: MLXArray?
     ) -> MLXArray {
-        let indices = MLXArray(Array(0..<seqLen).map { Float($0) })
+        let indices = MLXArray(Array(0 ..< seqLen).map { Float($0) })
         let rowIdx = indices.expandedDimensions(axis: 1)
         let colIdx = indices.expandedDimensions(axis: 0)
         let zeros = MLXArray.zeros([seqLen, seqLen], dtype: .float32)

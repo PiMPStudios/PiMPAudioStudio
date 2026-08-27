@@ -27,12 +27,12 @@ public enum SilenceLatentLoader {
 
         public var errorDescription: String? {
             switch self {
-            case .unzipFailed(let stderr):
-                return "Failed to extract silence_latent.pt: \(stderr)"
-            case .unexpectedSize(let bytes, let expected):
-                return "silence_latent.pt extracted \(bytes) bytes, expected \(expected)."
-            case .fileNotFound(let path):
-                return "silence_latent.pt not found at \(path)"
+            case let .unzipFailed(stderr):
+                "Failed to extract silence_latent.pt: \(stderr)"
+            case let .unexpectedSize(bytes, expected):
+                "silence_latent.pt extracted \(bytes) bytes, expected \(expected)."
+            case let .fileNotFound(path):
+                "silence_latent.pt not found at \(path)"
             }
         }
     }

@@ -1,5 +1,5 @@
-import Testing
 @testable import PiMPAudioStudio
+import Testing
 
 @Test func helpCatalogParsesUserReadmeIndexLinks() {
     let sample = """
@@ -26,7 +26,7 @@ import Testing
     let body = HelpCatalog.loadMarkdown(named: "getting-started.md")
     #expect(body != nil)
     #expect(body?.contains("Getting Started") == true || body?.contains("getting started") == true
-            || (body?.isEmpty == false))
+        || (body?.isEmpty == false))
 }
 
 @Test func helpMarkdownParsesHeadingsListsCodeAndTables() {
@@ -58,45 +58,51 @@ import Testing
 
     let blocks = HelpMarkdown.parse(sample)
     #expect(blocks.contains(where: {
-        if case .heading(1, "Title Page") = $0 { return true }
+        if case .heading(1, "Title Page") = $0 {
+            return true
+        }
         return false
     }))
     #expect(blocks.contains(where: {
-        if case .heading(2, "Section") = $0 { return true }
+        if case .heading(2, "Section") = $0 {
+            return true
+        }
         return false
     }))
     #expect(blocks.contains(where: {
-        if case .paragraph(let text) = $0 {
+        if case let .paragraph(text) = $0 {
             return text.contains("Intro paragraph") && text.contains("soft line breaks")
         }
         return false
     }))
     #expect(blocks.contains(where: {
-        if case .unorderedList(let items) = $0 {
+        if case let .unorderedList(items) = $0 {
             return items.count == 2 && items[0] == "First item"
         }
         return false
     }))
     #expect(blocks.contains(where: {
-        if case .orderedList(let items) = $0 {
+        if case let .orderedList(items) = $0 {
             return items == ["One", "Two"]
         }
         return false
     }))
     #expect(blocks.contains(where: {
-        if case .code(let language, let code) = $0 {
+        if case let .code(language, code) = $0 {
             return language == "text" && code.contains("Settings -> Models")
         }
         return false
     }))
     #expect(blocks.contains(where: {
-        if case .table(let headers, let rows) = $0 {
+        if case let .table(headers, rows) = $0 {
             return headers == ["Col A", "Col B"] && rows.count == 2 && rows[0] == ["a1", "b1"]
         }
         return false
     }))
     #expect(blocks.contains(where: {
-        if case .paragraph(let text) = $0 { return text.contains("editor.md") }
+        if case let .paragraph(text) = $0 {
+            return text.contains("editor.md")
+        }
         return false
     }))
 }
@@ -110,7 +116,9 @@ import Testing
     let trimmed = HelpMarkdown.droppingRedundantTitle(from: blocks, pageTitle: "Getting Started")
     #expect(trimmed.count == 2)
     #expect({
-        if case .paragraph("Body") = trimmed[0] { return true }
+        if case .paragraph("Body") = trimmed[0] {
+            return true
+        }
         return false
     }())
 }
@@ -123,19 +131,27 @@ import Testing
     let blocks = HelpMarkdown.parse(body)
     #expect(blocks.count >= 8)
     #expect(blocks.contains(where: {
-        if case .heading(2, "Requirements") = $0 { return true }
+        if case .heading(2, "Requirements") = $0 {
+            return true
+        }
         return false
     }))
     #expect(blocks.contains(where: {
-        if case .unorderedList = $0 { return true }
+        if case .unorderedList = $0 {
+            return true
+        }
         return false
     }))
     #expect(blocks.contains(where: {
-        if case .orderedList = $0 { return true }
+        if case .orderedList = $0 {
+            return true
+        }
         return false
     }))
     #expect(blocks.contains(where: {
-        if case .code = $0 { return true }
+        if case .code = $0 {
+            return true
+        }
         return false
     }))
 }

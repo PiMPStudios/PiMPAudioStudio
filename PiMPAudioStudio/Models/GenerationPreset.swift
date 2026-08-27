@@ -37,7 +37,7 @@ struct GenerationPreset: Identifiable, Codable, Sendable, Equatable {
     var adapterID: String?
     var adapterStrength: Double
 
-    // Cover song
+    /// Cover song
     var coverStrength: Double
 
     init(

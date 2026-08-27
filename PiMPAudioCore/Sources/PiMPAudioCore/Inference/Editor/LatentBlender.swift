@@ -10,7 +10,6 @@ import MLXRandom
 /// Mask shape: `[1, T, 1]` (broadcasts over channels) or `[1, T, latentDim]`.
 /// Values are 1.0 (regenerate) or 0.0 (preserve).
 public enum LatentBlender {
-
     // MARK: - Public API
 
     /// Injects Gaussian noise into the masked region at the given strength level.
@@ -65,7 +64,7 @@ public enum LatentBlender {
     /// Generates standard normal noise of the given shape.
     /// When a seed is provided the result is deterministic across calls.
     private static func seededNoise(shape: [Int], seed: Int?) -> MLXArray {
-        if let seed = seed {
+        if let seed {
             let key = MLXRandom.key(UInt64(seed))
             return MLXRandom.normal(shape, key: key)
         }

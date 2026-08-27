@@ -1,9 +1,9 @@
 import Accelerate
 import AVFoundation
 import Foundation
-import PiMPAudioCore
 import MLX
 import OSLog
+import PiMPAudioCore
 
 private let enrichmentMemoryLogger = Logger(
     subsystem: "com.pimpstudios.PiMPAudioStudio",
@@ -26,27 +26,27 @@ enum LocalDatasetEnrichmentStep: String, Equatable {
     var title: String {
         switch self {
         case .preparingMemory:
-            return "Preparing memory"
+            "Preparing memory"
         case .separatingStems:
-            return "Separating stems"
+            "Separating stems"
         case .transcribingVocals:
-            return "Transcribing vocals"
+            "Transcribing vocals"
         case .generatingCaptions:
-            return "Generating metadata captions"
+            "Generating metadata captions"
         case .loadingNativeAnnotation:
-            return "Loading native ACE annotation"
+            "Loading native ACE annotation"
         case .captioningFullMixes:
-            return "Captioning full mixes"
+            "Captioning full mixes"
         case .transcribingFullMixes:
-            return "Transcribing full mixes"
+            "Transcribing full mixes"
         case .analyzingFullMixes:
-            return "Analyzing tempo, key, and meter"
+            "Analyzing tempo, key, and meter"
         case .exportingVocalsBundle:
-            return "Exporting vocal bundle"
+            "Exporting vocal bundle"
         case .exportingInstrumentalBundle:
-            return "Exporting instrumental bundle"
+            "Exporting instrumental bundle"
         case .refreshingMetadata:
-            return "Refreshing package metadata"
+            "Refreshing package metadata"
         }
     }
 }
@@ -58,7 +58,9 @@ enum LocalDatasetEnrichmentPhase: Equatable {
     case failed(String)
 
     var isRunning: Bool {
-        if case .running = self { return true }
+        if case .running = self {
+            return true
+        }
         return false
     }
 }
@@ -82,7 +84,7 @@ struct LocalDatasetEnrichmentResult: Equatable {
                 "Separated \(separatedClipCount) clip\(separatedClipCount == 1 ? "" : "s")"
             )
         }
-        if vocalBundleExists && instrumentalBundleExists {
+        if vocalBundleExists, instrumentalBundleExists {
             parts.append("wrote vocal and instrumental bundles")
         } else if vocalBundleExists {
             parts.append("wrote vocal bundle")
@@ -93,8 +95,13 @@ struct LocalDatasetEnrichmentResult: Equatable {
             let formatted = averageBPM.formatted(.number.precision(.fractionLength(1)))
             parts.append("\(bpmEstimateCount) BPM estimate\(bpmEstimateCount == 1 ? "" : "s"), avg \(formatted)")
         }
-        parts.append(transcribedClipCount > 0 ? "\(transcribedClipCount) transcript\(transcribedClipCount == 1 ? "" : "s") found" : "transcription pending")
-        parts.append(keyEstimateCount > 0 ? "\(keyEstimateCount) key estimate\(keyEstimateCount == 1 ? "" : "s")" : "key analysis pending")
+        parts
+            .append(transcribedClipCount > 0 ?
+                "\(transcribedClipCount) transcript\(transcribedClipCount == 1 ? "" : "s") found" :
+                "transcription pending")
+        parts
+            .append(keyEstimateCount > 0 ? "\(keyEstimateCount) key estimate\(keyEstimateCount == 1 ? "" : "s")" :
+                "key analysis pending")
         parts.append(
             timeSignatureEstimateCount > 0
                 ? "\(timeSignatureEstimateCount) time-signature estimate\(timeSignatureEstimateCount == 1 ? "" : "s")"
@@ -112,16 +119,18 @@ enum LocalDatasetAnnotationBackendChoice: String, CaseIterable, Hashable, Identi
     case lightweight
     case nativeACE
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     var title: String {
         switch self {
         case .automatic:
-            return "Automatic"
+            "Automatic"
         case .lightweight:
-            return "Lightweight Native"
+            "Lightweight Native"
         case .nativeACE:
-            return "Native ACE (Advanced)"
+            "Native ACE (Advanced)"
         }
     }
 }
@@ -138,12 +147,12 @@ enum LocalDatasetEnrichmentError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidCaptions(let message):
-            return "Dataset captions are not valid: \(message)"
-        case .missingClip(let path):
-            return "Dataset clip is missing: \(path)"
-        case .nativeACEUnavailable(let reason):
-            return "Native ACE annotation is unavailable: \(reason)"
+        case let .invalidCaptions(message):
+            "Dataset captions are not valid: \(message)"
+        case let .missingClip(path):
+            "Dataset clip is missing: \(path)"
+        case let .nativeACEUnavailable(reason):
+            "Native ACE annotation is unavailable: \(reason)"
         }
     }
 }
@@ -167,15 +176,14 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         let runID = UUID()
         taskRunID = runID
         activeRunID = runID
-        let initialStep: LocalDatasetEnrichmentStep
-        if prepareMemory != nil {
-            initialStep = .preparingMemory
+        let initialStep: LocalDatasetEnrichmentStep = if prepareMemory != nil {
+            .preparingMemory
         } else if options.createStems {
-            initialStep = .separatingStems
+            .separatingStems
         } else if options.annotationBackend == .lightweight {
-            initialStep = .transcribingFullMixes
+            .transcribingFullMixes
         } else {
-            initialStep = .loadingNativeAnnotation
+            .loadingNativeAnnotation
         }
         phase = .running(step: initialStep)
 
@@ -183,7 +191,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
             await previousTask?.value
             guard let self else { return }
             defer { self.finishRun(runID) }
-            guard self.isCurrentRun(runID), !Task.isCancelled else { return }
+            guard isCurrentRun(runID), !Task.isCancelled else { return }
             do {
                 if let prepareMemory {
                     await MainActor.run {
@@ -192,7 +200,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
                     }
                     await prepareMemory()
                     try Task.checkCancellation()
-                    guard self.isCurrentRun(runID) else { return }
+                    guard isCurrentRun(runID) else { return }
                 }
                 let result = try await Self.run(
                     datasetDirectory: datasetDirectory,
@@ -205,13 +213,13 @@ final class LocalDatasetEnrichmentService: ObservableObject {
                         }
                     }
                 )
-                guard self.isCurrentRun(runID) else { return }
+                guard isCurrentRun(runID) else { return }
                 phase = .complete(result)
             } catch is CancellationError {
-                guard self.isCurrentRun(runID) else { return }
+                guard isCurrentRun(runID) else { return }
                 phase = .idle
             } catch {
-                guard self.isCurrentRun(runID) else { return }
+                guard isCurrentRun(runID) else { return }
                 phase = .failed(error.localizedDescription)
             }
         }
@@ -318,7 +326,6 @@ final class LocalDatasetEnrichmentService: ObservableObject {
                         context: "after transcription \(index + 1)/\(records.count)"
                     )
                 }
-
             }
 
             await onStep(.analyzingFullMixes)
@@ -379,11 +386,14 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         }
     }
 
-    nonisolated private static func evictEnrichmentModels(
+    private nonisolated static func evictEnrichmentModels(
         lyricsTranscriber: any DatasetLyricsTranscribing
     ) async {
         let before = Memory.snapshot()
-        enrichmentMemoryLogger.info("[enrich.evict] before active=\(before.activeMemory) cache=\(before.cacheMemory) peak=\(before.peakMemory)")
+        enrichmentMemoryLogger
+            .info(
+                "[enrich.evict] before active=\(before.activeMemory) cache=\(before.cacheMemory) peak=\(before.peakMemory)"
+            )
 
         if let evictingTranscriber = lyricsTranscriber as? any DatasetLyricsTranscriptionEvicting {
             await evictingTranscriber.evictModels()
@@ -391,11 +401,17 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         Memory.clearCache()
 
         let after = Memory.snapshot()
-        enrichmentMemoryLogger.info("[enrich.evict] after  active=\(after.activeMemory) cache=\(after.cacheMemory) peak=\(after.peakMemory)")
-        enrichmentMemoryLogger.info("[enrich.evict] delta active=-\(before.activeMemory - after.activeMemory) cache=-\(before.cacheMemory - after.cacheMemory)")
+        enrichmentMemoryLogger
+            .info(
+                "[enrich.evict] after  active=\(after.activeMemory) cache=\(after.cacheMemory) peak=\(after.peakMemory)"
+            )
+        enrichmentMemoryLogger
+            .info(
+                "[enrich.evict] delta active=-\(before.activeMemory - after.activeMemory) cache=-\(before.cacheMemory - after.cacheMemory)"
+            )
     }
 
-    nonisolated private static func compactMLXCache(context: String) {
+    private nonisolated static func compactMLXCache(context: String) {
         let before = Memory.snapshot()
         Memory.clearCache()
         let after = Memory.snapshot()
@@ -405,7 +421,8 @@ final class LocalDatasetEnrichmentService: ObservableObject {
     }
 
     @discardableResult
-    nonisolated static func exportStemTrainingBundles(datasetDirectory: URL) throws -> (vocalCount: Int, instrumentalCount: Int) {
+    nonisolated static func exportStemTrainingBundles(datasetDirectory: URL) throws
+        -> (vocalCount: Int, instrumentalCount: Int) {
         let records = try loadCaptionRecords(from: datasetDirectory).map(\.object)
         let vocalCount = try writeStemTrainingBundle(
             datasetDirectory: datasetDirectory,
@@ -422,7 +439,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return (vocalCount, instrumentalCount)
     }
 
-    nonisolated private static func nativeAnnotationBackend(
+    private nonisolated static func nativeAnnotationBackend(
         preference: LocalDatasetAnnotationBackendChoice,
         suppliedBackend: (any DatasetAnnotationBackend)?
     ) async throws -> (any DatasetAnnotationBackend)? {
@@ -458,7 +475,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return backend
     }
 
-    nonisolated private static func annotateWithNativeACE(
+    private nonisolated static func annotateWithNativeACE(
         records: [LocalDatasetCaptionRecord],
         datasetDirectory: URL,
         backend: any DatasetAnnotationBackend,
@@ -529,7 +546,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
             let results = try await backend.annotate(
                 requests: requests,
                 task: .transcribe,
-                options: DatasetAnnotationGenerationOptions(maxTokens: 1_024),
+                options: DatasetAnnotationGenerationOptions(maxTokens: 1024),
                 onProgress: { progress in
                     guard progress.stage == .annotating else { return }
                     Task {
@@ -569,7 +586,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return records
     }
 
-    nonisolated private static func annotationRecordIndices(
+    private nonisolated static func annotationRecordIndices(
         in records: [LocalDatasetCaptionRecord]
     ) -> [Int] {
         let fullMixes = records.indices.filter {
@@ -580,7 +597,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return fullMixes.isEmpty ? Array(records.indices) : fullMixes
     }
 
-    nonisolated private static func annotationRequests(
+    private nonisolated static func annotationRequests(
         indices: [Int],
         records: [LocalDatasetCaptionRecord],
         datasetDirectory: URL
@@ -600,7 +617,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         }
     }
 
-    nonisolated private static func annotationRequestID(
+    private nonisolated static func annotationRequestID(
         for record: LocalDatasetCaptionRecord,
         index: Int
     ) -> String {
@@ -609,7 +626,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
             ?? "asset-\(index + 1)"
     }
 
-    nonisolated private static func hasCompletedNativeAnnotation(
+    private nonisolated static func hasCompletedNativeAnnotation(
         task: DatasetAnnotationTask,
         record: [String: Any],
         datasetDirectory: URL
@@ -619,10 +636,10 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         let key = task == .caption ? "caption" : "lyrics"
         guard let rawPath = stringValue(rawOutputs[key]),
               FileManager.default.fileExists(
-                atPath: resolve(
-                    rawPath,
-                    relativeTo: datasetDirectory
-                ).path(percentEncoded: false)
+                  atPath: resolve(
+                      rawPath,
+                      relativeTo: datasetDirectory
+                  ).path(percentEncoded: false)
               )
         else {
             return false
@@ -635,7 +652,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         }
     }
 
-    nonisolated private static func applyNativeAnnotationResult(
+    private nonisolated static func applyNativeAnnotationResult(
         _ result: DatasetAnnotationBackendResult,
         to record: LocalDatasetCaptionRecord,
         datasetDirectory: URL
@@ -772,15 +789,15 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return updated
     }
 
-    nonisolated private static func annotationArtifactDirectory(
+    private nonisolated static func annotationArtifactDirectory(
         for record: LocalDatasetCaptionRecord,
         datasetDirectory: URL
     ) -> URL {
         let identifier = stringValue(record.object["asset_id"])
             ?? stringValue(record.object["id"])
             ?? URL(fileURLWithPath: record.file)
-                .deletingPathExtension()
-                .lastPathComponent
+            .deletingPathExtension()
+            .lastPathComponent
         let safeIdentifier = identifier
             .lowercased()
             .map { character -> Character in
@@ -800,7 +817,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
             )
     }
 
-    nonisolated private static func alignNativeLyrics(
+    private nonisolated static func alignNativeLyrics(
         record: LocalDatasetCaptionRecord,
         datasetDirectory: URL,
         lyricsAligner: any DatasetLyricsAligning,
@@ -868,7 +885,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return updated
     }
 
-    nonisolated private static func separateClip(
+    private nonisolated static func separateClip(
         record: LocalDatasetCaptionRecord,
         datasetDirectory: URL,
         sourceSeparator: SourceSeparationService,
@@ -938,7 +955,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return updated
     }
 
-    nonisolated private static func transcribeClipVocals(
+    private nonisolated static func transcribeClipVocals(
         record: LocalDatasetCaptionRecord,
         datasetDirectory: URL,
         lyricsTranscriber: any DatasetLyricsTranscribing,
@@ -1033,7 +1050,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return updated
     }
 
-    nonisolated private static func separatorInputURL(
+    private nonisolated static func separatorInputURL(
         clipURL: URL,
         outputDirectory: URL,
         force: Bool
@@ -1050,7 +1067,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return (normalizedURL, "normalized non-WAV source for separation: \(clipURL.lastPathComponent)")
     }
 
-    nonisolated private static func writeWAVCopy(from sourceURL: URL, to destinationURL: URL) throws {
+    private nonisolated static func writeWAVCopy(from sourceURL: URL, to destinationURL: URL) throws {
         if FileManager.default.fileExists(atPath: destinationURL.path) {
             try FileManager.default.removeItem(at: destinationURL)
         }
@@ -1074,7 +1091,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         }
     }
 
-    nonisolated private static func separationPayload(
+    private nonisolated static func separationPayload(
         datasetDirectory: URL,
         sourceClip: String,
         backend: String,
@@ -1104,7 +1121,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         ]
     }
 
-    nonisolated private static func applyDerivedAudioMetadata(
+    private nonisolated static func applyDerivedAudioMetadata(
         record: LocalDatasetCaptionRecord,
         datasetDirectory: URL,
         force: Bool
@@ -1124,8 +1141,8 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         var analysis = updated["analysis"] as? [String: Any] ?? [:]
         let needsFullMixAnalysis =
             missingBPM(in: updated, analysis: analysis)
-            || missingKey(in: updated, analysis: analysis)
-            || missingTimeSignature(in: updated, analysis: analysis)
+                || missingKey(in: updated, analysis: analysis)
+                || missingTimeSignature(in: updated, analysis: analysis)
         let fullMixAnalysis = needsFullMixAnalysis
             ? analyzeAudioFile(clipURL, role: "full_mix")
             : nil
@@ -1198,10 +1215,10 @@ final class LocalDatasetEnrichmentService: ObservableObject {
             analysis["time_signature"] = timeSignature
             analysis["time_signature_status"] =
                 stringValue(timeSignatureAnalysis?["time_signature_status"])
-                ?? "estimated_from_audio"
+                    ?? "estimated_from_audio"
             analysis["time_signature_source"] =
                 stringValue(timeSignatureAnalysis?["time_signature_source"])
-                ?? "native-dsp-full_mix"
+                    ?? "native-dsp-full_mix"
             if let confidence = doubleValue(
                 timeSignatureAnalysis?["time_signature_confidence"]
             ) {
@@ -1238,7 +1255,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return updated
     }
 
-    nonisolated private static func applyAutomaticCaptionMetadata(
+    private nonisolated static func applyAutomaticCaptionMetadata(
         record: LocalDatasetCaptionRecord,
         datasetDirectory: URL,
         force: Bool
@@ -1286,7 +1303,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return updated
     }
 
-    nonisolated private static func refreshCachedStemAnalysisIfNeeded(
+    private nonisolated static func refreshCachedStemAnalysisIfNeeded(
         record: [String: Any],
         datasetDirectory: URL,
         force: Bool
@@ -1331,7 +1348,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return analyses
     }
 
-    nonisolated private static func writeStemTrainingBundle(
+    private nonisolated static func writeStemTrainingBundle(
         datasetDirectory: URL,
         records: [[String: Any]],
         role: StemBundleRole
@@ -1350,16 +1367,16 @@ final class LocalDatasetEnrichmentService: ObservableObject {
                 guard asset.role.rawValue == role.assetKey,
                       let selection = selectionsByID[asset.id],
                       FileManager.default.fileExists(
-                        atPath: datasetDirectory
-                            .appendingPathComponent(asset.file.path)
-                            .path(percentEncoded: false)
+                          atPath: datasetDirectory
+                              .appendingPathComponent(asset.file.path)
+                              .path(percentEncoded: false)
                       ) else {
                     return nil
                 }
                 let caption = asset.annotation?.caption?.text
                     ?? URL(fileURLWithPath: asset.file.path)
-                        .deletingPathExtension()
-                        .lastPathComponent
+                    .deletingPathExtension()
+                    .lastPathComponent
                 let lyrics = role == .instrumental
                     ? "[Instrumental]"
                     : (asset.annotation?.lyrics?.text ?? "")
@@ -1483,7 +1500,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return clips.count
     }
 
-    nonisolated private static func refreshDatasetMetadata(
+    private nonisolated static func refreshDatasetMetadata(
         datasetDirectory: URL,
         result: LocalDatasetEnrichmentResult
     ) throws {
@@ -1496,7 +1513,8 @@ final class LocalDatasetEnrichmentService: ObservableObject {
             return
         }
         let now = ISO8601DateFormatter().string(from: Date())
-        let captions = readJSONArray(from: datasetDirectory.appendingPathComponent(TrainingDatasetPackageWriter.captionsFileName))
+        let captions = readJSONArray(from: datasetDirectory
+            .appendingPathComponent(TrainingDatasetPackageWriter.captionsFileName))
         if !captions.isEmpty {
             manifest["clips"] = captions
             manifest["clip_count"] = captions.count
@@ -1600,7 +1618,8 @@ final class LocalDatasetEnrichmentService: ObservableObject {
             "status": transcriptionStatus(for: result),
             "separated_clip_count": result.separatedClipCount,
             "vocal_bundle": result.vocalBundleExists ? TrainingDatasetPackageWriter.vocalBundleFileName : "",
-            "instrumental_bundle": result.instrumentalBundleExists ? TrainingDatasetPackageWriter.instrumentalBundleFileName : "",
+            "instrumental_bundle": result.instrumentalBundleExists ? TrainingDatasetPackageWriter
+                .instrumentalBundleFileName : "",
             "transcription_status": transcriptionStatus(for: result),
             "transcribed_clip_count": result.transcribedClipCount,
             "bpm_status": bpmStatus,
@@ -1612,8 +1631,9 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         try TrainingDatasetPackageWriter.refreshPreprocessCacheManifest(at: datasetDirectory)
     }
 
-    nonisolated private static func inspectResult(datasetDirectory: URL) -> LocalDatasetEnrichmentResult {
-        let captions = readJSONArray(from: datasetDirectory.appendingPathComponent(TrainingDatasetPackageWriter.captionsFileName))
+    private nonisolated static func inspectResult(datasetDirectory: URL) -> LocalDatasetEnrichmentResult {
+        let captions = readJSONArray(from: datasetDirectory
+            .appendingPathComponent(TrainingDatasetPackageWriter.captionsFileName))
         let separatedClipCount = captions.filter {
             hasCachedInstrumentalSeparation(record: $0, datasetDirectory: datasetDirectory)
         }.count
@@ -1652,21 +1672,23 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         )
     }
 
-    nonisolated private static func loadCaptionRecords(from datasetDirectory: URL) throws -> [LocalDatasetCaptionRecord] {
+    private nonisolated static func loadCaptionRecords(from datasetDirectory: URL) throws
+        -> [LocalDatasetCaptionRecord] {
         let url = datasetDirectory.appendingPathComponent(TrainingDatasetPackageWriter.captionsFileName)
         let records = readJSONArray(from: url)
         guard !records.isEmpty else {
             throw LocalDatasetEnrichmentError.invalidCaptions("captions.json is missing or empty.")
         }
         return try records.map { record in
-            guard let file = record["file"] as? String, !file.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            guard let file = record["file"] as? String,
+                  !file.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 throw LocalDatasetEnrichmentError.invalidCaptions("a caption record is missing its file path.")
             }
             return LocalDatasetCaptionRecord(object: record, file: file)
         }
     }
 
-    nonisolated private static func hasCachedInstrumentalSeparation(
+    private nonisolated static func hasCachedInstrumentalSeparation(
         record: [String: Any],
         datasetDirectory: URL
     ) -> Bool {
@@ -1678,7 +1700,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
             FileManager.default.fileExists(atPath: resolve(instrumental, relativeTo: datasetDirectory).path)
     }
 
-    nonisolated private static func stemPath(for role: StemBundleRole, in record: [String: Any]) -> String? {
+    private nonisolated static func stemPath(for role: StemBundleRole, in record: [String: Any]) -> String? {
         if let assets = record["assets"] as? [String: Any],
            let value = assets[role.assetKey] as? String,
            !value.isEmpty {
@@ -1693,7 +1715,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return value
     }
 
-    nonisolated private static func stemAnalysis(
+    private nonisolated static func stemAnalysis(
         for role: StemBundleRole,
         in record: [String: Any],
         datasetDirectory: URL
@@ -1710,7 +1732,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return analysis
     }
 
-    nonisolated private static func stemBPMEstimates(
+    private nonisolated static func stemBPMEstimates(
         datasetDirectory: URL,
         captions: [[String: Any]]
     ) -> [Double] {
@@ -1725,7 +1747,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         }
     }
 
-    nonisolated private static func keyMetadataValues(in captions: [[String: Any]]) -> [String] {
+    private nonisolated static func keyMetadataValues(in captions: [[String: Any]]) -> [String] {
         sortedUniqueStrings(captions.compactMap { record in
             if let key = stringValue(record["key"]) ?? stringValue(record["keyscale"]) {
                 return key
@@ -1737,7 +1759,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         })
     }
 
-    nonisolated private static func keyMetadataStatus(in captions: [[String: Any]]) -> String {
+    private nonisolated static func keyMetadataStatus(in captions: [[String: Any]]) -> String {
         guard !keyMetadataValues(in: captions).isEmpty else {
             return "not_run"
         }
@@ -1752,7 +1774,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return hasNativeEstimate ? "estimated_from_audio" : "available_from_metadata"
     }
 
-    nonisolated private static func bpmMetadataStatus(
+    private nonisolated static func bpmMetadataStatus(
         in captions: [[String: Any]]
     ) -> String {
         guard captions.contains(where: { captionBPM(in: $0) != nil }) else {
@@ -1770,7 +1792,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return "available_from_metadata"
     }
 
-    nonisolated private static func timeSignatureValue(
+    private nonisolated static func timeSignatureValue(
         in record: [String: Any]
     ) -> String? {
         if let value = firstString(
@@ -1788,7 +1810,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         )
     }
 
-    nonisolated private static func timeSignatureMetadataValues(
+    private nonisolated static func timeSignatureMetadataValues(
         in captions: [[String: Any]]
     ) -> [String] {
         sortedUniqueStrings(
@@ -1796,7 +1818,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         )
     }
 
-    nonisolated private static func timeSignatureMetadataStatus(
+    private nonisolated static func timeSignatureMetadataStatus(
         in captions: [[String: Any]]
     ) -> String {
         guard !timeSignatureMetadataValues(in: captions).isEmpty else {
@@ -1807,9 +1829,9 @@ final class LocalDatasetEnrichmentService: ObservableObject {
                 return false
             }
             return stringValue(analysis["time_signature_status"])
-                    == "estimated_from_audio"
+                == "estimated_from_audio"
                 || stringValue(analysis["time_signature_source"])?
-                    .contains("native-dsp") == true
+                .contains("native-dsp") == true
         }
         return hasNativeEstimate
             ? "estimated_from_audio"
@@ -1872,12 +1894,14 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return object
     }
 
-    nonisolated private static func shouldRefreshStemAnalysis(
+    private nonisolated static func shouldRefreshStemAnalysis(
         _ analysis: [String: Any],
         role: StemBundleRole,
         force: Bool
     ) -> Bool {
-        if force { return true }
+        if force {
+            return true
+        }
         if doubleValue(analysis["tempo_bpm_estimate"]) == nil {
             return true
         }
@@ -1896,7 +1920,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return false
     }
 
-    nonisolated private static func mergeAudioAnalysis(
+    private nonisolated static func mergeAudioAnalysis(
         existing: [String: Any],
         refreshed: [String: Any],
         force: Bool
@@ -1908,7 +1932,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return merged
     }
 
-    nonisolated private static func missingBPM(
+    private nonisolated static func missingBPM(
         in record: [String: Any],
         analysis: [String: Any]
     ) -> Bool {
@@ -1917,7 +1941,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
             doubleValue(analysis["tempo_bpm_estimate"]) == nil
     }
 
-    nonisolated private static func missingKey(
+    private nonisolated static func missingKey(
         in record: [String: Any],
         analysis: [String: Any]
     ) -> Bool {
@@ -1927,7 +1951,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
             stringValue(analysis["keyscale"]) == nil
     }
 
-    nonisolated private static func missingTimeSignature(
+    private nonisolated static func missingTimeSignature(
         in record: [String: Any],
         analysis: [String: Any]
     ) -> Bool {
@@ -1938,7 +1962,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
             ) == nil
     }
 
-    nonisolated private static func preferredBPM(
+    private nonisolated static func preferredBPM(
         instrumental: [String: Any]?,
         fullMix: [String: Any]?,
         vocal: [String: Any]?,
@@ -1956,7 +1980,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         ].compactMap(doubleValue).first
     }
 
-    nonisolated private static func bpmSource(
+    private nonisolated static func bpmSource(
         instrumental: [String: Any]?,
         fullMix: [String: Any]?,
         vocal: [String: Any]?
@@ -1975,7 +1999,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return nil
     }
 
-    nonisolated private static func preferredKey(
+    private nonisolated static func preferredKey(
         instrumental: [String: Any]?,
         fullMix: [String: Any]?,
         existingAnalysis: [String: Any]
@@ -1988,7 +2012,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
             ?? stringValue(existingAnalysis["key"])
     }
 
-    nonisolated private static func preferredKeyAnalysis(
+    private nonisolated static func preferredKeyAnalysis(
         instrumental: [String: Any]?,
         fullMix: [String: Any]?
     ) -> [String: Any]? {
@@ -2003,7 +2027,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return nil
     }
 
-    nonisolated private static func preferredTimeSignature(
+    private nonisolated static func preferredTimeSignature(
         instrumental: [String: Any]?,
         fullMix: [String: Any]?,
         existingAnalysis: [String: Any]
@@ -2022,7 +2046,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
             )
     }
 
-    nonisolated private static func preferredTimeSignatureAnalysis(
+    private nonisolated static func preferredTimeSignatureAnalysis(
         instrumental: [String: Any]?,
         fullMix: [String: Any]?
     ) -> [String: Any]? {
@@ -2041,15 +2065,15 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return nil
     }
 
-    nonisolated private static func estimateRhythm(
+    private nonisolated static func estimateRhythm(
         from sampleBuffer: (samples: [Float], sampleRate: Double)
     ) -> AudioRhythmEstimate? {
-        guard sampleBuffer.samples.count > 4_096 else {
+        guard sampleBuffer.samples.count > 4096 else {
             return nil
         }
         let sampleRate = sampleBuffer.sampleRate
         let values = sampleBuffer.samples
-        let frameSize = 1_024
+        let frameSize = 1024
         let hopSize = 512
         guard values.count > frameSize * 4 else { return nil }
 
@@ -2058,7 +2082,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         var index = 0
         while index + frameSize < values.count {
             var energy = 0.0
-            for frame in 0..<frameSize {
+            for frame in 0 ..< frameSize {
                 let sample = Double(values[index + frame])
                 energy += sample * sample
             }
@@ -2082,7 +2106,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
 
         func autocorrelationScore(for lag: Int) -> Double {
             var score = 0.0
-            for i in lag..<centered.count {
+            for i in lag ..< centered.count {
                 score += centered[i] * centered[i - lag]
             }
             return score
@@ -2090,7 +2114,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
 
         var bestLag = minLag
         var bestScore = 0.0
-        for lag in minLag...maxLag {
+        for lag in minLag ... maxLag {
             let score = autocorrelationScore(for: lag)
             if score > bestScore {
                 bestScore = score
@@ -2135,7 +2159,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         )
     }
 
-    nonisolated private static func estimateTimeSignature(
+    private nonisolated static func estimateTimeSignature(
         from onsetEnvelope: [Double],
         beatLag: Int
     ) -> AudioTimeSignatureEstimate? {
@@ -2146,7 +2170,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         let searchRadius = max(1, beatLag / 8)
         var bestPhase = 0
         var bestPhaseScore = -Double.infinity
-        for phase in 0..<beatLag {
+        for phase in 0 ..< beatLag {
             var score = 0.0
             var index = phase
             while index < onsetEnvelope.count {
@@ -2155,7 +2179,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
                     onsetEnvelope.count - 1,
                     index + searchRadius
                 )
-                score += onsetEnvelope[lowerBound...upperBound].max() ?? 0
+                score += onsetEnvelope[lowerBound ... upperBound].max() ?? 0
                 index += beatLag
             }
             if score > bestPhaseScore {
@@ -2173,7 +2197,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
                 index + searchRadius
             )
             beatStrengths.append(
-                onsetEnvelope[lowerBound...upperBound].max() ?? 0
+                onsetEnvelope[lowerBound ... upperBound].max() ?? 0
             )
             index += beatLag
         }
@@ -2217,7 +2241,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
             let strongest = positionMeans.max() ?? 0
             let otherMean = positionMeans.count > 1
                 ? (positionMeans.reduce(0, +) - strongest)
-                    / Double(positionMeans.count - 1)
+                / Double(positionMeans.count - 1)
                 : 0
             let accentContrast = max(
                 0,
@@ -2248,7 +2272,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         )
     }
 
-    nonisolated private static func normalizedLagCorrelation(
+    private nonisolated static func normalizedLagCorrelation(
         _ values: [Double],
         lag: Int
     ) -> Double {
@@ -2256,7 +2280,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         var numerator = 0.0
         var leftEnergy = 0.0
         var rightEnergy = 0.0
-        for index in lag..<values.count {
+        for index in lag ..< values.count {
             let left = values[index]
             let right = values[index - lag]
             numerator += left * right
@@ -2268,14 +2292,14 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return numerator / denominator
     }
 
-    nonisolated private static func estimateKeyScale(
+    private nonisolated static func estimateKeyScale(
         from sampleBuffer: (samples: [Float], sampleRate: Double)
     ) -> AudioKeyScaleEstimate? {
         let samples = sampleBuffer.samples
-        guard samples.count >= 4_096 else { return nil }
+        guard samples.count >= 4096 else { return nil }
 
-        let frameSize = 4_096
-        let hopSize = 2_048
+        let frameSize = 4096
+        let hopSize = 2048
         guard let dft = try? vDSP.DiscreteFourierTransform<Float>(
             count: frameSize,
             direction: .forward,
@@ -2299,7 +2323,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         var outputImaginary = [Float](repeating: 0, count: frameSize)
         var start = 0
         while start + frameSize <= samples.count {
-            for index in 0..<frameSize {
+            for index in 0 ..< frameSize {
                 inputReal[index] = samples[start + index] * window[index]
             }
             dft.transform(
@@ -2309,9 +2333,9 @@ final class LocalDatasetEnrichmentService: ObservableObject {
                 outputImaginary: &outputImaginary
             )
 
-            for bin in 1..<(frameSize / 2) {
+            for bin in 1 ..< (frameSize / 2) {
                 let frequency = Double(bin) * sampleRate / Double(frameSize)
-                guard frequency >= 41.0, frequency <= 4_200.0 else { continue }
+                guard frequency >= 41.0, frequency <= 4200.0 else { continue }
                 let midi = Int((69.0 + 12.0 * log2(frequency / 440.0)).rounded())
                 guard midi >= 28, midi <= 108 else { continue }
                 let real = Double(outputReal[bin])
@@ -2329,7 +2353,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         let normalizedChroma = normalizedProfile(chroma)
 
         var candidates: [(tonic: Int, mode: String, score: Double)] = []
-        for tonic in 0..<12 {
+        for tonic in 0 ..< 12 {
             candidates.append((
                 tonic: tonic,
                 mode: "major",
@@ -2358,7 +2382,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         )
     }
 
-    nonisolated private static func normalizedProfile(_ values: [Double]) -> [Double] {
+    private nonisolated static func normalizedProfile(_ values: [Double]) -> [Double] {
         guard !values.isEmpty else { return [] }
         let mean = values.reduce(0, +) / Double(values.count)
         let centered = values.map { $0 - mean }
@@ -2367,21 +2391,21 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return centered.map { $0 / norm }
     }
 
-    nonisolated private static func keyProfileScore(
+    private nonisolated static func keyProfileScore(
         chroma: [Double],
         profile: [Double],
         tonic: Int
     ) -> Double {
         guard chroma.count == 12, profile.count == 12 else { return 0 }
         var score = 0.0
-        for pitchClass in 0..<12 {
+        for pitchClass in 0 ..< 12 {
             let interval = (pitchClass - tonic + 12) % 12
             score += chroma[pitchClass] * profile[interval]
         }
         return score
     }
 
-    nonisolated private static func monoSamples(from url: URL) throws -> (samples: [Float], sampleRate: Double) {
+    private nonisolated static func monoSamples(from url: URL) throws -> (samples: [Float], sampleRate: Double) {
         let audioFile = try AVAudioFile(forReading: url)
         let format = audioFile.processingFormat
         let frameCount = AVAudioFrameCount(min(audioFile.length, 4_000_000))
@@ -2397,9 +2421,9 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         let channels = max(1, Int(format.channelCount))
         let frames = Int(buffer.frameLength)
         var samples = [Float](repeating: 0, count: frames)
-        for frame in 0..<frames {
+        for frame in 0 ..< frames {
             var sum: Float = 0
-            for channel in 0..<channels {
+            for channel in 0 ..< channels {
                 sum += channelData[channel][frame]
             }
             samples[frame] = sum / Float(channels)
@@ -2407,7 +2431,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return (samples, format.sampleRate)
     }
 
-    nonisolated private static func promptText(from record: [String: Any]) -> String {
+    private nonisolated static func promptText(from record: [String: Any]) -> String {
         for key in ["prompt", "caption"] {
             if let value = record[key] as? String,
                !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -2417,7 +2441,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return record["file"] as? String ?? ""
     }
 
-    nonisolated private static func transcriptionText(from record: [String: Any]) -> String {
+    private nonisolated static func transcriptionText(from record: [String: Any]) -> String {
         if let transcription = record["transcription"] as? [String: Any],
            let text = transcription["text"] as? String,
            !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -2430,7 +2454,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return ""
     }
 
-    nonisolated private static func transcriptionStatus(for result: LocalDatasetEnrichmentResult) -> String {
+    private nonisolated static func transcriptionStatus(for result: LocalDatasetEnrichmentResult) -> String {
         guard result.transcribedClipCount > 0 else { return "not_run" }
         if result.separatedClipCount > 0, result.transcribedClipCount < result.separatedClipCount {
             return "partial"
@@ -2438,11 +2462,11 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return "complete"
     }
 
-    nonisolated private static func hasCompletedTranscription(_ record: [String: Any]) -> Bool {
+    private nonisolated static func hasCompletedTranscription(_ record: [String: Any]) -> Bool {
         !transcriptionText(from: record).isEmpty
     }
 
-    nonisolated private static func shouldGenerateNativeCaption(
+    private nonisolated static func shouldGenerateNativeCaption(
         for record: [String: Any],
         force: Bool
     ) -> Bool {
@@ -2455,14 +2479,14 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         }
     }
 
-    nonisolated private static func captionSource(in record: [String: Any]) -> String {
+    private nonisolated static func captionSource(in record: [String: Any]) -> String {
         let annotation = record["annotation"] as? [String: Any] ?? [:]
         return stringValue(record["caption_source"])
             ?? stringValue(annotation["caption_source"])
             ?? (explicitCaptionText(from: record).isEmpty ? "none" : "manual")
     }
 
-    nonisolated private static func shouldUseCaptionAsNativeSeed(
+    private nonisolated static func shouldUseCaptionAsNativeSeed(
         record: [String: Any],
         captionSource: String,
         datasetDirectory: URL
@@ -2476,12 +2500,12 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return true
     }
 
-    nonisolated private static func datasetCaptionMode(datasetDirectory: URL) -> String? {
+    private nonisolated static func datasetCaptionMode(datasetDirectory: URL) -> String? {
         let manifestURL = datasetDirectory.appendingPathComponent(TrainingDatasetPackageWriter.datasetManifestFileName)
         return readJSONObject(from: manifestURL).flatMap { stringValue($0["caption_mode"]) }
     }
 
-    nonisolated private static func looksLikeFilenameCaption(record: [String: Any]) -> Bool {
+    private nonisolated static func looksLikeFilenameCaption(record: [String: Any]) -> Bool {
         let caption = explicitCaptionText(from: record)
         guard !caption.isEmpty else { return false }
 
@@ -2496,7 +2520,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         }
     }
 
-    nonisolated private static func filenameCaptionCandidates(record: [String: Any]) -> [String] {
+    private nonisolated static func filenameCaptionCandidates(record: [String: Any]) -> [String] {
         var candidates: [String] = []
         if let file = stringValue(record["file"]) {
             candidates.append(URL(fileURLWithPath: file).deletingPathExtension().lastPathComponent)
@@ -2513,7 +2537,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return sortedUniqueStrings(candidates)
     }
 
-    nonisolated private static func normalizedCaptionComparisonText(_ value: String) -> String {
+    private nonisolated static func normalizedCaptionComparisonText(_ value: String) -> String {
         value
             .lowercased()
             .replacingOccurrences(of: "(", with: " ")
@@ -2525,7 +2549,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
             .joined(separator: " ")
     }
 
-    nonisolated private static func explicitCaptionText(from record: [String: Any]) -> String {
+    private nonisolated static func explicitCaptionText(from record: [String: Any]) -> String {
         for key in ["caption", "prompt"] {
             if let value = record[key] as? String {
                 let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -2537,7 +2561,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return ""
     }
 
-    nonisolated private static func generatedMetadataCaption(
+    private nonisolated static func generatedMetadataCaption(
         for record: [String: Any],
         seedCaption: String
     ) -> String? {
@@ -2556,7 +2580,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return components.joined(separator: ", ")
     }
 
-    nonisolated private static func appendCaptionComponent(_ value: String, to components: inout [String]) {
+    private nonisolated static func appendCaptionComponent(_ value: String, to components: inout [String]) {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         let normalized = trimmed.lowercased()
@@ -2571,7 +2595,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         components.append(trimmed)
     }
 
-    nonisolated private static func captionBPM(in record: [String: Any]) -> Double? {
+    private nonisolated static func captionBPM(in record: [String: Any]) -> Double? {
         if let bpm = doubleValue(record["bpm"]) {
             return bpm
         }
@@ -2581,7 +2605,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return nil
     }
 
-    nonisolated private static func captionKey(in record: [String: Any]) -> String? {
+    private nonisolated static func captionKey(in record: [String: Any]) -> String? {
         if let key = stringValue(record["keyscale"]) ?? stringValue(record["key"]) {
             return key
         }
@@ -2591,28 +2615,28 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return nil
     }
 
-    nonisolated private static func tempoDescriptor(for bpm: Double) -> String {
+    private nonisolated static func tempoDescriptor(for bpm: Double) -> String {
         switch bpm {
         case ..<75:
-            return "very slow"
+            "very slow"
         case ..<95:
-            return "slow"
+            "slow"
         case ..<125:
-            return "mid-tempo"
+            "mid-tempo"
         case ..<155:
-            return "upbeat"
+            "upbeat"
         default:
-            return "fast"
+            "fast"
         }
     }
 
-    nonisolated private static func formatBPM(_ bpm: Double) -> String {
+    private nonisolated static func formatBPM(_ bpm: Double) -> String {
         bpm.rounded() == bpm
             ? String(Int(bpm))
             : bpm.formatted(.number.precision(.fractionLength(1)))
     }
 
-    nonisolated private static func contentDescriptor(for record: [String: Any]) -> String {
+    private nonisolated static func contentDescriptor(for record: [String: Any]) -> String {
         let role = stringValue(record["role"]) ?? "full_mix"
         let hasVocals = boolValue(record["vocal_overlap"]) == true ||
             !transcriptionText(from: record).isEmpty ||
@@ -2625,7 +2649,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         case "instrumental":
             return "instrumental backing stem"
         default:
-            if hasVocals && hasInstrumental {
+            if hasVocals, hasInstrumental {
                 return "full mix with vocals and instrumental backing"
             }
             if hasVocals {
@@ -2638,7 +2662,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         }
     }
 
-    nonisolated private static func nativeCaptionInputs(in record: [String: Any], usedSeed: Bool) -> [String] {
+    private nonisolated static func nativeCaptionInputs(in record: [String: Any], usedSeed: Bool) -> [String] {
         var inputs: [String] = []
         if usedSeed {
             inputs.append("caption_seed")
@@ -2658,7 +2682,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return inputs
     }
 
-    nonisolated private static func nativeCaptionedClipCount(in captions: [[String: Any]]) -> Int {
+    private nonisolated static func nativeCaptionedClipCount(in captions: [[String: Any]]) -> Int {
         captions.filter { record in
             if stringValue(record["caption_source"]) == "native" {
                 return true
@@ -2671,27 +2695,27 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         }.count
     }
 
-    nonisolated private static func readJSONObject(from url: URL) -> [String: Any]? {
+    private nonisolated static func readJSONObject(from url: URL) -> [String: Any]? {
         guard let data = try? Data(contentsOf: url) else { return nil }
         return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
     }
 
-    nonisolated private static func readJSONArray(from url: URL) -> [[String: Any]] {
+    private nonisolated static func readJSONArray(from url: URL) -> [[String: Any]] {
         guard let data = try? Data(contentsOf: url) else { return [] }
         return (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] ?? []
     }
 
-    nonisolated private static func writeJSONObject(_ object: [String: Any], to url: URL) throws {
+    private nonisolated static func writeJSONObject(_ object: [String: Any], to url: URL) throws {
         let data = try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys])
         try data.write(to: url, options: .atomic)
     }
 
-    nonisolated private static func writeJSONObjectArray(_ object: [[String: Any]], to url: URL) throws {
+    private nonisolated static func writeJSONObjectArray(_ object: [[String: Any]], to url: URL) throws {
         let data = try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys])
         try data.write(to: url, options: .atomic)
     }
 
-    nonisolated private static func relativePath(for url: URL, from baseDirectory: URL) -> String {
+    private nonisolated static func relativePath(for url: URL, from baseDirectory: URL) -> String {
         let base = normalizedDirectoryPath(baseDirectory)
         let path = url.standardizedFileURL.path
         guard path.hasPrefix(base) else {
@@ -2700,7 +2724,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return String(path.dropFirst(base.count))
     }
 
-    nonisolated private static func normalizedDirectoryPath(_ url: URL) -> String {
+    private nonisolated static func normalizedDirectoryPath(_ url: URL) -> String {
         var path = url.standardizedFileURL.path
         if !path.hasSuffix("/") {
             path.append("/")
@@ -2708,7 +2732,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return path
     }
 
-    nonisolated private static func resolve(_ path: String, relativeTo baseDirectory: URL) -> URL {
+    private nonisolated static func resolve(_ path: String, relativeTo baseDirectory: URL) -> URL {
         let expanded = (path as NSString).expandingTildeInPath
         if expanded.hasPrefix("/") {
             return URL(fileURLWithPath: expanded).standardizedFileURL
@@ -2716,7 +2740,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return baseDirectory.appendingPathComponent(expanded).standardizedFileURL
     }
 
-    nonisolated private static func doubleValue(_ value: Any?) -> Double? {
+    private nonisolated static func doubleValue(_ value: Any?) -> Double? {
         if let number = value as? NSNumber {
             return number.doubleValue
         }
@@ -2726,7 +2750,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return nil
     }
 
-    nonisolated private static func stringValue(_ value: Any?) -> String? {
+    private nonisolated static func stringValue(_ value: Any?) -> String? {
         switch value {
         case let string as String:
             let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -2742,27 +2766,27 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         }
     }
 
-    nonisolated private static func firstString(
+    private nonisolated static func firstString(
         _ object: [String: Any],
         keys: [String]
     ) -> String? {
         keys.lazy.compactMap { stringValue(object[$0]) }.first
     }
 
-    nonisolated private static func boolValue(_ value: Any?) -> Bool? {
+    private nonisolated static func boolValue(_ value: Any?) -> Bool? {
         switch value {
         case let bool as Bool:
-            return bool
+            bool
         case let number as NSNumber:
-            return number.boolValue
+            number.boolValue
         case let string as String:
-            return ["true", "yes", "1"].contains(string.lowercased())
+            ["true", "yes", "1"].contains(string.lowercased())
         default:
-            return nil
+            nil
         }
     }
 
-    nonisolated private static func annotationStatus(in captions: [[String: Any]]) -> String {
+    private nonisolated static func annotationStatus(in captions: [[String: Any]]) -> String {
         guard !captions.isEmpty else { return "empty" }
         let approved = approvedClipCount(in: captions)
         if approved == captions.count {
@@ -2774,7 +2798,7 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         return "manual_review_required"
     }
 
-    nonisolated private static func approvedClipCount(in captions: [[String: Any]]) -> Int {
+    private nonisolated static func approvedClipCount(in captions: [[String: Any]]) -> Int {
         captions.filter { record in
             if let trainingReview = record["training_review"] as? [String: Any],
                boolValue(trainingReview["approved"]) == true {
@@ -2788,12 +2812,12 @@ final class LocalDatasetEnrichmentService: ObservableObject {
         }.count
     }
 
-    nonisolated private static func rounded(_ value: Double, places: Int) -> Double {
+    private nonisolated static func rounded(_ value: Double, places: Int) -> Double {
         let scale = pow(10, Double(places))
         return (value * scale).rounded() / scale
     }
 
-    nonisolated private static func sortedUniqueStrings(_ values: [String]) -> [String] {
+    private nonisolated static func sortedUniqueStrings(_ values: [String]) -> [String] {
         Array(Set(values.filter { !$0.isEmpty })).sorted()
     }
 }
@@ -2827,8 +2851,8 @@ private enum StemBundleRole: CaseIterable {
 
     var assetKey: String {
         switch self {
-        case .vocals: return "vocals"
-        case .instrumental: return "instrumental"
+        case .vocals: "vocals"
+        case .instrumental: "instrumental"
         }
     }
 
@@ -2839,27 +2863,27 @@ private enum StemBundleRole: CaseIterable {
     var bundleFileName: String {
         switch self {
         case .vocals:
-            return TrainingDatasetPackageWriter.vocalBundleFileName
+            TrainingDatasetPackageWriter.vocalBundleFileName
         case .instrumental:
-            return TrainingDatasetPackageWriter.instrumentalBundleFileName
+            TrainingDatasetPackageWriter.instrumentalBundleFileName
         }
     }
 
     var trainingLyrics: String {
         switch self {
         case .vocals:
-            return "vocal stem"
+            "vocal stem"
         case .instrumental:
-            return "[Instrumental]"
+            "[Instrumental]"
         }
     }
 
     var trainingLyricsSource: String {
         switch self {
         case .vocals:
-            return "transcript"
+            "transcript"
         case .instrumental:
-            return "constant"
+            "constant"
         }
     }
 }

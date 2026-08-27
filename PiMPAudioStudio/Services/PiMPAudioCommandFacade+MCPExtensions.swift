@@ -13,7 +13,7 @@ extension PiMPAudioCommandFacade {
             "generating": (0.05, 0.90),
             "complete": (1.00, 0.00),
             "error": (1.00, 0.00),
-            "cancelled": (1.00, 0.00)
+            "cancelled": (1.00, 0.00),
         ]
     }
 
@@ -81,12 +81,11 @@ extension PiMPAudioCommandFacade {
         let datasetName = stringValue(arguments["datasetName"] ?? arguments["name"])?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let styleTemplate = stringValue(arguments["styleTemplate"] ?? arguments["style"]) ?? ""
-        let outputBase: URL
-        if let raw = stringValue(arguments["outputDirectory"] ?? arguments["outputBase"])?
+        let outputBase: URL = if let raw = stringValue(arguments["outputDirectory"] ?? arguments["outputBase"])?
             .trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty {
-            outputBase = URL(fileURLWithPath: NSString(string: raw).expandingTildeInPath, isDirectory: true)
+            URL(fileURLWithPath: NSString(string: raw).expandingTildeInPath, isDirectory: true)
         } else {
-            outputBase = historyStore.storageDirectory.deletingLastPathComponent()
+            historyStore.storageDirectory.deletingLastPathComponent()
         }
 
         let sourceFiles = paths.map { URL(fileURLWithPath: NSString(string: $0).expandingTildeInPath) }
@@ -105,7 +104,7 @@ extension PiMPAudioCommandFacade {
             "clipsPerTrack": config.clipsPerTrack,
             "maxTotalClips": config.maxTotalClips,
             "samplingMode": config.samplingMode.rawValue,
-            "submitted": false
+            "submitted": false,
         ]
 
         guard !dryRun else {
@@ -144,7 +143,7 @@ extension PiMPAudioCommandFacade {
                     progress: mcpProgress(stage: "complete", message: "Dataset package ready"),
                     result: [
                         "outputDirectory": result.outputDirectory.path(percentEncoded: false),
-                        "clipCount": result.clipCount
+                        "clipCount": result.clipCount,
                     ]
                 )
             } catch is CancellationError {
@@ -198,7 +197,7 @@ extension PiMPAudioCommandFacade {
             "backend": backendRaw,
             "createStems": createStems,
             "force": force,
-            "submitted": false
+            "submitted": false,
         ]
 
         guard !dryRun else {
@@ -264,10 +263,10 @@ extension PiMPAudioCommandFacade {
         var updated = 0
         if let clipID = stringValue(arguments["clipID"] ?? arguments["assetID"] ?? arguments["id"])?
             .trimmingCharacters(in: .whitespacesAndNewlines),
-           !clipID.isEmpty,
-           let index = document.clips.firstIndex(where: {
-               $0.id == clipID || $0.assetID == clipID || $0.file == clipID
-           }) {
+            !clipID.isEmpty,
+            let index = document.clips.firstIndex(where: {
+                $0.id == clipID || $0.assetID == clipID || $0.file == clipID
+            }) {
             if let caption = stringValue(arguments["caption"] ?? arguments["prompt"]) {
                 document.clips[index].caption = caption
                 document.clips[index].captionSource = "manual"
@@ -284,7 +283,9 @@ extension PiMPAudioCommandFacade {
             }
             if let approved = boolValue(arguments["approved"] ?? arguments["isApproved"]) {
                 document.clips[index].isApproved = approved
-                if approved { document.clips[index].reviewStatus = "approved" }
+                if approved {
+                    document.clips[index].reviewStatus = "approved"
+                }
                 updated += 1
             }
             if let notes = stringValue(arguments["notes"]) {
@@ -316,7 +317,7 @@ extension PiMPAudioCommandFacade {
             "blockerCount": document.blockerCount,
             "isTrainingReady": document.isTrainingReady,
             "includedCount": document.includedCount,
-            "approvedCount": document.approvedCount
+            "approvedCount": document.approvedCount,
         ]
     }
 
@@ -338,8 +339,8 @@ extension PiMPAudioCommandFacade {
                 "name": adapter.name,
                 "kind": adapter.kind.rawValue,
                 "baseModelID": adapter.baseModelID,
-                "rank": adapter.config.rank
-            ]
+                "rank": adapter.config.rank,
+            ],
         ]
     }
 
@@ -360,7 +361,7 @@ extension PiMPAudioCommandFacade {
         return [
             "submitted": true,
             "deletedAdapterID": adapter.id,
-            "deletedAdapterName": adapter.name
+            "deletedAdapterName": adapter.name,
         ]
     }
 
@@ -395,9 +396,9 @@ extension PiMPAudioCommandFacade {
                 "name": merged.name,
                 "kind": merged.kind.rawValue,
                 "baseModelID": merged.baseModelID,
-                "rank": merged.config.rank
+                "rank": merged.config.rank,
             ],
-            "alpha": alpha
+            "alpha": alpha,
         ]
     }
 
@@ -421,7 +422,7 @@ extension PiMPAudioCommandFacade {
             "category": spec.category.rawValue,
             "requiresAuth": spec.requiresAuth,
             "alreadyReady": alreadyReady,
-            "submitted": false
+            "submitted": false,
         ]
 
         guard !dryRun else {
@@ -495,7 +496,7 @@ extension PiMPAudioCommandFacade {
             "submitted": true,
             "modelID": spec.id,
             "displayName": spec.displayName,
-            "category": spec.category.rawValue
+            "category": spec.category.rawValue,
         ]
     }
 
@@ -535,7 +536,7 @@ extension PiMPAudioCommandFacade {
         return [
             "submitted": true,
             "deletedCount": matched.count,
-            "deletedIDs": matched.map(\.uuidString)
+            "deletedIDs": matched.map(\.uuidString),
         ]
     }
 
@@ -579,8 +580,8 @@ extension PiMPAudioCommandFacade {
             "preset": [
                 "id": preset.id.uuidString,
                 "name": preset.name,
-                "duration": preset.duration
-            ]
+                "duration": preset.duration,
+            ],
         ]
     }
 
@@ -600,7 +601,7 @@ extension PiMPAudioCommandFacade {
         return [
             "submitted": true,
             "deletedPresetID": preset.id.uuidString,
-            "deletedPresetName": preset.name
+            "deletedPresetName": preset.name,
         ]
     }
 
@@ -614,7 +615,7 @@ extension PiMPAudioCommandFacade {
         return [
             "submitted": true,
             "verboseAudioDiagnostics": enabled,
-            "diagnosticsDirectory": AppStorageLocations.diagnosticsDirectory.path(percentEncoded: false)
+            "diagnosticsDirectory": AppStorageLocations.diagnosticsDirectory.path(percentEncoded: false),
         ]
     }
 
@@ -638,13 +639,13 @@ extension PiMPAudioCommandFacade {
             _ = try? cancelOperation(arguments: [
                 "id": operationID,
                 "reason": stringValue(arguments["reason"]) ?? "Cancelled via cancel_generation",
-                "confirm": true
+                "confirm": true,
             ])
         }
-        return [
+        return try [
             "submitted": true,
             "cancelled": true,
-            "generation": try generationStatus()
+            "generation": generationStatus(),
         ]
     }
 
@@ -698,7 +699,7 @@ extension PiMPAudioCommandFacade {
                 "adapterID": adapter.id,
                 "seed": seed,
                 "duration": duration,
-                "variantCount": variants.count
+                "variantCount": variants.count,
             ],
             progress: mcpProgress(stage: "queued", message: "Queued adapter audition")
         )
@@ -741,7 +742,7 @@ extension PiMPAudioCommandFacade {
                         "label": variant.label,
                         "audioPath": result.fileURL.path(percentEncoded: false),
                         "historyEntryID": result.entry.id.uuidString,
-                        "traceFileName": result.entry.traceFileName ?? NSNull()
+                        "traceFileName": result.entry.traceFileName ?? NSNull(),
                     ])
                 }
                 completeOperation(
@@ -750,7 +751,7 @@ extension PiMPAudioCommandFacade {
                     result: [
                         "adapterID": adapter.id,
                         "adapterName": adapter.name,
-                        "takes": completed
+                        "takes": completed,
                     ]
                 )
             } catch is CancellationError {
@@ -774,7 +775,7 @@ extension PiMPAudioCommandFacade {
             "adapterID": adapter.id,
             "adapterName": adapter.name,
             "variantCount": variants.count,
-            "note": "Poll get_operation for audition progress and take paths."
+            "note": "Poll get_operation for audition progress and take paths.",
         ]
     }
 }

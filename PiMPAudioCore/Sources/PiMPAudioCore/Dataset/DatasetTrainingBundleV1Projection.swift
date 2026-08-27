@@ -34,7 +34,7 @@ public struct DatasetTrainingBundleV1: Codable, Hashable, Sendable {
         self.annotationSchemaVersion = annotationSchemaVersion
         self.trainingPlanID = trainingPlanID
         self.backendID = backendID
-        self.clipCount = clips.count
+        clipCount = clips.count
         self.clips = clips
     }
 
@@ -135,11 +135,11 @@ public enum DatasetTrainingBundleV1ProjectionError: LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .invalidPackage:
-            return "The dataset package is invalid and cannot produce a training bundle."
-        case .missingPlan(let id):
-            return "Dataset training plan \(id) does not exist."
-        case .noIncludedAssets(let id):
-            return "Dataset training plan \(id) does not include any assets."
+            "The dataset package is invalid and cannot produce a training bundle."
+        case let .missingPlan(id):
+            "Dataset training plan \(id) does not exist."
+        case let .noIncludedAssets(id):
+            "Dataset training plan \(id) does not include any assets."
         }
     }
 }

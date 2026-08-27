@@ -1,6 +1,6 @@
-import Testing
 import MLX
 @testable import PiMPAudioCore
+import Testing
 
 @Suite("Weight Converter")
 struct WeightConverterTests {
@@ -15,9 +15,13 @@ struct WeightConverterTests {
     @Test("VAE Conv1d axis swap: [out, in, K] -> [out, K, in]")
     func vaeConv1dSwap() {
         var data: [Float] = []
-        for o in 0..<2 { for i in 0..<3 { for k in 0..<5 {
-            data.append(Float(o * 100 + i * 10 + k))
-        }}}
+        for o in 0 ..< 2 {
+            for i in 0 ..< 3 {
+                for k in 0 ..< 5 {
+                    data.append(Float(o * 100 + i * 10 + k))
+                }
+            }
+        }
         let pt = MLXArray(data, [2, 3, 5])
         let mlx = VAENameMap.conv1dToMLX(pt)
         #expect(mlx.shape == [2, 5, 3])
@@ -80,7 +84,7 @@ struct WeightConverterTests {
         let converter = WeightConverter()
         let result = try await converter.convertVAEWeights(stateDict: stateDict)
 
-        let keys = result.map { $0.0 }
+        let keys = result.map(\.0)
         #expect(keys.contains("encoder.conv1.weight"))
         #expect(keys.contains("encoder.conv1.bias"))
         #expect(keys.contains("encoder.blocks.0.resUnit1.snake1.alpha"))
@@ -107,7 +111,7 @@ struct WeightConverterTests {
         let converter = WeightConverter()
         let result = try await converter.convertDiTWeights(stateDict: stateDict)
 
-        let keys = result.map { $0.0 }
+        let keys = result.map(\.0)
         #expect(keys.contains("projIn.weight"))
         #expect(keys.contains("projOut.weight"))
         #expect(keys.contains("layers.0.selfAttn.qProj.weight"))

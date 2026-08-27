@@ -51,29 +51,28 @@ public class LoRALinear: Linear {
 
         // Store a copy of the original weight for unmerge.
         // Use identity arithmetic (+ 0) to create a distinct MLXArray holding the same data.
-        self.baseWeight = base.weight + MLXArray(Float(0))
-        self.baseBias = base.bias.map { $0 + MLXArray(Float(0)) }
-        self.scaling = alpha / Float(rank)
-        self.dropoutRate = dropout
+        baseWeight = base.weight + MLXArray(Float(0))
+        baseBias = base.bias.map { $0 + MLXArray(Float(0)) }
+        scaling = alpha / Float(rank)
+        dropoutRate = dropout
 
         // Kaiming uniform for A: bound = sqrt(1/inFeatures)
         let bound = Float(1.0 / Float(inFeatures).squareRoot())
-        self._loraA.wrappedValue = MLXRandom.uniform(-bound ..< bound, [rank, inFeatures])
+        _loraA.wrappedValue = MLXRandom.uniform(-bound ..< bound, [rank, inFeatures])
 
         // Zero init for B so adapter starts as identity
-        self._loraB.wrappedValue = MLXArray.zeros([outFeatures, rank])
+        _loraB.wrappedValue = MLXArray.zeros([outFeatures, rank])
 
         // Initialize Linear superclass with the base weights
         super.init(weight: base.weight, bias: base.bias)
     }
 
-    public override func callAsFunction(_ x: MLXArray) -> MLXArray {
+    override public func callAsFunction(_ x: MLXArray) -> MLXArray {
         // Base linear: x @ W^T + bias
-        let baseOut: MLXArray
-        if let bias {
-            baseOut = addMM(bias, x, weight.T)
+        let baseOut: MLXArray = if let bias {
+            addMM(bias, x, weight.T)
         } else {
-            baseOut = matmul(x, weight.T)
+            matmul(x, weight.T)
         }
 
         if isMerged {
@@ -84,11 +83,10 @@ public class LoRALinear: Linear {
         if isTraining {
             var loraInput = x
             if dropoutRate > 0 {
-                let mask: MLXArray
-                if let dropoutKey = AdapterDropoutKeyContext.nextKey() {
-                    mask = MLXRandom.uniform(0 ..< 1, loraInput.shape, key: dropoutKey) .> dropoutRate
+                let mask: MLXArray = if let dropoutKey = AdapterDropoutKeyContext.nextKey() {
+                    MLXRandom.uniform(0 ..< 1, loraInput.shape, key: dropoutKey) .> dropoutRate
                 } else {
-                    mask = MLXRandom.uniform(0 ..< 1, loraInput.shape) .> dropoutRate
+                    MLXRandom.uniform(0 ..< 1, loraInput.shape) .> dropoutRate
                 }
                 loraInput = loraInput * mask / (1.0 - dropoutRate)
             }

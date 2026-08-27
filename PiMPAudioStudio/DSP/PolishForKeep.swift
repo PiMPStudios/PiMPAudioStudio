@@ -11,17 +11,17 @@ struct PolishForKeepRecipe: Equatable, Sendable {
 
         var displayName: String {
             switch self {
-            case .streaming: return "Streaming"
-            case .louder: return "Louder"
-            case .gentle: return "Gentle"
+            case .streaming: "Streaming"
+            case .louder: "Louder"
+            case .gentle: "Gentle"
             }
         }
 
         var detail: String {
             switch self {
-            case .streaming: return "≈ −14 LUFS, −1 dB ceiling"
-            case .louder: return "≈ −10 LUFS, −0.5 dB ceiling"
-            case .gentle: return "Clean + −3 dB peak headroom"
+            case .streaming: "≈ −14 LUFS, −1 dB ceiling"
+            case .louder: "≈ −10 LUFS, −0.5 dB ceiling"
+            case .gentle: "Clean + −3 dB peak headroom"
             }
         }
     }
@@ -81,7 +81,7 @@ enum PolishForKeepProcessor {
         var errorDescription: String? {
             switch self {
             case .bufferEmpty:
-                return "The audio buffer is empty."
+                "The audio buffer is empty."
             }
         }
     }
@@ -173,8 +173,8 @@ enum PolishForKeepProcessor {
 
     static func highPassCutoff(for tone: PolishForKeepRecipe.Tone) -> Float {
         switch tone {
-        case .neutral, .brighter: return 40
-        case .darker: return 35
+        case .neutral, .brighter: 40
+        case .darker: 35
         }
     }
 
@@ -182,27 +182,27 @@ enum PolishForKeepProcessor {
     static func toneEQParameters(for tone: PolishForKeepRecipe.Tone) -> EQParameters? {
         switch tone {
         case .neutral:
-            return nil
+            nil
         case .brighter:
-            return EQParameters(bands: [
+            EQParameters(bands: [
                 EQBand(frequency: 300, gain: 0, q: 1.0),
-                EQBand(frequency: 1_200, gain: 0.5, q: 1.2),
-                EQBand(frequency: 10_000, gain: 1.5, q: 0.7),
+                EQBand(frequency: 1200, gain: 0.5, q: 1.2),
+                EQBand(frequency: 10000, gain: 1.5, q: 0.7),
             ])
         case .darker:
-            return EQParameters(bands: [
+            EQParameters(bands: [
                 EQBand(frequency: 280, gain: -1.5, q: 1.0),
-                EQBand(frequency: 1_200, gain: 0, q: 1.2),
-                EQBand(frequency: 8_000, gain: -0.5, q: 0.8),
+                EQBand(frequency: 1200, gain: 0, q: 1.2),
+                EQBand(frequency: 8000, gain: -0.5, q: 0.8),
             ])
         }
     }
 
     static func compressorParameters(for glue: PolishForKeepRecipe.Glue) -> CompressorParameters? {
         switch glue {
-        case .off: return nil
-        case .light: return .light
-        case .medium: return .medium
+        case .off: nil
+        case .light: .light
+        case .medium: .medium
         }
     }
 
@@ -210,16 +210,16 @@ enum PolishForKeepProcessor {
     static func reverbParameters(for space: PolishForKeepRecipe.Space) -> ReverbParameters? {
         switch space {
         case .off:
-            return nil
+            nil
         case .room:
-            return ReverbParameters(
+            ReverbParameters(
                 decayTime: 0.7,
                 wetDryMix: 0.08,
                 preDelay: 8,
                 damping: 0.55
             )
         case .hall:
-            return ReverbParameters(
+            ReverbParameters(
                 decayTime: 1.6,
                 wetDryMix: 0.10,
                 preDelay: 15,
@@ -230,11 +230,19 @@ enum PolishForKeepProcessor {
 
     static func description(for recipe: PolishForKeepRecipe) -> String {
         var parts = ["Polish for Keep (\(recipe.target.displayName))"]
-        if recipe.trimSilenceAndFades { parts.append("trim") }
+        if recipe.trimSilenceAndFades {
+            parts.append("trim")
+        }
         parts.append("HPF")
-        if recipe.tone != .neutral { parts.append(recipe.tone.displayName.lowercased()) }
-        if recipe.glue != .off { parts.append("glue \(recipe.glue.displayName.lowercased())") }
-        if recipe.space != .off { parts.append(recipe.space.displayName.lowercased()) }
+        if recipe.tone != .neutral {
+            parts.append(recipe.tone.displayName.lowercased())
+        }
+        if recipe.glue != .off {
+            parts.append("glue \(recipe.glue.displayName.lowercased())")
+        }
+        if recipe.space != .off {
+            parts.append(recipe.space.displayName.lowercased())
+        }
         return parts.joined(separator: " · ")
     }
 }

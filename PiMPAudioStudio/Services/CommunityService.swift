@@ -1,11 +1,10 @@
 import Foundation
-import PiMPAudioCore
 import MLX
+import PiMPAudioCore
 
 /// Manages community adapter discovery, downloading, and HuggingFace imports.
 @MainActor
 final class CommunityService: ObservableObject {
-
     // MARK: - Published State
 
     @Published var manifest: AdapterManifest?
@@ -23,10 +22,10 @@ final class CommunityService: ObservableObject {
 
         static func == (lhs: DownloadState, rhs: DownloadState) -> Bool {
             switch (lhs, rhs) {
-            case (.downloading(let a), .downloading(let b)): return a == b
-            case (.failed(let a), .failed(let b)): return a == b
-            case (.completed, .completed): return true
-            default: return false
+            case let (.downloading(a), .downloading(b)): a == b
+            case let (.failed(a), .failed(b)): a == b
+            case (.completed, .completed): true
+            default: false
             }
         }
     }
@@ -46,7 +45,7 @@ final class CommunityService: ObservableObject {
         return FileManager.default.temporaryDirectory.appendingPathComponent(name)
     }
 
-    private let cacheTTL: TimeInterval = 3600  // 1 hour
+    private let cacheTTL: TimeInterval = 3600 // 1 hour
     private static let maxConcurrentDownloads = 3
 
     // MARK: - Private State
@@ -157,20 +156,20 @@ final class CommunityService: ObservableObject {
         let task = Task { [weak self] in
             guard let self else { return }
             do {
-                try await self.performDownload(adapter: adapter, retryCount: 1)
+                try await performDownload(adapter: adapter, retryCount: 1)
                 if !Task.isCancelled {
-                    self.downloads[adapter.id] = .completed
+                    downloads[adapter.id] = .completed
                 } else {
-                    self.removePartialDownload(adapterID: adapter.id)
+                    removePartialDownload(adapterID: adapter.id)
                 }
             } catch is CancellationError {
-                self.removePartialDownload(adapterID: adapter.id)
+                removePartialDownload(adapterID: adapter.id)
             } catch {
                 if !Task.isCancelled {
-                    self.downloads[adapter.id] = .failed(error.localizedDescription)
+                    downloads[adapter.id] = .failed(error.localizedDescription)
                 }
             }
-            self.finishDownload(adapterID: adapter.id, runID: runID)
+            finishDownload(adapterID: adapter.id, runID: runID)
         }
         activeTasks[adapter.id] = ActiveDownload(runID: runID, task: task)
     }
@@ -411,7 +410,7 @@ final class CommunityService: ObservableObject {
             return tmp
         } catch let error as DownloadError {
             try? FileManager.default.removeItem(at: tmp)
-            if case .httpError(let code) = error, (400...499).contains(code) {
+            if case let .httpError(code) = error, (400 ... 499).contains(code) {
                 return nil
             }
             throw error
@@ -501,7 +500,7 @@ final class CommunityService: ObservableObject {
         let hasPEFTConfig = FileManager.default.fileExists(atPath: peftConfigURL.path(percentEncoded: false))
         let hasPEFTWeights = FileManager.default.fileExists(atPath: peftWeightsURL.path(percentEncoded: false))
         let hasLoKRWeights = FileManager.default.fileExists(atPath: lokrWeightsURL.path(percentEncoded: false))
-        if hasPEFTConfig && (hasPEFTWeights || hasLoKRWeights) {
+        if hasPEFTConfig, hasPEFTWeights || hasLoKRWeights {
             return try importLocalPEFTAdapterUnlocked(
                 directoryURL: directoryURL,
                 preferredName: preferredName
@@ -569,7 +568,6 @@ final class CommunityService: ObservableObject {
         nameSeedURL: URL? = nil,
         preferredName: String? = nil
     ) throws -> LoRAAdapter {
-
         let configURL = directoryURL.appending(path: "adapter_config.json")
         let weightsURL = directoryURL.appending(path: "adapter_model.safetensors")
         let lokrWeightsURL = directoryURL.appending(path: "lokr_weights.safetensors")
@@ -897,7 +895,7 @@ final class CommunityService: ObservableObject {
             switch error {
             case .noConvertibleWeights:
                 throw CommunityError.noMappableWeights(errorURL)
-            case .unsupportedVariant(let detail):
+            case let .unsupportedVariant(detail):
                 throw CommunityError.unsupportedLoKRFormat(detail, errorURL)
             }
         }
@@ -941,8 +939,8 @@ final class CommunityService: ObservableObject {
         let adapterName = nameSeed
         let baseModelID = baseModelIDOverride
             ?? (peftConfig?.baseModelNameOrPath != nil
-            ? PEFTKeyRemapper.resolveBaseModelID(from: peftConfig?.baseModelNameOrPath)
-            : "ace-step-dit-xl-sft")
+                ? PEFTKeyRemapper.resolveBaseModelID(from: peftConfig?.baseModelNameOrPath)
+                : "ace-step-dit-xl-sft")
 
         let adapter = LoRAAdapter(
             id: adapterID,
@@ -990,7 +988,7 @@ final class CommunityService: ObservableObject {
             directoryURL.lastPathComponent == "best" ||
             directoryURL.lastPathComponent.hasPrefix("epoch_") {
             let parent = directoryURL.deletingLastPathComponent().lastPathComponent
-            if !parent.isEmpty && parent != "lora" {
+            if !parent.isEmpty, parent != "lora" {
                 return parent
             }
         }
@@ -1084,7 +1082,7 @@ final class CommunityService: ObservableObject {
 
         var headerLengthLE: UInt64 = 0
         _ = withUnsafeMutableBytes(of: &headerLengthLE) { buffer in
-            data.copyBytes(to: buffer, from: 0..<8)
+            data.copyBytes(to: buffer, from: 0 ..< 8)
         }
 
         let headerLength = Int(UInt64(littleEndian: headerLengthLE))
@@ -1093,7 +1091,7 @@ final class CommunityService: ObservableObject {
             return [:]
         }
 
-        let headerData = data.subdata(in: 8..<(8 + headerLength))
+        let headerData = data.subdata(in: 8 ..< (8 + headerLength))
         guard let object = try JSONSerialization.jsonObject(with: headerData) as? [String: Any],
               let metadata = object["__metadata__"] as? [String: Any] else {
             return [:]
@@ -1131,7 +1129,7 @@ final class CommunityService: ObservableObject {
             // Metadata is small JSON — fine to buffer.
             let (metaData, metaResponse) = try await URLSession.shared.data(from: adapter.metadataURL)
             try Task.checkCancellation()
-            if let http = metaResponse as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            if let http = metaResponse as? HTTPURLResponse, !(200 ... 299).contains(http.statusCode) {
                 throw DownloadError.httpError(statusCode: http.statusCode)
             }
             downloads[adapter.id] = .downloading(progress: 0.05)
@@ -1226,7 +1224,9 @@ enum HuggingFaceURLPolicy {
     static func isAllowed(_ url: URL) -> Bool {
         guard url.scheme?.lowercased() == "https" else { return false }
         guard let host = url.host?.lowercased(), !host.isEmpty else { return false }
-        if let port = url.port, port != 443 { return false }
+        if let port = url.port, port != 443 {
+            return false
+        }
         return host == "huggingface.co"
             || host == "www.huggingface.co"
             || host == "hf.co"
@@ -1250,22 +1250,22 @@ enum CommunityError: Error, LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .missingFile(let file, let url):
-            return "Couldn't find \(file) in this repo. Check that the URL points to a valid PiMP Audio Studio, PEFT LoRA, or compatible LyCORIS LoKR adapter. (\(url.absoluteString))"
-        case .alreadyInstalled(let name):
-            return "\"\(name)\" is already installed. Delete it first to re-download."
-        case .incompatibleVersion(let required):
-            return "This adapter requires PiMP Audio Studio \(required) or later."
-        case .unsupportedPEFTType(let type):
-            return "Unsupported PEFT adapter type '\(type)'. Only LoRA and compatible full-matrix LoKR adapters are supported."
-        case .unsupportedLoKRFormat(let detail, let url):
-            return "\(detail) (\(url.absoluteString))"
-        case .noMappableWeights(let url):
-            return "No compatible LoRA or LoKR weights found in this repo. The adapter key format may not be supported. (\(url.absoluteString))"
+        case let .missingFile(file, url):
+            "Couldn't find \(file) in this repo. Check that the URL points to a valid PiMP Audio Studio, PEFT LoRA, or compatible LyCORIS LoKR adapter. (\(url.absoluteString))"
+        case let .alreadyInstalled(name):
+            "\"\(name)\" is already installed. Delete it first to re-download."
+        case let .incompatibleVersion(required):
+            "This adapter requires PiMP Audio Studio \(required) or later."
+        case let .unsupportedPEFTType(type):
+            "Unsupported PEFT adapter type '\(type)'. Only LoRA and compatible full-matrix LoKR adapters are supported."
+        case let .unsupportedLoKRFormat(detail, url):
+            "\(detail) (\(url.absoluteString))"
+        case let .noMappableWeights(url):
+            "No compatible LoRA or LoKR weights found in this repo. The adapter key format may not be supported. (\(url.absoluteString))"
         case .unsupportedURL:
-            return "Enter an https://huggingface.co/… or https://hf.co/… adapter repo URL."
+            "Enter an https://huggingface.co/… or https://hf.co/… adapter repo URL."
         case .fileTooLarge:
-            return "Adapter metadata was larger than expected. Refusing to load it."
+            "Adapter metadata was larger than expected. Refusing to load it."
         }
     }
 }
@@ -1300,18 +1300,18 @@ private struct PEFTAdapterConfig: Decodable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case peftType           = "peft_type"
+        case peftType = "peft_type"
         case r
-        case loraAlpha          = "lora_alpha"
-        case loraDropout        = "lora_dropout"
+        case loraAlpha = "lora_alpha"
+        case loraDropout = "lora_dropout"
         case alpha
-        case linearDim          = "linear_dim"
-        case linearAlpha        = "linear_alpha"
-        case moduleDropout      = "module_dropout"
-        case targetModules      = "target_modules"
+        case linearDim = "linear_dim"
+        case linearAlpha = "linear_alpha"
+        case moduleDropout = "module_dropout"
+        case targetModules = "target_modules"
         case baseModelNameOrPath = "base_model_name_or_path"
-        case alphaPattern       = "alpha_pattern"
-        case rankPattern        = "rank_pattern"
+        case alphaPattern = "alpha_pattern"
+        case rankPattern = "rank_pattern"
     }
 
     init(from decoder: Decoder) throws {
@@ -1320,11 +1320,15 @@ private struct PEFTAdapterConfig: Decodable {
         let decodedLinearDim = try c.decodeIfPresent(Int.self, forKey: .linearDim)
         r = try c.decodeIfPresent(Int.self, forKey: .r) ?? decodedLinearDim ?? 16
 
-        // lora_alpha and lora_dropout may be stored as Int or Float in JSON —
-        // decode via Double to avoid type-mismatch errors.
+        /// lora_alpha and lora_dropout may be stored as Int or Float in JSON —
+        /// decode via Double to avoid type-mismatch errors.
         func decodeOptionalFloat(_ key: CodingKeys) -> Float? {
-            if let v = try? c.decodeIfPresent(Double.self, forKey: key) { return Float(v) }
-            if let v = try? c.decodeIfPresent(Int.self,    forKey: key) { return Float(v) }
+            if let v = try? c.decodeIfPresent(Double.self, forKey: key) {
+                return Float(v)
+            }
+            if let v = try? c.decodeIfPresent(Int.self, forKey: key) {
+                return Float(v)
+            }
             return nil
         }
 
@@ -1332,7 +1336,7 @@ private struct PEFTAdapterConfig: Decodable {
             decodeOptionalFloat(key) ?? defaultVal
         }
 
-        loraAlpha   = decodeFloat(.loraAlpha,   default: Float(r))
+        loraAlpha = decodeFloat(.loraAlpha, default: Float(r))
         loraDropout = decodeFloat(.loraDropout, default: 0.0)
         alpha = decodeOptionalFloat(.alpha)
         linearDim = decodedLinearDim
@@ -1469,8 +1473,12 @@ private struct LyCORISLoKRMetadataConfig {
                 } else if normalized.hasPrefix("cross_attn.") {
                     patterns.insert("crossAttn.\(projection)")
                 } else {
-                    if includeSelfAttention { patterns.insert("selfAttn.\(projection)") }
-                    if includeCrossAttention { patterns.insert("crossAttn.\(projection)") }
+                    if includeSelfAttention {
+                        patterns.insert("selfAttn.\(projection)")
+                    }
+                    if includeCrossAttention {
+                        patterns.insert("crossAttn.\(projection)")
+                    }
                 }
                 continue
             }

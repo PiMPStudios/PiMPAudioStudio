@@ -31,10 +31,10 @@ struct QualityEval {
                 sampleRate: options.sampleRate
             )
 
-            let report = makeMarkdownReport(
+            let report = try makeMarkdownReport(
                 options: options,
-                decodedAudio: try AudioParityMetrics.normalizeToNLC(decodedAudio),
-                referenceAudio: try AudioParityMetrics.normalizeToNLC(referenceAudio),
+                decodedAudio: AudioParityMetrics.normalizeToNLC(decodedAudio),
+                referenceAudio: AudioParityMetrics.normalizeToNLC(referenceAudio),
                 metrics: metrics
             )
 
@@ -68,7 +68,7 @@ private struct Options {
     var referenceURL: URL?
     var referenceKey = "audio"
     var reportURL: URL?
-    var sampleRate = 48_000
+    var sampleRate = 48000
     var precision: Precision = .float32
 
     static let help = """
@@ -108,17 +108,33 @@ private struct Options {
             case "--case":
                 options.caseID = try value(after: argument, in: arguments, at: &index)
             case "--weights":
-                options.weightsURL = URL(fileURLWithPath: expandPath(try value(after: argument, in: arguments, at: &index)))
+                options.weightsURL = try URL(fileURLWithPath: expandPath(value(
+                    after: argument,
+                    in: arguments,
+                    at: &index
+                )))
             case "--latent":
-                options.latentURL = URL(fileURLWithPath: expandPath(try value(after: argument, in: arguments, at: &index)))
+                options.latentURL = try URL(fileURLWithPath: expandPath(value(
+                    after: argument,
+                    in: arguments,
+                    at: &index
+                )))
             case "--latent-key":
                 options.latentKey = try value(after: argument, in: arguments, at: &index)
             case "--reference":
-                options.referenceURL = URL(fileURLWithPath: expandPath(try value(after: argument, in: arguments, at: &index)))
+                options.referenceURL = try URL(fileURLWithPath: expandPath(value(
+                    after: argument,
+                    in: arguments,
+                    at: &index
+                )))
             case "--reference-key":
                 options.referenceKey = try value(after: argument, in: arguments, at: &index)
             case "--report":
-                options.reportURL = URL(fileURLWithPath: expandPath(try value(after: argument, in: arguments, at: &index)))
+                options.reportURL = try URL(fileURLWithPath: expandPath(value(
+                    after: argument,
+                    in: arguments,
+                    at: &index
+                )))
             case "--sample-rate":
                 let raw = try value(after: argument, in: arguments, at: &index)
                 guard let sampleRate = Int(raw), sampleRate > 0 else {
@@ -172,18 +188,18 @@ private enum QualityEvalError: Error, LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidArgument(let message):
-            return message
-        case .missingFile(let url):
-            return "File does not exist: \(url.path(percentEncoded: false))"
-        case .missingTensor(let path, let key):
-            return "Tensor key '\(key)' not found in \(path.path(percentEncoded: false))"
-        case .unsupportedReference(let url):
-            return "Unsupported reference format: \(url.lastPathComponent). Use .wav or .safetensors."
-        case .unsupportedWAVFormat(let url):
-            return "Could not read WAV samples as Float32: \(url.path(percentEncoded: false))"
-        case .referenceSampleRate(let path, let expected, let actual):
-            return "Reference sample rate mismatch for \(path.lastPathComponent): expected \(expected), got \(actual)"
+        case let .invalidArgument(message):
+            message
+        case let .missingFile(url):
+            "File does not exist: \(url.path(percentEncoded: false))"
+        case let .missingTensor(path, key):
+            "Tensor key '\(key)' not found in \(path.path(percentEncoded: false))"
+        case let .unsupportedReference(url):
+            "Unsupported reference format: \(url.lastPathComponent). Use .wav or .safetensors."
+        case let .unsupportedWAVFormat(url):
+            "Could not read WAV samples as Float32: \(url.path(percentEncoded: false))"
+        case let .referenceSampleRate(path, expected, actual):
+            "Reference sample rate mismatch for \(path.lastPathComponent): expected \(expected), got \(actual)"
         }
     }
 }
@@ -262,8 +278,8 @@ private func loadWAV(_ url: URL, expectedSampleRate: Int) throws -> MLXArray {
     var samples = [Float]()
     samples.reserveCapacity(frames * channels)
 
-    for frame in 0..<frames {
-        for channel in 0..<channels {
+    for frame in 0 ..< frames {
+        for channel in 0 ..< channels {
             samples.append(floatChannelData[channel][frame])
         }
     }
@@ -332,10 +348,10 @@ private func makeMarkdownReport(
 }
 
 private func initialRead(_ metrics: AudioComparisonMetrics) -> String {
-    if metrics.maxAbsoluteDifference < 1e-4 && metrics.rootMeanSquaredError < 1e-5 {
+    if metrics.maxAbsoluteDifference < 1e-4, metrics.rootMeanSquaredError < 1e-5 {
         return "VAE decode appears numerically aligned for this artifact. Move the next investigation to the next parity case or DiT parity."
     }
-    if metrics.rmsEnvelopeCorrelation ?? 0 > 0.98 && metrics.rootMeanSquaredError < 0.01 {
+    if metrics.rmsEnvelopeCorrelation ?? 0 > 0.98, metrics.rootMeanSquaredError < 0.01 {
         return "Decode is close in broad dynamics but not bit-level aligned. Inspect VAE dtype, padding, and final scaling before blaming DiT quality."
     }
     return "Decode differs materially. Treat VAE parity as the next bottleneck until this report is explained."

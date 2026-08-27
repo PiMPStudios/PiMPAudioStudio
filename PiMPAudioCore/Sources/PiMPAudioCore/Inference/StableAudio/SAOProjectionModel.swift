@@ -42,18 +42,18 @@ public final class SAOFourierEmbedding: Module {
     public var frequencies: MLXArray
 
     public init(numFrequencies: Int = 128) {
-        self.frequencies = MLXArray.zeros([numFrequencies])
+        frequencies = MLXArray.zeros([numFrequencies])
     }
 
     public func encode(_ value: Float) -> MLXArray {
-        let t    = MLXArray(value)                              // scalar
-        let args = 2 * Float.pi * frequencies * t              // [numFrequencies]
+        let t = MLXArray(value) // scalar
+        let args = 2 * Float.pi * frequencies * t // [numFrequencies]
         // Python NumberEmbedder: cat([cos, sin, raw_value], dim=-1) → [2·numFrequencies + 1]
         // The Linear weight [768, 257] was trained with cos in columns 0..127,
         // sin in columns 128..255, and the raw scalar at column 256.
         return concatenated(
             [cos(args), sin(args), t.reshaped([1])], axis: 0
-        )                                                       // [2·numFrequencies + 1]
+        ) // [2·numFrequencies + 1]
     }
 }
 
@@ -66,14 +66,14 @@ public final class SAOSingleConditioner: Module {
     public var embedder: Linear
 
     public init(numFrequencies: Int = 128, outputDim: Int = 768) {
-        let featureDim = 1 + 2 * numFrequencies               // 257
-        self._fourier.wrappedValue = SAOFourierEmbedding(numFrequencies: numFrequencies)
-        self.embedder = Linear(featureDim, outputDim, bias: true)
+        let featureDim = 1 + 2 * numFrequencies // 257
+        _fourier.wrappedValue = SAOFourierEmbedding(numFrequencies: numFrequencies)
+        embedder = Linear(featureDim, outputDim, bias: true)
     }
 
     /// Encode a scalar timing value → [1, outputDim].
     public func callAsFunction(_ value: Float) -> MLXArray {
-        let features = fourier.encode(value)                   // [257]
+        let features = fourier.encode(value) // [257]
         return embedder(features.expandedDimensions(axis: 0)) // [1, outputDim]
     }
 }
@@ -87,10 +87,10 @@ public final class SAONumberConditioner: Module {
     public var totalCond: SAOSingleConditioner
 
     public init(numFrequencies: Int = 128, outputDim: Int = 768) {
-        self._startCond.wrappedValue = SAOSingleConditioner(
+        _startCond.wrappedValue = SAOSingleConditioner(
             numFrequencies: numFrequencies, outputDim: outputDim
         )
-        self._totalCond.wrappedValue = SAOSingleConditioner(
+        _totalCond.wrappedValue = SAOSingleConditioner(
             numFrequencies: numFrequencies, outputDim: outputDim
         )
     }

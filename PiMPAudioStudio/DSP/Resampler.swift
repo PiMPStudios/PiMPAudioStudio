@@ -1,6 +1,6 @@
 import Foundation
 
-struct Resampler {
+enum Resampler {
     static func resample(_ samples: [Float], ratio: Float, channels: Int) -> [Float] {
         guard ratio != 1.0 else { return samples }
 
@@ -10,38 +10,53 @@ struct Resampler {
         guard outputFrameCount > 0 else { return samples }
 
         if channels == 1 {
-            return resampleChannel(samples, inputFrames: frameCount, outputFrames: outputFrameCount, ratio: clampedRatio)
+            return resampleChannel(
+                samples,
+                inputFrames: frameCount,
+                outputFrames: outputFrameCount,
+                ratio: clampedRatio
+            )
         }
 
         var deinterleaved = [[Float]](repeating: [Float](repeating: 0, count: frameCount), count: channels)
-        for frame in 0..<frameCount {
-            for ch in 0..<channels {
+        for frame in 0 ..< frameCount {
+            for ch in 0 ..< channels {
                 deinterleaved[ch][frame] = samples[frame * channels + ch]
             }
         }
 
         var resampledChannels = [[Float]]()
-        for ch in 0..<channels {
+        for ch in 0 ..< channels {
             resampledChannels.append(
-                resampleChannel(deinterleaved[ch], inputFrames: frameCount, outputFrames: outputFrameCount, ratio: clampedRatio)
+                resampleChannel(
+                    deinterleaved[ch],
+                    inputFrames: frameCount,
+                    outputFrames: outputFrameCount,
+                    ratio: clampedRatio
+                )
             )
         }
 
         let actualOutputFrames = resampledChannels[0].count
         var interleaved = [Float](repeating: 0, count: actualOutputFrames * channels)
-        for frame in 0..<actualOutputFrames {
-            for ch in 0..<channels {
+        for frame in 0 ..< actualOutputFrames {
+            for ch in 0 ..< channels {
                 interleaved[frame * channels + ch] = resampledChannels[ch][frame]
             }
         }
         return interleaved
     }
 
-    private static func resampleChannel(_ input: [Float], inputFrames: Int, outputFrames: Int, ratio: Float) -> [Float] {
+    private static func resampleChannel(
+        _ input: [Float],
+        inputFrames: Int,
+        outputFrames: Int,
+        ratio: Float
+    ) -> [Float] {
         var output = [Float](repeating: 0, count: outputFrames)
         let doubleRatio = Double(ratio)
 
-        for i in 0..<outputFrames {
+        for i in 0 ..< outputFrames {
             let inputPos = Double(i) * doubleRatio
             let floor = Int(inputPos)
             let frac = Float(inputPos - Double(floor))

@@ -1,5 +1,5 @@
-import Foundation
 import AVFoundation
+import Foundation
 import PiMPAudioCore
 
 extension PiMPAudioCommandFacade {
@@ -12,7 +12,7 @@ extension PiMPAudioCommandFacade {
             "count": operations.count,
             "currentOperationID": activeGenerationOperationID.map { $0 as Any } ?? NSNull(),
             "activeOperationIDs": activeOperationIDsPayload(),
-            "operations": operations
+            "operations": operations,
         ]
     }
 
@@ -42,7 +42,7 @@ extension PiMPAudioCommandFacade {
             return [
                 "cancelled": false,
                 "reason": "operationNotActive",
-                "operation": operationPayload(record)
+                "operation": operationPayload(record),
             ]
         }
 
@@ -63,7 +63,7 @@ extension PiMPAudioCommandFacade {
 
         return [
             "cancelled": true,
-            "operation": operationPayload(record)
+            "operation": operationPayload(record),
         ]
     }
 
@@ -79,24 +79,23 @@ extension PiMPAudioCommandFacade {
         return memoryReleasePayload(summary)
     }
 
-
     func memoryReleasePayload(_ summary: MemoryReleaseSummary) -> [String: Any] {
         [
             "released": true,
             "before": [
                 "activeMemoryBytes": summary.beforeActiveMemory,
                 "cacheMemoryBytes": summary.beforeCacheMemory,
-                "peakMemoryBytes": summary.beforePeakMemory
+                "peakMemoryBytes": summary.beforePeakMemory,
             ],
             "after": [
                 "activeMemoryBytes": summary.afterActiveMemory,
                 "cacheMemoryBytes": summary.afterCacheMemory,
-                "peakMemoryBytes": summary.afterPeakMemory
+                "peakMemoryBytes": summary.afterPeakMemory,
             ],
             "delta": [
                 "releasedActiveMemoryBytes": summary.releasedActiveMemory,
-                "releasedCacheMemoryBytes": summary.releasedCacheMemory
-            ]
+                "releasedCacheMemoryBytes": summary.releasedCacheMemory,
+            ],
         ]
     }
 
@@ -109,7 +108,7 @@ extension PiMPAudioCommandFacade {
                 "stage": "queued",
                 "progress": 0.0,
                 "total": 1.0,
-                "message": "Generation request accepted."
+                "message": "Generation request accepted.",
             ]
         )
 
@@ -133,7 +132,7 @@ extension PiMPAudioCommandFacade {
             record.status = .succeeded
             record.result = generationService.currentResult.map(generationResultPayload)
             activeGenerationOperationID = nil
-        case .error(let message):
+        case let .error(message):
             record.status = .failed
             record.error = message
             activeGenerationOperationID = nil
@@ -149,7 +148,7 @@ extension PiMPAudioCommandFacade {
                 "stage": "queued",
                 "progress": 0.0,
                 "total": 1.0,
-                "message": "Generation request is queued."
+                "message": "Generation request is queued.",
             ]
         default:
             record.status = .running
@@ -165,14 +164,14 @@ extension PiMPAudioCommandFacade {
                 stage: "idle",
                 message: "Generation service is idle."
             )
-        case .downloadingModel(let progress):
+        case let .downloadingModel(progress):
             return generationOperationProgressPayload(
                 stage: "downloadingModel",
                 message: "Downloading model weights.",
                 stageProgress: Double(progress),
                 stageTotal: 1.0
             )
-        case .loadingWeights(let progress):
+        case let .loadingWeights(progress):
             return generationOperationProgressPayload(
                 stage: "loadingWeights",
                 message: "Loading model weights.",
@@ -194,7 +193,7 @@ extension PiMPAudioCommandFacade {
                 stage: "lmAudioCodeConditioning",
                 message: "Conditioning reference audio codes."
             )
-        case .generating(let step, let totalSteps, let eta):
+        case let .generating(step, totalSteps, eta):
             var payload = generationOperationProgressPayload(
                 stage: "generating",
                 message: "Generating audio.",
@@ -213,7 +212,7 @@ extension PiMPAudioCommandFacade {
                 stage: "complete",
                 message: "Generation completed."
             )
-        case .error(let message):
+        case let .error(message):
             return generationOperationProgressPayload(
                 stage: "error",
                 message: message
@@ -246,7 +245,6 @@ extension PiMPAudioCommandFacade {
         )
     }
 
-
     func cancellationProgressPayload(for record: MCPOperationRecord) -> [String: Any] {
         if record.kind == "generation" {
             return generationOperationProgressPayload(.cancelled)
@@ -267,7 +265,7 @@ extension PiMPAudioCommandFacade {
             "stage": "cancelled",
             "progress": 1.0,
             "total": 1.0,
-            "message": "Operation cancelled."
+            "message": "Operation cancelled.",
         ]
     }
 
@@ -279,11 +277,10 @@ extension PiMPAudioCommandFacade {
         stageTotal: Double? = nil
     ) -> [String: Any] {
         let plan = plan[stage] ?? (base: 0.0, span: 0.0)
-        let stageRatio: Double
-        if let stageProgress, let stageTotal, stageTotal > 0 {
-            stageRatio = min(max(stageProgress / stageTotal, 0), 1)
+        let stageRatio: Double = if let stageProgress, let stageTotal, stageTotal > 0 {
+            min(max(stageProgress / stageTotal, 0), 1)
         } else {
-            stageRatio = plan.span > 0 ? 0.0 : 1.0
+            plan.span > 0 ? 0.0 : 1.0
         }
 
         let progress = min(max(plan.base + (plan.span * stageRatio), 0), 1)
@@ -291,7 +288,7 @@ extension PiMPAudioCommandFacade {
             "stage": stage,
             "progress": progress,
             "total": 1.0,
-            "message": message
+            "message": message,
         ]
 
         if let stageProgress {
@@ -365,7 +362,7 @@ extension PiMPAudioCommandFacade {
                 id: id,
                 progress: editorLoadProgressPayload(stage: "complete", message: "Editor audio loaded."),
                 result: [
-                    "loadedAudio": editorLoadedAudioPayload(loadedAudio)
+                    "loadedAudio": editorLoadedAudioPayload(loadedAudio),
                 ]
             )
         } catch is CancellationError {
@@ -418,17 +415,17 @@ extension PiMPAudioCommandFacade {
                         completedAt: Date()
                     )
                     editorService.recordCompletedEdit(summary)
-                    completeOperation(
+                    await completeOperation(
                         id: id,
                         progress: editorInpaintProgressPayload(progress),
                         result: [
                             "edit": editorEditSummaryPayload(summary),
-                            "canUndo": await coordinator.canUndo,
-                            "canRedo": await coordinator.canRedo
+                            "canUndo": coordinator.canUndo,
+                            "canRedo": coordinator.canRedo,
                         ]
                     )
                     return
-                case .failed(let message):
+                case let .failed(message):
                     failOperation(
                         id: id,
                         error: message,
@@ -709,7 +706,7 @@ extension PiMPAudioCommandFacade {
         let startByte = startFrame * bytesPerFrame
         let endByte = endFrame * bytesPerFrame
         return AudioBuffer(
-            data: Data(buffer.data[startByte..<endByte]),
+            data: Data(buffer.data[startByte ..< endByte]),
             sampleRate: buffer.sampleRate,
             channels: buffer.channels
         )
@@ -812,7 +809,7 @@ extension PiMPAudioCommandFacade {
             "progress": record.progress.map { $0 as Any } ?? NSNull(),
             "result": record.result.map { $0 as Any } ?? NSNull(),
             "error": record.error.map { $0 as Any } ?? NSNull(),
-            "cancellationReason": record.cancellationReason.map { $0 as Any } ?? NSNull()
+            "cancellationReason": record.cancellationReason.map { $0 as Any } ?? NSNull(),
         ]
     }
 
@@ -906,6 +903,4 @@ extension PiMPAudioCommandFacade {
         let evicted = Array(terminal.dropFirst(terminalBudget))
         return (live + keptTerminal, evicted)
     }
-
-
 }

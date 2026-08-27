@@ -1,5 +1,5 @@
-import SwiftUI
 import PiMPAudioCore
+import SwiftUI
 
 struct AddModelView: View {
     let registry: ModelRegistry
@@ -20,7 +20,7 @@ struct AddModelView: View {
         [
             (.aceStepDiT, "ACE-Step DiT (Music)"),
             (.aceStepLM, "ACE-Step LM (Audio Codes)"),
-            (.stableAudio, "Stable Audio (SFX)")
+            (.stableAudio, "Stable Audio (SFX)"),
         ]
     }
 
@@ -47,7 +47,8 @@ struct AddModelView: View {
                         Text("Validate & Add")
                     }
                 }
-                .disabled(repoID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isValidating || isDownloading)
+                .disabled(repoID.trimmingCharacters(in: .whitespacesAndNewlines)
+                    .isEmpty || isValidating || isDownloading)
             }
 
             if isDownloading {
@@ -200,7 +201,7 @@ struct AddModelView: View {
         default:
             var files: [ModelFileSpec] = []
             for file in expectedFiles(for: category) {
-                files.append(try await requireFile(repoID: repoID, path: file))
+                try await files.append(requireFile(repoID: repoID, path: file))
             }
             return CustomModelFiles(files: files, variantFamily: nil, isRunnable: true, runtimeNote: nil)
         }
@@ -208,10 +209,10 @@ struct AddModelView: View {
 
     private func expectedFiles(for category: ModelCategory) -> [String] {
         switch category {
-        case .aceStepDiT: return ["model.safetensors", "config.json"]
-        case .aceStepVAE: return ["vae.safetensors", "config.json"]
-        case .aceStepLM: return ["model.safetensors", "tokenizer.json", "config.json"]
-        case .stableAudio: return ["model.safetensors", "config.json"]
+        case .aceStepDiT: ["model.safetensors", "config.json"]
+        case .aceStepVAE: ["vae.safetensors", "config.json"]
+        case .aceStepLM: ["model.safetensors", "tokenizer.json", "config.json"]
+        case .stableAudio: ["model.safetensors", "config.json"]
         }
     }
 
@@ -237,7 +238,7 @@ struct AddModelView: View {
 
         var result = [index]
         for shard in shardNames {
-            result.append(try await requireFile(repoID: repoID, path: shard))
+            try await result.append(requireFile(repoID: repoID, path: shard))
         }
         return result
     }
@@ -266,7 +267,9 @@ struct AddModelView: View {
         case 404:
             return nil
         case 401, 403:
-            throw ValidationFailure(message: "This repository is private or gated. Only public repositories are supported for now.")
+            throw ValidationFailure(
+                message: "This repository is private or gated. Only public repositories are supported for now."
+            )
         default:
             throw ValidationFailure(message: "Unexpected error (HTTP \(response.statusCode)) checking \(path).")
         }

@@ -1,5 +1,5 @@
-import SwiftUI
 import PiMPAudioCore
+import SwiftUI
 
 enum BackgroundDownloadPhase: Equatable {
     case idle
@@ -85,12 +85,12 @@ final class AppState: ObservableObject {
                     guard let self else { return }
                     // Don't downgrade a terminal background phase from a
                     // stale event delivered after the download finished.
-                    switch self.backgroundDownloadPhase {
+                    switch backgroundDownloadPhase {
                     case .complete, .failed: return
                     default: break
                     }
-                    if case .downloading(let progress) = state {
-                        self.backgroundDownloadPhase = .downloading(
+                    if case let .downloading(progress) = state {
+                        backgroundDownloadPhase = .downloading(
                             modelName: "Stable Audio Open", progress: progress
                         )
                     }
@@ -115,11 +115,10 @@ final class AppState: ObservableObject {
         // after failure, not .idle, so retry from MainShellView's onRetry
         // hit nothing).
         let defaultLLM = LLMModelManager.defaultModels.first
-        let llmIsDownloading: Bool
-        if case .downloading = llmManager.downloadState {
-            llmIsDownloading = true
+        let llmIsDownloading = if case .downloading = llmManager.downloadState {
+            true
         } else {
-            llmIsDownloading = false
+            false
         }
         if let spec = defaultLLM,
            !llmIsDownloading,
@@ -132,12 +131,12 @@ final class AppState: ObservableObject {
                     guard let self else { return }
                     // Don't downgrade a terminal background phase from a
                     // stale event delivered after the download finished.
-                    switch self.backgroundDownloadPhase {
+                    switch backgroundDownloadPhase {
                     case .complete, .failed: return
                     default: break
                     }
-                    if case .downloading(let progress) = state {
-                        self.backgroundDownloadPhase = .downloading(
+                    if case let .downloading(progress) = state {
+                        backgroundDownloadPhase = .downloading(
                             modelName: "Lyric Writer", progress: progress
                         )
                     }
@@ -156,5 +155,4 @@ final class AppState: ObservableObject {
 
         backgroundDownloadPhase = .complete
     }
-
 }

@@ -3,7 +3,6 @@ import MLX
 import MLXRandom
 
 public enum DiffusionSampler {
-
     public static func odeStep(xt: MLXArray, vt: MLXArray, currentT: Float, nextT: Float) -> MLXArray {
         let dt = currentT - nextT
         let bsz = xt.shape[0]
@@ -62,8 +61,8 @@ public enum DiffusionSampler {
         sigma: Float,
         sigmaNext: Float
     ) -> MLXArray {
-        let alpha      = 1.0 / sqrtf(1.0 + sigma * sigma)
-        let sigmaCoeff = sigma * alpha  // σ_c = σ / √(1 + σ²)
+        let alpha = 1.0 / sqrtf(1.0 + sigma * sigma)
+        let sigmaCoeff = sigma * alpha // σ_c = σ / √(1 + σ²)
 
         if sigmaNext <= 0 {
             return MLXArray(alpha) * xt - MLXArray(sigmaCoeff) * vt
@@ -81,7 +80,7 @@ public enum DiffusionSampler {
         normThreshold: Float = 2.5
     ) -> MLXArray {
         var diff = predCond - predUncond
-        if let momentum = momentum {
+        if let momentum {
             // Upstream MomentumBuffer.update (apg_guidance.py):
             //   running = update + momentum * running   (momentum = -0.75)
             //   diff = running
@@ -111,7 +110,7 @@ public enum DiffusionSampler {
     }
 
     public static func generateNoise(shape: [Int], seed: Int?) -> MLXArray {
-        if let seed = seed {
+        if let seed {
             let key = MLXRandom.key(UInt64(seed))
             return MLXRandom.normal(shape, key: key)
         }
@@ -126,7 +125,7 @@ public class APGMomentum {
     let momentum: Float
 
     public init(momentum: Float = -0.75) {
-        self.running = MLXArray(Float(0))
+        running = MLXArray(Float(0))
         self.momentum = momentum
     }
 }

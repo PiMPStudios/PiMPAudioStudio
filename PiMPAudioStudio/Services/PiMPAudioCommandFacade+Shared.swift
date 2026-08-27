@@ -1,53 +1,53 @@
-import Foundation
 import AVFoundation
+import Foundation
 import PiMPAudioCore
 
 extension PiMPAudioCommandFacade {
     func stringValue(_ value: Any?) -> String? {
         switch value {
         case is NSNull:
-            return nil
+            nil
         case let value as String:
-            return value
+            value
         case let value as UUID:
-            return value.uuidString
+            value.uuidString
         case let value as CustomStringConvertible:
-            return value.description
+            value.description
         default:
-            return nil
+            nil
         }
     }
 
     func boolValue(_ value: Any?) -> Bool? {
         switch value {
         case let value as Bool:
-            return value
+            value
         case let value as NSNumber:
-            return value.boolValue
+            value.boolValue
         case let value as String:
             switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
             case "true", "yes", "1":
-                return true
+                true
             case "false", "no", "0":
-                return false
+                false
             default:
-                return nil
+                nil
             }
         default:
-            return nil
+            nil
         }
     }
 
     func integerValue(_ value: Any?) -> Int? {
         switch value {
         case let value as Int:
-            return value
+            value
         case let value as NSNumber:
-            return value.intValue
+            value.intValue
         case let value as String:
-            return Int(value.trimmingCharacters(in: .whitespacesAndNewlines))
+            Int(value.trimmingCharacters(in: .whitespacesAndNewlines))
         default:
-            return nil
+            nil
         }
     }
 
@@ -58,42 +58,42 @@ extension PiMPAudioCommandFacade {
     func doubleValue(_ value: Any?) -> Double? {
         switch value {
         case let value as Double:
-            return value
+            value
         case let value as Float:
-            return Double(value)
+            Double(value)
         case let value as Int:
-            return Double(value)
+            Double(value)
         case let value as NSNumber:
-            return value.doubleValue
+            value.doubleValue
         case let value as String:
-            return Double(value.trimmingCharacters(in: .whitespacesAndNewlines))
+            Double(value.trimmingCharacters(in: .whitespacesAndNewlines))
         default:
-            return nil
+            nil
         }
     }
 
     func stringArrayValue(_ value: Any?) -> [String]? {
         switch value {
         case is NSNull:
-            return nil
+            nil
         case let values as [String]:
-            return values
+            values
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .filter { !$0.isEmpty }
         case let values as [Any]:
-            return values
+            values
                 .compactMap(stringValue)
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .filter { !$0.isEmpty }
         case let raw as String:
-            return raw
+            raw
                 .split { character in
                     character == "," || character == "\n" || character == ";"
                 }
                 .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
                 .filter { !$0.isEmpty }
         default:
-            return nil
+            nil
         }
     }
 
@@ -214,7 +214,7 @@ extension PiMPAudioCommandFacade {
             "directory": (AudioDiagnostics.configuredLogDirectoryURL ?? AppStorageLocations.diagnosticsDirectory)
                 .path(percentEncoded: false),
             "activeLogPath": AudioDiagnostics.activeLogFileURL?.path(percentEncoded: false) ?? NSNull(),
-            "latestLogPath": latestDiagnosticLogURL()?.path(percentEncoded: false) ?? NSNull()
+            "latestLogPath": latestDiagnosticLogURL()?.path(percentEncoded: false) ?? NSNull(),
         ]
     }
 
@@ -224,7 +224,7 @@ extension PiMPAudioCommandFacade {
 
         if let path = stringValue(arguments["path"] ?? arguments["logPath"])?
             .trimmingCharacters(in: .whitespacesAndNewlines),
-           !path.isEmpty {
+            !path.isEmpty {
             let url = URL(fileURLWithPath: path)
             guard isInDiagnosticsDirectory(url) else {
                 throw PiMPAudioCommandFacadeError.resourceNotFound(path)
@@ -237,7 +237,7 @@ extension PiMPAudioCommandFacade {
 
         if let fileName = stringValue(arguments["fileName"] ?? arguments["name"])?
             .trimmingCharacters(in: .whitespacesAndNewlines),
-           !fileName.isEmpty {
+            !fileName.isEmpty {
             let url = diagnosticsDirectory.appendingPathComponent(fileName)
             guard FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) else {
                 throw PiMPAudioCommandFacadeError.resourceNotFound(fileName)
@@ -301,13 +301,12 @@ extension PiMPAudioCommandFacade {
         let allLines = text
             .split(separator: "\n", omittingEmptySubsequences: false)
             .map(String.init)
-        let filteredLines: [String]
-        if let filter, !filter.isEmpty {
-            filteredLines = allLines.filter {
+        let filteredLines: [String] = if let filter, !filter.isEmpty {
+            allLines.filter {
                 $0.localizedCaseInsensitiveContains(filter)
             }
         } else {
-            filteredLines = allLines
+            allLines
         }
         return Array(filteredLines.suffix(limit))
     }
@@ -354,7 +353,7 @@ extension PiMPAudioCommandFacade {
             "name": name,
             "title": title,
             "description": description,
-            "mimeType": "application/json"
+            "mimeType": "application/json",
         ]
     }
 
@@ -371,10 +370,9 @@ extension PiMPAudioCommandFacade {
             "confirmValue": true,
             "supportedModes": [
                 "confirmArgument",
-                "elicitation/form"
+                "elicitation/form",
             ],
-            "fallback": "Clients without MCP elicitation support must call \(toolName) with confirm: true after explicit user approval."
+            "fallback": "Clients without MCP elicitation support must call \(toolName) with confirm: true after explicit user approval.",
         ]
     }
-
 }

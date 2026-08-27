@@ -20,22 +20,24 @@ public actor SFXDiTActor {
     private var diagCallCount = 0
 
     public init(config: SFXDiTConfig) {
-        self.model = SFXDiTModel(config: config)
+        model = SFXDiTModel(config: config)
     }
 
-    public var isLoaded: Bool { loaded }
+    public var isLoaded: Bool {
+        loaded
+    }
 
     public func loadWeights(_ weights: [(String, MLXArray)]) throws {
-        let suppliedKeys = Set(weights.map { $0.0 })
+        let suppliedKeys = Set(weights.map(\.0))
         model.update(parameters: ModuleParameters.unflattened(weights))
         eval(model.parameters())
 
         // Coverage diagnostic: count how many supplied keys were actually absorbed
         // by the model (i.e. their paths exist in the flattened parameter tree).
-        let modelKeys = Set(model.parameters().flattened().map { $0.0 })
-        let matched   = suppliedKeys.intersection(modelKeys).count
-        let supplied  = suppliedKeys.count
-        let inModel   = modelKeys.count
+        let modelKeys = Set(model.parameters().flattened().map(\.0))
+        let matched = suppliedKeys.intersection(modelKeys).count
+        let supplied = suppliedKeys.count
+        let inModel = modelKeys.count
         AudioDiagnostics.note(
             "SFX_DIT_LOAD",
             "supplied=\(supplied) model=\(inModel) matched=\(matched)"

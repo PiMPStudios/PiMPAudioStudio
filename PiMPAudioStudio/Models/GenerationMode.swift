@@ -5,13 +5,15 @@ enum GenerationMode: String, CaseIterable, Sendable, Identifiable {
     case soundFX
     case ambient
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     var displayName: String {
         switch self {
-        case .music: return "Music"
-        case .soundFX: return "Sound FX"
-        case .ambient: return "Ambient"
+        case .music: "Music"
+        case .soundFX: "Sound FX"
+        case .ambient: "Ambient"
         }
     }
 
@@ -32,8 +34,8 @@ enum ModeSelection: Equatable, Sendable {
 
     var resolvedMode: GenerationMode? {
         switch self {
-        case .auto: return nil
-        case .manual(let mode): return mode
+        case .auto: nil
+        case let .manual(mode): mode
         }
     }
 }

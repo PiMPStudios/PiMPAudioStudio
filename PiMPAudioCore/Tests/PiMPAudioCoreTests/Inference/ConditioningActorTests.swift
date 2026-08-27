@@ -1,6 +1,6 @@
-import Testing
 import MLX
 @testable import PiMPAudioCore
+import Testing
 
 @Suite("Conditioning Actor")
 struct ConditioningActorTests {
@@ -68,8 +68,8 @@ struct ConditioningActorTests {
             duration: 5.0,
             precision: .float32
         )
-        let sourceLatents = result.contextLatents[0..., 0..., 0..<64]
-        let chunkMask = result.contextLatents[0..., 0..., 64..<128]
+        let sourceLatents = result.contextLatents[0..., 0..., 0 ..< 64]
+        let chunkMask = result.contextLatents[0..., 0..., 64 ..< 128]
         let sourceSum = MLX.sum(MLX.abs(sourceLatents))
         let maskMin = chunkMask.min()
         let maskMax = chunkMask.max()
@@ -97,9 +97,9 @@ struct ConditioningActorTests {
             srcLatentsOverride: MLXArray.zeros([1, sourceFrames, 64])
         )
 
-        let sourceLatents = result.contextLatents[0..., 0..., 0..<64]
-        let sourceHead = sourceLatents[0..., 0..<sourceFrames, 0...]
-        let sourceTail = sourceLatents[0..., sourceFrames..<targetFrames, 0...]
+        let sourceLatents = result.contextLatents[0..., 0..., 0 ..< 64]
+        let sourceHead = sourceLatents[0..., 0 ..< sourceFrames, 0...]
+        let sourceTail = sourceLatents[0..., sourceFrames ..< targetFrames, 0...]
         let headMax = MLX.abs(sourceHead).max()
         let tailMin = sourceTail.min()
         let tailMax = sourceTail.max()

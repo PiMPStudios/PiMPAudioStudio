@@ -1,7 +1,7 @@
 import Foundation
 import MLX
-import Testing
 @testable import PiMPAudioStudio
+import Testing
 
 @Test func communityManifestURLUsesPiMPAdaptersRepo() {
     let url = CommunityService.communityManifestURL.absoluteString

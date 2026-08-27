@@ -163,36 +163,38 @@ struct GenerationTrace: Codable, Sendable, Equatable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
-        self.historyEntryID = try container.decode(UUID.self, forKey: .historyEntryID)
-        self.createdAt = try container.decode(Date.self, forKey: .createdAt)
-        self.audioFileName = try container.decode(String.self, forKey: .audioFileName)
-        self.traceFileName = try container.decode(String.self, forKey: .traceFileName)
-        self.pipeline = try container.decode(String.self, forKey: .pipeline)
-        self.prompt = try container.decode(String.self, forKey: .prompt)
-        self.originalPrompt = try container.decodeIfPresent(String.self, forKey: .originalPrompt)
-        self.lyrics = try container.decode(String.self, forKey: .lyrics)
-        self.request = try container.decode(GenerationTraceRequestSnapshot.self, forKey: .request)
-        self.primaryModel = try container.decodeIfPresent(HistoryModelSnapshot.self, forKey: .primaryModel)
-        self.supportingModels = try container.decodeIfPresent([HistoryModelSnapshot].self, forKey: .supportingModels) ?? []
-        self.adapters = try container.decodeIfPresent([HistoryAdapterSnapshot].self, forKey: .adapters) ?? []
-        self.featureFlags = try container.decodeIfPresent(GenerationTraceFeatureFlags.self, forKey: .featureFlags) ?? GenerationTraceFeatureFlags(
-            lmThinkingEnabled: false,
-            cotMetadataEnabled: false,
-            cotCaptionEnabled: false,
-            dcwEnabled: false
-        )
-        self.timing = try container.decodeIfPresent(GenerationTraceTimingSnapshot.self, forKey: .timing) ?? GenerationTraceTimingSnapshot(
-            diffusionTime: 0,
-            perStepTime: 0,
-            totalTime: 0
-        )
-        self.audio = try container.decode(GenerationTraceAudioSnapshot.self, forKey: .audio)
-        self.listeningNote = try container.decodeIfPresent(String.self, forKey: .listeningNote)
-        self.isPreferred = try container.decodeIfPresent(Bool.self, forKey: .isPreferred)
-        self.status = try container.decodeIfPresent(String.self, forKey: .status)
-        self.errorMessage = try container.decodeIfPresent(String.self, forKey: .errorMessage)
-        self.events = try container.decodeIfPresent([GenerationTraceEventSnapshot].self, forKey: .events)
+        schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
+        historyEntryID = try container.decode(UUID.self, forKey: .historyEntryID)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        audioFileName = try container.decode(String.self, forKey: .audioFileName)
+        traceFileName = try container.decode(String.self, forKey: .traceFileName)
+        pipeline = try container.decode(String.self, forKey: .pipeline)
+        prompt = try container.decode(String.self, forKey: .prompt)
+        originalPrompt = try container.decodeIfPresent(String.self, forKey: .originalPrompt)
+        lyrics = try container.decode(String.self, forKey: .lyrics)
+        request = try container.decode(GenerationTraceRequestSnapshot.self, forKey: .request)
+        primaryModel = try container.decodeIfPresent(HistoryModelSnapshot.self, forKey: .primaryModel)
+        supportingModels = try container.decodeIfPresent([HistoryModelSnapshot].self, forKey: .supportingModels) ?? []
+        adapters = try container.decodeIfPresent([HistoryAdapterSnapshot].self, forKey: .adapters) ?? []
+        featureFlags = try container
+            .decodeIfPresent(GenerationTraceFeatureFlags.self, forKey: .featureFlags) ?? GenerationTraceFeatureFlags(
+                lmThinkingEnabled: false,
+                cotMetadataEnabled: false,
+                cotCaptionEnabled: false,
+                dcwEnabled: false
+            )
+        timing = try container
+            .decodeIfPresent(GenerationTraceTimingSnapshot.self, forKey: .timing) ?? GenerationTraceTimingSnapshot(
+                diffusionTime: 0,
+                perStepTime: 0,
+                totalTime: 0
+            )
+        audio = try container.decode(GenerationTraceAudioSnapshot.self, forKey: .audio)
+        listeningNote = try container.decodeIfPresent(String.self, forKey: .listeningNote)
+        isPreferred = try container.decodeIfPresent(Bool.self, forKey: .isPreferred)
+        status = try container.decodeIfPresent(String.self, forKey: .status)
+        errorMessage = try container.decodeIfPresent(String.self, forKey: .errorMessage)
+        events = try container.decodeIfPresent([GenerationTraceEventSnapshot].self, forKey: .events)
     }
 
     func withReview(listeningNote: String?, isPreferred: Bool?) -> GenerationTrace {

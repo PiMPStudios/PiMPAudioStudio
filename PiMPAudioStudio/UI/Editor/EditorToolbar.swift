@@ -1,5 +1,5 @@
-import SwiftUI
 import PiMPAudioCore
+import SwiftUI
 
 struct EditorToolbar: View {
     @ObservedObject var state: EditorState
@@ -105,10 +105,14 @@ struct EditorToolbar: View {
             clampPipelineIfNeeded()
         }
         .onChange(of: state.editMode) { _, newValue in
-            if editMode != newValue { editMode = newValue }
+            if editMode != newValue {
+                editMode = newValue
+            }
         }
         .onChange(of: state.pipeline) { _, newValue in
-            if pipeline != newValue { pipeline = newValue }
+            if pipeline != newValue {
+                pipeline = newValue
+            }
         }
         .onChange(of: editMode) { _, newValue in
             guard state.editMode != newValue else { return }

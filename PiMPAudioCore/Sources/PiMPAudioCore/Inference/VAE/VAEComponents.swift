@@ -8,8 +8,8 @@ public class Snake1d: Module, UnaryLayer {
     let logscale: Bool
 
     public init(hiddenDim: Int, logscale: Bool = true) {
-        self.alpha = MLXArray.zeros([hiddenDim])
-        self.beta = MLXArray.zeros([hiddenDim])
+        alpha = MLXArray.zeros([hiddenDim])
+        beta = MLXArray.zeros([hiddenDim])
         self.logscale = logscale
     }
 
@@ -30,13 +30,13 @@ public class OobleckResidualUnit: Module, UnaryLayer {
 
     public init(dimension: Int = 16, dilation: Int = 1) {
         let pad = ((7 - 1) * dilation) / 2
-        self.snake1 = Snake1d(hiddenDim: dimension)
-        self.conv1 = Conv1d(
+        snake1 = Snake1d(hiddenDim: dimension)
+        conv1 = Conv1d(
             inputChannels: dimension, outputChannels: dimension,
             kernelSize: 7, stride: 1, padding: pad, dilation: dilation
         )
-        self.snake2 = Snake1d(hiddenDim: dimension)
-        self.conv2 = Conv1d(
+        snake2 = Snake1d(hiddenDim: dimension)
+        conv2 = Conv1d(
             inputChannels: dimension, outputChannels: dimension,
             kernelSize: 1
         )
@@ -65,13 +65,13 @@ public class OobleckEncoderBlock: Module, UnaryLayer {
     let conv1: Conv1d
 
     public init(inputDim: Int, outputDim: Int, stride: Int = 1) {
-        self.resUnit1 = OobleckResidualUnit(dimension: inputDim, dilation: 1)
-        self.resUnit2 = OobleckResidualUnit(dimension: inputDim, dilation: 3)
-        self.resUnit3 = OobleckResidualUnit(dimension: inputDim, dilation: 9)
-        self.snake1 = Snake1d(hiddenDim: inputDim)
+        resUnit1 = OobleckResidualUnit(dimension: inputDim, dilation: 1)
+        resUnit2 = OobleckResidualUnit(dimension: inputDim, dilation: 3)
+        resUnit3 = OobleckResidualUnit(dimension: inputDim, dilation: 9)
+        snake1 = Snake1d(hiddenDim: inputDim)
         let kernelSize = 2 * stride
         let pad = Int(ceil(Double(stride) / 2.0))
-        self.conv1 = Conv1d(
+        conv1 = Conv1d(
             inputChannels: inputDim, outputChannels: outputDim,
             kernelSize: kernelSize, stride: stride, padding: pad
         )
@@ -95,16 +95,16 @@ public class OobleckDecoderBlock: Module, UnaryLayer {
     let resUnit3: OobleckResidualUnit
 
     public init(inputDim: Int, outputDim: Int, stride: Int = 1) {
-        self.snake1 = Snake1d(hiddenDim: inputDim)
+        snake1 = Snake1d(hiddenDim: inputDim)
         let kernelSize = 2 * stride
         let pad = Int(ceil(Double(stride) / 2.0))
-        self.convT1 = ConvTransposed1d(
+        convT1 = ConvTransposed1d(
             inputChannels: inputDim, outputChannels: outputDim,
             kernelSize: kernelSize, stride: stride, padding: pad
         )
-        self.resUnit1 = OobleckResidualUnit(dimension: outputDim, dilation: 1)
-        self.resUnit2 = OobleckResidualUnit(dimension: outputDim, dilation: 3)
-        self.resUnit3 = OobleckResidualUnit(dimension: outputDim, dilation: 9)
+        resUnit1 = OobleckResidualUnit(dimension: outputDim, dilation: 1)
+        resUnit2 = OobleckResidualUnit(dimension: outputDim, dilation: 3)
+        resUnit3 = OobleckResidualUnit(dimension: outputDim, dilation: 9)
     }
 
     public func callAsFunction(_ x: MLXArray) -> MLXArray {

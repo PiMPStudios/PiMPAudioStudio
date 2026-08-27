@@ -9,13 +9,13 @@ import Tokenizers
 /// `encodeText` and `encodeLyrics` convenience methods that return
 /// `MLXArray` tensors shaped `[1, tokenCount]`, capped by `maxLength`.
 public struct PiMPAudioTokenizer: Sendable {
-    // Box the protocol existential so the struct stays Sendable without
-    // requiring the upstream type to declare conformance itself.
+    /// Box the protocol existential so the struct stays Sendable without
+    /// requiring the upstream type to declare conformance itself.
     private final class Box: @unchecked Sendable {
         let encode: (String) -> [Int]
 
         init(_ tokenizer: any Tokenizer) {
-            self.encode = { text in tokenizer.encode(text: text) }
+            encode = { text in tokenizer.encode(text: text) }
         }
 
         init(encode: @escaping (String) -> [Int]) {
@@ -66,11 +66,11 @@ public struct PiMPAudioTokenizer: Sendable {
             tokenizerConfig: tokenizerConfig,
             tokenizerData: tokenizerData
         )
-        self.box = Box(tokenizer)
+        box = Box(tokenizer)
     }
 
     private init(testEncoder: @escaping (String) -> [Int]) {
-        self.box = Box(encode: testEncoder)
+        box = Box(encode: testEncoder)
     }
 
     // MARK: - Encode
@@ -111,7 +111,7 @@ public struct PiMPAudioTokenizer: Sendable {
         PiMPAudioTokenizer { text in
             text.unicodeScalars.compactMap { scalar in
                 guard !CharacterSet.whitespacesAndNewlines.contains(scalar) else { return nil }
-                return Int(scalar.value % 10_000) + 1
+                return Int(scalar.value % 10000) + 1
             }
         }
     }
@@ -155,5 +155,4 @@ public struct PiMPAudioTokenizer: Sendable {
         }
         return Config(dict)
     }
-
 }

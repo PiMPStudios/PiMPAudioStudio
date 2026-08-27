@@ -1,9 +1,8 @@
-import Testing
 @testable import PiMPAudioCore
+import Testing
 
 @Suite("TimestepMapper")
 struct TimestepMapperTests {
-
     // MARK: - noiseStrength
 
     @Test("Empty schedule maps to zero noise strength")

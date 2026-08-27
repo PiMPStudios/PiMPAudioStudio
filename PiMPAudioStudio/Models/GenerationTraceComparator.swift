@@ -5,7 +5,9 @@ struct TraceComparisonGroup: Identifiable, Codable, Sendable, Equatable {
     let systemImage: String
     let rows: [TraceComparisonRow]
 
-    var id: String { title }
+    var id: String {
+        title
+    }
 }
 
 struct TraceComparisonRow: Identifiable, Codable, Sendable, Equatable {
@@ -13,7 +15,9 @@ struct TraceComparisonRow: Identifiable, Codable, Sendable, Equatable {
     let left: String
     let right: String
 
-    var id: String { label }
+    var id: String {
+        label
+    }
 
     var isDifferent: Bool {
         left != right
@@ -29,14 +33,18 @@ enum GenerationTraceComparator {
                 rows: [
                     row("Pipeline", left.pipeline, right.pipeline),
                     row("Model", modelSummary(left.primaryModel), modelSummary(right.primaryModel)),
-                    row("Supporting", modelListSummary(left.supportingModels), modelListSummary(right.supportingModels))
+                    row(
+                        "Supporting",
+                        modelListSummary(left.supportingModels),
+                        modelListSummary(right.supportingModels)
+                    ),
                 ]
             ),
             TraceComparisonGroup(
                 title: "Adapters",
                 systemImage: "slider.horizontal.2.square",
                 rows: [
-                    row("LoRA", adapterSummary(left.adapters), adapterSummary(right.adapters))
+                    row("LoRA", adapterSummary(left.adapters), adapterSummary(right.adapters)),
                 ]
             ),
             TraceComparisonGroup(
@@ -44,7 +52,11 @@ enum GenerationTraceComparator {
                 systemImage: "dial.low",
                 rows: [
                     row("Duration", "\(Int(left.request.duration))s", "\(Int(right.request.duration))s"),
-                    row("Seed", left.request.seed.map(String.init) ?? "Random", right.request.seed.map(String.init) ?? "Random"),
+                    row(
+                        "Seed",
+                        left.request.seed.map(String.init) ?? "Random",
+                        right.request.seed.map(String.init) ?? "Random"
+                    ),
                     row("Method", left.request.method, right.request.method),
                     row("Guidance", format(left.request.guidanceScale), format(right.request.guidanceScale)),
                     row("Preset", left.request.guidancePresetName, right.request.guidancePresetName),
@@ -54,11 +66,19 @@ enum GenerationTraceComparator {
                         "\(right.request.cfgIntervalStart) -> \(right.request.cfgIntervalEnd)"
                     ),
                     row("Precision", left.request.precision, right.request.precision),
-                    row("Steps", left.request.stepsOverride.map(String.init) ?? "Auto", right.request.stepsOverride.map(String.init) ?? "Auto"),
-                    row("Shift", optionalFormat(left.request.shiftOverride), optionalFormat(right.request.shiftOverride)),
+                    row(
+                        "Steps",
+                        left.request.stepsOverride.map(String.init) ?? "Auto",
+                        right.request.stepsOverride.map(String.init) ?? "Auto"
+                    ),
+                    row(
+                        "Shift",
+                        optionalFormat(left.request.shiftOverride),
+                        optionalFormat(right.request.shiftOverride)
+                    ),
                     row("Source Audio", sourceAudioSummary(left.request), sourceAudioSummary(right.request)),
                     row("Cover Strength", coverStrengthSummary(left.request), coverStrengthSummary(right.request)),
-                    row("Mode", left.request.resolvedMode, right.request.resolvedMode)
+                    row("Mode", left.request.resolvedMode, right.request.resolvedMode),
                 ]
             ),
             TraceComparisonGroup(
@@ -66,7 +86,7 @@ enum GenerationTraceComparator {
                 systemImage: "text.quote",
                 rows: [
                     row("Prompt", compact(left.prompt), compact(right.prompt)),
-                    row("Lyrics", lyricsSummary(left.lyrics), lyricsSummary(right.lyrics))
+                    row("Lyrics", lyricsSummary(left.lyrics), lyricsSummary(right.lyrics)),
                 ]
             ),
             TraceComparisonGroup(
@@ -75,9 +95,13 @@ enum GenerationTraceComparator {
                 rows: [
                     row("Abs Mean", format(left.audio.absMean, digits: 4), format(right.audio.absMean, digits: 4)),
                     row("Abs Max", format(left.audio.absMax, digits: 3), format(right.audio.absMax, digits: 3)),
-                    row("Duration", String(format: "%.1fs", left.audio.duration), String(format: "%.1fs", right.audio.duration))
+                    row(
+                        "Duration",
+                        String(format: "%.1fs", left.audio.duration),
+                        String(format: "%.1fs", right.audio.duration)
+                    ),
                 ]
-            )
+            ),
         ]
     }
 

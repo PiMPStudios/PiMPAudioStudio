@@ -8,9 +8,9 @@ public enum OmniAudioFeatureExtractorError: LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .emptyWaveform:
-            return "The waveform is empty."
-        case .waveformTooShort(let minimum, let actual):
-            return "The waveform has \(actual) samples; at least \(minimum) are required."
+            "The waveform is empty."
+        case let .waveformTooShort(minimum, actual):
+            "The waveform has \(actual) samples; at least \(minimum) are required."
         }
     }
 }
@@ -29,8 +29,8 @@ public struct OmniAudioFeatureExtractor: Sendable {
     public init(configuration: OmniAudioConfiguration = .qwen25Omni) throws {
         try configuration.validate()
         self.configuration = configuration
-        self.hannWindow = Self.makePeriodicHannWindow(size: configuration.fftSize)
-        self.melFilters = Self.makeSlaneyMelFilters(
+        hannWindow = Self.makePeriodicHannWindow(size: configuration.fftSize)
+        melFilters = Self.makeSlaneyMelFilters(
             sampleRate: configuration.sampleRate,
             fftSize: configuration.fftSize,
             melCount: configuration.featureSize
@@ -66,10 +66,10 @@ public struct OmniAudioFeatureExtractor: Sendable {
         let centerPadding = fftSize / 2
         var framed = [Float](repeating: 0, count: frameCount * fftSize)
 
-        for frame in 0..<frameCount {
+        for frame in 0 ..< frameCount {
             let frameStart = frame * configuration.hopLength - centerPadding
             let outputBase = frame * fftSize
-            for bin in 0..<fftSize {
+            for bin in 0 ..< fftSize {
                 let sourceIndex = Self.reflectIndex(
                     frameStart + bin,
                     count: waveform.count
@@ -103,7 +103,7 @@ public struct OmniAudioFeatureExtractor: Sendable {
     }
 
     public static func makePeriodicHannWindow(size: Int) -> [Float] {
-        (0..<size).map { index in
+        (0 ..< size).map { index in
             Float(0.5 - 0.5 * cos(2.0 * Double.pi * Double(index) / Double(size)))
         }
     }
@@ -113,17 +113,17 @@ public struct OmniAudioFeatureExtractor: Sendable {
         fftSize: Int,
         melCount: Int
     ) -> [Float] {
-        let fftFrequencies = (0...(fftSize / 2)).map {
+        let fftFrequencies = (0 ... (fftSize / 2)).map {
             Double($0) * Double(sampleRate) / Double(fftSize)
         }
         let minMel = 0.0
         let maxMel = 45.245640471924965
         let melStep = (maxMel - minMel) / Double(melCount + 1)
-        let mels = (0..<(melCount + 2)).map {
+        let mels = (0 ..< (melCount + 2)).map {
             minMel + Double($0) * melStep
         }
 
-        let minimumLogHz = 1_000.0
+        let minimumLogHz = 1000.0
         let frequencySpacing = 200.0 / 3.0
         let minimumLogMel = minimumLogHz / frequencySpacing
         let logStep = log(6.4) / 27.0
@@ -138,7 +138,7 @@ public struct OmniAudioFeatureExtractor: Sendable {
             repeating: 0,
             count: melCount * (fftSize / 2 + 1)
         )
-        for melIndex in 0..<melCount {
+        for melIndex in 0 ..< melCount {
             let lowerSpacing = frequencies[melIndex + 1] - frequencies[melIndex]
             let upperSpacing = frequencies[melIndex + 2] - frequencies[melIndex + 1]
             let energyScale = 2.0 / (frequencies[melIndex + 2] - frequencies[melIndex])

@@ -34,23 +34,23 @@ public final class OmniMultiHeadAttention: Module {
 
     public init(modelDimension: Int, headCount: Int) {
         self.headCount = headCount
-        self.headDimension = modelDimension / headCount
-        self._keyProjection.wrappedValue = Linear(
+        headDimension = modelDimension / headCount
+        _keyProjection.wrappedValue = Linear(
             modelDimension,
             modelDimension,
             bias: false
         )
-        self._valueProjection.wrappedValue = Linear(
+        _valueProjection.wrappedValue = Linear(
             modelDimension,
             modelDimension,
             bias: true
         )
-        self._queryProjection.wrappedValue = Linear(
+        _queryProjection.wrappedValue = Linear(
             modelDimension,
             modelDimension,
             bias: true
         )
-        self._outputProjection.wrappedValue = Linear(
+        _outputProjection.wrappedValue = Linear(
             modelDimension,
             modelDimension,
             bias: true
@@ -67,13 +67,13 @@ public final class OmniMultiHeadAttention: Module {
             queryProjection(input)
                 .reshaped([batch, sequence, headCount, headDimension])
                 .transposed(0, 2, 1, 3)
-            * scale
+                * scale
         )
         let keys = (
             keyProjection(input)
                 .reshaped([batch, sequence, headCount, headDimension])
                 .transposed(0, 2, 3, 1)
-            * scale
+                * scale
         )
         let values = valueProjection(input)
             .reshaped([batch, sequence, headCount, headDimension])
@@ -95,24 +95,24 @@ public final class OmniResidualAttentionBlock: Module {
     @ModuleInfo(key: "final_layer_norm") public var finalLayerNorm: LayerNorm
 
     public init(modelDimension: Int, headCount: Int) {
-        self._selfAttention.wrappedValue = OmniMultiHeadAttention(
+        _selfAttention.wrappedValue = OmniMultiHeadAttention(
             modelDimension: modelDimension,
             headCount: headCount
         )
-        self._selfAttentionLayerNorm.wrappedValue = LayerNorm(
+        _selfAttentionLayerNorm.wrappedValue = LayerNorm(
             dimensions: modelDimension
         )
-        self._fc1.wrappedValue = Linear(
+        _fc1.wrappedValue = Linear(
             modelDimension,
             modelDimension * 4,
             bias: true
         )
-        self._fc2.wrappedValue = Linear(
+        _fc2.wrappedValue = Linear(
             modelDimension * 4,
             modelDimension,
             bias: true
         )
-        self._finalLayerNorm.wrappedValue = LayerNorm(dimensions: modelDimension)
+        _finalLayerNorm.wrappedValue = LayerNorm(dimensions: modelDimension)
     }
 
     public func callAsFunction(_ input: MLXArray) -> MLXArray {
@@ -137,36 +137,36 @@ public final class Qwen25OmniAudioTower: Module {
     public init(configuration: OmniAudioConfiguration = .qwen25Omni) throws {
         try configuration.validate()
         self.configuration = configuration
-        self.conv1 = Conv1d(
+        conv1 = Conv1d(
             inputChannels: configuration.featureSize,
             outputChannels: configuration.modelDimension,
             kernelSize: 3,
             stride: 1,
             padding: 1
         )
-        self.conv2 = Conv1d(
+        conv2 = Conv1d(
             inputChannels: configuration.modelDimension,
             outputChannels: configuration.modelDimension,
             kernelSize: 3,
             stride: 2,
             padding: 1
         )
-        self.layers = (0..<configuration.encoderLayers).map { _ in
+        layers = (0 ..< configuration.encoderLayers).map { _ in
             OmniResidualAttentionBlock(
                 modelDimension: configuration.modelDimension,
                 headCount: configuration.attentionHeads
             )
         }
-        self.averagePooler = AvgPool1d(kernelSize: 2, stride: 2)
-        self._postLayerNorm.wrappedValue = LayerNorm(
+        averagePooler = AvgPool1d(kernelSize: 2, stride: 2)
+        _postLayerNorm.wrappedValue = LayerNorm(
             dimensions: configuration.modelDimension
         )
-        self._proj.wrappedValue = Linear(
+        _proj.wrappedValue = Linear(
             configuration.modelDimension,
             configuration.outputDimension,
             bias: true
         )
-        self.positionalEmbeddingValues = Self.makeSinusoids(
+        positionalEmbeddingValues = Self.makeSinusoids(
             length: configuration.maxSourcePositions,
             channels: configuration.modelDimension
         )
@@ -215,7 +215,7 @@ public final class Qwen25OmniAudioTower: Module {
                 count: chunkCount * windowInputFrames
             )
             let invalidStart = (chunkCount - 1) * windowInputFrames + lastChunkSize
-            for index in invalidStart..<(chunkCount * windowInputFrames) {
+            for index in invalidStart ..< (chunkCount * windowInputFrames) {
                 mask[index] = 0
             }
             let maskArray = MLXArray(
@@ -234,7 +234,7 @@ public final class Qwen25OmniAudioTower: Module {
             ]
         )
         .asType(.bfloat16)[
-            0..<postConv2.shape[1],
+            0 ..< postConv2.shape[1],
             0...
         ]
         .expandedDimensions(axis: 0)
@@ -245,7 +245,7 @@ public final class Qwen25OmniAudioTower: Module {
         var encodedParts: [MLXArray] = []
 
         if chunkCount > 1 {
-            var main = positioned[0..<(chunkCount - 1), 0..., 0...]
+            var main = positioned[0 ..< (chunkCount - 1), 0..., 0...]
             for layer in layers {
                 try cancellationCheck()
                 main = layer(main)
@@ -261,8 +261,8 @@ public final class Qwen25OmniAudioTower: Module {
 
         if finalWindowFrames > 0 {
             var final = positioned[
-                (chunkCount - 1)..<chunkCount,
-                0..<finalWindowFrames,
+                (chunkCount - 1) ..< chunkCount,
+                0 ..< finalWindowFrames,
                 0...
             ]
             for layer in layers {
@@ -299,17 +299,17 @@ public final class Qwen25OmniAudioTower: Module {
     public static func makeSinusoids(
         length: Int,
         channels: Int,
-        maxTimescale: Double = 10_000
+        maxTimescale: Double = 10000
     ) -> [Float] {
         precondition(channels.isMultiple(of: 2))
         let half = channels / 2
         let increment = log(maxTimescale) / Double(half - 1)
-        let inverseTimescales = (0..<half).map {
+        let inverseTimescales = (0 ..< half).map {
             Float(exp(-increment * Double($0)))
         }
         var result = [Float](repeating: 0, count: length * channels)
-        for position in 0..<length {
-            for channel in 0..<half {
+        for position in 0 ..< length {
+            for channel in 0 ..< half {
                 let scaledTime = Float(position) * inverseTimescales[channel]
                 result[position * channels + channel] = sin(scaledTime)
                 result[position * channels + half + channel] = cos(scaledTime)

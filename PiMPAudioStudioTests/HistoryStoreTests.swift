@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 @testable import PiMPAudioStudio
+import Testing
 
 @Test @MainActor func historyStorePreservesUnreadableIndexBeforeResettingEntries() throws {
     let tempDir = FileManager.default.temporaryDirectory
@@ -29,7 +29,10 @@ import Testing
     defer { try? FileManager.default.removeItem(at: tempDir) }
 
     let keep = makeHistoryEntry(fileName: "keep.wav", traceFileName: "keep.trace.json")
-    let deleteWithTrace = makeHistoryEntry(fileName: "delete-with-trace.wav", traceFileName: "delete-with-trace.trace.json")
+    let deleteWithTrace = makeHistoryEntry(
+        fileName: "delete-with-trace.wav",
+        traceFileName: "delete-with-trace.trace.json"
+    )
     let deleteAudioOnly = makeHistoryEntry(fileName: "delete-audio-only.wav")
 
     for entry in [keep, deleteWithTrace, deleteAudioOnly] {
@@ -48,10 +51,15 @@ import Testing
 
     #expect(store.entries.map(\.id) == [keep.id])
     #expect(FileManager.default.fileExists(atPath: tempDir.appending(path: keep.fileName).path(percentEncoded: false)))
-    #expect(FileManager.default.fileExists(atPath: tempDir.appending(path: keep.traceFileName!).path(percentEncoded: false)))
-    #expect(!FileManager.default.fileExists(atPath: tempDir.appending(path: deleteWithTrace.fileName).path(percentEncoded: false)))
-    #expect(!FileManager.default.fileExists(atPath: tempDir.appending(path: deleteWithTrace.traceFileName!).path(percentEncoded: false)))
-    #expect(!FileManager.default.fileExists(atPath: tempDir.appending(path: deleteAudioOnly.fileName).path(percentEncoded: false)))
+    #expect(try FileManager.default
+        .fileExists(atPath: tempDir.appending(path: #require(keep.traceFileName)).path(percentEncoded: false)))
+    #expect(!FileManager.default
+        .fileExists(atPath: tempDir.appending(path: deleteWithTrace.fileName).path(percentEncoded: false)))
+    #expect(try !FileManager.default
+        .fileExists(atPath: tempDir.appending(path: #require(deleteWithTrace.traceFileName))
+            .path(percentEncoded: false)))
+    #expect(!FileManager.default
+        .fileExists(atPath: tempDir.appending(path: deleteAudioOnly.fileName).path(percentEncoded: false)))
 
     let reloadedStore = HistoryStore(directory: tempDir)
     #expect(reloadedStore.entries.map(\.id) == [keep.id])

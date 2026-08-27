@@ -78,6 +78,7 @@ GitHub Actions (`.github/workflows/ci.yml`) on `main` and pull requests:
 
 | Job | What it runs |
 | --- | --- |
+| SwiftFormat lint | Ubuntu job installs SwiftFormat **0.62.1** and runs `--lint` on `PiMPAudioStudio`, `PiMPAudioStudioTests`, and `PiMPAudioCore` |
 | Remote worker | `ruff check` plus `python3 -m unittest discover -s remote-worker/tests -v` |
 | PiMPAudioCore | `swift build --package-path PiMPAudioCore --build-tests` (compile only — SwiftPM cannot load `default.metallib` on Actions). Run `scripts/test-pimpaudiocore-serial.sh` locally. |
 | App tests | `xcodebuild test -scheme PiMPAudioStudio -only-testing:PiMPAudioStudioTests` |
@@ -86,7 +87,14 @@ macOS jobs select **Xcode 26.x** (`scripts/ci-select-xcode.sh`). The default
 `/Applications/Xcode.app` on GitHub `macos-15` is still 16.4 / Swift 6.1, which
 cannot resolve `Vendor/demucs-mlx-swift` (`swift-tools-version: 6.2`).
 
-SwiftFormat config lives at `.swiftformat` for local use; it is **not** a CI gate until the tree is formatted in a dedicated pass.
+SwiftFormat **0.62.1** config lives at `.swiftformat`. Format locally, then lint:
+
+```bash
+swiftformat --config .swiftformat PiMPAudioStudio PiMPAudioStudioTests PiMPAudioCore
+swiftformat --lint --config .swiftformat PiMPAudioStudio PiMPAudioStudioTests PiMPAudioCore
+```
+
+`Vendor/` and `Spikes/` are excluded. Do not mix a tree-wide format with feature work.
 
 ```bash
 ruff check remote-worker --config remote-worker/ruff.toml

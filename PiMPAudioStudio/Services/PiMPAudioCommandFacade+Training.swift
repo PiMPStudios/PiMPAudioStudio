@@ -1,5 +1,5 @@
-import Foundation
 import AVFoundation
+import Foundation
 import PiMPAudioCore
 
 extension PiMPAudioCommandFacade {
@@ -8,15 +8,14 @@ extension PiMPAudioCommandFacade {
             return [
                 "available": false,
                 "state": "unavailable",
-                "message": "Training service is not wired into MCP."
+                "message": "Training service is not wired into MCP.",
             ]
         }
 
-        let activeRun: Any
-        if let log = trainingService.activeRunLogSnapshot {
-            activeRun = trainingRunLogPayload(log)
+        let activeRun: Any = if let log = trainingService.activeRunLogSnapshot {
+            trainingRunLogPayload(log)
         } else {
-            activeRun = NSNull()
+            NSNull()
         }
         return [
             "available": true,
@@ -27,8 +26,8 @@ extension PiMPAudioCommandFacade {
             "resources": [
                 "datasets": "pimpaudio://training-datasets",
                 "runs": "pimpaudio://training-runs",
-                "operations": "pimpaudio://operations"
-            ]
+                "operations": "pimpaudio://operations",
+            ],
         ]
     }
 
@@ -55,7 +54,7 @@ extension PiMPAudioCommandFacade {
         return [
             "count": rows.count,
             "roots": roots.map { $0.path(percentEncoded: false) },
-            "datasets": Array(rows)
+            "datasets": Array(rows),
         ]
     }
 
@@ -77,7 +76,7 @@ extension PiMPAudioCommandFacade {
 
         return [
             "count": rows.count,
-            "runs": Array(rows)
+            "runs": Array(rows),
         ]
     }
 
@@ -119,7 +118,7 @@ extension PiMPAudioCommandFacade {
         return [
             "count": rows.count,
             "runs": rows,
-            "note": "Read-only comparison of installed adapter metadata and training_log.json metrics."
+            "note": "Read-only comparison of installed adapter metadata and training_log.json metrics.",
         ]
     }
 
@@ -138,7 +137,7 @@ extension PiMPAudioCommandFacade {
             "path": url.path(percentEncoded: false),
             "filter": contains.isEmpty ? NSNull() : contains,
             "lineCount": lines.count,
-            "lines": lines
+            "lines": lines,
         ]
     }
 
@@ -236,7 +235,7 @@ extension PiMPAudioCommandFacade {
             confirmation: [
                 "required": true,
                 "accepted": true,
-                "confirmArgument": "confirm"
+                "confirmArgument": "confirm",
             ]
         )
         payload["status"] = trainingStatus()
@@ -260,7 +259,7 @@ extension PiMPAudioCommandFacade {
                 "submitted": false,
                 "stopped": false,
                 "reason": "trainingNotActive",
-                "status": trainingStatus()
+                "status": trainingStatus(),
             ]
         }
 
@@ -269,7 +268,7 @@ extension PiMPAudioCommandFacade {
             "submitted": true,
             "stopped": true,
             "saveCheckpoint": saveCheckpoint,
-            "status": trainingStatus()
+            "status": trainingStatus(),
         ]
     }
 
@@ -329,7 +328,10 @@ extension PiMPAudioCommandFacade {
 
         guard !dryRun else {
             payload["confirmation"] = confirmationRequirementPayload(toolName: "launch_runpod_pod")
-            payload["status"] = runPodStatusPayload(service: runPodService, recommendedForGPUType: resolution.configuration.gpuTypeID)
+            payload["status"] = runPodStatusPayload(
+                service: runPodService,
+                recommendedForGPUType: resolution.configuration.gpuTypeID
+            )
             return payload
         }
         guard boolValue(arguments["confirm"]) == true else {
@@ -359,7 +361,10 @@ extension PiMPAudioCommandFacade {
             pod: pod,
             error: pod == nil ? runPodService.lastError : nil
         )
-        payload["status"] = runPodStatusPayload(service: runPodService, recommendedForGPUType: resolution.configuration.gpuTypeID)
+        payload["status"] = runPodStatusPayload(
+            service: runPodService,
+            recommendedForGPUType: resolution.configuration.gpuTypeID
+        )
         return payload
     }
 
@@ -378,52 +383,51 @@ extension PiMPAudioCommandFacade {
             "podID": podID,
             "action": "terminate",
             "error": runPodService.lastError ?? NSNull(),
-            "status": runPodStatusPayload(service: runPodService, recommendedForGPUType: nil)
+            "status": runPodStatusPayload(service: runPodService, recommendedForGPUType: nil),
         ]
     }
-
 
     func trainingStatePayload(_ state: TrainingState) -> [String: Any] {
         switch state {
         case .idle:
-            return ["status": "idle", "active": false]
+            ["status": "idle", "active": false]
         case .loadingModels:
-            return ["status": "loadingModels", "active": true]
-        case .preparingDataset(let current, let total):
-            return [
+            ["status": "loadingModels", "active": true]
+        case let .preparingDataset(current, total):
+            [
                 "status": "preparingDataset",
                 "active": true,
                 "current": current,
                 "total": total,
-                "progress": progressFraction(current: current, total: total)
+                "progress": progressFraction(current: current, total: total),
             ]
-        case .training(let uiState):
-            return [
+        case let .training(uiState):
+            [
                 "status": "training",
                 "active": true,
-                "progress": trainingUIStatePayload(uiState)
+                "progress": trainingUIStatePayload(uiState),
             ]
         case .saving:
-            return ["status": "saving", "active": true]
-        case .complete(let adapter):
-            return [
+            ["status": "saving", "active": true]
+        case let .complete(adapter):
+            [
                 "status": "complete",
                 "active": false,
-                "adapter": trainingAdapterSummaryPayload(adapter)
+                "adapter": trainingAdapterSummaryPayload(adapter),
             ]
-        case .failed(let message):
-            return [
+        case let .failed(message):
+            [
                 "status": "failed",
                 "active": false,
-                "message": message
+                "message": message,
             ]
         case .cancelled:
-            return ["status": "cancelled", "active": false]
-        case .paused(let checkpoint):
-            return [
+            ["status": "cancelled", "active": false]
+        case let .paused(checkpoint):
+            [
                 "status": "paused",
                 "active": false,
-                "checkpoint": trainingCheckpointPayload(checkpoint)
+                "checkpoint": trainingCheckpointPayload(checkpoint),
             ]
         }
     }
@@ -445,7 +449,7 @@ extension PiMPAudioCommandFacade {
             "lossHistoryCount": uiState.lossHistory.count,
             "latestLossHistory": Array(uiState.lossHistory.suffix(25)).map(Double.init),
             "validationHistoryCount": uiState.validationHistory.count,
-            "latestValidationHistory": uiState.validationHistory.suffix(25).map(trainingValidationPointPayload)
+            "latestValidationHistory": uiState.validationHistory.suffix(25).map(trainingValidationPointPayload),
         ]
     }
 
@@ -459,7 +463,7 @@ extension PiMPAudioCommandFacade {
             "validationHistoryCount": checkpoint.validationHistory.count,
             "weightsPath": checkpoint.weightsURL.path(percentEncoded: false),
             "optimizerStatePath": checkpoint.optimizerStateURL.path(percentEncoded: false),
-            "baseModelID": checkpoint.baseModelID
+            "baseModelID": checkpoint.baseModelID,
         ]
     }
 
@@ -477,14 +481,14 @@ extension PiMPAudioCommandFacade {
             "finalLoss": adapter.finalLoss.map { Double($0) } ?? NSNull(),
             "createdAt": dateFormatter.string(from: adapter.createdAt),
             "hasCheckpoint": AdapterRegistry.hasCheckpoint(adapterID: adapter.id),
-            "directory": directory?.path(percentEncoded: false) ?? NSNull()
+            "directory": directory?.path(percentEncoded: false) ?? NSNull(),
         ]
     }
 
     func trainingDatasetSearchRoots() -> [URL] {
         let roots = [
             historyStore.storageDirectory,
-            AppStorageLocations.rootDirectory
+            AppStorageLocations.rootDirectory,
         ]
         var seen = Set<String>()
         return roots.filter { url in
@@ -513,7 +517,7 @@ extension PiMPAudioCommandFacade {
                 .path(percentEncoded: false),
             "remotePackagePath": summary.directory
                 .appendingPathComponent(TrainingDatasetPackageWriter.remotePackageFileName)
-                .path(percentEncoded: false)
+                .path(percentEncoded: false),
         ]
     }
 
@@ -535,13 +539,13 @@ extension PiMPAudioCommandFacade {
             arguments["rank"] ?? arguments["linearDim"] ?? arguments["dimension"],
             defaultValue: defaults.dimension,
             name: kind == .lokr ? "linearDim" : "rank",
-            range: 1...256
+            range: 1 ... 256
         )
         let epochs = try boundedTrainingInt(
             arguments["epochs"] ?? arguments["maxEpochs"],
             defaultValue: defaults.epochs,
             name: "epochs",
-            range: 1...1_000
+            range: 1 ... 1000
         )
         let layerCount = try boundedTrainingLayerCount(
             arguments["layerCoverage"] ?? arguments["trainingLayerCount"] ?? arguments["layerCount"],
@@ -551,25 +555,25 @@ extension PiMPAudioCommandFacade {
             arguments["gradientAccumulationSteps"] ?? arguments["gradAccumulation"] ?? arguments["gradAccum"],
             defaultValue: defaults.gradientAccumulationSteps,
             name: "gradientAccumulationSteps",
-            range: 1...64
+            range: 1 ... 64
         )
         let batchSize = try boundedTrainingInt(
             arguments["batchSize"],
             defaultValue: 1,
             name: "batchSize",
-            range: 1...16
+            range: 1 ... 16
         )
         let learningRate = try boundedTrainingFloat(
             arguments["learningRate"] ?? arguments["lr"],
             defaultValue: defaults.learningRate,
             name: "learningRate",
-            range: 0.000_001...0.01
+            range: 0.000_001 ... 0.01
         )
         let dropout = try boundedTrainingFloat(
             arguments["dropout"],
             defaultValue: defaults.dropout,
             name: "dropout",
-            range: 0...0.95
+            range: 0 ... 0.95
         )
         let weightDecompose = try mcpTrainingBool(
             from: arguments["weightDecompose"] ?? arguments["weight_decompose"] ?? arguments["dora"],
@@ -580,7 +584,7 @@ extension PiMPAudioCommandFacade {
             arguments["warmupFraction"] ?? arguments["warmup"],
             defaultValue: 0.10,
             name: "warmupFraction",
-            range: 0...0.50
+            range: 0 ... 0.50
         )
         let alpha = try mcpTrainingAlpha(
             from: arguments["alpha"],
@@ -696,7 +700,7 @@ extension PiMPAudioCommandFacade {
     ) -> MCPTrainingDefaults {
         switch recipe {
         case .narrow:
-            return MCPTrainingDefaults(
+            MCPTrainingDefaults(
                 dimension: recommendation?.rank ?? 16,
                 epochs: recommendation?.epochs ?? 10,
                 layerCount: recommendation?.layerCount ?? 8,
@@ -709,7 +713,7 @@ extension PiMPAudioCommandFacade {
                 weightDecompose: kind == .lokr
             )
         case .wide:
-            return MCPTrainingDefaults(
+            MCPTrainingDefaults(
                 dimension: kind == .lokr ? 32 : 96,
                 epochs: kind == .lokr ? 100 : 150,
                 layerCount: kind == .lokr ? 16 : 32,
@@ -772,7 +776,7 @@ extension PiMPAudioCommandFacade {
                 )
             }
         }
-        return try boundedTrainingInt(value, defaultValue: defaultValue, name: "layerCoverage", range: 1...32)
+        return try boundedTrainingInt(value, defaultValue: defaultValue, name: "layerCoverage", range: 1 ... 32)
     }
 
     func boundedTrainingFloat(
@@ -877,7 +881,7 @@ extension PiMPAudioCommandFacade {
         if let raw = stringValue(
             arguments["projectionCoverage"] ?? arguments["projections"] ?? arguments["projection"]
         )?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !raw.isEmpty {
+            !raw.isEmpty {
             switch compactTrainingToken(raw) {
             case "qv", "queryvalue", "queryvalueonly":
                 coverage = .queryValue
@@ -927,7 +931,7 @@ extension PiMPAudioCommandFacade {
     ) -> String {
         if let explicit = stringValue(arguments["adapterName"] ?? arguments["name"])?
             .trimmingCharacters(in: .whitespacesAndNewlines),
-           !explicit.isEmpty {
+            !explicit.isEmpty {
             return explicit
         }
         let baseName = document.name
@@ -955,17 +959,18 @@ extension PiMPAudioCommandFacade {
             "kind": request.kind.rawValue,
             "recipe": request.recipe.rawValue,
             "dataset": [
-                "summary": trainingDatasetPayload(TrainingDatasetPackageEditor.packageSummary(at: request.dataset.directory)),
+                "summary": trainingDatasetPayload(TrainingDatasetPackageEditor
+                    .packageSummary(at: request.dataset.directory)),
                 "clipCount": request.dataset.clips.count,
-                "importedFileCount": request.importedFiles.count
+                "importedFileCount": request.importedFiles.count,
             ],
             "configuration": [
                 "lora": loraConfigPayload(request.config),
                 "lokr": lokrPayload,
-                "effectiveInjectionPatterns": effectiveInjectionPatterns
+                "effectiveInjectionPatterns": effectiveInjectionPatterns,
             ],
             "preflight": trainingLocalPreflightPayload(report),
-            "confirmation": confirmation
+            "confirmation": confirmation,
         ]
     }
 
@@ -1010,28 +1015,28 @@ extension PiMPAudioCommandFacade {
                 "effectiveHeadroomBytes": report.effectiveHeadroomBytes,
                 "effectiveHeadroom": formatGiB(report.effectiveHeadroomBytes),
                 "requiredHeadroomBytes": report.requiredHeadroomBytes,
-                "requiredHeadroom": formatGiB(report.requiredHeadroomBytes)
+                "requiredHeadroom": formatGiB(report.requiredHeadroomBytes),
             ],
             "warnings": report.warnings,
-            "note": "Preflight uses the current MLX memory snapshot. Training rechecks after ACE-Step model load and again before the first trainer pass."
+            "note": "Preflight uses the current MLX memory snapshot. Training rechecks after ACE-Step model load and again before the first trainer pass.",
         ]
     }
 
     func trainingStateIsActive(_ state: TrainingState) -> Bool {
         switch state {
         case .loadingModels, .preparingDataset, .training, .saving:
-            return true
+            true
         case .idle, .complete, .failed, .cancelled, .paused:
-            return false
+            false
         }
     }
 
     func mcpTrainingKindTitle(_ kind: AdapterKind) -> String {
         switch kind {
         case .lora:
-            return "LoRA"
+            "LoRA"
         case .lokr:
-            return "LoKR"
+            "LoKR"
         }
     }
 
@@ -1047,7 +1052,7 @@ extension PiMPAudioCommandFacade {
     func resolveTrainingDatasetDirectory(arguments: [String: Any]) throws -> URL {
         if let rawPath = stringValue(arguments["path"] ?? arguments["directory"] ?? arguments["datasetPath"])?
             .trimmingCharacters(in: .whitespacesAndNewlines),
-           !rawPath.isEmpty {
+            !rawPath.isEmpty {
             let expanded = (rawPath as NSString).expandingTildeInPath
             let url = URL(fileURLWithPath: expanded).standardizedFileURL
             guard FileManager.default.fileExists(
@@ -1070,8 +1075,8 @@ extension PiMPAudioCommandFacade {
 
         guard let identifier = stringValue(arguments["id"] ?? arguments["name"] ?? arguments["dataset"])?
             .trimmingCharacters(in: .whitespacesAndNewlines),
-              !identifier.isEmpty,
-              identifier.lowercased() != "latest" else {
+            !identifier.isEmpty,
+            identifier.lowercased() != "latest" else {
             return packages[0].directory
         }
 
@@ -1102,7 +1107,7 @@ extension PiMPAudioCommandFacade {
             "lora": TrainingPlanRecommendation.make(adapterKind: .lora, profile: profile)
                 .map(trainingPlanRecommendationPayload) ?? NSNull(),
             "lokr": TrainingPlanRecommendation.make(adapterKind: .lokr, profile: profile)
-                .map(trainingPlanRecommendationPayload) ?? NSNull()
+                .map(trainingPlanRecommendationPayload) ?? NSNull(),
         ]
         let clips = document.clips.prefix(sampleLimit).map(trainingDatasetClipPayload)
 
@@ -1117,8 +1122,8 @@ extension PiMPAudioCommandFacade {
             "paths": trainingDatasetPathsPayload(document.directory),
             "resources": [
                 "collection": "pimpaudio://training-datasets",
-                "latest": "pimpaudio://training-dataset/latest"
-            ]
+                "latest": "pimpaudio://training-dataset/latest",
+            ],
         ]
     }
 
@@ -1131,7 +1136,7 @@ extension PiMPAudioCommandFacade {
             "importableClipCount": validation.importableClipCount,
             "missingPackageFiles": validation.missingPackageFiles,
             "missingClipFiles": validation.missingClipFiles,
-            "errors": validation.errors
+            "errors": validation.errors,
         ]
     }
 
@@ -1157,7 +1162,7 @@ extension PiMPAudioCommandFacade {
             "knownDurationMinutes": profile.knownDuration / 60,
             "knownDurationSampleCount": profile.knownDurationSampleCount,
             "durationCoverage": profile.durationCoverage,
-            "hasUsableDurationCoverage": profile.hasUsableDurationCoverage
+            "hasUsableDurationCoverage": profile.hasUsableDurationCoverage,
         ]
     }
 
@@ -1175,18 +1180,33 @@ extension PiMPAudioCommandFacade {
         var audioStatuses: [String: Int] = [:]
 
         for clip in document.clips {
-            if !clip.caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { captionCount += 1 }
-            if !clip.lyrics.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { lyricsCount += 1 }
-            if let duration = clip.durationSeconds, duration > 0 { durationCount += 1 }
-            if !clip.bpm.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { bpmCount += 1 }
-            if !clip.key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { keyCount += 1 }
+            if !clip.caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                captionCount += 1
+            }
+            if !clip.lyrics.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                lyricsCount += 1
+            }
+            if let duration = clip.durationSeconds, duration > 0 {
+                durationCount += 1
+            }
+            if !clip.bpm.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                bpmCount += 1
+            }
+            if !clip.key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                keyCount += 1
+            }
             if !clip.timeSignature.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 timeSignatureCount += 1
             }
-            if clip.isApproved { approvedCount += 1 }
+            if clip.isApproved {
+                approvedCount += 1
+            }
             increment(&captionSources, key: clip.captionSource.isEmpty ? "unknown" : clip.captionSource)
             increment(&lyricsSources, key: clip.lyricsSource.isEmpty ? "unknown" : clip.lyricsSource)
-            increment(&transcriptionStatuses, key: clip.transcriptionStatus.isEmpty ? "unknown" : clip.transcriptionStatus)
+            increment(
+                &transcriptionStatuses,
+                key: clip.transcriptionStatus.isEmpty ? "unknown" : clip.transcriptionStatus
+            )
             increment(&audioStatuses, key: clip.audioStatus.isEmpty ? "unknown" : clip.audioStatus)
         }
 
@@ -1207,7 +1227,7 @@ extension PiMPAudioCommandFacade {
             "captionSources": captionSources,
             "lyricsSources": lyricsSources,
             "transcriptionStatuses": transcriptionStatuses,
-            "audioStatuses": audioStatuses
+            "audioStatuses": audioStatuses,
         ]
     }
 
@@ -1232,7 +1252,7 @@ extension PiMPAudioCommandFacade {
             "lyricsSource": clip.lyricsSource,
             "audioStatus": clip.audioStatus,
             "separationStatus": clip.separationStatus,
-            "transcriptionStatus": clip.transcriptionStatus
+            "transcriptionStatus": clip.transcriptionStatus,
         ]
     }
 
@@ -1245,18 +1265,18 @@ extension PiMPAudioCommandFacade {
             TrainingDatasetPackageWriter.vocalBundleFileName,
             TrainingDatasetPackageWriter.instrumentalBundleFileName,
             TrainingDatasetPackageWriter.remotePackageFileName,
-            TrainingDatasetPackageWriter.preprocessCacheFileName
+            TrainingDatasetPackageWriter.preprocessCacheFileName,
         ]
         let entries = files.reduce(into: [String: Any]()) { result, fileName in
             let url = directory.appendingPathComponent(fileName)
             result[fileName] = [
                 "path": url.path(percentEncoded: false),
-                "exists": FileManager.default.fileExists(atPath: url.path(percentEncoded: false))
+                "exists": FileManager.default.fileExists(atPath: url.path(percentEncoded: false)),
             ]
         }
         return [
             "directory": directory.path(percentEncoded: false),
-            "files": entries
+            "files": entries,
         ]
     }
 
@@ -1271,7 +1291,7 @@ extension PiMPAudioCommandFacade {
             "gradientAccumulationSteps": recommendation.gradientAccumulationSteps,
             "estimatedOptimizerUpdates": recommendation.estimatedOptimizerUpdates,
             "summary": recommendation.summary,
-            "rationale": recommendation.rationale
+            "rationale": recommendation.rationale,
         ]
     }
 
@@ -1296,10 +1316,11 @@ extension PiMPAudioCommandFacade {
             throw PiMPAudioCommandFacadeError.resourceNotFound("training runs")
         }
 
-        guard let identifier = stringValue(arguments["id"] ?? arguments["adapterID"] ?? arguments["name"] ?? arguments["adapter"])?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-              !identifier.isEmpty,
-              identifier.lowercased() != "latest" else {
+        guard let identifier =
+            stringValue(arguments["id"] ?? arguments["adapterID"] ?? arguments["name"] ?? arguments["adapter"])?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+                !identifier.isEmpty,
+                identifier.lowercased() != "latest" else {
             return installed.sorted {
                 trainingRunUpdatedAt($0) > trainingRunUpdatedAt($1)
             }[0]
@@ -1319,18 +1340,17 @@ extension PiMPAudioCommandFacade {
         }
 
         let rawIDs = arguments["ids"] ?? arguments["adapterIDs"] ?? arguments["adapters"]
-        let identifiers: [String]
-        if let strings = rawIDs as? [String] {
-            identifiers = strings
+        let identifiers: [String] = if let strings = rawIDs as? [String] {
+            strings
         } else if let values = rawIDs as? [Any] {
-            identifiers = values.compactMap { value in
+            values.compactMap { value in
                 if let dict = value as? [String: Any] {
                     return stringValue(dict["id"] ?? dict["adapterID"] ?? dict["name"])
                 }
                 return stringValue(value)
             }
         } else {
-            identifiers = []
+            []
         }
 
         if !identifiers.isEmpty {
@@ -1377,7 +1397,7 @@ extension PiMPAudioCommandFacade {
         payload["resources"] = [
             "collection": "pimpaudio://training-runs",
             "latest": "pimpaudio://training-run/latest",
-            "adapter": resourceURI(kind: "adapter", identifier: adapter.id)
+            "adapter": resourceURI(kind: "adapter", identifier: adapter.id),
         ]
         return payload
     }
@@ -1400,8 +1420,10 @@ extension PiMPAudioCommandFacade {
             "lokrWeightDecompose": adapter.lokrConfig.map { $0.weightDecompose as Any } ?? NSNull(),
             "learningRate": Double(adapter.lokrConfig?.learningRate ?? adapter.config.learningRate),
             "epochs": adapter.lokrConfig?.maxEpochs ?? adapter.config.maxEpochs,
-            "gradientAccumulationSteps": adapter.lokrConfig?.gradientAccumulationSteps ?? adapter.config.gradientAccumulationSteps,
-            "trainingLayerCount": adapter.lokrConfig?.trainingLayerCount ?? adapter.config.trainingLayerCount ?? NSNull(),
+            "gradientAccumulationSteps": adapter.lokrConfig?.gradientAccumulationSteps ?? adapter.config
+                .gradientAccumulationSteps,
+            "trainingLayerCount": adapter.lokrConfig?.trainingLayerCount ?? adapter.config
+                .trainingLayerCount ?? NSNull(),
             "injectionPatterns": adapter.lokrConfig?.injectionPatterns ?? adapter.config.injectionPatterns,
             "trainedPathCount": log?.trainedPaths.count ?? adapter.trainedPaths?.count ?? 0,
             "trainedLayerIndices": log?.trainedLayerIndices ?? adapter.trainedLayerIndices ?? [],
@@ -1414,7 +1436,7 @@ extension PiMPAudioCommandFacade {
             "zeroUpdateNormCount": health["zeroUpdateNormCount"] ?? NSNull(),
             "progressCount": log?.progress.count ?? 0,
             "validationCount": health["validationCount"] ?? NSNull(),
-            "hasCheckpoint": AdapterRegistry.hasCheckpoint(adapterID: adapter.id)
+            "hasCheckpoint": AdapterRegistry.hasCheckpoint(adapterID: adapter.id),
         ]
     }
 
@@ -1425,7 +1447,7 @@ extension PiMPAudioCommandFacade {
             "lokr": adapter.lokrConfig.map(lokrConfigPayload) ?? NSNull(),
             "effectiveInjectionPatterns": adapter.lokrConfig?.injectionPatterns ?? adapter.config.injectionPatterns,
             "trainedPaths": adapter.trainedPaths ?? [],
-            "trainedLayerIndices": adapter.trainedLayerIndices ?? []
+            "trainedLayerIndices": adapter.trainedLayerIndices ?? [],
         ]
     }
 
@@ -1444,7 +1466,7 @@ extension PiMPAudioCommandFacade {
             "warmupFraction": Double(config.warmupFraction),
             "gradientAccumulationSteps": config.gradientAccumulationSteps,
             "trainingLayerCount": config.trainingLayerCount ?? NSNull(),
-            "trainingSeed": config.trainingSeed.map { NSNumber(value: $0) } ?? NSNull()
+            "trainingSeed": config.trainingSeed.map { NSNumber(value: $0) } ?? NSNull(),
         ]
     }
 
@@ -1464,7 +1486,7 @@ extension PiMPAudioCommandFacade {
             "warmupFraction": Double(config.warmupFraction),
             "gradientAccumulationSteps": config.gradientAccumulationSteps,
             "trainingLayerCount": config.trainingLayerCount ?? NSNull(),
-            "trainingSeed": config.trainingSeed.map { NSNumber(value: $0) } ?? NSNull()
+            "trainingSeed": config.trainingSeed.map { NSNumber(value: $0) } ?? NSNull(),
         ]
     }
 
@@ -1491,20 +1513,20 @@ extension PiMPAudioCommandFacade {
             "directory": directory.path(percentEncoded: false),
             "trainingLog": [
                 "path": logURL.path(percentEncoded: false),
-                "exists": FileManager.default.fileExists(atPath: logURL.path(percentEncoded: false))
+                "exists": FileManager.default.fileExists(atPath: logURL.path(percentEncoded: false)),
             ],
             "checkpoint": [
                 "path": checkpointURL.path(percentEncoded: false),
-                "exists": FileManager.default.fileExists(atPath: checkpointURL.path(percentEncoded: false))
+                "exists": FileManager.default.fileExists(atPath: checkpointURL.path(percentEncoded: false)),
             ],
             "optimizerState": [
                 "path": optimizerURL.path(percentEncoded: false),
-                "exists": FileManager.default.fileExists(atPath: optimizerURL.path(percentEncoded: false))
+                "exists": FileManager.default.fileExists(atPath: optimizerURL.path(percentEncoded: false)),
             ],
             "weights": [
                 "path": weightsURL.path(percentEncoded: false),
-                "exists": FileManager.default.fileExists(atPath: weightsURL.path(percentEncoded: false))
-            ]
+                "exists": FileManager.default.fileExists(atPath: weightsURL.path(percentEncoded: false)),
+            ],
         ]
     }
 
@@ -1514,7 +1536,7 @@ extension PiMPAudioCommandFacade {
                 "hasRunLog": false,
                 "finalLoss": adapter.finalLoss.map { Double($0) } ?? NSNull(),
                 "progressCount": 0,
-                "validationCount": 0
+                "validationCount": 0,
             ]
         }
 
@@ -1553,7 +1575,7 @@ extension PiMPAudioCommandFacade {
             "trainedPathCount": log.trainedPaths.count,
             "trainedLayerCount": Set(log.trainedLayerIndices).count,
             "weightsTensorCount": log.weightsTensorCount ?? NSNull(),
-            "errorMessage": log.errorMessage ?? NSNull()
+            "errorMessage": log.errorMessage ?? NSNull(),
         ]
     }
 
@@ -1583,7 +1605,7 @@ extension PiMPAudioCommandFacade {
             "trainedPaths": log.trainedPaths,
             "trainedLayerIndices": log.trainedLayerIndices,
             "weightsTensorCount": log.weightsTensorCount ?? NSNull(),
-            "errorMessage": log.errorMessage ?? NSNull()
+            "errorMessage": log.errorMessage ?? NSNull(),
         ]
     }
 
@@ -1601,7 +1623,7 @@ extension PiMPAudioCommandFacade {
             "updateNorm": progress.updateNorm.map { Double($0) } ?? NSNull(),
             "validationLoss": progress.validationLoss.map { Double($0) } ?? NSNull(),
             "elapsedSeconds": progress.elapsed,
-            "estimatedRemainingSeconds": progress.estimatedRemaining.map { $0 as Any } ?? NSNull()
+            "estimatedRemainingSeconds": progress.estimatedRemaining.map { $0 as Any } ?? NSNull(),
         ]
     }
 
@@ -1609,7 +1631,7 @@ extension PiMPAudioCommandFacade {
         [
             "epoch": point.epoch,
             "step": point.step,
-            "loss": Double(point.loss)
+            "loss": Double(point.loss),
         ]
     }
 
@@ -1617,7 +1639,7 @@ extension PiMPAudioCommandFacade {
         [
             "timestamp": dateFormatter.string(from: event.timestamp),
             "status": event.status.rawValue,
-            "message": event.message
+            "message": event.message,
         ]
     }
 
@@ -1646,7 +1668,7 @@ extension PiMPAudioCommandFacade {
             "recommendedTemplate": recommended.map(runPodTemplatePayload) ?? NSNull(),
             "gpuTypes": service.gpuTypes.prefix(limit).map(runPodGPUTypePayload),
             "templates": service.podTemplates.prefix(limit).map(runPodTemplatePayload),
-            "pods": service.pods.prefix(limit).map(runPodPodPayload)
+            "pods": service.pods.prefix(limit).map(runPodPodPayload),
         ]
     }
 
@@ -1667,7 +1689,9 @@ extension PiMPAudioCommandFacade {
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let imageName = stringValue(arguments["imageName"] ?? arguments["image"])?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        var containerDiskGB = integerValue(arguments["containerDiskGB"] ?? arguments["containerDiskGb"] ?? arguments["containerDisk"]) ?? 80
+        var containerDiskGB =
+            integerValue(arguments["containerDiskGB"] ?? arguments["containerDiskGb"] ?? arguments["containerDisk"]) ??
+            80
         var volumeGB = integerValue(arguments["volumeGB"] ?? arguments["volumeGb"] ?? arguments["volume"]) ?? 80
         let name = stringValue(arguments["name"] ?? arguments["podName"])?
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1702,7 +1726,7 @@ extension PiMPAudioCommandFacade {
             dataCenterIDs = explicitCenters
         } else if let regionRaw = stringValue(arguments["region"])?
             .trimmingCharacters(in: .whitespacesAndNewlines),
-                  !regionRaw.isEmpty {
+            !regionRaw.isEmpty {
             let region = try mcpRunPodRegion(from: regionRaw)
             if service.gpuTypes.isEmpty || service.dataCenters.isEmpty {
                 await service.refreshLaunchOptions()
@@ -1766,7 +1790,7 @@ extension PiMPAudioCommandFacade {
             "error": error ?? NSNull(),
             "note": dryRun
                 ? "Dry run only. Call launch_runpod_pod with dryRun: false and confirm: true to create billable RunPod GPU time."
-                : "Launch submitted through the same RunPodService path as the UI."
+                : "Launch submitted through the same RunPodService path as the UI.",
         ]
     }
 
@@ -1783,7 +1807,7 @@ extension PiMPAudioCommandFacade {
             "dataCenterIDs": configuration.dataCenterIDs,
             "containerDiskGB": configuration.containerDiskGB,
             "volumeGB": configuration.volumeGB,
-            "ports": configuration.ports
+            "ports": configuration.ports,
         ]
     }
 
@@ -1804,7 +1828,7 @@ extension PiMPAudioCommandFacade {
             "image": pod.image ?? NSNull(),
             "containerDiskGB": pod.containerDiskInGb ?? NSNull(),
             "volumeGB": pod.volumeInGb ?? NSNull(),
-            "volumeMountPath": pod.volumeMountPath ?? NSNull()
+            "volumeMountPath": pod.volumeMountPath ?? NSNull(),
         ]
     }
 
@@ -1818,7 +1842,7 @@ extension PiMPAudioCommandFacade {
             "stockStatus": gpuType.secureLowestPrice?.stockStatus ?? NSNull(),
             "menuTitle": gpuType.menuTitle,
             "selectionValue": gpuType.selectionValue,
-            "detail": gpuType.detailLabel()
+            "detail": gpuType.detailLabel(),
         ]
     }
 
@@ -1837,24 +1861,22 @@ extension PiMPAudioCommandFacade {
             "volumeMountPath": template.volumeMountPath ?? NSNull(),
             "ports": template.ports ?? [],
             "summary": template.summaryLabel,
-            "detail": template.detailLabel
+            "detail": template.detailLabel,
         ]
     }
 
     func runPodKeySourcePayload(_ source: APIKeyStore.KeySource) -> String {
         switch source {
         case .keychain:
-            return "keychain"
+            "keychain"
         case .environment:
-            return "environment"
+            "environment"
         case .none:
-            return "none"
+            "none"
         }
     }
 
     func runPodDefaultPodName() -> String {
         "pimp-audio-remote-\(UUID().uuidString.prefix(8).lowercased())"
     }
-
-
 }

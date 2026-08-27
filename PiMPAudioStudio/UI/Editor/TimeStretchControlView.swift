@@ -32,7 +32,7 @@ struct TimeStretchControlView: View {
                 }
             }
 
-            Slider(value: $parameters.rate, in: 0.25...4.0)
+            Slider(value: $parameters.rate, in: 0.25 ... 4.0)
                 .tint(qualityColor)
                 .onChange(of: parameters.rate) { _, newValue in
                     parameters.rate = snapped(newValue)
@@ -66,15 +66,23 @@ struct TimeStretchControlView: View {
 
     private var qualityColor: Color {
         let rate = parameters.rate
-        if rate >= 0.5 && rate <= 2.0 { return .green }
-        if rate >= 0.35 && rate <= 3.0 { return .yellow }
+        if rate >= 0.5, rate <= 2.0 {
+            return .green
+        }
+        if rate >= 0.35, rate <= 3.0 {
+            return .yellow
+        }
         return .red
     }
 
     private var qualityText: String {
         let rate = parameters.rate
-        if rate >= 0.5 && rate <= 2.0 { return "Excellent quality" }
-        if rate >= 0.35 && rate <= 3.0 { return "Good quality, minor artifacts possible" }
+        if rate >= 0.5, rate <= 2.0 {
+            return "Excellent quality"
+        }
+        if rate >= 0.35, rate <= 3.0 {
+            return "Good quality, minor artifacts possible"
+        }
         return "Significant artifacts likely"
     }
 

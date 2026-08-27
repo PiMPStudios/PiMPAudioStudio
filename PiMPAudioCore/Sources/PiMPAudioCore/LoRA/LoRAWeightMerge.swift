@@ -10,14 +10,14 @@ public enum LoRAWeightMergeError: Error, Sendable, Equatable, LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case .invalidBlendWeight(let value):
-            return "Merge blend weight must be between 0 and 1 inclusive (got \(value))."
-        case .unpairedWeight(let key):
-            return "LoRA weight key '\(key)' is missing its A/B pair."
-        case .shapeMismatch(let detail):
-            return "Cannot merge LoRA weights with incompatible shapes: \(detail)."
+        case let .invalidBlendWeight(value):
+            "Merge blend weight must be between 0 and 1 inclusive (got \(value))."
+        case let .unpairedWeight(key):
+            "LoRA weight key '\(key)' is missing its A/B pair."
+        case let .shapeMismatch(detail):
+            "Cannot merge LoRA weights with incompatible shapes: \(detail)."
         case .noLoRAWeights:
-            return "No LoRA A/B weight pairs were found to merge."
+            "No LoRA A/B weight pairs were found to merge."
         }
     }
 }

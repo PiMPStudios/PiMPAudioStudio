@@ -69,26 +69,26 @@ public enum AdapterEffectDiagnostics {
     private static func verdict(for ratio: Float) -> String {
         switch ratio {
         case ..<0.005:
-            return "active_tiny"
+            "active_tiny"
         case ..<0.03:
-            return "active_subtle"
+            "active_subtle"
         case ..<0.15:
-            return "active_audible"
+            "active_audible"
         default:
-            return "active_strong"
+            "active_strong"
         }
     }
 
     private static func meaning(for ratio: Float) -> String {
         switch ratio {
         case ..<0.005:
-            return "adapter_active_but_likely_inaudible"
+            "adapter_active_but_likely_inaudible"
         case ..<0.03:
-            return "adapter_active_but_subtle"
+            "adapter_active_but_subtle"
         case ..<0.15:
-            return "adapter_active_at_audible_scale"
+            "adapter_active_at_audible_scale"
         default:
-            return "adapter_active_strong"
+            "adapter_active_strong"
         }
     }
 }

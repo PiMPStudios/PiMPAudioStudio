@@ -1,5 +1,5 @@
-import SwiftUI
 import PiMPAudioCore
+import SwiftUI
 import UniformTypeIdentifiers
 
 struct GenerateView: View {
@@ -44,8 +44,8 @@ struct GenerateView: View {
     @State private var isDropTargeted: Bool = false
     @State private var sourceAudioImportError: String?
 
-    private static let promptEditorHeightRange: ClosedRange<Double> = 60...800
-    private static let lyricsEditorHeightRange: ClosedRange<Double> = 80...900
+    private static let promptEditorHeightRange: ClosedRange<Double> = 60 ... 800
+    private static let lyricsEditorHeightRange: ClosedRange<Double> = 80 ... 900
 
     var body: some View {
         ScrollView {
@@ -103,7 +103,11 @@ struct GenerateView: View {
         }
         .alert("Could Not Import Source Audio", isPresented: Binding(
             get: { sourceAudioImportError != nil },
-            set: { if !$0 { sourceAudioImportError = nil } }
+            set: {
+                if !$0 {
+                    sourceAudioImportError = nil
+                }
+            }
         )) {
             Button("OK", role: .cancel) { sourceAudioImportError = nil }
         } message: {
@@ -113,8 +117,8 @@ struct GenerateView: View {
 
     private var resolvedMode: GenerationMode {
         switch modeSelection {
-        case .auto: return intentRouter.detectedMode
-        case .manual(let mode): return mode
+        case .auto: intentRouter.detectedMode
+        case let .manual(mode): mode
         }
     }
 
@@ -124,7 +128,11 @@ struct GenerateView: View {
                 modeSelection = .auto
             }
             ForEach(GenerationMode.allCases) { mode in
-                modeButton(mode.displayName, isSelected: modeSelection == .manual(mode), isSFXMode: mode == .soundFX || mode == .ambient) {
+                modeButton(
+                    mode.displayName,
+                    isSelected: modeSelection == .manual(mode),
+                    isSFXMode: mode == .soundFX || mode == .ambient
+                ) {
                     modeSelection = .manual(mode)
                 }
             }
@@ -143,11 +151,16 @@ struct GenerateView: View {
         }
     }
 
-    private func modeButton(_ title: String, isSelected: Bool, isSFXMode: Bool = false, action: @escaping () -> Void) -> some View {
+    private func modeButton(
+        _ title: String,
+        isSelected: Bool,
+        isSFXMode: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
             HStack(spacing: 4) {
                 Text(title)
-                if isSFXMode && sfxModelManager.downloadState == .notDownloaded {
+                if isSFXMode, sfxModelManager.downloadState == .notDownloaded {
                     Image(systemName: "arrow.down.circle")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
@@ -183,7 +196,8 @@ struct GenerateView: View {
                     }
                 }
                 .buttonStyle(.borderless)
-                .disabled(!promptEnhancer.isAvailable || promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || promptEnhancer.isEnhancing)
+                .disabled(!promptEnhancer.isAvailable || promptText.trimmingCharacters(in: .whitespacesAndNewlines)
+                    .isEmpty || promptEnhancer.isEnhancing)
                 .help("Enhance prompt")
             }
             resizableTextEditor(
@@ -316,9 +330,11 @@ struct GenerateView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .frame(width: 56, alignment: .leading)
-                    Slider(value: $coverStrength, in: 0.0...1.0, step: 0.05)
+                    Slider(value: $coverStrength, in: 0.0 ... 1.0, step: 0.05)
                         .frame(maxWidth: 200)
-                        .help("Lower stays closer to the source recording; higher gives the model more freedom to reinterpret it.")
+                        .help(
+                            "Lower stays closer to the source recording; higher gives the model more freedom to reinterpret it."
+                        )
                     Text(String(format: "%.0f%%", coverStrength * 100))
                         .font(.caption.monospacedDigit())
                         .frame(width: 36, alignment: .trailing)
@@ -369,9 +385,9 @@ struct GenerateView: View {
                         let result = Result { try Self.copySourceAudioIntoAppContainer(from: url) }
                         Task { @MainActor in
                             switch result {
-                            case .success(let importedURL):
+                            case let .success(importedURL):
                                 setImportedSourceAudio(importedURL)
-                            case .failure(let error):
+                            case let .failure(error):
                                 sourceAudioImportError = error.localizedDescription
                             }
                         }
@@ -386,11 +402,11 @@ struct GenerateView: View {
             allowsMultipleSelection: false
         ) { result in
             switch result {
-            case .success(let urls):
+            case let .success(urls):
                 if let url = urls.first {
                     Task { await importSourceAudio(url) }
                 }
-            case .failure(let error):
+            case let .failure(error):
                 sourceAudioImportError = error.localizedDescription
             }
         }
@@ -428,7 +444,7 @@ struct GenerateView: View {
         try? FileManager.default.removeItem(at: url)
     }
 
-    nonisolated private static func copySourceAudioIntoAppContainer(from sourceURL: URL) throws -> URL {
+    private nonisolated static func copySourceAudioIntoAppContainer(from sourceURL: URL) throws -> URL {
         if isImportedSourceAudio(sourceURL) {
             return sourceURL
         }
@@ -452,11 +468,11 @@ struct GenerateView: View {
         return destinationURL
     }
 
-    nonisolated private static func sourceAudioImportsDirectory() throws -> URL {
+    private nonisolated static func sourceAudioImportsDirectory() throws -> URL {
         AppStorageLocations.sourceAudioImportsDirectory
     }
 
-    nonisolated private static func uniqueSourceAudioURL(for sourceURL: URL, in directory: URL) -> URL {
+    private nonisolated static func uniqueSourceAudioURL(for sourceURL: URL, in directory: URL) -> URL {
         let rawBaseName = sourceURL.deletingPathExtension().lastPathComponent
         let baseName = sanitizedFileComponent(rawBaseName, fallback: "source-audio")
         let rawExtension = sourceURL.pathExtension
@@ -465,7 +481,7 @@ struct GenerateView: View {
         return directory.appending(path: "\(baseName)-\(shortID).\(fileExtension)")
     }
 
-    nonisolated private static func sanitizedFileComponent(_ value: String, fallback: String) -> String {
+    private nonisolated static func sanitizedFileComponent(_ value: String, fallback: String) -> String {
         let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: " -_"))
         let scalars = value.unicodeScalars.map { scalar in
             allowed.contains(scalar) ? Character(scalar) : "-"
@@ -475,7 +491,7 @@ struct GenerateView: View {
         return sanitized.isEmpty ? fallback : sanitized
     }
 
-    nonisolated private static func isImportedSourceAudio(_ url: URL) -> Bool {
+    private nonisolated static func isImportedSourceAudio(_ url: URL) -> Bool {
         guard let importsDirectory = try? sourceAudioImportsDirectory() else {
             return false
         }
@@ -485,10 +501,10 @@ struct GenerateView: View {
 
     private var coverStrengthHint: String {
         switch coverStrength {
-        case ..<0.25: return "(closest to source)"
-        case ..<0.5:  return "(light reinterpret)"
-        case ..<0.75: return "(balanced)"
-        default:      return "(most creative)"
+        case ..<0.25: "(closest to source)"
+        case ..<0.5: "(light reinterpret)"
+        case ..<0.75: "(balanced)"
+        default: "(most creative)"
         }
     }
 
@@ -610,7 +626,7 @@ struct GenerateView: View {
                         persistedAdapterStrength = Double(stackManager.primaryStrength)
                     }
                 ),
-                in: Double(AdapterStrengthLimits.minimum)...Double(AdapterStrengthLimits.maximum),
+                in: Double(AdapterStrengthLimits.minimum) ... Double(AdapterStrengthLimits.maximum),
                 step: 0.10
             )
             .frame(maxWidth: 240)
@@ -708,7 +724,7 @@ struct GenerateView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .frame(width: 80, alignment: .leading)
-                    Slider(value: $shiftOverride, in: 0.5...10.0, step: 0.1)
+                    Slider(value: $shiftOverride, in: 0.5 ... 10.0, step: 0.1)
                         .frame(maxWidth: 220)
                     Text(String(format: "%.1f", shiftOverride))
                         .font(.caption.monospacedDigit())
@@ -761,9 +777,9 @@ struct GenerateView: View {
         switch generationService.state {
         case .idle, .complete, .cancelled:
             EmptyView()
-        case .downloadingModel(let progress):
+        case let .downloadingModel(progress):
             ProgressView("Downloading Sound FX model...", value: Double(progress), total: 1.0)
-        case .loadingWeights(let progress):
+        case let .loadingWeights(progress):
             ProgressView("Loading weights...", value: Double(progress), total: 1.0)
         case .conditioning:
             ProgressView("Encoding text and lyrics...")
@@ -774,7 +790,7 @@ struct GenerateView: View {
         case .lmAudioCodeConditioning:
             ProgressView("Conditioning audio codes...")
                 .progressViewStyle(.linear)
-        case .generating(let step, let total, _):
+        case let .generating(step, total, _):
             VStack(spacing: 4) {
                 ProgressView(value: Double(step), total: Double(total))
                 Text("Step \(step) / \(total)")
@@ -787,7 +803,7 @@ struct GenerateView: View {
         case .releasing:
             ProgressView("Releasing models from memory...")
                 .progressViewStyle(.linear)
-        case .error(let message):
+        case let .error(message):
             Label(message, systemImage: "exclamationmark.triangle")
                 .foregroundStyle(.red)
         }
@@ -809,9 +825,9 @@ struct GenerateView: View {
 
     private var shouldUseStableAudio: Bool {
         switch generationParameters.pipelineOverride {
-        case .aceStep: return false
-        case .stableAudio: return true
-        case .auto: return resolvedMode == .soundFX || resolvedMode == .ambient
+        case .aceStep: false
+        case .stableAudio: true
+        case .auto: resolvedMode == .soundFX || resolvedMode == .ambient
         }
     }
 
@@ -835,7 +851,7 @@ struct GenerateView: View {
     }
 
     private var estimatedTime: TimeInterval? {
-        if case .generating(_, _, let eta) = generationService.state, eta > 0 {
+        if case let .generating(_, _, eta) = generationService.state, eta > 0 {
             return eta
         }
         return nil
@@ -1006,12 +1022,10 @@ struct GenerateView: View {
         let name = presetName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return }
 
-        let resolvedModeForPreset: GenerationMode? = {
-            switch modeSelection {
-            case .auto: return nil
-            case .manual(let mode): return mode
-            }
-        }()
+        let resolvedModeForPreset: GenerationMode? = switch modeSelection {
+        case .auto: nil
+        case let .manual(mode): mode
+        }
 
         let preset = GenerationPreset(
             name: name,

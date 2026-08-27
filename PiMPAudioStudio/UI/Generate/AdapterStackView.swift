@@ -1,5 +1,5 @@
-import SwiftUI
 import PiMPAudioCore
+import SwiftUI
 
 /// Stacking controls for additional LoRA adapters in the generation view.
 /// Placed below the primary AdapterPicker.
@@ -29,7 +29,7 @@ struct AdapterStackView: View {
             }
 
             // Stacked adapter rows
-            ForEach(Array(stackManager.additionalAdapters.enumerated()), id: \.element.adapter.id) { idx, entry in
+            ForEach(Array(stackManager.additionalAdapters.enumerated()), id: \.element.adapter.id) { _, entry in
                 stackedAdapterRow(entry.adapter, strength: entry.strength)
             }
 
@@ -41,7 +41,9 @@ struct AdapterStackView: View {
                     .font(.caption)
             }
             .disabled(stackManager.isAtCapacity)
-            .help(stackManager.isAtCapacity ? "Maximum \(AdapterStackManager.maxStackSize) adapters active" : "Add another adapter to the stack")
+            .help(stackManager
+                .isAtCapacity ? "Maximum \(AdapterStackManager.maxStackSize) adapters active" :
+                "Add another adapter to the stack")
         }
         .sheet(isPresented: $showingAdapterPicker) {
             adapterPickerSheet
@@ -79,7 +81,7 @@ struct AdapterStackView: View {
                         get: { strength },
                         set: { stackManager.setStrength(adapterID: adapter.id, strength: $0) }
                     ),
-                    in: AdapterStrengthLimits.minimum...AdapterStrengthLimits.maximum,
+                    in: AdapterStrengthLimits.minimum ... AdapterStrengthLimits.maximum,
                     step: 0.10
                 )
                 .help("1.0x is normal strength. Higher values boost weak adapters at generation time.")

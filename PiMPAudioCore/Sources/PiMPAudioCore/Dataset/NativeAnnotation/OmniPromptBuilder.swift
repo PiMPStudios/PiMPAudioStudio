@@ -9,12 +9,12 @@ public enum OmniAnnotationTask: String, Codable, Sendable {
     public var prompt: String {
         switch self {
         case .caption:
-            return "*Task* Describe this audio in detail"
+            "*Task* Describe this audio in detail"
         case .transcribe:
-            return """
-                *Task* Transcribe this audio in detail. Use section tags like \
-                [Verse], [Chorus], [Intro] etc. Output the structured lyrics.
-                """
+            """
+            *Task* Transcribe this audio in detail. Use section tags like \
+            [Verse], [Chorus], [Intro] etc. Output the structured lyrics.
+            """
         }
     }
 }
@@ -37,7 +37,7 @@ public struct OmniPreparedPrompt: Sendable {
     public var expandedTokenIDs: [Int] {
         var result = tokenIDs
         result.replaceSubrange(
-            audioPlaceholderIndex...audioPlaceholderIndex,
+            audioPlaceholderIndex ... audioPlaceholderIndex,
             with: repeatElement(
                 OmniPromptBuilder.extendedAudioTokenSeed,
                 count: audioEmbeddingCount
@@ -91,11 +91,11 @@ public struct OmniPreparedPrompt: Sendable {
         else {
             throw OmniPromptBuilderError.missingAudioPlaceholder
         }
-        guard expandedTokenIDs[start...end].allSatisfy({ $0 >= threshold }) else {
+        guard expandedTokenIDs[start ... end].allSatisfy({ $0 >= threshold }) else {
             throw OmniPromptBuilderError.nonContiguousAudioSpan
         }
         var collapsed = expandedTokenIDs
-        collapsed.replaceSubrange(start...end, with: [151_646])
+        collapsed.replaceSubrange(start ... end, with: [151_646])
         return Self(
             tokenIDs: collapsed,
             audioPlaceholderIndex: start,
@@ -111,7 +111,7 @@ public final class OmniPromptBuilder: @unchecked Sendable {
     public static let extendedAudioTokenSeed = 5_000_000
     public static let systemPrompt =
         "You are Qwen, a virtual human developed by the Qwen Team, Alibaba Group, "
-        + "capable of perceiving auditory and visual inputs, as well as generating text and speech."
+            + "capable of perceiving auditory and visual inputs, as well as generating text and speech."
 
     public let tokenizer: any Tokenizer
     public let specialTokens: OmniSpecialTokenConfiguration
@@ -196,15 +196,15 @@ public enum OmniPromptBuilderError: LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .emptyAudioEmbeddings:
-            return "The audio tower produced no embeddings."
+            "The audio tower produced no embeddings."
         case .missingAudioPlaceholder:
-            return "The token sequence does not contain an extended audio span."
-        case .audioPlaceholderCount(let count):
-            return "The prompt contains \(count) audio placeholders; expected exactly one."
+            "The token sequence does not contain an extended audio span."
+        case let .audioPlaceholderCount(count):
+            "The prompt contains \(count) audio placeholders; expected exactly one."
         case .nonContiguousAudioSpan:
-            return "The extended audio tokens are not one contiguous prompt span."
-        case .audioEmbeddingShape(let expected, let actual):
-            return "Audio embedding shape \(actual) does not match \(expected)."
+            "The extended audio tokens are not one contiguous prompt span."
+        case let .audioEmbeddingShape(expected, actual):
+            "Audio embedding shape \(actual) does not match \(expected)."
         }
     }
 }

@@ -8,7 +8,7 @@ public actor WeightConverter {
 
     public func makeProgressStream() -> AsyncStream<ConversionProgress> {
         let (stream, continuation) = AsyncStream<ConversionProgress>.makeStream()
-        self.progressContinuation = continuation
+        progressContinuation = continuation
         return stream
     }
 
@@ -20,7 +20,7 @@ public actor WeightConverter {
     public func loadSafetensors(from urls: [URL]) throws -> [(String, MLXArray)] {
         var result: [(String, MLXArray)] = []
         for url in urls.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
-            result.append(contentsOf: try loadSafetensors(from: url))
+            try result.append(contentsOf: loadSafetensors(from: url))
         }
         return result.sorted { $0.0 < $1.0 }
     }
@@ -60,7 +60,9 @@ public actor WeightConverter {
                     throw NSError(
                         domain: "WeightConverter",
                         code: 1,
-                        userInfo: [NSLocalizedDescriptionKey: "Sharded checkpoint claims \(key) is in \(shard) but the file does not contain it"]
+                        userInfo: [
+                            NSLocalizedDescriptionKey: "Sharded checkpoint claims \(key) is in \(shard) but the file does not contain it",
+                        ]
                     )
                 }
                 merged[key] = arr
@@ -79,11 +81,15 @@ public actor WeightConverter {
         let total = stateDict.count
 
         let dict = Dictionary(stateDict, uniquingKeysWith: { first, _ in first })
-        let allKeys = stateDict.map { $0.0 }.sorted()
+        let allKeys = stateDict.map(\.0).sorted()
 
         for (idx, key) in allKeys.enumerated() {
-            if idx % 50 == 0 { try Task.checkCancellation() }
-            if processed.contains(key) { continue }
+            if idx % 50 == 0 {
+                try Task.checkCancellation()
+            }
+            if processed.contains(key) {
+                continue
+            }
 
             progressContinuation?.yield(ConversionProgress(
                 current: idx, total: total, currentTensorName: key
@@ -110,7 +116,9 @@ public actor WeightConverter {
                 continue
             }
 
-            if VAENameMap.isWeightNormV(key) { continue }
+            if VAENameMap.isWeightNormV(key) {
+                continue
+            }
 
             guard let value = dict[key] else { continue }
 
@@ -134,7 +142,9 @@ public actor WeightConverter {
         let total = stateDict.count
 
         for (idx, (key, value)) in stateDict.enumerated() {
-            if idx % 50 == 0 { try Task.checkCancellation() }
+            if idx % 50 == 0 {
+                try Task.checkCancellation()
+            }
             progressContinuation?.yield(ConversionProgress(
                 current: idx, total: total, currentTensorName: key
             ))
@@ -147,9 +157,9 @@ public actor WeightConverter {
             // layers named `proj_in`/`proj_out` (2-D weights) inside encoder blocks.
             // Apply the conv axis remap only when the tensor is actually 3-D — pass
             // 2-D Linear weights through unchanged.
-            if TensorNameMap.isDiTConv1dWeight(mappedKey) && value.ndim == 3 {
+            if TensorNameMap.isDiTConv1dWeight(mappedKey), value.ndim == 3 {
                 result.append((mappedKey, TensorNameMap.conv1dToMLX(value)))
-            } else if TensorNameMap.isDiTConvTransposeWeight(mappedKey) && value.ndim == 3 {
+            } else if TensorNameMap.isDiTConvTransposeWeight(mappedKey), value.ndim == 3 {
                 result.append((mappedKey, TensorNameMap.convTranspose1dToMLX(value)))
             } else {
                 result.append((mappedKey, value))
@@ -259,10 +269,10 @@ public actor WeightConverter {
                 // Transpose only if in PyTorch [out, in, kernel=1] format.
                 // Shape [64, 64, 1]: last dim == 1, middle dim != 1 → needs transpose.
                 // Shape [64, 1, 64]: middle dim == 1 → already MLX format, skip.
-                if value.ndim == 3 && value.shape[2] == 1 && value.shape[1] != 1 {
+                if value.ndim == 3, value.shape[2] == 1, value.shape[1] != 1 {
                     return (mapped, SFXDiTNameMap.conv1dToMLX(value))
                 }
-                return (mapped, value)  // already [out, kernel, in]
+                return (mapped, value) // already [out, kernel, in]
             }
             return (mapped, value)
         }

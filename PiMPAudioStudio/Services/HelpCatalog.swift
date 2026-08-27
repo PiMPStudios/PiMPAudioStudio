@@ -6,7 +6,10 @@ import Foundation
 /// Docs** build phase copies pages into the app bundle on every build.
 struct HelpPage: Identifiable, Hashable, Sendable {
     /// File stem, e.g. `getting-started`.
-    var id: String { fileName }
+    var id: String {
+        fileName
+    }
+
     /// Display title for the TOC.
     let title: String
     /// Bundled file name including `.md`.
@@ -42,15 +45,15 @@ enum HelpCatalog {
         }
 
         #if DEBUG
-        // Fallback when running from Xcode before the Help folder is copied into the bundle.
-        let source = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent() // Services
-            .deletingLastPathComponent() // PiMPAudioStudio
-            .deletingLastPathComponent() // repo root
-            .appendingPathComponent("docs/user", isDirectory: true)
-        if FileManager.default.fileExists(atPath: source.path(percentEncoded: false)) {
-            return source
-        }
+            // Fallback when running from Xcode before the Help folder is copied into the bundle.
+            let source = URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent() // Services
+                .deletingLastPathComponent() // PiMPAudioStudio
+                .deletingLastPathComponent() // repo root
+                .appendingPathComponent("docs/user", isDirectory: true)
+            if FileManager.default.fileExists(atPath: source.path(percentEncoded: false)) {
+                return source
+            }
         #endif
 
         return nil
@@ -116,7 +119,9 @@ enum HelpCatalog {
             let title = String(markdown[titleRange])
             let file = String(markdown[fileRange])
             // Skip self-references that aren't content pages.
-            if file == "README.md" { return nil }
+            if file == "README.md" {
+                return nil
+            }
             return (title, file)
         }
     }

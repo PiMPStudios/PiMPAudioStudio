@@ -1,5 +1,5 @@
-import SwiftUI
 import PiMPAudioCore
+import SwiftUI
 
 struct ModelsSettingsView: View {
     @EnvironmentObject private var appState: AppState
@@ -57,7 +57,11 @@ struct ModelsSettingsView: View {
             "Delete model files?",
             isPresented: Binding(
                 get: { showDeleteConfirmation != nil },
-                set: { if !$0 { showDeleteConfirmation = nil } }
+                set: {
+                    if !$0 {
+                        showDeleteConfirmation = nil
+                    }
+                }
             )
         ) {
             if let id = showDeleteConfirmation {
@@ -72,7 +76,11 @@ struct ModelsSettingsView: View {
             "Remove model?",
             isPresented: Binding(
                 get: { showRemoveConfirmation != nil },
-                set: { if !$0 { showRemoveConfirmation = nil } }
+                set: {
+                    if !$0 {
+                        showRemoveConfirmation = nil
+                    }
+                }
             )
         ) {
             if let id = showRemoveConfirmation {
@@ -104,9 +112,13 @@ struct ModelsSettingsView: View {
         }
         .alert("Error", isPresented: Binding(
             get: { errorMessage != nil },
-            set: { if !$0 { errorMessage = nil } }
+            set: {
+                if !$0 {
+                    errorMessage = nil
+                }
+            }
         )) {
-            Button("OK", role: .cancel) { }
+            Button("OK", role: .cancel) {}
         } message: {
             if let msg = errorMessage {
                 Text(msg)
@@ -164,9 +176,11 @@ struct ModelsSettingsView: View {
                 Text("Shared Components")
                     .font(.headline)
                     .padding(.top, 6)
-                Text("Required once for every ACE-Step music tier. This is the 48 kHz VAE decoder plus Qwen text encoder/tokenizer, not a separate quality choice.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Text(
+                    "Required once for every ACE-Step music tier. This is the 48 kHz VAE decoder plus Qwen text encoder/tokenizer, not a separate quality choice."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
             ForEach(vaeSpecs, id: \.id) { spec in
                 modelRow(for: spec)
@@ -190,20 +204,20 @@ struct ModelsSettingsView: View {
 
     private func familyDisplayName(_ family: String) -> String {
         switch family {
-        case "ace-step-1.5": return "ACE-Step v1.5"
-        case "ace-step-1.5-xl": return "ACE-Step v1.5 XL"
-        case "ungrouped":    return ""
-        default:             return family.replacingOccurrences(of: "-", with: " ").capitalized
+        case "ace-step-1.5": "ACE-Step v1.5"
+        case "ace-step-1.5-xl": "ACE-Step v1.5 XL"
+        case "ungrouped": ""
+        default: family.replacingOccurrences(of: "-", with: " ").capitalized
         }
     }
 
     private func familySort(_ lhs: String, _ rhs: String) -> Bool {
         func rank(_ family: String) -> Int {
             switch family {
-            case "ace-step-1.5": return 0
-            case "ace-step-1.5-xl": return 1
-            case "ungrouped": return 99
-            default: return 50
+            case "ace-step-1.5": 0
+            case "ace-step-1.5-xl": 1
+            case "ungrouped": 99
+            default: 50
             }
         }
 
@@ -225,9 +239,15 @@ struct ModelsSettingsView: View {
     }
 
     private func modelTierRank(_ id: String) -> Int {
-        if id.contains("turbo") { return 0 }
-        if id.contains("base") { return 1 }
-        if id.contains("sft") { return 2 }
+        if id.contains("turbo") {
+            return 0
+        }
+        if id.contains("base") {
+            return 1
+        }
+        if id.contains("sft") {
+            return 2
+        }
         return 50
     }
 
@@ -266,14 +286,14 @@ struct ModelsSettingsView: View {
                 Link(
                     "Captioner",
                     destination:
-                        NativeModelPackCatalog.captioner.modelPageURL
+                    NativeModelPackCatalog.captioner.modelPageURL
                 )
                 Text("·")
                     .foregroundStyle(.secondary)
                 Link(
                     "Transcriber",
                     destination:
-                        NativeModelPackCatalog.transcriber.modelPageURL
+                    NativeModelPackCatalog.transcriber.modelPageURL
                 )
             }
             .font(.caption2)
@@ -411,8 +431,8 @@ struct ModelsSettingsView: View {
         }
         .help(progress.currentFile ?? nativePackProgressLabel(progress))
 
-        if progress.stage != .installing
-            && progress.stage != .complete {
+        if progress.stage != .installing,
+           progress.stage != .complete {
             Button {
                 cancelNativeAnnotationPackDownload(task: task)
             } label: {
@@ -429,15 +449,15 @@ struct ModelsSettingsView: View {
     ) -> String {
         switch progress.stage {
         case .preparing:
-            return "Preparing…"
+            "Preparing…"
         case .downloading:
-            return "Downloading \(Int(progress.fractionCompleted * 100))%"
+            "Downloading \(Int(progress.fractionCompleted * 100))%"
         case .verifying:
-            return "Verifying…"
+            "Verifying…"
         case .installing:
-            return "Installing…"
+            "Installing…"
         case .complete:
-            return "Installed"
+            "Installed"
         }
     }
 
@@ -451,9 +471,11 @@ struct ModelsSettingsView: View {
     private var aceStepLMSection: some View {
         Section {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Used for cover-song generation (audio→audio). Pick one variant — bigger is higher quality but slower.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Text(
+                    "Used for cover-song generation (audio→audio). Pick one variant — bigger is higher quality but slower."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
 
             ForEach(aceStepLMSpecs.sorted(by: { $0.id < $1.id })) { spec in
@@ -548,11 +570,11 @@ struct ModelsSettingsView: View {
     ) -> String {
         switch tier {
         case .unsupported:
-            return "Native ACE not recommended"
+            "Native ACE not recommended"
         case .provisional:
-            return "Native ACE provisional"
+            "Native ACE provisional"
         case .recommended:
-            return "Native ACE supported"
+            "Native ACE supported"
         }
     }
 
@@ -561,11 +583,11 @@ struct ModelsSettingsView: View {
     ) -> String {
         switch tier {
         case .unsupported:
-            return "exclamationmark.triangle"
+            "exclamationmark.triangle"
         case .provisional:
-            return "memorychip"
+            "memorychip"
         case .recommended:
-            return "checkmark.circle"
+            "checkmark.circle"
         }
     }
 
@@ -647,11 +669,11 @@ struct ModelsSettingsView: View {
             let currentRank = nativePackStageRank(current.stage)
             let newRank = nativePackStageRank(progress.stage)
             guard newRank > currentRank
-                    || (
-                        newRank == currentRank
-                            && progress.fractionCompleted
-                                >= current.fractionCompleted
-                    )
+                || (
+                    newRank == currentRank
+                        && progress.fractionCompleted
+                        >= current.fractionCompleted
+                )
             else {
                 return
             }
@@ -663,11 +685,11 @@ struct ModelsSettingsView: View {
         _ stage: NativeModelPackInstallStage
     ) -> Int {
         switch stage {
-        case .preparing: return 0
-        case .downloading: return 1
-        case .verifying: return 2
-        case .installing: return 3
-        case .complete: return 4
+        case .preparing: 0
+        case .downloading: 1
+        case .verifying: 2
+        case .installing: 3
+        case .complete: 4
         }
     }
 
@@ -716,7 +738,7 @@ struct ModelsSettingsView: View {
                         switch statuses[spec.id] {
                         case .ready, .failed:
                             return
-                        case .downloading(let current) where progress < current:
+                        case let .downloading(current) where progress < current:
                             return
                         default:
                             statuses[spec.id] = .downloading(progress: progress)
@@ -821,32 +843,36 @@ private struct ModelRow: View {
     }
 
     private var qualityLabel: String? {
-        if !spec.isRunnable { return "Download only" }
+        if !spec.isRunnable {
+            return "Download only"
+        }
         switch spec.id {
         case "ace-step-dit-turbo": return "Good / fastest"
-        case "ace-step-dit-base":  return "Better"
-        case "ace-step-dit-sft":   return "Best"
+        case "ace-step-dit-base": return "Better"
+        case "ace-step-dit-sft": return "Best"
         case "ace-step-dit-xl-turbo": return "XL / fastest"
-        case "ace-step-dit-xl-base":  return "XL / base"
-        case "ace-step-dit-xl-sft":   return "XL / best"
-        case "ace-step-vae":       return "Shared"
+        case "ace-step-dit-xl-base": return "XL / base"
+        case "ace-step-dit-xl-sft": return "XL / best"
+        case "ace-step-vae": return "Shared"
         case let id where id.contains("xl"): return "XL / experimental"
-        default:                   return nil
+        default: return nil
         }
     }
 
     private var qualityColor: Color {
-        if !spec.isRunnable { return .orange }
+        if !spec.isRunnable {
+            return .orange
+        }
         switch spec.id {
         case "ace-step-dit-turbo": return .blue
-        case "ace-step-dit-base":  return .orange
-        case "ace-step-dit-sft":   return .purple
+        case "ace-step-dit-base": return .orange
+        case "ace-step-dit-sft": return .purple
         case "ace-step-dit-xl-turbo": return .blue
-        case "ace-step-dit-xl-base":  return .orange
-        case "ace-step-dit-xl-sft":   return .purple
-        case "ace-step-vae":       return .secondary
+        case "ace-step-dit-xl-base": return .orange
+        case "ace-step-dit-xl-sft": return .purple
+        case "ace-step-vae": return .secondary
         case let id where id.contains("xl"): return .purple
-        default:                   return .secondary
+        default: return .secondary
         }
     }
 
@@ -893,7 +919,7 @@ private struct ModelRow: View {
                 .padding(.vertical, 2)
                 .background(.secondary.opacity(0.15), in: Capsule())
                 .foregroundStyle(.secondary)
-        case .downloading(let progress):
+        case let .downloading(progress):
             HStack(spacing: 4) {
                 ProgressView(value: progress)
                     .frame(width: 40)
@@ -905,7 +931,7 @@ private struct ModelRow: View {
             Text("Verifying...")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
-        case .failed(let message):
+        case let .failed(message):
             Text(message)
                 .font(.caption2)
                 .foregroundStyle(.red)
@@ -918,7 +944,7 @@ private struct ModelRow: View {
         switch status {
         case .ready:
             HStack(spacing: 4) {
-                if !isActive && spec.isRunnable {
+                if !isActive, spec.isRunnable {
                     Button("Set Active") { onSetActive() }
                         .controlSize(.small)
                 }

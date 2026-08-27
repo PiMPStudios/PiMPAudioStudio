@@ -280,20 +280,20 @@ public enum LoKRInjector {
 
     private static func resolveAttentionProj(_ attn: DiTAttention, proj: String) -> Linear? {
         switch proj {
-        case "qProj": return attn.qProj
-        case "kProj": return attn.kProj
-        case "vProj": return attn.vProj
-        case "oProj": return attn.oProj
-        default: return nil
+        case "qProj": attn.qProj
+        case "kProj": attn.kProj
+        case "vProj": attn.vProj
+        case "oProj": attn.oProj
+        default: nil
         }
     }
 
     private static func resolveMLPProj(_ mlp: SwiGLUMLP, proj: String) -> Linear? {
         switch proj {
-        case "gateProj": return mlp.gateProj
-        case "upProj": return mlp.upProj
-        case "downProj": return mlp.downProj
-        default: return nil
+        case "gateProj": mlp.gateProj
+        case "upProj": mlp.upProj
+        case "downProj": mlp.downProj
+        default: nil
         }
     }
 

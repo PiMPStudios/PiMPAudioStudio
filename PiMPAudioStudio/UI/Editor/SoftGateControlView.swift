@@ -26,31 +26,33 @@ struct SoftGateControlView: View {
                 title: "Ratio",
                 valueText: String(format: "%.1f:1", parameters.ratio),
                 value: $parameters.ratio,
-                range: 1.5...6
+                range: 1.5 ... 6
             )
             labeledSlider(
                 title: "Attack",
                 valueText: String(format: "%.0f ms", parameters.attackMilliseconds),
                 value: $parameters.attackMilliseconds,
-                range: 1...40
+                range: 1 ... 40
             )
             labeledSlider(
                 title: "Release",
                 valueText: String(format: "%.0f ms", parameters.releaseMilliseconds),
                 value: $parameters.releaseMilliseconds,
-                range: 20...300
+                range: 20 ... 300
             )
             labeledSlider(
                 title: "Max range",
                 valueText: String(format: "%.0f dB", parameters.rangeDB),
                 value: $parameters.rangeDB,
-                range: 3...24
+                range: 3 ... 24
             )
 
-            Text("Light downward expansion of the noise floor. Easy to thin a full mix — keep threshold low and range modest. Prefer Trim Silence for dead air at the edges.")
-                .font(.system(size: 10))
-                .foregroundStyle(.tertiary)
-                .fixedSize(horizontal: false, vertical: true)
+            Text(
+                "Light downward expansion of the noise floor. Easy to thin a full mix — keep threshold low and range modest. Prefer Trim Silence for dead air at the edges."
+            )
+            .font(.system(size: 10))
+            .foregroundStyle(.tertiary)
+            .fixedSize(horizontal: false, vertical: true)
         }
     }
 

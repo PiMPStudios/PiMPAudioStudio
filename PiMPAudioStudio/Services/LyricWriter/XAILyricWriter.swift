@@ -8,7 +8,7 @@ struct XAILyricWriter: LyricWriter {
     private let writer: OpenAILyricWriter
 
     init(apiKey: String) {
-        self.writer = OpenAILyricWriter(
+        writer = OpenAILyricWriter(
             apiKey: apiKey,
             baseURL: "https://api.x.ai/v1",
             model: "grok-3-mini-fast",

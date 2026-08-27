@@ -59,8 +59,8 @@ public final class OmniKVCache {
         }
 
         offset += newTokenCount
-        keys?[.ellipsis, previous..<offset, 0...] = newKeys
-        values?[.ellipsis, previous..<offset, 0...] = newValues
+        keys?[.ellipsis, previous ..< offset, 0...] = newKeys
+        values?[.ellipsis, previous ..< offset, 0...] = newValues
 
         guard let keys, let values else {
             return (newKeys, newValues)
@@ -91,28 +91,28 @@ public final class OmniQwen2Attention: Module {
 
     public init(configuration: OmniTextConfiguration) {
         self.configuration = configuration
-        self.scale = pow(Float(configuration.headDimension), -0.5)
-        self._queryProjection.wrappedValue = Linear(
+        scale = pow(Float(configuration.headDimension), -0.5)
+        _queryProjection.wrappedValue = Linear(
             configuration.hiddenSize,
             configuration.attentionHeads * configuration.headDimension,
             bias: true
         )
-        self._keyProjection.wrappedValue = Linear(
+        _keyProjection.wrappedValue = Linear(
             configuration.hiddenSize,
             configuration.keyValueHeads * configuration.headDimension,
             bias: true
         )
-        self._valueProjection.wrappedValue = Linear(
+        _valueProjection.wrappedValue = Linear(
             configuration.hiddenSize,
             configuration.keyValueHeads * configuration.headDimension,
             bias: true
         )
-        self._outputProjection.wrappedValue = Linear(
+        _outputProjection.wrappedValue = Linear(
             configuration.attentionHeads * configuration.headDimension,
             configuration.hiddenSize,
             bias: false
         )
-        self.rope = RoPE(
+        rope = RoPE(
             dimensions: configuration.headDimension,
             traditional: configuration.ropeTraditional,
             base: configuration.ropeTheta
@@ -163,11 +163,10 @@ public final class OmniQwen2Attention: Module {
             keys = rope(keys)
         }
 
-        let updated: (MLXArray, MLXArray)
-        if let cache {
-            updated = cache.update(keys: keys, values: values)
+        let updated: (MLXArray, MLXArray) = if let cache {
+            cache.update(keys: keys, values: values)
         } else {
-            updated = (keys, values)
+            (keys, values)
         }
         let attended = MLXFast.scaledDotProductAttention(
             queries: queries,
@@ -192,17 +191,17 @@ public final class OmniQwen2MLP: Module {
     @ModuleInfo(key: "down_proj") public var downProjection: Linear
 
     public init(configuration: OmniTextConfiguration) {
-        self._gateProjection.wrappedValue = Linear(
+        _gateProjection.wrappedValue = Linear(
             configuration.hiddenSize,
             configuration.intermediateSize,
             bias: false
         )
-        self._upProjection.wrappedValue = Linear(
+        _upProjection.wrappedValue = Linear(
             configuration.hiddenSize,
             configuration.intermediateSize,
             bias: false
         )
-        self._downProjection.wrappedValue = Linear(
+        _downProjection.wrappedValue = Linear(
             configuration.intermediateSize,
             configuration.hiddenSize,
             bias: false
@@ -222,15 +221,15 @@ public final class OmniQwen2TransformerBlock: Module {
     public var postAttentionLayerNorm: RMSNorm
 
     public init(configuration: OmniTextConfiguration) {
-        self._attention.wrappedValue = OmniQwen2Attention(
+        _attention.wrappedValue = OmniQwen2Attention(
             configuration: configuration
         )
-        self.mlp = OmniQwen2MLP(configuration: configuration)
-        self._inputLayerNorm.wrappedValue = RMSNorm(
+        mlp = OmniQwen2MLP(configuration: configuration)
+        _inputLayerNorm.wrappedValue = RMSNorm(
             dimensions: configuration.hiddenSize,
             eps: configuration.rmsNormEpsilon
         )
-        self._postAttentionLayerNorm.wrappedValue = RMSNorm(
+        _postAttentionLayerNorm.wrappedValue = RMSNorm(
             dimensions: configuration.hiddenSize,
             eps: configuration.rmsNormEpsilon
         )
@@ -259,14 +258,14 @@ public final class OmniQwen2DecoderModel: Module {
 
     public init(configuration: OmniTextConfiguration) {
         self.configuration = configuration
-        self._embedTokens.wrappedValue = Embedding(
+        _embedTokens.wrappedValue = Embedding(
             embeddingCount: configuration.vocabularySize,
             dimensions: configuration.hiddenSize
         )
-        self.layers = (0..<configuration.hiddenLayers).map { _ in
+        layers = (0 ..< configuration.hiddenLayers).map { _ in
             OmniQwen2TransformerBlock(configuration: configuration)
         }
-        self.norm = RMSNorm(
+        norm = RMSNorm(
             dimensions: configuration.hiddenSize,
             eps: configuration.rmsNormEpsilon
         )
@@ -304,10 +303,10 @@ public final class OmniQwen2DecoderModel: Module {
             return .causal
         }
         var right = MLXArray(
-            Int32(0)..<Int32(cacheOffset + sequenceLength)
+            Int32(0) ..< Int32(cacheOffset + sequenceLength)
         )
         var left = MLXArray(
-            Int32(cacheOffset)..<Int32(cacheOffset + sequenceLength)
+            Int32(cacheOffset) ..< Int32(cacheOffset + sequenceLength)
         )
         left = left[0..., .newAxis]
         right = right[.newAxis]
@@ -322,11 +321,11 @@ public final class OmniQwen2ForCausalLM: Module {
 
     public init(configuration: OmniTextConfiguration) {
         self.configuration = configuration
-        self.model = OmniQwen2DecoderModel(configuration: configuration)
+        model = OmniQwen2DecoderModel(configuration: configuration)
         if configuration.tieWordEmbeddings {
-            self._languageModelHead.wrappedValue = nil
+            _languageModelHead.wrappedValue = nil
         } else {
-            self._languageModelHead.wrappedValue = Linear(
+            _languageModelHead.wrappedValue = Linear(
                 configuration.hiddenSize,
                 configuration.vocabularySize,
                 bias: false
@@ -335,7 +334,7 @@ public final class OmniQwen2ForCausalLM: Module {
     }
 
     public func newCache(allocationStep: Int = 256) -> [OmniKVCache] {
-        (0..<configuration.hiddenLayers).map { _ in
+        (0 ..< configuration.hiddenLayers).map { _ in
             OmniKVCache(allocationStep: allocationStep)
         }
     }

@@ -1,6 +1,6 @@
 import Foundation
-import PiMPAudioCore
 import MLX
+import PiMPAudioCore
 
 // MARK: - LLMModelSpec
 
@@ -27,7 +27,6 @@ enum LLMDownloadState: Equatable, Sendable {
 /// Manages downloading, deleting, and activating local LLM models.
 @MainActor
 final class LLMModelManager: ObservableObject {
-
     // MARK: Published State
 
     @Published var availableModels: [LLMModelSpec]
@@ -70,12 +69,12 @@ final class LLMModelManager: ObservableObject {
     init() {
         // Always present the fixed supported catalog. Older custom-repo entries
         // are dropped so the UI never implies arbitrary HF packs work.
-        self.availableModels = Self.defaultModels
+        availableModels = Self.defaultModels
         persistModels()
 
         // Load persisted active model selection if it is still a stock model.
         if let activeID = UserDefaults.standard.string(forKey: activeModelKey) {
-            self.activeModel = availableModels.first { $0.id == activeID }
+            activeModel = availableModels.first { $0.id == activeID }
         }
 
         // Drop the persisted active selection if its files aren't actually on
@@ -83,7 +82,7 @@ final class LLMModelManager: ObservableObject {
         // re-download is in flight or after the model was partially deleted.
         // The user can reactivate after the download completes.
         if let active = activeModel, !isModelDownloaded(active) {
-            self.activeModel = nil
+            activeModel = nil
             UserDefaults.standard.removeObject(forKey: activeModelKey)
         }
 
@@ -92,14 +91,14 @@ final class LLMModelManager: ObservableObject {
         // Write Lyrics should work after that without a separate Activate click.
         if activeModel == nil,
            let downloadedDefault = availableModels.first(where: { $0.isDefault && isModelDownloaded($0) }) {
-            self.activeModel = downloadedDefault
+            activeModel = downloadedDefault
             UserDefaults.standard.set(downloadedDefault.id, forKey: activeModelKey)
         }
 
         // Create actor if active model is already downloaded
         if let active = activeModel, isModelDownloaded(active) {
             let path = modelsDirectory.appendingPathComponent(active.id)
-            self.llmActor = LLMActor(modelPath: path)
+            llmActor = LLMActor(modelPath: path)
         }
     }
 
@@ -130,7 +129,9 @@ final class LLMModelManager: ObservableObject {
             let (data, response) = try await session.data(from: url)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
                 // tokenizer_config.json is optional for some models
-                if filename == "tokenizer_config.json" { continue }
+                if filename == "tokenizer_config.json" {
+                    continue
+                }
                 let msg = "Failed to download \(filename)"
                 downloadState = .error(msg)
                 throw LLMError.missingFile(filename)
@@ -219,7 +220,8 @@ final class LLMModelManager: ObservableObject {
         let dir = modelsDirectory.appendingPathComponent(spec.id)
         let fm = FileManager.default
         let hasConfig = fm.fileExists(atPath: dir.appendingPathComponent("config.json").path(percentEncoded: false))
-        let hasTokenizer = fm.fileExists(atPath: dir.appendingPathComponent("tokenizer.json").path(percentEncoded: false))
+        let hasTokenizer = fm
+            .fileExists(atPath: dir.appendingPathComponent("tokenizer.json").path(percentEncoded: false))
         guard hasConfig, hasTokenizer else { return false }
 
         // Look for any *.safetensors file in the model dir. Single-file models

@@ -1,13 +1,12 @@
-import Testing
 import MLX
 import MLXRandom
 @testable import PiMPAudioCore
+import Testing
 
 // MARK: - LatentBlender Tests
 
 @Suite("LatentBlender")
 struct LatentBlenderTests {
-
     // Common shapes matching ACE-Step defaults
     let T = 10
     let D = 64
@@ -59,7 +58,9 @@ struct LatentBlenderTests {
         let latents = MLXRandom.normal([1, 10, 64], key: MLXRandom.key(99))
         // Mask only the first 5 frames; last 5 are unmasked (0)
         var maskData = [Float](repeating: 0.0, count: 10)
-        for i in 0..<5 { maskData[i] = 1.0 }
+        for i in 0 ..< 5 {
+            maskData[i] = 1.0
+        }
         let mask = MLXArray(maskData, [1, 10, 1])
         eval(latents, mask)
 
@@ -100,7 +101,7 @@ struct LatentBlenderTests {
         let flat = output.reshaped([-1]).asArray(Float.self)
 
         // First 2 frames (masked) → denoised value 2.0
-        let maskedValues = Array(flat[0..<(2 * 8)])
+        let maskedValues = Array(flat[0 ..< (2 * 8)])
         #expect(maskedValues.allSatisfy { abs($0 - 2.0) < 1e-6 })
 
         // Last 2 frames (unmasked) → original value 1.0

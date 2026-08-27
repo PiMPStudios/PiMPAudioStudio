@@ -1,5 +1,5 @@
-import Foundation
 import Darwin
+import Foundation
 import MCP
 import OSLog
 
@@ -12,13 +12,13 @@ enum PiMPAudioMCPServerState: Equatable {
     var label: String {
         switch self {
         case .stopped:
-            return "Stopped"
+            "Stopped"
         case .starting:
-            return "Starting"
+            "Starting"
         case .running:
-            return "Running"
+            "Running"
         case .failed:
-            return "Failed"
+            "Failed"
         }
     }
 }
@@ -27,27 +27,31 @@ enum MCPBindAddress: String, CaseIterable, Identifiable, Sendable {
     case loopback = "127.0.0.1"
     case allInterfaces = "0.0.0.0"
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     var title: String {
         switch self {
         case .loopback:
-            return "Localhost (127.0.0.1)"
+            "Localhost (127.0.0.1)"
         case .allInterfaces:
-            return "All interfaces (0.0.0.0)"
+            "All interfaces (0.0.0.0)"
         }
     }
 
     var detail: String {
         switch self {
         case .loopback:
-            return "Only this Mac can connect."
+            "Only this Mac can connect."
         case .allInterfaces:
-            return "Other machines on your network can connect. Use a bearer token."
+            "Other machines on your network can connect. Use a bearer token."
         }
     }
 
-    var isLoopbackOnly: Bool { self == .loopback }
+    var isLoopbackOnly: Bool {
+        self == .loopback
+    }
 }
 
 enum MCPConfirmationDecision: Equatable {
@@ -83,8 +87,8 @@ final class PiMPAudioMCPServer: ObservableObject {
     private static let bindAddressKey = AppRuntimeIdentity.defaultsKey("mcp.bindAddress")
     private static let portKey = AppRuntimeIdentity.defaultsKey("mcp.port")
     static let defaultPort: UInt16 = 38765
-    static let minimumPort: UInt16 = 1_024
-    static let maximumPort: UInt16 = 65_535
+    static let minimumPort: UInt16 = 1024
+    static let maximumPort: UInt16 = 65535
 
     @Published private(set) var isEnabled: Bool
     @Published private(set) var isTokenRequired: Bool
@@ -125,10 +129,10 @@ final class PiMPAudioMCPServer: ObservableObject {
     init(facade: PiMPAudioCommandFacade) {
         self.facade = facade
         let defaults = UserDefaults.standard
-        self.isEnabled = defaults.bool(forKey: Self.enabledKey)
+        isEnabled = defaults.bool(forKey: Self.enabledKey)
         let bindAddress = Self.loadBindAddress(from: defaults)
         self.bindAddress = bindAddress
-        self.port = Self.loadPort(from: defaults)
+        port = Self.loadPort(from: defaults)
         let requestedToken = defaults.bool(forKey: Self.tokenRequiredKey)
         let isTokenRequired = Self.tokenIsRequired(
             requested: requestedToken,
@@ -147,12 +151,12 @@ final class PiMPAudioMCPServer: ObservableObject {
             defaultsValue: defaultsToken,
             generated: Self.generateToken()
         )
-        self.token = resolved.token
+        token = resolved.token
         Self.persistToken(resolved)
 
         Task { @MainActor [weak self] in
-            guard let self, self.isEnabled else { return }
-            self.start()
+            guard let self, isEnabled else { return }
+            start()
         }
     }
 
@@ -174,7 +178,7 @@ final class PiMPAudioMCPServer: ObservableObject {
         let enforced = Self.tokenIsRequired(requested: required, bindAddress: bindAddress)
         UserDefaults.standard.set(enforced, forKey: Self.tokenRequiredKey)
         isTokenRequired = enforced
-        if enforced && token.isEmpty {
+        if enforced, token.isEmpty {
             regenerateToken()
         }
     }
@@ -230,9 +234,9 @@ final class PiMPAudioMCPServer: ObservableObject {
              "delete_generation_preset",
              "run_adapter_audition",
              "release_memory":
-            return true
+            true
         default:
-            return false
+            false
         }
     }
 
@@ -295,7 +299,7 @@ final class PiMPAudioMCPServer: ObservableObject {
             guard let self else { return }
 
             let bridge = PiMPAudioMCPSDKBridge(
-                facade: self.facade,
+                facade: facade,
                 version: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.8.0"
             )
             var startedServer: MCPHTTPServer?
@@ -310,8 +314,8 @@ final class PiMPAudioMCPServer: ObservableObject {
                     bindHost: bindHost,
                     allowNonLocalOrigins: allowNonLocalOrigins,
                     tokenProvider: { [weak self] in
-                        guard let self, self.isTokenRequired else { return nil }
-                        return self.token
+                        guard let self, isTokenRequired else { return nil }
+                        return token
                     },
                     onReady: { [weak self] in
                         self?.state = .running(endpoint: self?.endpoint ?? "")
@@ -327,18 +331,18 @@ final class PiMPAudioMCPServer: ObservableObject {
                 startedServer = server
                 try Task.checkCancellation()
 
-                self.sdkBridge = bridge
-                self.httpServer = server
-                self.startupTask = nil
+                sdkBridge = bridge
+                httpServer = server
+                startupTask = nil
             } catch is CancellationError {
                 startedServer?.stop()
                 await bridge.stop()
-                self.startupTask = nil
+                startupTask = nil
             } catch {
                 startedServer?.stop()
                 await bridge.stop()
-                self.startupTask = nil
-                self.failStartup(error)
+                startupTask = nil
+                failStartup(error)
             }
         }
     }
@@ -447,7 +451,6 @@ final class PiMPAudioMCPServer: ObservableObject {
         }
         return candidate
     }
-
 }
 
 @MainActor
@@ -472,8 +475,8 @@ private final class PiMPAudioMCPSDKBridge {
         self.facade = facade
         self.version = version
         let components = Self.makeServer(version: version)
-        self.server = components.server
-        self.transport = components.transport
+        server = components.server
+        transport = components.transport
     }
 
     private static func makeServer(version: String) -> (server: Server, transport: StatefulHTTPServerTransport) {
@@ -529,13 +532,16 @@ private final class PiMPAudioMCPSDKBridge {
                 }
                 return retryResponse
             }
-        } else if request.method.uppercased() == "DELETE", (200..<300).contains(response.statusCode) {
+        } else if request.method.uppercased() == "DELETE", (200 ..< 300).contains(response.statusCode) {
             let previousSessionID = activeSessionID ?? request.header(MCP.HTTPHeaderName.sessionID)
             if let resetError = await resetSessionTransport() {
                 return resetError
             }
             return response.statusCode == 200 ? response : .ok(headers: sessionHeaders(for: previousSessionID))
-        } else if request.method.uppercased() == "DELETE", shouldForceResetAfterDelete(request: request, response: response) {
+        } else if request.method.uppercased() == "DELETE", shouldForceResetAfterDelete(
+            request: request,
+            response: response
+        ) {
             let previousSessionID = activeSessionID ?? request.header(MCP.HTTPHeaderName.sessionID)
             if let resetError = await resetSessionTransport() {
                 return resetError
@@ -597,7 +603,10 @@ private final class PiMPAudioMCPSDKBridge {
             isStarted = true
             return nil
         } catch {
-            return .error(statusCode: 500, .internalError("Failed to reset MCP session transport: \(error.localizedDescription)"))
+            return .error(
+                statusCode: 500,
+                .internalError("Failed to reset MCP session transport: \(error.localizedDescription)")
+            )
         }
     }
 
@@ -633,7 +642,7 @@ private final class PiMPAudioMCPSDKBridge {
         clientRootsRefreshTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(100))
             guard let self, !Task.isCancelled else { return }
-            await self.refreshClientRoots(reason: reason)
+            await refreshClientRoots(reason: reason)
         }
     }
 
@@ -687,7 +696,7 @@ private final class PiMPAudioMCPSDKBridge {
                     isError: true
                 )
             }
-            return await self.callTool(params)
+            return await callTool(params)
         }
 
         await server.withMethodHandler(ListPrompts.self) { _ in
@@ -702,14 +711,14 @@ private final class PiMPAudioMCPSDKBridge {
             guard let self else {
                 return .init(completion: .init(values: []))
             }
-            return await self.complete(params)
+            return await complete(params)
         }
 
         await server.withMethodHandler(ListResources.self) { [weak self] _ in
             guard let self else {
                 return .init(resources: [], nextCursor: nil)
             }
-            var resources = await self.facade.listResources()
+            var resources = await facade.listResources()
             resources.append(MCPResourceCatalog.clientRootsResourceDefinition)
             return .init(resources: resources.compactMap(MCPResourceCatalog.sdkResource), nextCursor: nil)
         }
@@ -722,7 +731,7 @@ private final class PiMPAudioMCPSDKBridge {
             guard let self else {
                 throw MCPError.internalError("MCP server is shutting down")
             }
-            return try await self.readResource(params)
+            return try await readResource(params)
         }
 
         await server.onNotification(RootsListChangedNotification.self) { [weak self] _ in
@@ -731,16 +740,14 @@ private final class PiMPAudioMCPSDKBridge {
     }
 
     private func complete(_ params: Complete.Parameters) async -> Complete.Result {
-        let values: [String]
-
-        switch params.ref {
-        case .prompt(let promptRef):
-            values = await promptCompletionValues(
+        let values: [String] = switch params.ref {
+        case let .prompt(promptRef):
+            await promptCompletionValues(
                 promptName: promptRef.name,
                 argumentName: params.argument.name
             )
-        case .resource(let resourceRef):
-            values = await resourceCompletionValues(
+        case let .resource(resourceRef):
+            await resourceCompletionValues(
                 resourceURI: resourceRef.uri,
                 argumentName: params.argument.name
             )
@@ -755,29 +762,29 @@ private final class PiMPAudioMCPSDKBridge {
     ) async -> [String] {
         switch argumentName {
         case "takeID":
-            return historyCompletionValues()
+            historyCompletionValues()
         case "regionStart":
-            return await currentRegionCompletionValues(key: "startTime", defaults: ["0", "5", "10", "15", "30"])
+            await currentRegionCompletionValues(key: "startTime", defaults: ["0", "5", "10", "15", "30"])
         case "regionEnd":
-            return await currentRegionCompletionValues(key: "endTime", defaults: ["5", "10", "15", "30", "60"])
+            await currentRegionCompletionValues(key: "endTime", defaults: ["5", "10", "15", "30", "60"])
         case "variantCount":
-            return ["2", "3", "4", "5"]
+            ["2", "3", "4", "5"]
         case "duration":
-            return ["5", "10", "15", "30", "60", "90", "120"]
+            ["5", "10", "15", "30", "60", "90", "120"]
         case "direction":
-            return directionCompletionValues(promptName: promptName)
+            directionCompletionValues(promptName: promptName)
         case "issue":
-            return [
+            [
                 "click/pop cleanup",
                 "reduce muddy low mids",
                 "smooth harsh transient",
                 "replace weak vocal phrase",
-                "remove clipped artifact"
+                "remove clipped artifact",
             ]
         case "outputDirectory":
-            return await outputDirectoryCompletionValues()
+            await outputDirectoryCompletionValues()
         default:
-            return []
+            []
         }
     }
 
@@ -850,24 +857,24 @@ private final class PiMPAudioMCPSDKBridge {
     private func directionCompletionValues(promptName: String) -> [String] {
         switch promptName {
         case "improve_chorus":
-            return [
+            [
                 "make the chorus more anthemic",
                 "tighten the vocal phrasing",
                 "add a cleaner synth lift",
-                "make it bigger without over-editing"
+                "make it bigger without over-editing",
             ]
         case "create_mix_variants":
-            return [
+            [
                 "brighter and wider",
                 "tighter low end",
                 "more ambient",
-                "vocal-forward"
+                "vocal-forward",
             ]
         default:
-            return [
+            [
                 "keep it conservative",
                 "make it more polished",
-                "preserve the original feel"
+                "preserve the original feel",
             ]
         }
     }
@@ -1060,7 +1067,7 @@ private final class PiMPAudioMCPSDKBridge {
                     MCPJSON.prettyJSON(payload),
                     uri: params.uri,
                     mimeType: "application/json"
-                )
+                ),
             ])
         }
 
@@ -1071,7 +1078,7 @@ private final class PiMPAudioMCPSDKBridge {
                     MCPJSON.prettyJSON(payload),
                     uri: params.uri,
                     mimeType: "application/json"
-                )
+                ),
             ])
         } catch {
             throw MCPError.invalidParams(error.localizedDescription)
@@ -1092,15 +1099,15 @@ private final class PiMPAudioMCPSDKBridge {
                 "advisory": true,
                 "historyAudioPreferred": true,
                 "defaultRenderLocation": "MCPExports beside the loaded source audio when no output path is provided.",
-                "note": "MCP client roots describe client-approved filesystem boundaries. They do not bypass macOS sandboxing or grant PiMP Audio Studio new file permissions."
-            ]
+                "note": "MCP client roots describe client-approved filesystem boundaries. They do not bypass macOS sandboxing or grant PiMP Audio Studio new file permissions.",
+            ],
         ]
     }
 
     private func clientRootPayload(_ root: Root) -> [String: Any] {
         var payload: [String: Any] = [
             "uri": root.uri,
-            "isFileURL": filePath(fromRootURI: root.uri) != nil
+            "isFileURL": filePath(fromRootURI: root.uri) != nil,
         ]
         if let name = root.name {
             payload["name"] = name
@@ -1113,10 +1120,10 @@ private final class PiMPAudioMCPSDKBridge {
 
     private func executeTool(name: String, arguments: [String: Any]) async throws -> Any {
         switch await confirmedArgumentsIfNeeded(toolName: name, arguments: arguments) {
-        case .proceed(let confirmedArguments):
-            return try await executeConfirmedTool(name: name, arguments: confirmedArguments)
-        case .declined(let payload):
-            return payload
+        case let .proceed(confirmedArguments):
+            try await executeConfirmedTool(name: name, arguments: confirmedArguments)
+        case let .declined(payload):
+            payload
         }
     }
 
@@ -1254,7 +1261,7 @@ private final class PiMPAudioMCPSDKBridge {
         ) {
         case .proceed:
             return .proceed(arguments)
-        case .declined(let action, let reason):
+        case let .declined(action, reason):
             return .declined(confirmationDeclinedPayload(
                 toolName: toolName,
                 action: action,
@@ -1271,7 +1278,7 @@ private final class PiMPAudioMCPSDKBridge {
                 mode: .form,
                 _meta: Metadata(additionalFields: [
                     "pimpAudioTool": .string(toolName),
-                    "confirmArgument": .string("confirm")
+                    "confirmArgument": .string("confirm"),
                 ])
             )
 
@@ -1304,7 +1311,7 @@ private final class PiMPAudioMCPSDKBridge {
     }
 
     private func isDryRun(toolName: String, arguments: [String: Any]) -> Bool {
-        let dryRunDefaultTools: Set<String> = [
+        let dryRunDefaultTools: Set = [
             "generate",
             "generate_song",
             "load_editor_audio",
@@ -1314,7 +1321,7 @@ private final class PiMPAudioMCPSDKBridge {
             "create_remote_training_job",
             "build_training_dataset",
             "enrich_training_dataset",
-            "download_model"
+            "download_model",
         ]
         if dryRunDefaultTools.contains(toolName),
            arguments["dryRun"] == nil,
@@ -1327,20 +1334,20 @@ private final class PiMPAudioMCPSDKBridge {
     private func boolArgument(_ value: Any?) -> Bool? {
         switch value {
         case let value as Bool:
-            return value
+            value
         case let value as NSNumber:
-            return value.boolValue
+            value.boolValue
         case let value as String:
             switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
             case "true", "yes", "1":
-                return true
+                true
             case "false", "no", "0":
-                return false
+                false
             default:
-                return nil
+                nil
             }
         default:
-            return nil
+            nil
         }
     }
 
@@ -1353,8 +1360,8 @@ private final class PiMPAudioMCPSDKBridge {
                     "type": "boolean",
                     "title": "Approve",
                     "description": "Set true to run \(toolName). Leave false to decline.",
-                    "default": false
-                ]
+                    "default": false,
+                ],
             ],
             required: ["approved"]
         )
@@ -1363,82 +1370,82 @@ private final class PiMPAudioMCPSDKBridge {
     private func confirmationMessage(for toolName: String) -> String {
         switch toolName {
         case "generate":
-            return "PiMP Audio Studio wants to start a local audio generation. Approve this action?"
+            "PiMP Audio Studio wants to start a local audio generation. Approve this action?"
         case "generate_song":
-            return "PiMP Audio Studio wants to orchestrate a song generation (optional lyrics/adapters, then generate). Approve this action?"
+            "PiMP Audio Studio wants to orchestrate a song generation (optional lyrics/adapters, then generate). Approve this action?"
         case "write_lyrics":
-            return "PiMP Audio Studio wants to call the lyric writer (may use a paid API). Approve this action?"
+            "PiMP Audio Studio wants to call the lyric writer (may use a paid API). Approve this action?"
         case "apply_adapter":
-            return "PiMP Audio Studio wants to change the adapter selection for the next generation. Approve this action?"
+            "PiMP Audio Studio wants to change the adapter selection for the next generation. Approve this action?"
         case "load_editor_audio":
-            return "PiMP Audio Studio wants to load audio into the editor. Approve this action?"
+            "PiMP Audio Studio wants to load audio into the editor. Approve this action?"
         case "render_editor_audio":
-            return "PiMP Audio Studio wants to export editor audio to disk. Approve this action?"
+            "PiMP Audio Studio wants to export editor audio to disk. Approve this action?"
         case "mark_preferred_take":
-            return "PiMP Audio Studio wants to mark a history take as preferred. Approve this action?"
+            "PiMP Audio Studio wants to mark a history take as preferred. Approve this action?"
         case "cancel_generation":
-            return "PiMP Audio Studio wants to cancel the active generation. Approve this action?"
+            "PiMP Audio Studio wants to cancel the active generation. Approve this action?"
         case "cancel_operation":
-            return "PiMP Audio Studio wants to cancel a running operation. Approve this action?"
+            "PiMP Audio Studio wants to cancel a running operation. Approve this action?"
         case "submit_editor_inpaint":
-            return "PiMP Audio Studio wants to submit a selected-region editor inpaint/repaint mutation. Approve this action?"
+            "PiMP Audio Studio wants to submit a selected-region editor inpaint/repaint mutation. Approve this action?"
         case "apply_editor_effect_chain":
-            return "PiMP Audio Studio wants to apply DSP effects to the loaded editor audio. Approve this mutation?"
+            "PiMP Audio Studio wants to apply DSP effects to the loaded editor audio. Approve this mutation?"
         case "start_training":
-            return "PiMP Audio Studio wants to start a local LoRA/LoKR training run. Approve this action?"
+            "PiMP Audio Studio wants to start a local LoRA/LoKR training run. Approve this action?"
         case "stop_training":
-            return "PiMP Audio Studio wants to stop the active local training run. Approve this action?"
+            "PiMP Audio Studio wants to stop the active local training run. Approve this action?"
         case "launch_runpod_pod":
-            return "PiMP Audio Studio wants to launch a billable RunPod GPU pod. Approve this action?"
+            "PiMP Audio Studio wants to launch a billable RunPod GPU pod. Approve this action?"
         case "stop_runpod_pod":
-            return "PiMP Audio Studio wants to terminate/delete a RunPod GPU pod. Approve this action?"
+            "PiMP Audio Studio wants to terminate/delete a RunPod GPU pod. Approve this action?"
         case "create_remote_training_job":
-            return "PiMP Audio Studio wants to export a remote training job zip. Approve this action?"
+            "PiMP Audio Studio wants to export a remote training job zip. Approve this action?"
         case "upload_remote_training_job":
-            return "PiMP Audio Studio wants to upload a remote job and worker to a RunPod pod. Approve this action?"
+            "PiMP Audio Studio wants to upload a remote job and worker to a RunPod pod. Approve this action?"
         case "start_remote_training_job":
-            return "PiMP Audio Studio wants to start remote worker setup/training on a RunPod pod. Approve this action?"
+            "PiMP Audio Studio wants to start remote worker setup/training on a RunPod pod. Approve this action?"
         case "pull_remote_training_job":
-            return "PiMP Audio Studio wants to download remote training artifacts and import the adapter. Approve this action?"
+            "PiMP Audio Studio wants to download remote training artifacts and import the adapter. Approve this action?"
         case "build_training_dataset":
-            return "PiMP Audio Studio wants to build a local training dataset package. Approve this action?"
+            "PiMP Audio Studio wants to build a local training dataset package. Approve this action?"
         case "enrich_training_dataset":
-            return "PiMP Audio Studio wants to enrich a training dataset. Approve this action?"
+            "PiMP Audio Studio wants to enrich a training dataset. Approve this action?"
         case "update_training_dataset_review":
-            return "PiMP Audio Studio wants to update dataset review metadata. Approve this action?"
+            "PiMP Audio Studio wants to update dataset review metadata. Approve this action?"
         case "import_adapter":
-            return "PiMP Audio Studio wants to import an adapter into the local registry. Approve this action?"
+            "PiMP Audio Studio wants to import an adapter into the local registry. Approve this action?"
         case "delete_adapter":
-            return "PiMP Audio Studio wants to delete an installed adapter. Approve this action?"
+            "PiMP Audio Studio wants to delete an installed adapter. Approve this action?"
         case "merge_adapters":
-            return "PiMP Audio Studio wants to merge two LoRA adapters. Approve this action?"
+            "PiMP Audio Studio wants to merge two LoRA adapters. Approve this action?"
         case "download_model":
-            return "PiMP Audio Studio wants to download a model. Approve this action?"
+            "PiMP Audio Studio wants to download a model. Approve this action?"
         case "set_active_model":
-            return "PiMP Audio Studio wants to change the active model. Approve this action?"
+            "PiMP Audio Studio wants to change the active model. Approve this action?"
         case "delete_history_entries":
-            return "PiMP Audio Studio wants to delete history entries. Approve this action?"
+            "PiMP Audio Studio wants to delete history entries. Approve this action?"
         case "save_generation_preset":
-            return "PiMP Audio Studio wants to save a generation preset. Approve this action?"
+            "PiMP Audio Studio wants to save a generation preset. Approve this action?"
         case "delete_generation_preset":
-            return "PiMP Audio Studio wants to delete a generation preset. Approve this action?"
+            "PiMP Audio Studio wants to delete a generation preset. Approve this action?"
         case "run_adapter_audition":
-            return "PiMP Audio Studio wants to run fixed-seed adapter audition snapshots. Approve this action?"
+            "PiMP Audio Studio wants to run fixed-seed adapter audition snapshots. Approve this action?"
         case "release_memory":
-            return "PiMP Audio Studio wants to cancel active generation if needed, unload model weights, and flush MLX GPU cache. Approve this action?"
+            "PiMP Audio Studio wants to cancel active generation if needed, unload model weights, and flush MLX GPU cache. Approve this action?"
         default:
-            return "PiMP Audio Studio wants to run \(toolName). Approve this action?"
+            "PiMP Audio Studio wants to run \(toolName). Approve this action?"
         }
     }
 
     private func pastTense(_ action: CreateElicitation.Result.Action) -> String {
         switch action {
         case .accept:
-            return "accepted"
+            "accepted"
         case .decline:
-            return "declined"
+            "declined"
         case .cancel:
-            return "cancelled"
+            "cancelled"
         }
     }
 
@@ -1460,8 +1467,8 @@ private final class PiMPAudioMCPSDKBridge {
                 "action": action,
                 "reason": reason,
                 "confirmArgument": "confirm",
-                "fallback": "Clients without MCP elicitation can call again with confirm: true after explicit user approval."
-            ]
+                "fallback": "Clients without MCP elicitation can call again with confirm: true after explicit user approval.",
+            ],
         ]
     }
 
@@ -1478,43 +1485,43 @@ private final class PiMPAudioMCPSDKBridge {
     private func intValue(_ value: Any?) -> Int? {
         switch value {
         case let value as Int:
-            return value
+            value
         case let value as NSNumber:
-            return value.intValue
+            value.intValue
         case let value as String:
-            return Int(value)
+            Int(value)
         default:
-            return nil
+            nil
         }
     }
 
     private func stringValue(_ value: Any?) -> String? {
         switch value {
         case _ as NSNull:
-            return nil
+            nil
         case let value as String:
-            return value
+            value
         case let value as CustomStringConvertible:
-            return value.description
+            value.description
         default:
-            return nil
+            nil
         }
     }
 
     private func doubleValue(_ value: Any?) -> Double? {
         switch value {
         case let value as Double:
-            return value
+            value
         case let value as Float:
-            return Double(value)
+            Double(value)
         case let value as Int:
-            return Double(value)
+            Double(value)
         case let value as NSNumber:
-            return value.doubleValue
+            value.doubleValue
         case let value as String:
-            return Double(value)
+            Double(value)
         default:
-            return nil
+            nil
         }
     }
 }
@@ -1527,48 +1534,48 @@ enum MCPValueConverter {
     static func value(from any: Any) throws -> Value {
         switch any {
         case _ as NSNull:
-            return .null
+            .null
         case let value as Bool:
-            return .bool(value)
+            .bool(value)
         case let value as Int:
-            return .int(value)
+            .int(value)
         case let value as Int64:
-            return .int(Int(value))
+            .int(Int(value))
         case let value as Double:
-            return .double(value)
+            .double(value)
         case let value as Float:
-            return .double(Double(value))
+            .double(Double(value))
         case let value as String:
-            return .string(value)
+            .string(value)
         case let value as NSNumber:
-            return numberValue(value)
+            numberValue(value)
         case let value as [Any]:
-            return .array(try value.map(Self.value))
+            try .array(value.map(Self.value))
         case let value as [String: Any]:
-            return .object(try value.mapValues(Self.value))
+            try .object(value.mapValues(Self.value))
         default:
-            return .string(String(describing: any))
+            .string(String(describing: any))
         }
     }
 
     private static func anyValue(_ value: Value) -> Any {
         switch value {
         case .null:
-            return NSNull()
-        case .bool(let bool):
-            return bool
-        case .int(let int):
-            return int
-        case .double(let double):
-            return double
-        case .string(let string):
-            return string
-        case .data(_, let data):
-            return data.base64EncodedString()
-        case .array(let array):
-            return array.map(anyValue)
-        case .object(let object):
-            return object.mapValues(anyValue)
+            NSNull()
+        case let .bool(bool):
+            bool
+        case let .int(int):
+            int
+        case let .double(double):
+            double
+        case let .string(string):
+            string
+        case let .data(_, data):
+            data.base64EncodedString()
+        case let .array(array):
+            array.map(anyValue)
+        case let .object(object):
+            object.mapValues(anyValue)
         }
     }
 
@@ -1589,8 +1596,8 @@ private enum MCPJSON {
     static func prettyJSON(_ object: Any) -> String {
         guard JSONSerialization.isValidJSONObject(object),
               let data = try? JSONSerialization.data(
-                withJSONObject: object,
-                options: [.prettyPrinted, .sortedKeys]
+                  withJSONObject: object,
+                  options: [.prettyPrinted, .sortedKeys]
               ),
               let text = String(data: data, encoding: .utf8) else {
             return String(describing: object)
@@ -1613,7 +1620,7 @@ private enum MCPPromptCatalog {
                 argument("takeID", "Optional take/history id to load before editing."),
                 argument("regionStart", "Optional chorus region start time in seconds."),
                 argument("regionEnd", "Optional chorus region end time in seconds."),
-                argument("direction", "Creative direction for the improved chorus.")
+                argument("direction", "Creative direction for the improved chorus."),
             ]
         ),
         prompt(
@@ -1623,7 +1630,7 @@ private enum MCPPromptCatalog {
             arguments: [
                 argument("takeID", "Optional take/history id to load before creating variants."),
                 argument("variantCount", "Requested number of variants. Defaults to three."),
-                argument("direction", "Mix direction such as brighter, wider, tighter, or more ambient.")
+                argument("direction", "Mix direction such as brighter, wider, tighter, or more ambient."),
             ]
         ),
         prompt(
@@ -1634,7 +1641,7 @@ private enum MCPPromptCatalog {
                 argument("takeID", "Optional take/history id to load before editing."),
                 argument("regionStart", "Region start time in seconds.", required: true),
                 argument("regionEnd", "Region end time in seconds.", required: true),
-                argument("issue", "Problem to solve, such as click, weak vocal, or muddy transient.")
+                argument("issue", "Problem to solve, such as click, weak vocal, or muddy transient."),
             ]
         ),
         prompt(
@@ -1643,7 +1650,7 @@ private enum MCPPromptCatalog {
             description: "Render review-ready audio files from the current workstation state.",
             arguments: [
                 argument("takeID", "Optional take/history id to load before rendering."),
-                argument("outputDirectory", "Optional directory for rendered review exports.")
+                argument("outputDirectory", "Optional directory for rendered review exports."),
             ]
         ),
         prompt(
@@ -1652,9 +1659,9 @@ private enum MCPPromptCatalog {
             description: "Turn a rough music or SFX idea into an PiMP Audio Studio generation request.",
             arguments: [
                 argument("prompt", "Rough prompt or creative brief to develop.", required: true),
-                argument("duration", "Optional target duration in seconds.")
+                argument("duration", "Optional target duration in seconds."),
             ]
-        )
+        ),
     ]
 
     static func getPrompt(_ params: GetPrompt.Parameters) throws -> GetPrompt.Result {
@@ -1667,9 +1674,21 @@ private enum MCPPromptCatalog {
 
                 Inputs:
                 - takeID: \(argumentValue(params, "takeID", fallback: "use the current loaded clip"))
-                - regionStart: \(argumentValue(params, "regionStart", fallback: "infer from pimpaudio://region/current-selection"))
-                - regionEnd: \(argumentValue(params, "regionEnd", fallback: "infer from pimpaudio://region/current-selection"))
-                - direction: \(argumentValue(params, "direction", fallback: "make the chorus stronger without over-editing"))
+                - regionStart: \(argumentValue(
+                    params,
+                    "regionStart",
+                    fallback: "infer from pimpaudio://region/current-selection"
+                ))
+                - regionEnd: \(argumentValue(
+                    params,
+                    "regionEnd",
+                    fallback: "infer from pimpaudio://region/current-selection"
+                ))
+                - direction: \(argumentValue(
+                    params,
+                    "direction",
+                    fallback: "make the chorus stronger without over-editing"
+                ))
 
                 Inspect pimpaudio://takes, pimpaudio://track/current, pimpaudio://clip/current, pimpaudio://region/current-selection, and pimpaudio://presets first.
                 If takeID is provided, call load_editor_audio and poll get_operation until complete.
@@ -1681,7 +1700,11 @@ private enum MCPPromptCatalog {
             return result(
                 description: "Create alternate mix renders with bounded DSP chains.",
                 text: """
-                Create mix variants from the loaded editor audio or takeID \(argumentValue(params, "takeID", fallback: "current clip")).
+                Create mix variants from the loaded editor audio or takeID \(argumentValue(
+                    params,
+                    "takeID",
+                    fallback: "current clip"
+                )).
 
                 Target variant count: \(argumentValue(params, "variantCount", fallback: "3"))
                 Direction: \(argumentValue(params, "direction", fallback: "balanced review variants"))
@@ -1702,7 +1725,11 @@ private enum MCPPromptCatalog {
                 - takeID: \(argumentValue(params, "takeID", fallback: "current loaded clip"))
                 - regionStart: \(argumentValue(params, "regionStart", fallback: "required if no current region exists"))
                 - regionEnd: \(argumentValue(params, "regionEnd", fallback: "required if no current region exists"))
-                - issue: \(argumentValue(params, "issue", fallback: "remove obvious defect while preserving musical context"))
+                - issue: \(argumentValue(
+                    params,
+                    "issue",
+                    fallback: "remove obvious defect while preserving musical context"
+                ))
 
                 Inspect pimpaudio://track/current, pimpaudio://clip/current, pimpaudio://region/current-selection, and pimpaudio://presets.
                 Use apply_editor_effect_chain for mechanical cleanup and submit_editor_inpaint for musical replacement.
@@ -1713,9 +1740,17 @@ private enum MCPPromptCatalog {
             return result(
                 description: "Render lossless review files from the current workstation state.",
                 text: """
-                Prepare review-ready renders from the current clip or takeID \(argumentValue(params, "takeID", fallback: "current loaded clip")).
+                Prepare review-ready renders from the current clip or takeID \(argumentValue(
+                    params,
+                    "takeID",
+                    fallback: "current loaded clip"
+                )).
 
-                Output directory: \(argumentValue(params, "outputDirectory", fallback: "default MCPExports folder beside the source audio"))
+                Output directory: \(argumentValue(
+                    params,
+                    "outputDirectory",
+                    fallback: "default MCPExports folder beside the source audio"
+                ))
 
                 Inspect pimpaudio://takes, pimpaudio://track/current, pimpaudio://clip/current, and pimpaudio://operations.
                 Use render_editor_audio with lossless output and descriptive filenames.
@@ -1728,9 +1763,17 @@ private enum MCPPromptCatalog {
                 description: "Develop a rough idea into a validated PiMP Audio Studio generation request.",
                 text: """
                 Convert this rough idea into a production-ready PiMP Audio Studio generation request:
-                \(argumentValue(params, "prompt", fallback: "No prompt supplied. Ask for a prompt before submitting generation."))
+                \(argumentValue(
+                    params,
+                    "prompt",
+                    fallback: "No prompt supplied. Ask for a prompt before submitting generation."
+                ))
 
-                Target duration: \(argumentValue(params, "duration", fallback: "choose based on prompt and current presets"))
+                Target duration: \(argumentValue(
+                    params,
+                    "duration",
+                    fallback: "choose based on prompt and current presets"
+                ))
 
                 Inspect pimpaudio://models, pimpaudio://adapters, pimpaudio://presets, and pimpaudio://operations first.
                 Use enhance_prompt and write_lyrics when useful.
@@ -1792,7 +1835,7 @@ private enum MCPResourceCatalog {
         "name": "client-roots",
         "title": "MCP Client Roots",
         "description": "Client-advertised filesystem roots and PiMP Audio Studio local path access policy.",
-        "mimeType": "application/json"
+        "mimeType": "application/json",
     ]
 
     static let templates: [Resource.Template] = [
@@ -1861,7 +1904,7 @@ private enum MCPResourceCatalog {
             name: "operation",
             title: "MCP Operation",
             description: "Recent MCP-observable operation by operation id."
-        )
+        ),
     ]
 
     static func sdkResource(_ definition: [String: Any]) -> Resource? {

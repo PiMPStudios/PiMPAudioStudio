@@ -34,8 +34,8 @@ enum MCPToolCatalog {
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 200,
-                    "description": "Maximum number of dataset packages to return. Defaults to 50."
-                ]
+                    "description": "Maximum number of dataset packages to return. Defaults to 50.",
+                ],
             ]
         ),
         tool(
@@ -47,12 +47,12 @@ enum MCPToolCatalog {
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 100,
-                    "description": "Maximum number of training runs to return. Defaults to 25."
+                    "description": "Maximum number of training runs to return. Defaults to 25.",
                 ],
                 "includeAdaptersWithoutLogs": [
                     "type": "boolean",
-                    "description": "Include installed adapters that do not have training_log.json. Defaults to false."
-                ]
+                    "description": "Include installed adapters that do not have training_log.json. Defaults to false.",
+                ],
             ]
         ),
         tool(
@@ -62,22 +62,22 @@ enum MCPToolCatalog {
             properties: [
                 "id": [
                     "type": "string",
-                    "description": "Dataset id, folder name, or partial dataset name. Defaults to the newest visible dataset."
+                    "description": "Dataset id, folder name, or partial dataset name. Defaults to the newest visible dataset.",
                 ],
                 "name": [
                     "type": "string",
-                    "description": "Alias for id."
+                    "description": "Alias for id.",
                 ],
                 "path": [
                     "type": "string",
-                    "description": "Optional full path to a dataset package containing captions.json."
+                    "description": "Optional full path to a dataset package containing captions.json.",
                 ],
                 "sampleLimit": [
                     "type": "integer",
                     "minimum": 0,
                     "maximum": 50,
-                    "description": "Maximum number of sample clip rows to include. Defaults to 12."
-                ]
+                    "description": "Maximum number of sample clip rows to include. Defaults to 12.",
+                ],
             ]
         ),
         tool(
@@ -87,28 +87,28 @@ enum MCPToolCatalog {
             properties: [
                 "id": [
                     "type": "string",
-                    "description": "Adapter id, adapter name, or partial adapter name. Defaults to the newest installed training run."
+                    "description": "Adapter id, adapter name, or partial adapter name. Defaults to the newest installed training run.",
                 ],
                 "adapterID": [
                     "type": "string",
-                    "description": "Alias for id."
+                    "description": "Alias for id.",
                 ],
                 "name": [
                     "type": "string",
-                    "description": "Alias for id."
+                    "description": "Alias for id.",
                 ],
                 "progressLimit": [
                     "type": "integer",
                     "minimum": 0,
                     "maximum": 500,
-                    "description": "Maximum number of progress rows from the end of training_log.json. Defaults to 50."
+                    "description": "Maximum number of progress rows from the end of training_log.json. Defaults to 50.",
                 ],
                 "eventLimit": [
                     "type": "integer",
                     "minimum": 0,
                     "maximum": 100,
-                    "description": "Maximum number of run events from the end of training_log.json. Defaults to 25."
-                ]
+                    "description": "Maximum number of run events from the end of training_log.json. Defaults to 25.",
+                ],
             ]
         ),
         tool(
@@ -119,23 +119,23 @@ enum MCPToolCatalog {
                 "ids": [
                     "type": "array",
                     "items": ["type": "string"],
-                    "description": "Optional adapter ids or names to compare. Defaults to recent logged runs."
+                    "description": "Optional adapter ids or names to compare. Defaults to recent logged runs.",
                 ],
                 "adapterIDs": [
                     "type": "array",
                     "items": ["type": "string"],
-                    "description": "Alias for ids."
+                    "description": "Alias for ids.",
                 ],
                 "limit": [
                     "type": "integer",
                     "minimum": 2,
                     "maximum": 20,
-                    "description": "Maximum number of recent runs to compare when ids are omitted. Defaults to 6."
+                    "description": "Maximum number of recent runs to compare when ids are omitted. Defaults to 6.",
                 ],
                 "includeAdaptersWithoutLogs": [
                     "type": "boolean",
-                    "description": "Include installed adapters that do not have training_log.json. Defaults to false."
-                ]
+                    "description": "Include installed adapters that do not have training_log.json. Defaults to false.",
+                ],
             ]
         ),
         tool(
@@ -147,28 +147,28 @@ enum MCPToolCatalog {
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 500,
-                    "description": "Maximum number of matching lines to return. Defaults to 120."
+                    "description": "Maximum number of matching lines to return. Defaults to 120.",
                 ],
                 "contains": [
                     "type": "string",
-                    "description": "Case-insensitive line filter. Defaults to training. Pass an empty string for unfiltered lines."
+                    "description": "Case-insensitive line filter. Defaults to training. Pass an empty string for unfiltered lines.",
                 ],
                 "filter": [
                     "type": "string",
-                    "description": "Alias for contains."
+                    "description": "Alias for contains.",
                 ],
                 "fileName": [
                     "type": "string",
-                    "description": "Optional diagnostics log file name under the app Diagnostics folder."
+                    "description": "Optional diagnostics log file name under the app Diagnostics folder.",
                 ],
                 "path": [
                     "type": "string",
-                    "description": "Optional full path to a diagnostics log under the app Diagnostics folder."
+                    "description": "Optional full path to a diagnostics log under the app Diagnostics folder.",
                 ],
                 "logPath": [
                     "type": "string",
-                    "description": "Alias for path."
-                ]
+                    "description": "Alias for path.",
+                ],
             ]
         ),
         tool(
@@ -190,20 +190,20 @@ enum MCPToolCatalog {
             properties: [
                 "confirm": [
                     "type": "boolean",
-                    "description": "Required for clients that do not support MCP elicitation."
+                    "description": "Required for clients that do not support MCP elicitation.",
                 ],
                 "saveCheckpoint": [
                     "type": "boolean",
-                    "description": "Whether to save a checkpoint when possible. Defaults to the app's canSaveCheckpointOnStop state."
+                    "description": "Whether to save a checkpoint when possible. Defaults to the app's canSaveCheckpointOnStop state.",
                 ],
                 "checkpoint": [
                     "type": "boolean",
-                    "description": "Alias for saveCheckpoint."
+                    "description": "Alias for saveCheckpoint.",
                 ],
                 "save": [
                     "type": "boolean",
-                    "description": "Alias for saveCheckpoint."
-                ]
+                    "description": "Alias for saveCheckpoint.",
+                ],
             ]
         ),
         tool(
@@ -213,16 +213,16 @@ enum MCPToolCatalog {
             properties: [
                 "gpuType": [
                     "type": "string",
-                    "description": "Optional GPU type to use when returning the recommended official RunPod PyTorch template."
+                    "description": "Optional GPU type to use when returning the recommended official RunPod PyTorch template.",
                 ],
                 "refreshLaunchOptions": [
                     "type": "boolean",
-                    "description": "When true, refresh GPU availability and official RunPod templates before returning status."
+                    "description": "When true, refresh GPU availability and official RunPod templates before returning status.",
                 ],
                 "refreshPods": [
                     "type": "boolean",
-                    "description": "When true, refresh the RunPod pod list before returning status."
-                ]
+                    "description": "When true, refresh the RunPod pod list before returning status.",
+                ],
             ]
         ),
         tool(
@@ -232,8 +232,8 @@ enum MCPToolCatalog {
             properties: [
                 "gpuType": [
                     "type": "string",
-                    "description": "Optional GPU type to use when returning the recommended official RunPod PyTorch template."
-                ]
+                    "description": "Optional GPU type to use when returning the recommended official RunPod PyTorch template.",
+                ],
             ]
         ),
         tool(
@@ -244,55 +244,55 @@ enum MCPToolCatalog {
             properties: [
                 "gpuType": [
                     "type": "string",
-                    "description": "RunPod GPU type id or display name, for example NVIDIA GeForce RTX 4090."
+                    "description": "RunPod GPU type id or display name, for example NVIDIA GeForce RTX 4090.",
                 ],
                 "region": [
                     "type": "string",
-                    "description": "Optional region filter for Secure Cloud launch data centers: any, asia, northAmerica, europe, oceania."
+                    "description": "Optional region filter for Secure Cloud launch data centers: any, asia, northAmerica, europe, oceania.",
                 ],
                 "dataCenterIDs": [
                     "type": "array",
                     "items": ["type": "string"],
-                    "description": "Optional explicit RunPod data center ids. Overrides region when provided."
+                    "description": "Optional explicit RunPod data center ids. Overrides region when provided.",
                 ],
                 "templateID": [
                     "type": "string",
-                    "description": "Optional RunPod template id. If omitted with no imageName, PiMP Audio Studio tries the recommended official RunPod PyTorch pod template."
+                    "description": "Optional RunPod template id. If omitted with no imageName, PiMP Audio Studio tries the recommended official RunPod PyTorch pod template.",
                 ],
                 "imageName": [
                     "type": "string",
-                    "description": "Optional container image. A custom image overrides templateID at launch time."
+                    "description": "Optional container image. A custom image overrides templateID at launch time.",
                 ],
                 "useRecommendedTemplate": [
                     "type": "boolean",
-                    "description": "Defaults to true. When templateID and imageName are empty, use the recommended official RunPod PyTorch pod template if available."
+                    "description": "Defaults to true. When templateID and imageName are empty, use the recommended official RunPod PyTorch pod template if available.",
                 ],
                 "name": [
                     "type": "string",
-                    "description": "Optional RunPod pod name. Defaults to a PiMP Audio Studio generated name."
+                    "description": "Optional RunPod pod name. Defaults to a PiMP Audio Studio generated name.",
                 ],
                 "containerDiskGB": [
                     "type": "integer",
                     "minimum": 20,
-                    "description": "Container disk size in GB. Defaults to 80 and is raised to the selected template's default when needed."
+                    "description": "Container disk size in GB. Defaults to 80 and is raised to the selected template's default when needed.",
                 ],
                 "volumeGB": [
                     "type": "integer",
                     "minimum": 20,
-                    "description": "Persistent volume size in GB. Defaults to 80 and is raised to the selected template's default when needed."
+                    "description": "Persistent volume size in GB. Defaults to 80 and is raised to the selected template's default when needed.",
                 ],
                 "dryRun": [
                     "type": "boolean",
-                    "description": "Defaults to true. Set false, with confirmation, to actually create billable RunPod GPU time."
+                    "description": "Defaults to true. Set false, with confirmation, to actually create billable RunPod GPU time.",
                 ],
                 "validateOnly": [
                     "type": "boolean",
-                    "description": "Alias for dryRun."
+                    "description": "Alias for dryRun.",
                 ],
                 "confirm": [
                     "type": "boolean",
-                    "description": "Required for actual launches when the client does not support MCP elicitation."
-                ]
+                    "description": "Required for actual launches when the client does not support MCP elicitation.",
+                ],
             ]
         ),
         tool(
@@ -303,12 +303,12 @@ enum MCPToolCatalog {
             properties: [
                 "podID": [
                     "type": "string",
-                    "description": "RunPod pod id to terminate."
+                    "description": "RunPod pod id to terminate.",
                 ],
                 "confirm": [
                     "type": "boolean",
-                    "description": "Required for clients that do not support MCP elicitation."
-                ]
+                    "description": "Required for clients that do not support MCP elicitation.",
+                ],
             ]
         ),
         tool(
@@ -320,8 +320,8 @@ enum MCPToolCatalog {
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 200,
-                    "description": "Maximum number of history rows to return. Defaults to 25."
-                ]
+                    "description": "Maximum number of history rows to return. Defaults to 25.",
+                ],
             ]
         ),
         tool(
@@ -331,11 +331,11 @@ enum MCPToolCatalog {
             properties: [
                 "id": [
                     "type": "string",
-                    "description": "History UUID, trace filename, or audio filename."
+                    "description": "History UUID, trace filename, or audio filename.",
                 ],
                 "historyEntryID": ["type": "string"],
                 "traceFileName": ["type": "string"],
-                "audioFileName": ["type": "string"]
+                "audioFileName": ["type": "string"],
             ]
         ),
         tool(
@@ -346,12 +346,12 @@ enum MCPToolCatalog {
             properties: [
                 "left": [
                     "type": "string",
-                    "description": "Left trace identifier: history UUID, trace filename, or audio filename."
+                    "description": "Left trace identifier: history UUID, trace filename, or audio filename.",
                 ],
                 "right": [
                     "type": "string",
-                    "description": "Right trace identifier: history UUID, trace filename, or audio filename."
-                ]
+                    "description": "Right trace identifier: history UUID, trace filename, or audio filename.",
+                ],
             ]
         ),
         tool(
@@ -361,31 +361,31 @@ enum MCPToolCatalog {
             properties: [
                 "id": [
                     "type": "string",
-                    "description": "History UUID, trace filename, or audio filename."
+                    "description": "History UUID, trace filename, or audio filename.",
                 ],
                 "historyEntryID": ["type": "string"],
                 "traceFileName": ["type": "string"],
                 "audioFileName": ["type": "string"],
                 "isPreferred": [
                     "type": "boolean",
-                    "description": "Whether the take should be marked preferred. Defaults to true."
+                    "description": "Whether the take should be marked preferred. Defaults to true.",
                 ],
                 "preferred": [
                     "type": "boolean",
-                    "description": "Alias for isPreferred."
+                    "description": "Alias for isPreferred.",
                 ],
                 "listeningNote": [
                     "type": "string",
-                    "description": "Optional listening note. Omit to keep the existing note; pass an empty string to clear it."
+                    "description": "Optional listening note. Omit to keep the existing note; pass an empty string to clear it.",
                 ],
                 "note": [
                     "type": "string",
-                    "description": "Alias for listeningNote."
+                    "description": "Alias for listeningNote.",
                 ],
                 "confirm": [
                     "type": "boolean",
-                    "description": "Required when the client does not support MCP elicitation."
-                ]
+                    "description": "Required when the client does not support MCP elicitation.",
+                ],
             ]
         ),
         tool(
@@ -396,17 +396,17 @@ enum MCPToolCatalog {
             properties: [
                 "prompt": [
                     "type": "string",
-                    "description": "Brief prompt or audio description to enhance."
+                    "description": "Brief prompt or audio description to enhance.",
                 ],
                 "mode": [
                     "type": "string",
                     "enum": ["music", "soundFX", "ambient"],
-                    "description": "Generation mode. Defaults to music."
+                    "description": "Generation mode. Defaults to music.",
                 ],
                 "generationMode": [
                     "type": "string",
-                    "description": "Alias for mode."
-                ]
+                    "description": "Alias for mode.",
+                ],
             ]
         ),
         tool(
@@ -417,26 +417,26 @@ enum MCPToolCatalog {
             properties: [
                 "prompt": [
                     "type": "string",
-                    "description": "Song prompt or creative direction."
+                    "description": "Song prompt or creative direction.",
                 ],
                 "style": [
                     "type": "string",
-                    "description": "Optional extra style guidance."
+                    "description": "Optional extra style guidance.",
                 ],
                 "duration": [
                     "type": "number",
                     "minimum": 1,
-                    "description": "Target song duration in seconds."
+                    "description": "Target song duration in seconds.",
                 ],
                 "durationSeconds": [
                     "type": "number",
                     "minimum": 1,
-                    "description": "Alias for duration."
+                    "description": "Alias for duration.",
                 ],
                 "confirm": [
                     "type": "boolean",
-                    "description": "Required when the client does not support MCP elicitation."
-                ]
+                    "description": "Required when the client does not support MCP elicitation.",
+                ],
             ]
         ),
         tool(
@@ -446,21 +446,21 @@ enum MCPToolCatalog {
             properties: [
                 "id": [
                     "type": "string",
-                    "description": "Adapter id or display name to apply as the primary adapter."
+                    "description": "Adapter id or display name to apply as the primary adapter.",
                 ],
                 "adapterID": [
                     "type": "string",
-                    "description": "Alias for id."
+                    "description": "Alias for id.",
                 ],
                 "name": [
                     "type": "string",
-                    "description": "Alias for id."
+                    "description": "Alias for id.",
                 ],
                 "strength": [
                     "type": "number",
                     "minimum": 0,
                     "maximum": Double(AdapterStrengthLimits.maximum),
-                    "description": "Primary adapter gain. 1.0 is normal strength; values above 1.0 boost weak adapters."
+                    "description": "Primary adapter gain. 1.0 is normal strength; values above 1.0 boost weak adapters.",
                 ],
                 "adapters": [
                     "type": "array",
@@ -471,20 +471,28 @@ enum MCPToolCatalog {
                             "id": ["type": "string"],
                             "adapterID": ["type": "string"],
                             "name": ["type": "string"],
-                            "strength": ["type": "number", "minimum": 0, "maximum": Double(AdapterStrengthLimits.maximum)],
-                            "weight": ["type": "number", "minimum": 0, "maximum": Double(AdapterStrengthLimits.maximum)],
-                            "scale": ["type": "number", "minimum": 0, "maximum": Double(AdapterStrengthLimits.maximum)]
-                        ]
-                    ]
+                            "strength": [
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": Double(AdapterStrengthLimits.maximum),
+                            ],
+                            "weight": [
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": Double(AdapterStrengthLimits.maximum),
+                            ],
+                            "scale": ["type": "number", "minimum": 0, "maximum": Double(AdapterStrengthLimits.maximum)],
+                        ],
+                    ],
                 ],
                 "clear": [
                     "type": "boolean",
-                    "description": "Clear all selected adapters when true."
+                    "description": "Clear all selected adapters when true.",
                 ],
                 "confirm": [
                     "type": "boolean",
-                    "description": "Required when the client does not support MCP elicitation."
-                ]
+                    "description": "Required when the client does not support MCP elicitation.",
+                ],
             ]
         ),
         tool(
@@ -495,57 +503,57 @@ enum MCPToolCatalog {
             properties: [
                 "prompt": [
                     "type": "string",
-                    "description": "Prompt or creative direction."
+                    "description": "Prompt or creative direction.",
                 ],
                 "text": [
                     "type": "string",
-                    "description": "Alias for prompt."
+                    "description": "Alias for prompt.",
                 ],
                 "enhancePrompt": [
                     "type": "boolean",
-                    "description": "Run the prompt enhancer before generation. Defaults to false."
+                    "description": "Run the prompt enhancer before generation. Defaults to false.",
                 ],
                 "enhance": [
                     "type": "boolean",
-                    "description": "Alias for enhancePrompt."
+                    "description": "Alias for enhancePrompt.",
                 ],
                 "writeLyrics": [
                     "type": "boolean",
-                    "description": "Write duration-aware lyrics when no lyrics are supplied. Defaults to false."
+                    "description": "Write duration-aware lyrics when no lyrics are supplied. Defaults to false.",
                 ],
                 "generateLyrics": [
                     "type": "boolean",
-                    "description": "Alias for writeLyrics."
+                    "description": "Alias for writeLyrics.",
                 ],
                 "lyrics": [
                     "type": "string",
-                    "description": "Optional lyrics. Supplied lyrics are used as-is and prevent automatic lyric writing."
+                    "description": "Optional lyrics. Supplied lyrics are used as-is and prevent automatic lyric writing.",
                 ],
                 "style": [
                     "type": "string",
-                    "description": "Optional lyric style guidance."
+                    "description": "Optional lyric style guidance.",
                 ],
                 "lyricStyle": [
                     "type": "string",
-                    "description": "Alias for style."
+                    "description": "Alias for style.",
                 ],
                 "adapter": [
                     "type": "string",
-                    "description": "Optional adapter id or display name to apply before generation."
+                    "description": "Optional adapter id or display name to apply before generation.",
                 ],
                 "lora": [
                     "type": "string",
-                    "description": "Alias for adapter."
+                    "description": "Alias for adapter.",
                 ],
                 "adapterID": [
                     "type": "string",
-                    "description": "Alias for adapter."
+                    "description": "Alias for adapter.",
                 ],
                 "strength": [
                     "type": "number",
                     "minimum": 0,
                     "maximum": Double(AdapterStrengthLimits.maximum),
-                    "description": "Adapter gain when adapter/lora is supplied. 1.0 is normal strength; values above 1.0 boost weak adapters."
+                    "description": "Adapter gain when adapter/lora is supplied. 1.0 is normal strength; values above 1.0 boost weak adapters.",
                 ],
                 "adapters": [
                     "type": "array",
@@ -556,68 +564,76 @@ enum MCPToolCatalog {
                             "id": ["type": "string"],
                             "adapterID": ["type": "string"],
                             "name": ["type": "string"],
-                            "strength": ["type": "number", "minimum": 0, "maximum": Double(AdapterStrengthLimits.maximum)],
-                            "weight": ["type": "number", "minimum": 0, "maximum": Double(AdapterStrengthLimits.maximum)],
-                            "scale": ["type": "number", "minimum": 0, "maximum": Double(AdapterStrengthLimits.maximum)]
-                        ]
-                    ]
+                            "strength": [
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": Double(AdapterStrengthLimits.maximum),
+                            ],
+                            "weight": [
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": Double(AdapterStrengthLimits.maximum),
+                            ],
+                            "scale": ["type": "number", "minimum": 0, "maximum": Double(AdapterStrengthLimits.maximum)],
+                        ],
+                    ],
                 ],
                 "clearAdapter": [
                     "type": "boolean",
-                    "description": "Clear selected adapters before generation. When adapter/adapters are also supplied, the clear happens first and the requested adapter selection is then applied."
+                    "description": "Clear selected adapters before generation. When adapter/adapters are also supplied, the clear happens first and the requested adapter selection is then applied.",
                 ],
                 "duration": [
                     "type": "number",
                     "minimum": 1,
-                    "description": "Duration in seconds. Defaults to 30. Stable Audio requests are capped at 47 seconds."
+                    "description": "Duration in seconds. Defaults to 30. Stable Audio requests are capped at 47 seconds.",
                 ],
                 "seed": [
-                    "description": "Integer seed, 'random', empty, or omitted for random."
+                    "description": "Integer seed, 'random', empty, or omitted for random.",
                 ],
                 "mode": [
                     "type": "string",
                     "enum": ["music", "soundFX", "ambient"],
-                    "description": "Resolved generation mode. Defaults to music."
+                    "description": "Resolved generation mode. Defaults to music.",
                 ],
                 "pipeline": [
                     "type": "string",
                     "enum": ["auto", "aceStep", "stableAudio"],
-                    "description": "Pipeline override. Defaults to auto."
+                    "description": "Pipeline override. Defaults to auto.",
                 ],
                 "guidanceScale": [
                     "type": "number",
-                    "description": "CFG guidance scale. Defaults to 7.5."
+                    "description": "CFG guidance scale. Defaults to 7.5.",
                 ],
                 "guidancePreset": [
                     "type": "string",
                     "enum": ["constant", "lateEmphasis", "midToLate", "softLate"],
-                    "description": "Guidance schedule preset. Defaults to softLate for non-XL ACE-Step models and constant for XL DiT / XL adapters."
+                    "description": "Guidance schedule preset. Defaults to softLate for non-XL ACE-Step models and constant for XL DiT / XL adapters.",
                 ],
                 "method": [
                     "type": "string",
                     "enum": ["ode", "sde"],
-                    "description": "Diffusion method. Defaults to ode."
+                    "description": "Diffusion method. Defaults to ode.",
                 ],
                 "precision": [
                     "type": "string",
                     "enum": ["float32", "float16"],
-                    "description": "Runtime precision. Defaults to float32."
+                    "description": "Runtime precision. Defaults to float32.",
                 ],
                 "steps": [
-                    "description": "Positive integer step override, 'auto', or omitted for auto."
+                    "description": "Positive integer step override, 'auto', or omitted for auto.",
                 ],
                 "shift": [
                     "type": "number",
-                    "description": "ACE-Step shift override. Defaults to 3.0."
+                    "description": "ACE-Step shift override. Defaults to 3.0.",
                 ],
                 "dryRun": [
                     "type": "boolean",
-                    "description": "Defaults to true. Set false, with confirmation, to start generation."
+                    "description": "Defaults to true. Set false, with confirmation, to start generation.",
                 ],
                 "confirm": [
                     "type": "boolean",
-                    "description": "Required for actual generation when the client does not support MCP elicitation."
-                ]
+                    "description": "Required for actual generation when the client does not support MCP elicitation.",
+                ],
             ]
         ),
         tool(
@@ -628,78 +644,78 @@ enum MCPToolCatalog {
             properties: [
                 "prompt": [
                     "type": "string",
-                    "description": "Prompt or audio description."
+                    "description": "Prompt or audio description.",
                 ],
                 "text": [
                     "type": "string",
-                    "description": "Alias for prompt."
+                    "description": "Alias for prompt.",
                 ],
                 "lyrics": [
                     "type": "string",
-                    "description": "Optional lyrics for music generation."
+                    "description": "Optional lyrics for music generation.",
                 ],
                 "duration": [
                     "type": "number",
                     "minimum": 1,
-                    "description": "Duration in seconds. Defaults to 30. Stable Audio requests are capped at 47 seconds."
+                    "description": "Duration in seconds. Defaults to 30. Stable Audio requests are capped at 47 seconds.",
                 ],
                 "seed": [
-                    "description": "Integer seed, 'random', empty, or omitted for random."
+                    "description": "Integer seed, 'random', empty, or omitted for random.",
                 ],
                 "mode": [
                     "type": "string",
                     "enum": ["music", "soundFX", "ambient"],
-                    "description": "Resolved generation mode. Defaults to music."
+                    "description": "Resolved generation mode. Defaults to music.",
                 ],
                 "pipeline": [
                     "type": "string",
                     "enum": ["auto", "aceStep", "stableAudio"],
-                    "description": "Pipeline override. Defaults to auto."
+                    "description": "Pipeline override. Defaults to auto.",
                 ],
                 "guidanceScale": [
                     "type": "number",
-                    "description": "CFG guidance scale. Defaults to 7.5."
+                    "description": "CFG guidance scale. Defaults to 7.5.",
                 ],
                 "guidancePreset": [
                     "type": "string",
                     "enum": ["constant", "lateEmphasis", "midToLate", "softLate"],
-                    "description": "Guidance schedule preset. Defaults to softLate for non-XL ACE-Step models and constant for XL DiT / XL adapters."
+                    "description": "Guidance schedule preset. Defaults to softLate for non-XL ACE-Step models and constant for XL DiT / XL adapters.",
                 ],
                 "method": [
                     "type": "string",
                     "enum": ["ode", "sde"],
-                    "description": "Diffusion method. Defaults to ode."
+                    "description": "Diffusion method. Defaults to ode.",
                 ],
                 "precision": [
                     "type": "string",
                     "enum": ["float32", "float16"],
-                    "description": "Runtime precision. Defaults to float32."
+                    "description": "Runtime precision. Defaults to float32.",
                 ],
                 "steps": [
-                    "description": "Positive integer step override, 'auto', or omitted for auto."
+                    "description": "Positive integer step override, 'auto', or omitted for auto.",
                 ],
                 "shift": [
                     "type": "number",
-                    "description": "ACE-Step shift override. Defaults to 3.0."
+                    "description": "ACE-Step shift override. Defaults to 3.0.",
                 ],
                 "referenceAudioPath": [
                     "type": "string",
-                    "description": "Optional local audio path for cover-song generation. If the client advertises MCP roots, prefer a file under pimpaudio://client-roots."
+                    "description": "Optional local audio path for cover-song generation. If the client advertises MCP roots, prefer a file under pimpaudio://client-roots.",
                 ],
                 "coverStrength": [
                     "type": "number",
                     "minimum": 0,
                     "maximum": 1,
-                    "description": "Cover-song rework amount. 0 stays closest to the source recording; 1 follows coarse acoustic hints with the most creative freedom. Defaults to 0.7."
+                    "description": "Cover-song rework amount. 0 stays closest to the source recording; 1 follows coarse acoustic hints with the most creative freedom. Defaults to 0.7.",
                 ],
                 "dryRun": [
                     "type": "boolean",
-                    "description": "Defaults to true. Set false, with confirmation, to start generation."
+                    "description": "Defaults to true. Set false, with confirmation, to start generation.",
                 ],
                 "confirm": [
                     "type": "boolean",
-                    "description": "Required for actual generation when the client does not support MCP elicitation."
-                ]
+                    "description": "Required for actual generation when the client does not support MCP elicitation.",
+                ],
             ]
         ),
         tool(
@@ -721,56 +737,56 @@ enum MCPToolCatalog {
             properties: [
                 "id": [
                     "type": "string",
-                    "description": "History entry id or audio resource id. Prefer this over path for sandbox-safe access."
+                    "description": "History entry id or audio resource id. Prefer this over path for sandbox-safe access.",
                 ],
                 "historyID": [
                     "type": "string",
-                    "description": "History entry id to load into the editor."
+                    "description": "History entry id to load into the editor.",
                 ],
                 "historyId": [
                     "type": "string",
-                    "description": "Alias for historyID."
+                    "description": "Alias for historyID.",
                 ],
                 "audioID": [
                     "type": "string",
-                    "description": "Audio resource id to load into the editor."
+                    "description": "Audio resource id to load into the editor.",
                 ],
                 "audioId": [
                     "type": "string",
-                    "description": "Alias for audioID."
+                    "description": "Alias for audioID.",
                 ],
                 "path": [
                     "type": "string",
-                    "description": "Readable local audio file path. History/audio ids are preferred; if MCP client roots are advertised, choose a file under pimpaudio://client-roots. Sandboxed builds may still reject arbitrary paths."
+                    "description": "Readable local audio file path. History/audio ids are preferred; if MCP client roots are advertised, choose a file under pimpaudio://client-roots. Sandboxed builds may still reject arbitrary paths.",
                 ],
                 "audioPath": [
                     "type": "string",
-                    "description": "Alias for path."
+                    "description": "Alias for path.",
                 ],
                 "filePath": [
                     "type": "string",
-                    "description": "Alias for path."
+                    "description": "Alias for path.",
                 ],
                 "originalPrompt": [
                     "type": "string",
-                    "description": "Optional source prompt/context associated with the audio."
+                    "description": "Optional source prompt/context associated with the audio.",
                 ],
                 "prompt": [
                     "type": "string",
-                    "description": "Alias for originalPrompt."
+                    "description": "Alias for originalPrompt.",
                 ],
                 "dryRun": [
                     "type": "boolean",
-                    "description": "Defaults to true. Set false, with confirmation, to load audio."
+                    "description": "Defaults to true. Set false, with confirmation, to load audio.",
                 ],
                 "validateOnly": [
                     "type": "boolean",
-                    "description": "Alias for dryRun."
+                    "description": "Alias for dryRun.",
                 ],
                 "confirm": [
                     "type": "boolean",
-                    "description": "Required for an actual load when the client does not support MCP elicitation."
-                ]
+                    "description": "Required for an actual load when the client does not support MCP elicitation.",
+                ],
             ]
         ),
         tool(
@@ -781,28 +797,28 @@ enum MCPToolCatalog {
                 "mode": [
                     "type": "string",
                     "enum": ["inpaint", "repaint"],
-                    "description": "Editor edit mode. Defaults to inpaint."
+                    "description": "Editor edit mode. Defaults to inpaint.",
                 ],
                 "editMode": [
                     "type": "string",
                     "enum": ["inpaint", "repaint"],
-                    "description": "Alias for mode."
+                    "description": "Alias for mode.",
                 ],
                 "regionPrompt": [
                     "type": "string",
-                    "description": "Prompt describing the replacement content for the selected region."
+                    "description": "Prompt describing the replacement content for the selected region.",
                 ],
                 "prompt": [
                     "type": "string",
-                    "description": "Alias for regionPrompt."
+                    "description": "Alias for regionPrompt.",
                 ],
                 "originalPrompt": [
                     "type": "string",
-                    "description": "Optional source/full-track context prompt. Defaults to loaded audio context when available."
+                    "description": "Optional source/full-track context prompt. Defaults to loaded audio context when available.",
                 ],
                 "sourcePrompt": [
                     "type": "string",
-                    "description": "Alias for originalPrompt."
+                    "description": "Alias for originalPrompt.",
                 ],
                 "selection": [
                     "type": "object",
@@ -822,34 +838,34 @@ enum MCPToolCatalog {
                                 "lowHz": ["type": "number"],
                                 "highHz": ["type": "number"],
                                 "low": ["type": "number"],
-                                "high": ["type": "number"]
-                            ]
-                        ]
-                    ]
+                                "high": ["type": "number"],
+                            ],
+                        ],
+                    ],
                 ],
                 "selectionStart": [
                     "type": "number",
-                    "description": "Selected region start time in seconds."
+                    "description": "Selected region start time in seconds.",
                 ],
                 "selectionEnd": [
                     "type": "number",
-                    "description": "Selected region end time in seconds."
+                    "description": "Selected region end time in seconds.",
                 ],
                 "startTime": [
                     "type": "number",
-                    "description": "Alias for selectionStart."
+                    "description": "Alias for selectionStart.",
                 ],
                 "endTime": [
                     "type": "number",
-                    "description": "Alias for selectionEnd."
+                    "description": "Alias for selectionEnd.",
                 ],
                 "start": [
                     "type": "number",
-                    "description": "Alias for selectionStart."
+                    "description": "Alias for selectionStart.",
                 ],
                 "end": [
                     "type": "number",
-                    "description": "Alias for selectionEnd."
+                    "description": "Alias for selectionEnd.",
                 ],
                 "frequencyBand": [
                     "type": "object",
@@ -861,92 +877,92 @@ enum MCPToolCatalog {
                         "lowHz": ["type": "number"],
                         "highHz": ["type": "number"],
                         "low": ["type": "number"],
-                        "high": ["type": "number"]
-                    ]
+                        "high": ["type": "number"],
+                    ],
                 ],
                 "lowCutHz": [
                     "type": "number",
-                    "description": "Optional low frequency bound in Hz."
+                    "description": "Optional low frequency bound in Hz.",
                 ],
                 "highCutHz": [
                     "type": "number",
-                    "description": "Optional high frequency bound in Hz."
+                    "description": "Optional high frequency bound in Hz.",
                 ],
                 "lowHz": [
                     "type": "number",
-                    "description": "Alias for lowCutHz."
+                    "description": "Alias for lowCutHz.",
                 ],
                 "highHz": [
                     "type": "number",
-                    "description": "Alias for highCutHz."
+                    "description": "Alias for highCutHz.",
                 ],
                 "low": [
                     "type": "number",
-                    "description": "Alias for lowCutHz."
+                    "description": "Alias for lowCutHz.",
                 ],
                 "high": [
                     "type": "number",
-                    "description": "Alias for highCutHz."
+                    "description": "Alias for highCutHz.",
                 ],
                 "preset": [
                     "type": "string",
                     "enum": ["subtle", "moderate", "full"],
-                    "description": "Optional strength/guidance preset."
+                    "description": "Optional strength/guidance preset.",
                 ],
                 "strength": [
                     "type": "number",
                     "minimum": 0,
                     "maximum": 1,
-                    "description": "Denoising strength from 0.0 to 1.0. Defaults to 0.6."
+                    "description": "Denoising strength from 0.0 to 1.0. Defaults to 0.6.",
                 ],
                 "denoiseStrength": [
                     "type": "number",
                     "minimum": 0,
                     "maximum": 1,
-                    "description": "Alias for strength."
+                    "description": "Alias for strength.",
                 ],
                 "editStrength": [
                     "type": "number",
                     "minimum": 0,
                     "maximum": 1,
-                    "description": "Alias for strength."
+                    "description": "Alias for strength.",
                 ],
                 "guidanceScale": [
                     "type": "number",
                     "exclusiveMinimum": 0,
-                    "description": "Positive classifier-free guidance scale. Defaults to 7.0."
+                    "description": "Positive classifier-free guidance scale. Defaults to 7.0.",
                 ],
                 "guidance": [
                     "type": "number",
                     "exclusiveMinimum": 0,
-                    "description": "Alias for guidanceScale."
+                    "description": "Alias for guidanceScale.",
                 ],
                 "pipeline": [
                     "type": "string",
                     "enum": ["auto", "aceStep", "stableAudio"],
-                    "description": "Generation pipeline to use for the edit. Defaults to auto."
+                    "description": "Generation pipeline to use for the edit. Defaults to auto.",
                 ],
                 "pipelineOverride": [
                     "type": "string",
                     "enum": ["auto", "aceStep", "stableAudio"],
-                    "description": "Alias for pipeline."
+                    "description": "Alias for pipeline.",
                 ],
                 "seed": [
                     "type": ["integer", "string", "null"],
-                    "description": "Optional deterministic seed, or 'random'."
+                    "description": "Optional deterministic seed, or 'random'.",
                 ],
                 "confirm": [
                     "type": "boolean",
-                    "description": "Set true after explicit approval. If omitted, clients advertising MCP form elicitation may be asked to approve through elicitation/create."
+                    "description": "Set true after explicit approval. If omitted, clients advertising MCP form elicitation may be asked to approve through elicitation/create.",
                 ],
                 "dryRun": [
                     "type": "boolean",
-                    "description": "Validate and echo the resolved request without mutating editor audio."
+                    "description": "Validate and echo the resolved request without mutating editor audio.",
                 ],
                 "validateOnly": [
                     "type": "boolean",
-                    "description": "Alias for dryRun."
-                ]
+                    "description": "Alias for dryRun.",
+                ],
             ]
         ),
         tool(
@@ -965,13 +981,13 @@ enum MCPToolCatalog {
                         "eq",
                         "reverb",
                         "timeStretch",
-                        "pitchShift"
+                        "pitchShift",
                     ],
-                    "description": "Single effect to apply when effects is omitted."
+                    "description": "Single effect to apply when effects is omitted.",
                 ],
                 "name": [
                     "type": "string",
-                    "description": "Alias for effect."
+                    "description": "Alias for effect.",
                 ],
                 "effects": [
                     "type": "array",
@@ -989,8 +1005,8 @@ enum MCPToolCatalog {
                                     "eq",
                                     "reverb",
                                     "timeStretch",
-                                    "pitchShift"
-                                ]
+                                    "pitchShift",
+                                ],
                             ],
                             [
                                 "type": "object",
@@ -1000,7 +1016,7 @@ enum MCPToolCatalog {
                                     "name": ["type": "string"],
                                     "target": [
                                         "type": "string",
-                                        "enum": ["wholeTrack", "selection", "whole", "region"]
+                                        "enum": ["wholeTrack", "selection", "whole", "region"],
                                     ],
                                     "selection": [
                                         "type": "object",
@@ -1009,30 +1025,30 @@ enum MCPToolCatalog {
                                             "startTime": ["type": "number"],
                                             "endTime": ["type": "number"],
                                             "start": ["type": "number"],
-                                            "end": ["type": "number"]
-                                        ]
+                                            "end": ["type": "number"],
+                                        ],
                                     ],
                                     "parameters": [
                                         "type": "object",
-                                        "additionalProperties": true
-                                    ]
-                                ]
-                            ]
-                        ]
-                    ]
+                                        "additionalProperties": true,
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
                 ],
                 "effectChain": [
                     "type": "array",
-                    "description": "Alias for effects."
+                    "description": "Alias for effects.",
                 ],
                 "chain": [
                     "type": "array",
-                    "description": "Alias for effects."
+                    "description": "Alias for effects.",
                 ],
                 "target": [
                     "type": "string",
                     "enum": ["wholeTrack", "selection", "whole", "region"],
-                    "description": "Default target for effects. Selection-only effects require a selected range."
+                    "description": "Default target for effects. Selection-only effects require a selected range.",
                 ],
                 "selection": [
                     "type": "object",
@@ -1042,42 +1058,42 @@ enum MCPToolCatalog {
                         "startTime": ["type": "number"],
                         "endTime": ["type": "number"],
                         "start": ["type": "number"],
-                        "end": ["type": "number"]
-                    ]
+                        "end": ["type": "number"],
+                    ],
                 ],
                 "selectionStart": [
                     "type": "number",
-                    "description": "Default selected region start time in seconds."
+                    "description": "Default selected region start time in seconds.",
                 ],
                 "selectionEnd": [
                     "type": "number",
-                    "description": "Default selected region end time in seconds."
+                    "description": "Default selected region end time in seconds.",
                 ],
                 "startTime": [
                     "type": "number",
-                    "description": "Alias for selectionStart."
+                    "description": "Alias for selectionStart.",
                 ],
                 "endTime": [
                     "type": "number",
-                    "description": "Alias for selectionEnd."
+                    "description": "Alias for selectionEnd.",
                 ],
                 "start": [
                     "type": "number",
-                    "description": "Alias for selectionStart."
+                    "description": "Alias for selectionStart.",
                 ],
                 "end": [
                     "type": "number",
-                    "description": "Alias for selectionEnd."
+                    "description": "Alias for selectionEnd.",
                 ],
                 "parameters": [
                     "type": "object",
                     "additionalProperties": true,
-                    "description": "Effect parameters for single-effect calls. Use bands for eq, preset or reverb values for reverb, rate for timeStretch, and pitch/cents/semitones for pitchShift."
+                    "description": "Effect parameters for single-effect calls. Use bands for eq, preset or reverb values for reverb, rate for timeStretch, and pitch/cents/semitones for pitchShift.",
                 ],
                 "params": [
                     "type": "object",
                     "additionalProperties": true,
-                    "description": "Alias for parameters."
+                    "description": "Alias for parameters.",
                 ],
                 "bands": [
                     "type": "array",
@@ -1093,77 +1109,77 @@ enum MCPToolCatalog {
                             "gainDB": ["type": "number"],
                             "db": ["type": "number"],
                             "q": ["type": "number"],
-                            "quality": ["type": "number"]
-                        ]
-                    ]
+                            "quality": ["type": "number"],
+                        ],
+                    ],
                 ],
                 "preset": [
                     "type": "string",
                     "enum": ["room", "hall", "plate"],
-                    "description": "Reverb preset."
+                    "description": "Reverb preset.",
                 ],
                 "decayTime": [
                     "type": "number",
-                    "description": "Reverb decay time in seconds."
+                    "description": "Reverb decay time in seconds.",
                 ],
                 "wetDryMix": [
                     "type": "number",
                     "minimum": 0,
                     "maximum": 1,
-                    "description": "Reverb wet/dry mix from 0.0 to 1.0."
+                    "description": "Reverb wet/dry mix from 0.0 to 1.0.",
                 ],
                 "preDelay": [
                     "type": "number",
-                    "description": "Reverb pre-delay in milliseconds."
+                    "description": "Reverb pre-delay in milliseconds.",
                 ],
                 "damping": [
                     "type": "number",
                     "minimum": 0,
                     "maximum": 1,
-                    "description": "Reverb damping from 0.0 to 1.0."
+                    "description": "Reverb damping from 0.0 to 1.0.",
                 ],
                 "rate": [
                     "type": "number",
                     "minimum": 0.25,
                     "maximum": 4,
-                    "description": "Time-stretch rate. 1.0 keeps the original duration."
+                    "description": "Time-stretch rate. 1.0 keeps the original duration.",
                 ],
                 "ratio": [
                     "type": "number",
                     "minimum": 0.25,
                     "maximum": 4,
-                    "description": "Alias for rate."
+                    "description": "Alias for rate.",
                 ],
                 "pitch": [
                     "type": "number",
                     "minimum": -2400,
                     "maximum": 2400,
-                    "description": "Pitch shift in cents."
+                    "description": "Pitch shift in cents.",
                 ],
                 "cents": [
                     "type": "number",
                     "minimum": -2400,
                     "maximum": 2400,
-                    "description": "Alias for pitch."
+                    "description": "Alias for pitch.",
                 ],
                 "semitones": [
                     "type": "number",
                     "minimum": -24,
                     "maximum": 24,
-                    "description": "Pitch shift in semitones."
+                    "description": "Pitch shift in semitones.",
                 ],
                 "confirm": [
                     "type": "boolean",
-                    "description": "Set true after explicit approval. If omitted, clients advertising MCP form elicitation may be asked to approve through elicitation/create."
+                    "description": "Set true after explicit approval. If omitted, clients advertising MCP form elicitation may be asked to approve through elicitation/create.",
                 ],
                 "dryRun": [
                     "type": "boolean",
-                    "description": "Validate and echo the resolved DSP request without mutating editor audio."
+                    "description": "Validate and echo the resolved DSP request without mutating editor audio.",
                 ],
                 "validateOnly": [
                     "type": "boolean",
-                    "description": "Alias for dryRun."
-                ]
+                    "description": "Alias for dryRun.",
+                ],
             ]
         ),
         tool(
@@ -1174,32 +1190,32 @@ enum MCPToolCatalog {
                 "format": [
                     "type": "string",
                     "enum": ["wav", "aiff"],
-                    "description": "Lossless output format. Defaults to wav."
+                    "description": "Lossless output format. Defaults to wav.",
                 ],
                 "fileFormat": [
                     "type": "string",
                     "enum": ["wav", "aiff"],
-                    "description": "Alias for format."
+                    "description": "Alias for format.",
                 ],
                 "outputPath": [
                     "type": "string",
-                    "description": "Optional output file path. The extension is normalized to the requested format. Prefer the default MCPExports path or a path under advertised MCP client roots; sandboxed builds may reject arbitrary paths."
+                    "description": "Optional output file path. The extension is normalized to the requested format. Prefer the default MCPExports path or a path under advertised MCP client roots; sandboxed builds may reject arbitrary paths.",
                 ],
                 "path": [
                     "type": "string",
-                    "description": "Alias for outputPath."
+                    "description": "Alias for outputPath.",
                 ],
                 "outputDirectory": [
                     "type": "string",
-                    "description": "Optional output directory. Defaults to MCPExports beside the loaded source audio. If MCP client roots are advertised, prefer a directory under pimpaudio://client-roots."
+                    "description": "Optional output directory. Defaults to MCPExports beside the loaded source audio. If MCP client roots are advertised, prefer a directory under pimpaudio://client-roots.",
                 ],
                 "directory": [
                     "type": "string",
-                    "description": "Alias for outputDirectory."
+                    "description": "Alias for outputDirectory.",
                 ],
                 "fileName": [
                     "type": "string",
-                    "description": "Optional file name when outputDirectory is used."
+                    "description": "Optional file name when outputDirectory is used.",
                 ],
                 "selection": [
                     "type": "object",
@@ -1209,49 +1225,49 @@ enum MCPToolCatalog {
                         "startTime": ["type": "number"],
                         "endTime": ["type": "number"],
                         "start": ["type": "number"],
-                        "end": ["type": "number"]
-                    ]
+                        "end": ["type": "number"],
+                    ],
                 ],
                 "selectionStart": [
                     "type": "number",
-                    "description": "Optional selected region start time in seconds."
+                    "description": "Optional selected region start time in seconds.",
                 ],
                 "selectionEnd": [
                     "type": "number",
-                    "description": "Optional selected region end time in seconds."
+                    "description": "Optional selected region end time in seconds.",
                 ],
                 "startTime": [
                     "type": "number",
-                    "description": "Alias for selectionStart."
+                    "description": "Alias for selectionStart.",
                 ],
                 "endTime": [
                     "type": "number",
-                    "description": "Alias for selectionEnd."
+                    "description": "Alias for selectionEnd.",
                 ],
                 "start": [
                     "type": "number",
-                    "description": "Alias for selectionStart."
+                    "description": "Alias for selectionStart.",
                 ],
                 "end": [
                     "type": "number",
-                    "description": "Alias for selectionEnd."
+                    "description": "Alias for selectionEnd.",
                 ],
                 "overwrite": [
                     "type": "boolean",
-                    "description": "Allow replacing an existing output file. Defaults to false."
+                    "description": "Allow replacing an existing output file. Defaults to false.",
                 ],
                 "dryRun": [
                     "type": "boolean",
-                    "description": "Defaults to true. Set false, with confirmation, to write the file."
+                    "description": "Defaults to true. Set false, with confirmation, to write the file.",
                 ],
                 "validateOnly": [
                     "type": "boolean",
-                    "description": "Alias for dryRun."
+                    "description": "Alias for dryRun.",
                 ],
                 "confirm": [
                     "type": "boolean",
-                    "description": "Required for an actual render when the client does not support MCP elicitation."
-                ]
+                    "description": "Required for an actual render when the client does not support MCP elicitation.",
+                ],
             ]
         ),
         tool(
@@ -1263,8 +1279,8 @@ enum MCPToolCatalog {
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 50,
-                    "description": "Maximum number of operation records to return. Defaults to 20."
-                ]
+                    "description": "Maximum number of operation records to return. Defaults to 20.",
+                ],
             ]
         ),
         tool(
@@ -1274,16 +1290,16 @@ enum MCPToolCatalog {
             properties: [
                 "id": [
                     "type": "string",
-                    "description": "Operation id returned by generate, generate_song, load_editor_audio, submit_editor_inpaint, apply_editor_effect_chain, render_editor_audio, list_operations, editor_status, or generation_status."
+                    "description": "Operation id returned by generate, generate_song, load_editor_audio, submit_editor_inpaint, apply_editor_effect_chain, render_editor_audio, list_operations, editor_status, or generation_status.",
                 ],
                 "operationID": [
                     "type": "string",
-                    "description": "Alias for id."
+                    "description": "Alias for id.",
                 ],
                 "operationId": [
                     "type": "string",
-                    "description": "Alias for id."
-                ]
+                    "description": "Alias for id.",
+                ],
             ]
         ),
         tool(
@@ -1293,24 +1309,24 @@ enum MCPToolCatalog {
             properties: [
                 "id": [
                     "type": "string",
-                    "description": "Operation id returned by generate, generate_song, load_editor_audio, submit_editor_inpaint, apply_editor_effect_chain, render_editor_audio, list_operations, editor_status, or generation_status."
+                    "description": "Operation id returned by generate, generate_song, load_editor_audio, submit_editor_inpaint, apply_editor_effect_chain, render_editor_audio, list_operations, editor_status, or generation_status.",
                 ],
                 "operationID": [
                     "type": "string",
-                    "description": "Alias for id."
+                    "description": "Alias for id.",
                 ],
                 "operationId": [
                     "type": "string",
-                    "description": "Alias for id."
+                    "description": "Alias for id.",
                 ],
                 "reason": [
                     "type": "string",
-                    "description": "Optional human-readable cancellation reason."
+                    "description": "Optional human-readable cancellation reason.",
                 ],
                 "confirm": [
                     "type": "boolean",
-                    "description": "Required when the client does not support MCP elicitation."
-                ]
+                    "description": "Required when the client does not support MCP elicitation.",
+                ],
             ]
         ),
 
@@ -1321,65 +1337,65 @@ enum MCPToolCatalog {
             properties: [
                 "path": [
                     "type": "string",
-                    "description": "Dataset package path."
+                    "description": "Dataset package path.",
                 ],
                 "dataset": [
                     "type": "string",
-                    "description": "Dataset id, folder name, or partial name."
+                    "description": "Dataset id, folder name, or partial name.",
                 ],
                 "id": [
                     "type": "string",
-                    "description": "Alias for dataset."
+                    "description": "Alias for dataset.",
                 ],
                 "kind": [
                     "type": "string",
                     "enum": ["lora", "lokr"],
-                    "description": "Adapter kind. Defaults to lora."
+                    "description": "Adapter kind. Defaults to lora.",
                 ],
                 "recipe": [
                     "type": "string",
                     "enum": ["narrow", "wide"],
-                    "description": "Remote recipe. Defaults to wide."
+                    "description": "Remote recipe. Defaults to wide.",
                 ],
                 "bundle": [
                     "type": "string",
                     "enum": ["full_mix", "vocals", "instrumental"],
-                    "description": "Training bundle. Defaults to full_mix."
+                    "description": "Training bundle. Defaults to full_mix.",
                 ],
                 "baseModel": [
                     "type": "string",
-                    "description": "xlSFT, xlBase, or xlTurbo. Defaults to xlSFT."
+                    "description": "xlSFT, xlBase, or xlTurbo. Defaults to xlSFT.",
                 ],
                 "adapterName": [
                     "type": "string",
-                    "description": "Friendly adapter name for the remote job."
+                    "description": "Friendly adapter name for the remote job.",
                 ],
                 "epochs": [
                     "type": "integer",
                     "minimum": 1,
-                    "description": "Training epochs."
+                    "description": "Training epochs.",
                 ],
                 "saveEvery": [
                     "type": "integer",
                     "minimum": 1,
-                    "description": "Checkpoint save interval."
+                    "description": "Checkpoint save interval.",
                 ],
                 "seed": [
                     "type": "integer",
-                    "description": "Training seed. Defaults to 42."
+                    "description": "Training seed. Defaults to 42.",
                 ],
                 "destinationPath": [
                     "type": "string",
-                    "description": "Output zip path or parent directory."
+                    "description": "Output zip path or parent directory.",
                 ],
                 "dryRun": [
                     "type": "boolean",
-                    "description": "Defaults to true."
+                    "description": "Defaults to true.",
                 ],
                 "confirm": [
                     "type": "boolean",
-                    "description": "Required for actual export without elicitation."
-                ]
+                    "description": "Required for actual export without elicitation.",
+                ],
             ]
         ),
         tool(
@@ -1390,20 +1406,20 @@ enum MCPToolCatalog {
             properties: [
                 "podID": [
                     "type": "string",
-                    "description": "RunPod pod id."
+                    "description": "RunPod pod id.",
                 ],
                 "archivePath": [
                     "type": "string",
-                    "description": "Local remote job zip path. Defaults to last created archive."
+                    "description": "Local remote job zip path. Defaults to last created archive.",
                 ],
                 "sshKeyPath": [
                     "type": "string",
-                    "description": "Optional private key path override."
+                    "description": "Optional private key path override.",
                 ],
                 "confirm": [
                     "type": "boolean",
-                    "description": "Required without elicitation."
-                ]
+                    "description": "Required without elicitation.",
+                ],
             ]
         ),
         tool(
@@ -1414,20 +1430,20 @@ enum MCPToolCatalog {
             properties: [
                 "podID": [
                     "type": "string",
-                    "description": "RunPod pod id."
+                    "description": "RunPod pod id.",
                 ],
                 "archivePath": [
                     "type": "string",
-                    "description": "Local remote job zip path."
+                    "description": "Local remote job zip path.",
                 ],
                 "sshKeyPath": [
                     "type": "string",
-                    "description": "Optional private key path override."
+                    "description": "Optional private key path override.",
                 ],
                 "confirm": [
                     "type": "boolean",
-                    "description": "Required without elicitation."
-                ]
+                    "description": "Required without elicitation.",
+                ],
             ]
         ),
         tool(
@@ -1437,24 +1453,24 @@ enum MCPToolCatalog {
             properties: [
                 "podID": [
                     "type": "string",
-                    "description": "RunPod pod id."
+                    "description": "RunPod pod id.",
                 ],
                 "archivePath": [
                     "type": "string",
-                    "description": "Local remote job zip path."
+                    "description": "Local remote job zip path.",
                 ],
                 "sshKeyPath": [
                     "type": "string",
-                    "description": "Optional private key path override."
+                    "description": "Optional private key path override.",
                 ],
                 "refresh": [
                     "type": "boolean",
-                    "description": "Refresh/monitor remote job. Defaults to true when pod and archive are present."
+                    "description": "Refresh/monitor remote job. Defaults to true when pod and archive are present.",
                 ],
                 "refreshPods": [
                     "type": "boolean",
-                    "description": "Also refresh pod list."
-                ]
+                    "description": "Also refresh pod list.",
+                ],
             ]
         ),
         tool(
@@ -1465,28 +1481,28 @@ enum MCPToolCatalog {
             properties: [
                 "podID": [
                     "type": "string",
-                    "description": "RunPod pod id."
+                    "description": "RunPod pod id.",
                 ],
                 "archivePath": [
                     "type": "string",
-                    "description": "Local remote job zip path."
+                    "description": "Local remote job zip path.",
                 ],
                 "sshKeyPath": [
                     "type": "string",
-                    "description": "Optional private key path override."
+                    "description": "Optional private key path override.",
                 ],
                 "destinationDirectory": [
                     "type": "string",
-                    "description": "Parent directory for pullback. Defaults beside the job zip."
+                    "description": "Parent directory for pullback. Defaults beside the job zip.",
                 ],
                 "importAdapter": [
                     "type": "boolean",
-                    "description": "Import final_adapter locally. Defaults to true."
+                    "description": "Import final_adapter locally. Defaults to true.",
                 ],
                 "confirm": [
                     "type": "boolean",
-                    "description": "Required without elicitation."
-                ]
+                    "description": "Required without elicitation.",
+                ],
             ]
         ),
         tool(
@@ -1497,54 +1513,54 @@ enum MCPToolCatalog {
                 "paths": [
                     "type": "array",
                     "items": ["type": "string"],
-                    "description": "Source audio file paths."
+                    "description": "Source audio file paths.",
                 ],
                 "directories": [
                     "type": "array",
                     "items": ["type": "string"],
-                    "description": "Source directories to scan."
+                    "description": "Source directories to scan.",
                 ],
                 "buildMode": [
                     "type": "string",
                     "enum": ["whole_tracks", "clip_extraction"],
-                    "description": "Defaults to whole_tracks."
+                    "description": "Defaults to whole_tracks.",
                 ],
                 "datasetName": [
                     "type": "string",
-                    "description": "Optional dataset name."
+                    "description": "Optional dataset name.",
                 ],
                 "outputDirectory": [
                     "type": "string",
-                    "description": "Output base directory."
+                    "description": "Output base directory.",
                 ],
                 "clipLength": [
                     "type": "number",
-                    "description": "Clip length seconds for extract mode."
+                    "description": "Clip length seconds for extract mode.",
                 ],
                 "clipsPerTrack": [
                     "type": "integer",
-                    "description": "Clips per source in extract mode."
+                    "description": "Clips per source in extract mode.",
                 ],
                 "maxTotalClips": [
                     "type": "integer",
-                    "description": "Max total clips."
+                    "description": "Max total clips.",
                 ],
                 "samplingMode": [
                     "type": "string",
-                    "description": "evenlySpread, sequential, or randomSeeded."
+                    "description": "evenlySpread, sequential, or randomSeeded.",
                 ],
                 "samplingSeed": [
                     "type": "integer",
-                    "description": "Seed for random sampling."
+                    "description": "Seed for random sampling.",
                 ],
                 "dryRun": [
                     "type": "boolean",
-                    "description": "Defaults to true."
+                    "description": "Defaults to true.",
                 ],
                 "confirm": [
                     "type": "boolean",
-                    "description": "Required for actual build."
-                ]
+                    "description": "Required for actual build.",
+                ],
             ]
         ),
         tool(
@@ -1554,33 +1570,33 @@ enum MCPToolCatalog {
             properties: [
                 "path": [
                     "type": "string",
-                    "description": "Dataset package path."
+                    "description": "Dataset package path.",
                 ],
                 "dataset": [
                     "type": "string",
-                    "description": "Dataset id or name."
+                    "description": "Dataset id or name.",
                 ],
                 "backend": [
                     "type": "string",
                     "enum": ["automatic", "lightweight", "native_ace"],
-                    "description": "Annotation backend."
+                    "description": "Annotation backend.",
                 ],
                 "createStems": [
                     "type": "boolean",
-                    "description": "Create vocal/instrumental stems."
+                    "description": "Create vocal/instrumental stems.",
                 ],
                 "force": [
                     "type": "boolean",
-                    "description": "Re-run even when cached."
+                    "description": "Re-run even when cached.",
                 ],
                 "dryRun": [
                     "type": "boolean",
-                    "description": "Defaults to true."
+                    "description": "Defaults to true.",
                 ],
                 "confirm": [
                     "type": "boolean",
-                    "description": "Required for actual enrichment."
-                ]
+                    "description": "Required for actual enrichment.",
+                ],
             ]
         ),
         tool(
@@ -1590,44 +1606,44 @@ enum MCPToolCatalog {
             properties: [
                 "path": [
                     "type": "string",
-                    "description": "Dataset package path."
+                    "description": "Dataset package path.",
                 ],
                 "dataset": [
                     "type": "string",
-                    "description": "Dataset id or name."
+                    "description": "Dataset id or name.",
                 ],
                 "clipID": [
                     "type": "string",
-                    "description": "Clip/asset id or filename."
+                    "description": "Clip/asset id or filename.",
                 ],
                 "caption": [
                     "type": "string",
-                    "description": "Manual caption."
+                    "description": "Manual caption.",
                 ],
                 "lyrics": [
                     "type": "string",
-                    "description": "Manual lyrics."
+                    "description": "Manual lyrics.",
                 ],
                 "includeInTraining": [
                     "type": "boolean",
-                    "description": "Include clip in training plan."
+                    "description": "Include clip in training plan.",
                 ],
                 "approved": [
                     "type": "boolean",
-                    "description": "Mark clip approved."
+                    "description": "Mark clip approved.",
                 ],
                 "notes": [
                     "type": "string",
-                    "description": "Review notes."
+                    "description": "Review notes.",
                 ],
                 "approveAllIncluded": [
                     "type": "boolean",
-                    "description": "Approve every included clip."
+                    "description": "Approve every included clip.",
                 ],
                 "confirm": [
                     "type": "boolean",
-                    "description": "Required without elicitation."
-                ]
+                    "description": "Required without elicitation.",
+                ],
             ]
         ),
         tool(
@@ -1638,16 +1654,16 @@ enum MCPToolCatalog {
             properties: [
                 "path": [
                     "type": "string",
-                    "description": "Adapter folder path."
+                    "description": "Adapter folder path.",
                 ],
                 "name": [
                     "type": "string",
-                    "description": "Optional preferred adapter name."
+                    "description": "Optional preferred adapter name.",
                 ],
                 "confirm": [
                     "type": "boolean",
-                    "description": "Required without elicitation."
-                ]
+                    "description": "Required without elicitation.",
+                ],
             ]
         ),
         tool(
@@ -1658,12 +1674,12 @@ enum MCPToolCatalog {
             properties: [
                 "id": [
                     "type": "string",
-                    "description": "Adapter id or name."
+                    "description": "Adapter id or name.",
                 ],
                 "confirm": [
                     "type": "boolean",
-                    "description": "Required without elicitation."
-                ]
+                    "description": "Required without elicitation.",
+                ],
             ]
         ),
         tool(
@@ -1674,26 +1690,26 @@ enum MCPToolCatalog {
             properties: [
                 "adapterA": [
                     "type": "string",
-                    "description": "First adapter id/name."
+                    "description": "First adapter id/name.",
                 ],
                 "adapterB": [
                     "type": "string",
-                    "description": "Second adapter id/name."
+                    "description": "Second adapter id/name.",
                 ],
                 "alpha": [
                     "type": "number",
                     "minimum": 0,
                     "maximum": 1,
-                    "description": "Blend weight on A. Defaults to 0.5."
+                    "description": "Blend weight on A. Defaults to 0.5.",
                 ],
                 "name": [
                     "type": "string",
-                    "description": "Merged adapter name."
+                    "description": "Merged adapter name.",
                 ],
                 "confirm": [
                     "type": "boolean",
-                    "description": "Required without elicitation."
-                ]
+                    "description": "Required without elicitation.",
+                ],
             ]
         ),
         tool(
@@ -1704,16 +1720,16 @@ enum MCPToolCatalog {
             properties: [
                 "id": [
                     "type": "string",
-                    "description": "Model id or display name."
+                    "description": "Model id or display name.",
                 ],
                 "dryRun": [
                     "type": "boolean",
-                    "description": "Defaults to true."
+                    "description": "Defaults to true.",
                 ],
                 "confirm": [
                     "type": "boolean",
-                    "description": "Required for actual download."
-                ]
+                    "description": "Required for actual download.",
+                ],
             ]
         ),
         tool(
@@ -1724,12 +1740,12 @@ enum MCPToolCatalog {
             properties: [
                 "id": [
                     "type": "string",
-                    "description": "Model id or display name."
+                    "description": "Model id or display name.",
                 ],
                 "confirm": [
                     "type": "boolean",
-                    "description": "Required without elicitation."
-                ]
+                    "description": "Required without elicitation.",
+                ],
             ]
         ),
         tool(
@@ -1740,16 +1756,16 @@ enum MCPToolCatalog {
                 "ids": [
                     "type": "array",
                     "items": ["type": "string"],
-                    "description": "History entry UUIDs or filenames."
+                    "description": "History entry UUIDs or filenames.",
                 ],
                 "deleteAll": [
                     "type": "boolean",
-                    "description": "Delete every history entry."
+                    "description": "Delete every history entry.",
                 ],
                 "confirm": [
                     "type": "boolean",
-                    "description": "Required without elicitation."
-                ]
+                    "description": "Required without elicitation.",
+                ],
             ]
         ),
         tool(
@@ -1760,52 +1776,52 @@ enum MCPToolCatalog {
             properties: [
                 "name": [
                     "type": "string",
-                    "description": "Preset name."
+                    "description": "Preset name.",
                 ],
                 "prompt": [
                     "type": "string",
-                    "description": "Prompt text."
+                    "description": "Prompt text.",
                 ],
                 "lyrics": [
                     "type": "string",
-                    "description": "Lyrics text."
+                    "description": "Lyrics text.",
                 ],
                 "duration": [
                     "type": "number",
-                    "description": "Duration seconds."
+                    "description": "Duration seconds.",
                 ],
                 "seed": [
                     "type": "string",
-                    "description": "Seed text."
+                    "description": "Seed text.",
                 ],
                 "guidanceScale": [
                     "type": "number",
-                    "description": "Guidance scale."
+                    "description": "Guidance scale.",
                 ],
                 "guidancePreset": [
                     "type": "string",
-                    "description": "Guidance preset id."
+                    "description": "Guidance preset id.",
                 ],
                 "mode": [
                     "type": "string",
-                    "description": "music, soundFX, or ambient."
+                    "description": "music, soundFX, or ambient.",
                 ],
                 "pipeline": [
                     "type": "string",
-                    "description": "auto, aceStep, or stableAudio."
+                    "description": "auto, aceStep, or stableAudio.",
                 ],
                 "adapterID": [
                     "type": "string",
-                    "description": "Optional adapter id."
+                    "description": "Optional adapter id.",
                 ],
                 "coverStrength": [
                     "type": "number",
-                    "description": "Cover strength."
+                    "description": "Cover strength.",
                 ],
                 "confirm": [
                     "type": "boolean",
-                    "description": "Required without elicitation."
-                ]
+                    "description": "Required without elicitation.",
+                ],
             ]
         ),
         tool(
@@ -1816,12 +1832,12 @@ enum MCPToolCatalog {
             properties: [
                 "id": [
                     "type": "string",
-                    "description": "Preset id or name."
+                    "description": "Preset id or name.",
                 ],
                 "confirm": [
                     "type": "boolean",
-                    "description": "Required without elicitation."
-                ]
+                    "description": "Required without elicitation.",
+                ],
             ]
         ),
         tool(
@@ -1832,8 +1848,8 @@ enum MCPToolCatalog {
             properties: [
                 "enabled": [
                     "type": "boolean",
-                    "description": "true to enable AUDIODIAG file logging."
-                ]
+                    "description": "true to enable AUDIODIAG file logging.",
+                ],
             ]
         ),
         tool(
@@ -1845,20 +1861,20 @@ enum MCPToolCatalog {
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 500,
-                    "description": "Max lines. Defaults to 120."
+                    "description": "Max lines. Defaults to 120.",
                 ],
                 "contains": [
                     "type": "string",
-                    "description": "Optional case-insensitive filter."
+                    "description": "Optional case-insensitive filter.",
                 ],
                 "fileName": [
                     "type": "string",
-                    "description": "Optional diagnostics log file name."
+                    "description": "Optional diagnostics log file name.",
                 ],
                 "path": [
                     "type": "string",
-                    "description": "Optional full diagnostics log path."
-                ]
+                    "description": "Optional full diagnostics log path.",
+                ],
             ]
         ),
         tool(
@@ -1868,12 +1884,12 @@ enum MCPToolCatalog {
             properties: [
                 "reason": [
                     "type": "string",
-                    "description": "Optional cancellation reason."
+                    "description": "Optional cancellation reason.",
                 ],
                 "confirm": [
                     "type": "boolean",
-                    "description": "Required when the client does not support MCP elicitation."
-                ]
+                    "description": "Required when the client does not support MCP elicitation.",
+                ],
             ]
         ),
         tool(
@@ -1884,37 +1900,37 @@ enum MCPToolCatalog {
             properties: [
                 "id": [
                     "type": "string",
-                    "description": "Adapter id or name."
+                    "description": "Adapter id or name.",
                 ],
                 "seed": [
                     "type": "integer",
-                    "description": "Fixed seed. Defaults to 42."
+                    "description": "Fixed seed. Defaults to 42.",
                 ],
                 "duration": [
                     "type": "number",
-                    "description": "Snapshot duration seconds. Defaults to 30."
+                    "description": "Snapshot duration seconds. Defaults to 30.",
                 ],
                 "strengths": [
                     "type": "array",
                     "items": ["type": "string"],
-                    "description": "Gain ladder. Defaults to 1.0, 1.6, 2.0."
+                    "description": "Gain ladder. Defaults to 1.0, 1.6, 2.0.",
                 ],
                 "includeBase": [
                     "type": "boolean",
-                    "description": "Include base generation. Defaults to true."
+                    "description": "Include base generation. Defaults to true.",
                 ],
                 "prompt": [
                     "type": "string",
-                    "description": "Optional audition prompt."
+                    "description": "Optional audition prompt.",
                 ],
                 "lyrics": [
                     "type": "string",
-                    "description": "Optional lyrics."
+                    "description": "Optional lyrics.",
                 ],
                 "confirm": [
                     "type": "boolean",
-                    "description": "Required without elicitation."
-                ]
+                    "description": "Required without elicitation.",
+                ],
             ]
         ),
         tool(
@@ -1924,221 +1940,221 @@ enum MCPToolCatalog {
             properties: [
                 "confirm": [
                     "type": "boolean",
-                    "description": "Set true after explicit approval. If omitted, clients advertising MCP form elicitation may be asked to approve through elicitation/create."
-                ]
+                    "description": "Set true after explicit approval. If omitted, clients advertising MCP form elicitation may be asked to approve through elicitation/create.",
+                ],
             ]
-        )
+        ),
     ]
 
     private static func trainingControlProperties(includeStartControls: Bool) -> [String: Any] {
         var properties: [String: Any] = [
             "path": [
                 "type": "string",
-                "description": "Full path to a dataset package containing captions.json. Defaults to the newest visible dataset."
+                "description": "Full path to a dataset package containing captions.json. Defaults to the newest visible dataset.",
             ],
             "directory": [
                 "type": "string",
-                "description": "Alias for path."
+                "description": "Alias for path.",
             ],
             "datasetPath": [
                 "type": "string",
-                "description": "Alias for path."
+                "description": "Alias for path.",
             ],
             "dataset": [
                 "type": "string",
-                "description": "Dataset id, folder name, or partial dataset name. Defaults to the newest visible dataset."
+                "description": "Dataset id, folder name, or partial dataset name. Defaults to the newest visible dataset.",
             ],
             "id": [
                 "type": "string",
-                "description": "Alias for dataset when identifying a dataset package."
+                "description": "Alias for dataset when identifying a dataset package.",
             ],
             "kind": [
                 "type": "string",
                 "enum": ["lora", "lokr"],
-                "description": "Adapter type to train. Defaults to lora."
+                "description": "Adapter type to train. Defaults to lora.",
             ],
             "adapterKind": [
                 "type": "string",
                 "enum": ["lora", "lokr"],
-                "description": "Alias for kind."
+                "description": "Alias for kind.",
             ],
             "mode": [
                 "type": "string",
                 "enum": ["lora", "lokr"],
-                "description": "Alias for kind."
+                "description": "Alias for kind.",
             ],
             "recipe": [
                 "type": "string",
                 "enum": ["narrow", "wide"],
-                "description": "Configuration preset. LoRA and LoKR support narrow and wide."
+                "description": "Configuration preset. LoRA and LoKR support narrow and wide.",
             ],
             "preset": [
                 "type": "string",
-                "description": "Alias for recipe."
+                "description": "Alias for recipe.",
             ],
             "adapterName": [
                 "type": "string",
-                "description": "Name for the adapter if training is started."
+                "description": "Name for the adapter if training is started.",
             ],
             "name": [
                 "type": "string",
-                "description": "Alias for adapterName when no dataset id/name/path is provided."
+                "description": "Alias for adapterName when no dataset id/name/path is provided.",
             ],
             "rank": [
                 "type": "integer",
                 "minimum": 1,
                 "maximum": 256,
-                "description": "LoRA rank, or LoKR linear dimension if linearDim is omitted."
+                "description": "LoRA rank, or LoKR linear dimension if linearDim is omitted.",
             ],
             "linearDim": [
                 "type": "integer",
                 "minimum": 1,
                 "maximum": 256,
-                "description": "LoKR linear dimension."
+                "description": "LoKR linear dimension.",
             ],
             "dimension": [
                 "type": "integer",
                 "minimum": 1,
                 "maximum": 256,
-                "description": "Alias for rank/linearDim."
+                "description": "Alias for rank/linearDim.",
             ],
             "alpha": [
                 "type": "number",
                 "exclusiveMinimum": 0,
-                "description": "Adapter alpha. Defaults to alphaScale * rank/linearDim."
+                "description": "Adapter alpha. Defaults to alphaScale * rank/linearDim.",
             ],
             "alphaScale": [
-                "description": "Alpha multiplier. Accepts 1x/rank, 2x/double, or a positive number."
+                "description": "Alpha multiplier. Accepts 1x/rank, 2x/double, or a positive number.",
             ],
             "scale": [
-                "description": "Alias for alphaScale."
+                "description": "Alias for alphaScale.",
             ],
             "dropout": [
                 "type": "number",
                 "minimum": 0,
-                "maximum": 0.95
+                "maximum": 0.95,
             ],
             "weightDecompose": [
                 "type": "boolean",
-                "description": "LoKR-only DoRA/weight-decomposition mode. Defaults to true for LoKR."
+                "description": "LoKR-only DoRA/weight-decomposition mode. Defaults to true for LoKR.",
             ],
             "weight_decompose": [
                 "type": "boolean",
-                "description": "Alias for weightDecompose."
+                "description": "Alias for weightDecompose.",
             ],
             "dora": [
                 "type": "boolean",
-                "description": "Alias for LoKR weightDecompose."
+                "description": "Alias for LoKR weightDecompose.",
             ],
             "epochs": [
                 "type": "integer",
                 "minimum": 1,
-                "maximum": 1000
+                "maximum": 1000,
             ],
             "maxEpochs": [
                 "type": "integer",
                 "minimum": 1,
                 "maximum": 1000,
-                "description": "Alias for epochs."
+                "description": "Alias for epochs.",
             ],
             "layerCoverage": [
-                "description": "Layer count or label: last4, last8, last12, last16, all32."
+                "description": "Layer count or label: last4, last8, last12, last16, all32.",
             ],
             "trainingLayerCount": [
                 "type": "integer",
                 "minimum": 1,
                 "maximum": 32,
-                "description": "Alias for layerCoverage."
+                "description": "Alias for layerCoverage.",
             ],
             "layerCount": [
                 "type": "integer",
                 "minimum": 1,
                 "maximum": 32,
-                "description": "Alias for layerCoverage."
+                "description": "Alias for layerCoverage.",
             ],
             "projectionCoverage": [
                 "type": "string",
                 "enum": ["qv", "qkvo", "full"],
-                "description": "Projection surface. qv is local-safe; qkvo/full is wider."
+                "description": "Projection surface. qv is local-safe; qkvo/full is wider.",
             ],
             "projections": [
                 "type": "string",
-                "description": "Alias for projectionCoverage."
+                "description": "Alias for projectionCoverage.",
             ],
             "projection": [
                 "type": "string",
-                "description": "Alias for projectionCoverage."
+                "description": "Alias for projectionCoverage.",
             ],
             "targetLayers": [
-                "description": "String or array containing selfAttention, crossAttention, mlp, attention, or all."
+                "description": "String or array containing selfAttention, crossAttention, mlp, attention, or all.",
             ],
             "targets": [
-                "description": "Alias for targetLayers."
+                "description": "Alias for targetLayers.",
             ],
             "exactInjectionPatterns": [
                 "type": "array",
                 "items": ["type": "string"],
-                "description": "Exact module patterns to train. Overrides projectionCoverage."
+                "description": "Exact module patterns to train. Overrides projectionCoverage.",
             ],
             "injectionPatterns": [
                 "type": "array",
                 "items": ["type": "string"],
-                "description": "Alias for exactInjectionPatterns."
+                "description": "Alias for exactInjectionPatterns.",
             ],
             "learningRate": [
                 "type": "number",
                 "minimum": 0.000001,
-                "maximum": 0.01
+                "maximum": 0.01,
             ],
             "lr": [
                 "type": "number",
-                "description": "Alias for learningRate."
+                "description": "Alias for learningRate.",
             ],
             "gradientAccumulationSteps": [
                 "type": "integer",
                 "minimum": 1,
-                "maximum": 64
+                "maximum": 64,
             ],
             "gradAccumulation": [
                 "type": "integer",
-                "description": "Alias for gradientAccumulationSteps."
+                "description": "Alias for gradientAccumulationSteps.",
             ],
             "gradAccum": [
                 "type": "integer",
-                "description": "Alias for gradientAccumulationSteps."
+                "description": "Alias for gradientAccumulationSteps.",
             ],
             "batchSize": [
                 "type": "integer",
                 "minimum": 1,
-                "maximum": 16
+                "maximum": 16,
             ],
             "warmupFraction": [
                 "type": "number",
                 "minimum": 0,
-                "maximum": 0.5
+                "maximum": 0.5,
             ],
             "warmup": [
                 "type": "number",
-                "description": "Alias for warmupFraction."
+                "description": "Alias for warmupFraction.",
             ],
             "clearCache": [
                 "type": "boolean",
-                "description": "Whether preflight clears the MLX cache before measuring headroom. Defaults to true."
-            ]
+                "description": "Whether preflight clears the MLX cache before measuring headroom. Defaults to true.",
+            ],
         ]
 
         if includeStartControls {
             properties["dryRun"] = [
                 "type": "boolean",
-                "description": "Defaults to true. Set false, with confirmation, to actually start training."
+                "description": "Defaults to true. Set false, with confirmation, to actually start training.",
             ]
             properties["validateOnly"] = [
                 "type": "boolean",
-                "description": "Alias for dryRun."
+                "description": "Alias for dryRun.",
             ]
             properties["confirm"] = [
                 "type": "boolean",
-                "description": "Required for actual training when the client does not support MCP elicitation."
+                "description": "Required for actual training when the client does not support MCP elicitation.",
             ]
         }
 
@@ -2160,8 +2176,8 @@ enum MCPToolCatalog {
                 "type": "object",
                 "additionalProperties": false,
                 "required": required,
-                "properties": properties
-            ]
+                "properties": properties,
+            ],
         ]
     }
 

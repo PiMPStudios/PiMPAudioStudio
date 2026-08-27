@@ -39,7 +39,7 @@ public actor ModelRegistry {
             ModelFileSpec(
                 remotePath: "model.safetensors.index.json",
                 sha256: aceStepXLIndexSHA256,
-                sizeBytes: 71_471
+                sizeBytes: 71471
             ),
             ModelFileSpec(
                 remotePath: "model-00001-of-00004.safetensors",
@@ -70,7 +70,7 @@ public actor ModelRegistry {
                 remotePath: "silence_latent.pt",
                 sha256: aceStepSilenceLatentSHA256,
                 sizeBytes: 3_841_215
-            )
+            ),
         ]
     }
 
@@ -113,7 +113,7 @@ public actor ModelRegistry {
                 localName: "vocab.json",
                 sha256: "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910",
                 sizeBytes: 2_776_833
-            )
+            ),
         ]
     }
 
@@ -133,14 +133,14 @@ public actor ModelRegistry {
                     remotePath: "acestep-v15-turbo/config.json",
                     localName: "config.json",
                     sha256: "74745ff704ea49164c3d2d1c99fc0670f3fc635a869f0aec2d1311e6a52d400a",
-                    sizeBytes: 1_968
+                    sizeBytes: 1968
                 ),
                 ModelFileSpec(
                     remotePath: "acestep-v15-turbo/silence_latent.pt",
                     localName: "silence_latent.pt",
                     sha256: aceStepSilenceLatentSHA256,
                     sizeBytes: 3_841_215
-                )
+                ),
             ],
             category: .aceStepDiT,
             variantFamily: "ace-step-1.5"
@@ -160,14 +160,14 @@ public actor ModelRegistry {
                     remotePath: "config.json",
                     localName: "config.json",
                     sha256: "9bb4f832f2e5e6c8bf7bddab3c6a6da1b13c01d072efbf0ed3c830536c473359",
-                    sizeBytes: 1_940
+                    sizeBytes: 1940
                 ),
                 ModelFileSpec(
                     remotePath: "silence_latent.pt",
                     localName: "silence_latent.pt",
                     sha256: aceStepSilenceLatentSHA256,
                     sizeBytes: 3_841_215
-                )
+                ),
             ],
             category: .aceStepDiT,
             variantFamily: "ace-step-1.5"
@@ -187,14 +187,14 @@ public actor ModelRegistry {
                     remotePath: "config.json",
                     localName: "config.json",
                     sha256: "9bb4f832f2e5e6c8bf7bddab3c6a6da1b13c01d072efbf0ed3c830536c473359",
-                    sizeBytes: 1_940
+                    sizeBytes: 1940
                 ),
                 ModelFileSpec(
                     remotePath: "silence_latent.pt",
                     localName: "silence_latent.pt",
                     sha256: aceStepSilenceLatentSHA256,
                     sizeBytes: 3_841_215
-                )
+                ),
             ],
             category: .aceStepDiT,
             variantFamily: "ace-step-1.5"
@@ -204,7 +204,7 @@ public actor ModelRegistry {
             displayName: "ACE-Step v1.5 XL Turbo",
             huggingFaceRepo: "ACE-Step/acestep-v15-xl-turbo",
             files: aceStepXLFiles(
-                configSizeBytes: 2_407,
+                configSizeBytes: 2407,
                 configSHA256: "e3665376d46477cbd3e76203cd4e241f11a6a6bb5f88464c49f3c6aae51a918b",
                 shard1: "ec9eadbaca0a158f081202251df17f0705005748894a156e616cdef444e21e36",
                 shard2: "18a5eb68cd09c1828948f9e0152c0e2ba88213a7d3b372af7b48e73685c64dbe",
@@ -219,7 +219,7 @@ public actor ModelRegistry {
             displayName: "ACE-Step v1.5 XL Base",
             huggingFaceRepo: "ACE-Step/acestep-v15-xl-base",
             files: aceStepXLFiles(
-                configSizeBytes: 2_525,
+                configSizeBytes: 2525,
                 configSHA256: "174cf8c4afc2c41212546b4dca9afb11e7958f8b1e1a770d7cd009a82d72a6f1",
                 shard1: "1749e9905cb25caa445928249c0f5136b0995e7194c5155d4ffacea7747e4e8d",
                 shard2: "03b39bebb8a9e9522b4f53dd3d03d34ff40e9ca6a573057b421c953b4336ae6f",
@@ -234,7 +234,7 @@ public actor ModelRegistry {
             displayName: "ACE-Step v1.5 XL SFT",
             huggingFaceRepo: "ACE-Step/acestep-v15-xl-sft",
             files: aceStepXLFiles(
-                configSizeBytes: 2_525,
+                configSizeBytes: 2525,
                 configSHA256: "174cf8c4afc2c41212546b4dca9afb11e7958f8b1e1a770d7cd009a82d72a6f1",
                 shard1: "0a9cfd65eef84c0f25724e4d88e3e630feb4c82437c5f02df74ad4bdff9f347b",
                 shard2: "871f801cb5e3d5b8fb5505234340da458761693d0b1b2d82246c4c49bb19b01d",
@@ -272,7 +272,7 @@ public actor ModelRegistry {
                     localName: "qwen3_model.safetensors",
                     sha256: "50e3c282187ba05fed66edb58ffbba6f4ce258bd2d3dcda860b8dc125e041bab",
                     sizeBytes: 1_191_586_416
-                )
+                ),
             ],
             category: .aceStepVAE,
             variantFamily: "ace-step-1.5"
@@ -297,7 +297,7 @@ public actor ModelRegistry {
                 ModelFileSpec(
                     remotePath: "model_config.json",
                     localName: "config.json",
-                    sizeBytes: 4_172
+                    sizeBytes: 4172
                 ),
                 ModelFileSpec(
                     remotePath: "vae/diffusion_pytorch_model.safetensors",
@@ -320,7 +320,7 @@ public actor ModelRegistry {
                 ModelFileSpec(
                     remotePath: "text_encoder/config.json",
                     localName: "text_encoder_config.json",
-                    sizeBytes: 1_497
+                    sizeBytes: 1497
                 ),
                 // SentencePiece tokenizer used by T5.
                 ModelFileSpec(
@@ -344,7 +344,7 @@ public actor ModelRegistry {
                     remotePath: "projection_model/config.json",
                     localName: "projection_config.json",
                     sizeBytes: 198
-                )
+                ),
             ],
             category: .stableAudio,
             variantFamily: nil,
@@ -368,8 +368,8 @@ public actor ModelRegistry {
                 ModelFileSpec(
                     remotePath: "config.json",
                     sha256: "873ca63808b74e1e008ab950114765553b898b489b9e077e80db83348a118384",
-                    sizeBytes: 1_386
-                )
+                    sizeBytes: 1386
+                ),
             ] + aceStepLMTokenizerFiles(),
             category: .aceStepLM,
             variantFamily: "ace-step-lm"
@@ -389,15 +389,15 @@ public actor ModelRegistry {
                     remotePath: "acestep-5Hz-lm-1.7B/config.json",
                     localName: "config.json",
                     sha256: "73515ca4bfd86a5b56f28bf680311d1911e159c85d7f7ceb2188e310007c9010",
-                    sizeBytes: 1_385
-                )
+                    sizeBytes: 1385
+                ),
             ] + aceStepLMTokenizerFiles(remotePrefix: "acestep-5Hz-lm-1.7B") + [
                 ModelFileSpec(
                     remotePath: "acestep-5Hz-lm-1.7B/chat_template.jinja",
                     localName: "chat_template.jinja",
                     sha256: "a55ee1b1660128b7098723e0abcd92caa0788061051c62d51cbe87d9cf1974d8",
-                    sizeBytes: 4_168
-                )
+                    sizeBytes: 4168
+                ),
             ],
             category: .aceStepLM,
             variantFamily: "ace-step-lm"
@@ -420,13 +420,13 @@ public actor ModelRegistry {
                 ModelFileSpec(
                     remotePath: "model.safetensors.index.json",
                     sha256: "8a9ec992fbae144ba9b40521f8763a3419546bd7a8864d80b0c3f1e1e3678fcf",
-                    sizeBytes: 32_818
+                    sizeBytes: 32818
                 ),
                 ModelFileSpec(
                     remotePath: "config.json",
                     sha256: "211bb68b2d641360526e4654b524e508f4046c1292016c08555bb877bd686d1b",
-                    sizeBytes: 1_562
-                )
+                    sizeBytes: 1562
+                ),
             ] + aceStepLMTokenizerFiles(),
             category: .aceStepLM,
             variantFamily: "ace-step-lm"
@@ -450,7 +450,7 @@ public actor ModelRegistry {
     /// The ACE-Step model IDs required for initial setup.
     public static let essentialModelIDs: Set<String> = [
         "ace-step-dit-turbo",
-        "ace-step-vae"
+        "ace-step-vae",
     ]
 
     // MARK: - Active Model Tracking
@@ -458,11 +458,11 @@ public actor ModelRegistry {
     private static let defaultActiveModels: [ModelCategory: String] = [
         .aceStepDiT: "ace-step-dit-turbo",
         .aceStepVAE: "ace-step-vae",
-        .stableAudio: "stable-audio-open"
+        .stableAudio: "stable-audio-open",
     ]
 
     private static let retiredBuiltInModelIDs: Set<String> = [
-        "lyric-llm"
+        "lyric-llm",
     ]
 
     private(set) var activeModels: [ModelCategory: String] = [:]
@@ -484,9 +484,9 @@ public actor ModelRegistry {
         let loadedUserSpecs = Self.loadUserSpecs(from: baseDirectory)
         switch loadedUserSpecs {
         case .missing:
-            self.userSpecs = []
-        case .loaded(let specs, let shouldPersist):
-            self.userSpecs = specs
+            userSpecs = []
+        case let .loaded(specs, shouldPersist):
+            userSpecs = specs
             if shouldPersist {
                 Self.saveUserSpecs(
                     specs,
@@ -495,20 +495,20 @@ public actor ModelRegistry {
             }
         case .corrupt:
             // Keep an empty in-memory list; the corrupt index was preserved on disk.
-            self.userSpecs = []
+            userSpecs = []
         }
-        self.activeModels = Self.strippingRetiredActiveModels(
+        activeModels = Self.strippingRetiredActiveModels(
             Self.migratedActiveModelsIfNeeded(
                 activeModels: Self.loadActiveModels(from: baseDirectory),
-                userSpecs: self.userSpecs,
+                userSpecs: userSpecs,
                 baseDirectory: baseDirectory,
                 allowOrphanCleanup: loadedUserSpecs.allowsDestructiveOrphanCleanup
             )
         )
         Self.removeRetiredBuiltInDirectories(from: baseDirectory)
         let activeURL = baseDirectory.appending(path: "active-models.json")
-        if Self.activeModelsFileNeedsRewrite(self.activeModels, at: activeURL) {
-            Self.saveActiveModels(self.activeModels, to: activeURL)
+        if Self.activeModelsFileNeedsRewrite(activeModels, at: activeURL) {
+            Self.saveActiveModels(activeModels, to: activeURL)
         }
     }
 
@@ -561,7 +561,9 @@ public actor ModelRegistry {
         ) {
             for entry in entries {
                 let name = entry.lastPathComponent
-                if name == modelMigrationMarkerFileName { continue }
+                if name == modelMigrationMarkerFileName {
+                    continue
+                }
                 if modelMigrationProtectedDirectoryNames.contains(name) {
                     continue
                 }
@@ -675,7 +677,7 @@ public actor ModelRegistry {
         switch statuses[modelID] {
         case .ready, .failed:
             return
-        case .downloading(let current) where progress < current:
+        case let .downloading(current) where progress < current:
             return
         default:
             statuses[modelID] = .downloading(progress: progress)
@@ -745,17 +747,16 @@ public actor ModelRegistry {
                     completedBytes += fileSizeBytes
                 } catch {
                     if let httpError = error as? DownloadError,
-                       case .httpError(let code) = httpError,
-                       (code == 401 || code == 403),
+                       case let .httpError(code) = httpError,
+                       code == 401 || code == 403,
                        bearerToken != nil {
                         statuses[spec.id] = .failed("HuggingFace rejected the token")
                         throw DownloadError.authForbidden(repo: spec.huggingFaceRepo)
                     }
-                    let message: String
-                    if case DownloadError.checksumMismatch = error {
-                        message = "Model verification failed. The file may be corrupted or tampered with."
+                    let message: String = if case DownloadError.checksumMismatch = error {
+                        "Model verification failed. The file may be corrupted or tampered with."
                     } else {
-                        message = error.localizedDescription
+                        error.localizedDescription
                     }
                     statuses[spec.id] = .failed(message)
                     throw error
@@ -878,9 +879,9 @@ public actor ModelRegistry {
         var allowsDestructiveOrphanCleanup: Bool {
             switch self {
             case .missing, .loaded:
-                return true
+                true
             case .corrupt:
-                return false
+                false
             }
         }
     }
@@ -943,8 +944,8 @@ public actor ModelRegistry {
             let variantFamily = config.variantFamily
             let isRunnable = runtimeNote == nil
             guard spec.isRunnable != isRunnable
-                    || spec.runtimeNote != runtimeNote
-                    || spec.variantFamily != variantFamily else {
+                || spec.runtimeNote != runtimeNote
+                || spec.variantFamily != variantFamily else {
                 return spec
             }
 
@@ -1030,17 +1031,17 @@ public enum RegistryError: Error, Sendable, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .cannotModifyBuiltIn:
-            return "Built-in models cannot be modified."
-        case .duplicateModel(let id):
-            return "Model '\(id)' already exists."
-        case .unknownModel(let id):
-            return "Unknown model '\(id)'."
-        case .categoryMismatch(let expected, let got):
-            return "Category mismatch: expected \(expected.rawValue), got \(got.rawValue)."
-        case .modelNotReady(let id):
-            return "Model '\(id)' is not downloaded yet."
-        case .modelNotRunnable(let name, let note):
-            return note ?? "\(name) can be downloaded, but this build cannot run it yet."
+            "Built-in models cannot be modified."
+        case let .duplicateModel(id):
+            "Model '\(id)' already exists."
+        case let .unknownModel(id):
+            "Unknown model '\(id)'."
+        case let .categoryMismatch(expected, got):
+            "Category mismatch: expected \(expected.rawValue), got \(got.rawValue)."
+        case let .modelNotReady(id):
+            "Model '\(id)' is not downloaded yet."
+        case let .modelNotRunnable(name, note):
+            note ?? "\(name) can be downloaded, but this build cannot run it yet."
         }
     }
 }

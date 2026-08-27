@@ -30,7 +30,9 @@ struct LocalLyricWriter: LyricWriter {
                     temperature: 0.6
                 )
                 for await chunk in stream {
-                    if Task.isCancelled { break }
+                    if Task.isCancelled {
+                        break
+                    }
                     continuation.yield(chunk)
                 }
                 continuation.finish()

@@ -1,6 +1,6 @@
-import Foundation
 import AVFoundation
 import Darwin
+import Foundation
 
 // MARK: - Config & Models
 
@@ -19,7 +19,9 @@ struct YouTubeVideoInfo {
 struct YouTubeDatasetResult {
     let outputDirectory: URL
     let clips: [(url: URL, caption: String)]
-    var clipCount: Int { clips.count }
+    var clipCount: Int {
+        clips.count
+    }
 }
 
 enum YouTubeImportPhase: Equatable {
@@ -32,8 +34,8 @@ enum YouTubeImportPhase: Equatable {
 
     var isRunning: Bool {
         switch self {
-        case .fetchingPlaylist, .downloading, .chunking: return true
-        default: return false
+        case .fetchingPlaylist, .downloading, .chunking: true
+        default: false
         }
     }
 }
@@ -62,7 +64,7 @@ final class YouTubeDatasetBuilder: ObservableObject {
             await previousTask?.value
             guard let self else { return }
             defer { self.finishRun(runID) }
-            guard self.isCurrentRun(runID), !Task.isCancelled else { return }
+            guard isCurrentRun(runID), !Task.isCancelled else { return }
             do {
                 let result = try await YouTubeDatasetBuilder.run(
                     channelURL: channelURL,
@@ -76,15 +78,15 @@ final class YouTubeDatasetBuilder: ObservableObject {
                         }
                     }
                 )
-                guard self.isCurrentRun(runID) else { return }
-                self.resultClips = result.clips
-                self.phase = .complete(outputDirectory: result.outputDirectory, clipCount: result.clipCount)
+                guard isCurrentRun(runID) else { return }
+                resultClips = result.clips
+                phase = .complete(outputDirectory: result.outputDirectory, clipCount: result.clipCount)
             } catch is CancellationError {
-                guard self.isCurrentRun(runID) else { return }
-                self.phase = .idle
+                guard isCurrentRun(runID) else { return }
+                phase = .idle
             } catch {
-                guard self.isCurrentRun(runID) else { return }
-                self.phase = .failed(error.localizedDescription)
+                guard isCurrentRun(runID) else { return }
+                phase = .failed(error.localizedDescription)
             }
         }
     }
@@ -126,7 +128,7 @@ final class YouTubeDatasetBuilder: ObservableObject {
 
     /// Returns the installed yt-dlp version string, or nil if not reachable.
     static func ytDlpVersion() async -> String? {
-        let result = (try? await runProcess(arguments: ["yt-dlp", "--version"]))?
+        let result = await (try? runProcess(arguments: ["yt-dlp", "--version"]))?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard let v = result, !v.isEmpty, v.first?.isNumber == true else { return nil }
         return v
@@ -144,7 +146,8 @@ final class YouTubeDatasetBuilder: ObservableObject {
         try YouTubeURLPolicy.validate(channelURL)
         guard await ytDlpVersion() != nil else { throw YouTubeDatasetError.ytDlpNotFound }
 
-        let maxVideos = max(1,
+        let maxVideos = max(
+            1,
             Int(ceil(Double(config.maxTotalClips) / Double(max(1, config.clipsPerTrack)))) + 1
         )
         let videos = try await fetchPlaylist(url: channelURL, limit: maxVideos)
@@ -257,7 +260,9 @@ final class YouTubeDatasetBuilder: ObservableObject {
         // yt-dlp picks the extension — find whichever it chose
         for ext in ["m4a", "mp3", "webm", "opus", "ogg", "wav", "aac"] {
             let candidate = outputDir.appendingPathComponent("audio.\(ext)")
-            if FileManager.default.fileExists(atPath: candidate.path) { return candidate }
+            if FileManager.default.fileExists(atPath: candidate.path) {
+                return candidate
+            }
         }
         throw YouTubeDatasetError.downloadFailed(video.id)
     }
@@ -287,9 +292,11 @@ final class YouTubeDatasetBuilder: ObservableObject {
             let dest = outputDirectory.appendingPathComponent(
                 clipFilename(prefix: filenamePrefix, sourceIndex: videoIndex, clipIndex: 1)
             )
-            try await exportRange(asset: asset,
-                                  range: CMTimeRange(start: .zero, duration: cmDuration),
-                                  to: dest)
+            try await exportRange(
+                asset: asset,
+                range: CMTimeRange(start: .zero, duration: cmDuration),
+                to: dest
+            )
             let caption = styleTemplate.isEmpty ? title : styleTemplate
             return [(url: dest, caption: caption)]
         }
@@ -314,14 +321,15 @@ final class YouTubeDatasetBuilder: ObservableObject {
             let dest = outputDirectory.appendingPathComponent(
                 clipFilename(prefix: filenamePrefix, sourceIndex: videoIndex, clipIndex: i + 1)
             )
-            try await exportRange(asset: asset,
-                                  range: CMTimeRange(start: start, duration: dur),
-                                  to: dest)
-            let caption: String
-            if styleTemplate.isEmpty {
-                caption = startTimes.count > 1 ? "\(title) (clip \(i + 1))" : title
+            try await exportRange(
+                asset: asset,
+                range: CMTimeRange(start: start, duration: dur),
+                to: dest
+            )
+            let caption: String = if styleTemplate.isEmpty {
+                startTimes.count > 1 ? "\(title) (clip \(i + 1))" : title
             } else {
-                caption = styleTemplate
+                styleTemplate
             }
             clips.append((url: dest, caption: caption))
         }
@@ -511,7 +519,7 @@ private final class CapturedProcess: @unchecked Sendable {
 
         lock.lock()
         didCancel = true
-        let continuation = didResume ? nil : self.continuation
+        let continuation = didResume ? nil : continuation
         if continuation != nil {
             didResume = true
             self.continuation = nil
@@ -547,8 +555,12 @@ enum YouTubeURLPolicy {
     static func isAllowed(_ url: URL) -> Bool {
         guard url.scheme?.lowercased() == "https" else { return false }
         guard let host = url.host?.lowercased(), !host.isEmpty else { return false }
-        if let port = url.port, port != 443 { return false }
-        if allowedHosts.contains(host) { return true }
+        if let port = url.port, port != 443 {
+            return false
+        }
+        if allowedHosts.contains(host) {
+            return true
+        }
         return host.hasSuffix(".youtube.com")
     }
 
@@ -584,7 +596,7 @@ enum YouTubeDatasetError: LocalizedError {
             return "Enter an https://youtube.com or https://youtu.be channel, playlist, or video URL."
         case .emptyPlaylist:
             return "No videos found at this URL. Make sure it's a public YouTube channel or playlist."
-        case .downloadFailed(let id):
+        case let .downloadFailed(id):
             return "Could not download video \(id) — it may be private, age-restricted, or unavailable."
         case .noAudioTrack:
             return "Downloaded file has no audio track."
@@ -592,11 +604,11 @@ enum YouTubeDatasetError: LocalizedError {
             return "Failed to create audio composition for chunking."
         case .exportSessionFailed:
             return "Failed to initialise AVAssetExportSession."
-        case .exportFailed(let msg):
+        case let .exportFailed(msg):
             return "Audio export failed: \(msg)"
         case .noClipsProduced:
             return "No clips were produced. All videos may have failed to download or contain no audio."
-        case .processFailed(let code, let output):
+        case let .processFailed(code, output):
             let detail = String(output.prefix(400))
             return "yt-dlp exited with code \(code).\n\n\(detail)"
         }

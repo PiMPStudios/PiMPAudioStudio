@@ -34,27 +34,27 @@ public final class LoKRTrainer {
         self.model = model
         self.config = config
         self.injectedPaths = injectedPaths
-        self.resumeCheckpoint = checkpoint
+        resumeCheckpoint = checkpoint
 
         let updatesPerEpoch = LoRATrainer.optimizerStepsPerEpoch(
             datasetSize: AdapterTrainingSplit.trainingSampleCount(total: datasetSize),
             gradientAccumulationSteps: config.gradientAccumulationSteps
         )
-        self.totalSteps = updatesPerEpoch * config.maxEpochs
-        self.scheduler = CosineScheduler(
+        totalSteps = updatesPerEpoch * config.maxEpochs
+        scheduler = CosineScheduler(
             baseLR: config.learningRate,
             warmupFraction: config.warmupFraction,
             totalSteps: totalSteps
         )
 
         if let checkpoint {
-            self.globalStep = checkpoint.globalStep
-            self.currentEpoch = checkpoint.epoch
-            self.lossHistory = checkpoint.lossHistory
-            self.validationHistory = checkpoint.validationHistory
-            self.bestLoss = checkpoint.bestLoss ?? .infinity
+            globalStep = checkpoint.globalStep
+            currentEpoch = checkpoint.epoch
+            lossHistory = checkpoint.lossHistory
+            validationHistory = checkpoint.validationHistory
+            bestLoss = checkpoint.bestLoss ?? .infinity
             // Best snapshot must come from best_weights — never the live model.
-            self.bestWeights = initialBestWeights
+            bestWeights = initialBestWeights
         }
     }
 
@@ -104,8 +104,11 @@ public final class LoKRTrainer {
         let trainableParameterKeys = model.trainableParameters().flattened().map(\.0)
         let trainableArgumentCount = trainableParameterKeys.count
         let trainableParameterKeyPreview = Array(trainableParameterKeys.prefix(24))
-        let omittedTrainableParameterKeyCount = max(0, trainableParameterKeys.count - trainableParameterKeyPreview.count)
-        let gradientArgumentNumbers = Array(0..<trainableArgumentCount)
+        let omittedTrainableParameterKeyCount = max(
+            0,
+            trainableParameterKeys.count - trainableParameterKeyPreview.count
+        )
+        let gradientArgumentNumbers = Array(0 ..< trainableArgumentCount)
         let lossGrad = valueAndGrad({ (allArgs: [MLXArray]) -> [MLXArray] in
             let shouldLogGradientClosure = !hasLoggedGradientClosure
             if shouldLogGradientClosure {
@@ -189,7 +192,7 @@ public final class LoKRTrainer {
             )
         }
 
-        for epoch in startEpoch...config.maxEpochs {
+        for epoch in startEpoch ... config.maxEpochs {
             guard !isCancelled else { break }
             currentEpoch = epoch
 
@@ -251,7 +254,7 @@ public final class LoKRTrainer {
                 if shouldLogSample {
                     AudioDiagnostics.note(
                         "training/trainer/firstValueAndGrad",
-                        "kind=lokr argShapes=\(args.map { $0.shape }) cfgDropped=\(conditioning.didDropConditioning) \(AdapterTrainingSchedule.diagnosticsSummary)"
+                        "kind=lokr argShapes=\(args.map(\.shape)) cfgDropped=\(conditioning.didDropConditioning) \(AdapterTrainingSchedule.diagnosticsSummary)"
                     )
                 }
 
@@ -439,11 +442,17 @@ public final class LoKRTrainer {
         )
     }
 
-    public var currentLossHistory: [Float] { lossHistory }
+    public var currentLossHistory: [Float] {
+        lossHistory
+    }
 
-    public var currentValidationHistory: [TrainingValidationPoint] { validationHistory }
+    public var currentValidationHistory: [TrainingValidationPoint] {
+        validationHistory
+    }
 
-    public var currentGlobalStep: Int { globalStep }
+    public var currentGlobalStep: Int {
+        globalStep
+    }
 
     private static func movingAverage(_ values: [Float], window: Int = 10) -> Float? {
         let recent = values.suffix(max(1, window))
@@ -600,16 +609,15 @@ public final class LoKRTrainer {
         let moduleName = String(parts[0])
         let projName = String(parts[1])
 
-        let linear: Linear?
-        switch moduleName {
+        let linear: Linear? = switch moduleName {
         case "selfAttn":
-            linear = resolveAttentionProj(layer.selfAttn, proj: projName)
+            resolveAttentionProj(layer.selfAttn, proj: projName)
         case "crossAttn":
-            linear = resolveAttentionProj(layer.crossAttn, proj: projName)
+            resolveAttentionProj(layer.crossAttn, proj: projName)
         case "mlp":
-            linear = resolveMLPProj(layer.mlp, proj: projName)
+            resolveMLPProj(layer.mlp, proj: projName)
         default:
-            linear = nil
+            nil
         }
 
         return linear as? LoKRLinear
@@ -617,20 +625,20 @@ public final class LoKRTrainer {
 
     private func resolveAttentionProj(_ attn: DiTAttention, proj: String) -> Linear? {
         switch proj {
-        case "qProj": return attn.qProj
-        case "kProj": return attn.kProj
-        case "vProj": return attn.vProj
-        case "oProj": return attn.oProj
-        default: return nil
+        case "qProj": attn.qProj
+        case "kProj": attn.kProj
+        case "vProj": attn.vProj
+        case "oProj": attn.oProj
+        default: nil
         }
     }
 
     private func resolveMLPProj(_ mlp: SwiGLUMLP, proj: String) -> Linear? {
         switch proj {
-        case "gateProj": return mlp.gateProj
-        case "upProj": return mlp.upProj
-        case "downProj": return mlp.downProj
-        default: return nil
+        case "gateProj": mlp.gateProj
+        case "upProj": mlp.upProj
+        case "downProj": mlp.downProj
+        default: nil
         }
     }
 }

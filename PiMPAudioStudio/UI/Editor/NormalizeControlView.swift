@@ -22,8 +22,8 @@ struct NormalizeControlView: View {
                     }
                     .buttonStyle(.bordered)
                     .tint(abs(parameters.targetPeakDBFS - value) < 0.05
-                          ? DSPEffectCategory.edit.accentColor
-                          : .gray)
+                        ? DSPEffectCategory.edit.accentColor
+                        : .gray)
                     .controlSize(.small)
                 }
             }
@@ -40,10 +40,12 @@ struct NormalizeControlView: View {
                 .tint(DSPEffectCategory.edit.accentColor)
             }
 
-            Text("Scales the track so the sample peak lands at the target (headroom for later polish). −1 dB is the recommended keep default.")
-                .font(.system(size: 10))
-                .foregroundStyle(.tertiary)
-                .fixedSize(horizontal: false, vertical: true)
+            Text(
+                "Scales the track so the sample peak lands at the target (headroom for later polish). −1 dB is the recommended keep default."
+            )
+            .font(.system(size: 10))
+            .foregroundStyle(.tertiary)
+            .fixedSize(horizontal: false, vertical: true)
         }
     }
 }

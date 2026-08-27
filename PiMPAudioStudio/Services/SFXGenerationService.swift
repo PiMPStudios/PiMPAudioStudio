@@ -1,7 +1,7 @@
 // PiMPAudioStudio/Services/SFXGenerationService.swift
 import Foundation
-import PiMPAudioCore
 import OSLog
+import PiMPAudioCore
 
 private let logger = Logger(subsystem: "com.pimpstudios.PiMPAudioStudio", category: "SFXGenerationService")
 
@@ -55,7 +55,7 @@ final class SFXGenerationService {
                     let progressStream = await pipeline.makeProgressStream()
                     let progressTask = Task {
                         for await progress in progressStream {
-                            if case .diffusion(let dp) = progress {
+                            if case let .diffusion(dp) = progress {
                                 let perStep = dp.currentStep > 0
                                     ? dp.elapsedTime / Double(dp.currentStep) : 0
                                 let eta = perStep * Double(dp.totalSteps - dp.currentStep)

@@ -1,7 +1,7 @@
-import Testing
 import MLX
 import MLXNN
 @testable import PiMPAudioCore
+import Testing
 
 @Suite("Condition Encoder")
 struct ConditionEncoderTests {

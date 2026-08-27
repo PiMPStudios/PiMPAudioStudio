@@ -108,7 +108,7 @@ enum KeychainStoreError: Error, LocalizedError {
         switch self {
         case .encodingFailed:
             return "Could not encode the secret for Keychain storage."
-        case .unhandled(let status):
+        case let .unhandled(status):
             let reason = SecCopyErrorMessageString(status, nil) as String? ?? "unknown error"
             return "Keychain save failed (\(status)): \(reason)"
         }

@@ -150,28 +150,6 @@ struct RemoteTrainingJobRequest: Codable, Hashable, Sendable {
         case outputs
         case safety
     }
-
-    init(
-        pimpAudioRemoteJobVersion: String,
-        jobID: String,
-        createdAt: String,
-        task: RemoteTrainingTask,
-        package: RemoteTrainingJobPackage,
-        training: RemoteTrainingJobTraining?,
-        runtime: RemoteTrainingJobRuntime,
-        outputs: RemoteTrainingJobOutputs,
-        safety: RemoteTrainingJobSafety
-    ) {
-        self.pimpAudioRemoteJobVersion = pimpAudioRemoteJobVersion
-        self.jobID = jobID
-        self.createdAt = createdAt
-        self.task = task
-        self.package = package
-        self.training = training
-        self.runtime = runtime
-        self.outputs = outputs
-        self.safety = safety
-    }
 }
 
 struct RemoteTrainingJobPackage: Codable, Hashable, Sendable {
@@ -395,8 +373,8 @@ enum RemoteTrainingJobCodec {
     }
 
     static func archiveExtraFiles(for job: RemoteTrainingJobRequest) throws -> [String: Data] {
-        [
-            jobFileName: try encoder.encode(job),
+        try [
+            jobFileName: encoder.encode(job),
             readmeFileName: Data(remoteReadme(for: job).utf8),
             runScriptFileName: Data(remoteRunScript().utf8),
         ]
@@ -527,16 +505,16 @@ enum RemoteTrainingJobValidationError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidJob(let detail):
-            return "Remote job validation failed: \(detail)"
-        case .unsafePath(let path):
-            return "Remote job contains an unsafe package-relative path: \(path)"
-        case .missingFile(let path):
-            return "Remote job package is missing \(path)."
-        case .invalidPackageV2(let detail):
-            return "Remote package-v2 validation failed: \(detail)"
-        case .inconsistentBundle(let detail):
-            return "Remote training bundle does not match dataset_manifest.json: \(detail)"
+        case let .invalidJob(detail):
+            "Remote job validation failed: \(detail)"
+        case let .unsafePath(path):
+            "Remote job contains an unsafe package-relative path: \(path)"
+        case let .missingFile(path):
+            "Remote job package is missing \(path)."
+        case let .invalidPackageV2(detail):
+            "Remote package-v2 validation failed: \(detail)"
+        case let .inconsistentBundle(detail):
+            "Remote training bundle does not match dataset_manifest.json: \(detail)"
         }
     }
 }

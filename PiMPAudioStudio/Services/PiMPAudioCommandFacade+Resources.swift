@@ -1,5 +1,5 @@
-import Foundation
 import AVFoundation
+import Foundation
 import PiMPAudioCore
 
 extension PiMPAudioCommandFacade {
@@ -15,7 +15,7 @@ extension PiMPAudioCommandFacade {
 
         var models: [[String: Any]] = []
         for spec in specs {
-            models.append([
+            await models.append([
                 "id": spec.id,
                 "displayName": spec.displayName,
                 "category": spec.category.rawValue,
@@ -26,8 +26,8 @@ extension PiMPAudioCommandFacade {
                 "requiresAuth": spec.requiresAuth,
                 "isRunnable": spec.isRunnable,
                 "runtimeNote": spec.runtimeNote ?? NSNull(),
-                "status": await registry.status(for: spec.id).mcpDescription,
-                "isActive": activeByCategory[spec.category.rawValue] == spec.id
+                "status": registry.status(for: spec.id).mcpDescription,
+                "isActive": activeByCategory[spec.category.rawValue] == spec.id,
             ])
         }
         models.sort {
@@ -36,7 +36,7 @@ extension PiMPAudioCommandFacade {
 
         return [
             "activeModels": activeByCategory,
-            "models": models
+            "models": models,
         ]
     }
 
@@ -59,9 +59,9 @@ extension PiMPAudioCommandFacade {
                     "sampleCount": adapter.sampleCount,
                     "finalLoss": adapter.finalLoss.map { Double($0) } ?? NSNull(),
                     "createdAt": dateFormatter.string(from: adapter.createdAt),
-                    "hasCheckpoint": AdapterRegistry.hasCheckpoint(adapterID: adapter.id)
+                    "hasCheckpoint": AdapterRegistry.hasCheckpoint(adapterID: adapter.id),
                 ] as [String: Any]
-            }
+            },
         ]
     }
 
@@ -70,10 +70,9 @@ extension PiMPAudioCommandFacade {
         let rows = historyStore.entries.prefix(cappedLimit).map(historySummary)
         return [
             "count": rows.count,
-            "history": Array(rows)
+            "history": Array(rows),
         ]
     }
-
 
     func listResources() async -> [[String: Any]] {
         var resources: [[String: Any]] = [
@@ -178,7 +177,7 @@ extension PiMPAudioCommandFacade {
                 name: "operations",
                 title: "MCP Operations",
                 description: "Recent MCP-observable operations with progress, status, result, and cancellation metadata."
-            )
+            ),
         ]
 
         let specs = await registry.allSpecs
@@ -372,10 +371,10 @@ extension PiMPAudioCommandFacade {
 
     func compareTraces(arguments: [String: Any]) throws -> [String: Any] {
         let left = try resolveTrace(arguments: [
-            "id": arguments["left"] ?? arguments["leftID"] ?? arguments["leftTrace"] ?? ""
+            "id": arguments["left"] ?? arguments["leftID"] ?? arguments["leftTrace"] ?? "",
         ])
         let right = try resolveTrace(arguments: [
-            "id": arguments["right"] ?? arguments["rightID"] ?? arguments["rightTrace"] ?? ""
+            "id": arguments["right"] ?? arguments["rightID"] ?? arguments["rightTrace"] ?? "",
         ])
         let groups = GenerationTraceComparator.groups(left: left, right: right)
         let changedGroups = groups.compactMap { group -> [String: Any]? in
@@ -384,7 +383,7 @@ extension PiMPAudioCommandFacade {
             return [
                 "title": group.title,
                 "systemImage": group.systemImage,
-                "rows": rows.map(rowPayload)
+                "rows": rows.map(rowPayload),
             ]
         }
 
@@ -394,7 +393,7 @@ extension PiMPAudioCommandFacade {
             "changedFieldCount": changedGroups.reduce(0) { total, group in
                 total + ((group["rows"] as? [[String: Any]])?.count ?? 0)
             },
-            "groups": changedGroups
+            "groups": changedGroups,
         ]
     }
 
@@ -416,11 +415,10 @@ extension PiMPAudioCommandFacade {
             isPreferred = true
         }
 
-        let note: String?
-        if hasArgument("listeningNote", in: arguments) || hasArgument("note", in: arguments) {
-            note = stringValue(arguments["listeningNote"] ?? arguments["note"])
+        let note: String? = if hasArgument("listeningNote", in: arguments) || hasArgument("note", in: arguments) {
+            stringValue(arguments["listeningNote"] ?? arguments["note"])
         } else {
-            note = trace.listeningNote
+            trace.listeningNote
         }
 
         let updated = try historyStore.saveTraceReview(
@@ -432,7 +430,6 @@ extension PiMPAudioCommandFacade {
         return reviewPayload(updated)
     }
 
-
     func modelResource(id: String) async throws -> [String: Any] {
         let specs = await registry.allSpecs
         guard let spec = specs.first(where: { $0.id == id }) else {
@@ -440,7 +437,7 @@ extension PiMPAudioCommandFacade {
         }
 
         let activeID = await registry.activeModelID(for: spec.category)
-        return [
+        return await [
             "id": spec.id,
             "displayName": spec.displayName,
             "category": spec.category.rawValue,
@@ -451,7 +448,7 @@ extension PiMPAudioCommandFacade {
                     "remotePath": file.remotePath,
                     "localName": file.localName,
                     "sizeBytes": file.sizeBytes,
-                    "sha256": file.sha256 ?? NSNull()
+                    "sha256": file.sha256 ?? NSNull(),
                 ] as [String: Any]
             },
             "totalSizeBytes": spec.totalSizeBytes,
@@ -459,8 +456,8 @@ extension PiMPAudioCommandFacade {
             "requiresAuth": spec.requiresAuth,
             "isRunnable": spec.isRunnable,
             "runtimeNote": spec.runtimeNote ?? NSNull(),
-            "status": await registry.status(for: spec.id).mcpDescription,
-            "isActive": activeID == spec.id
+            "status": registry.status(for: spec.id).mcpDescription,
+            "isActive": activeID == spec.id,
         ]
     }
 
@@ -486,7 +483,7 @@ extension PiMPAudioCommandFacade {
             "createdAt": dateFormatter.string(from: adapter.createdAt),
             "source": adapter.source.rawValue,
             "remoteRepoURL": adapter.remoteRepoURL?.absoluteString ?? NSNull(),
-            "hasCheckpoint": AdapterRegistry.hasCheckpoint(adapterID: adapter.id)
+            "hasCheckpoint": AdapterRegistry.hasCheckpoint(adapterID: adapter.id),
         ]
     }
 
@@ -506,7 +503,7 @@ extension PiMPAudioCommandFacade {
             "traceFileName": entry.traceFileName ?? NSNull(),
             "hasTrace": historyStore.traceURL(for: entry) != nil,
             "isPreferred": entry.isPreferred ?? false,
-            "listeningNote": entry.listeningNote ?? NSNull()
+            "listeningNote": entry.listeningNote ?? NSNull(),
         ]
     }
 
@@ -525,7 +522,7 @@ extension PiMPAudioCommandFacade {
         } catch {
             editorPayload = [
                 "ready": false,
-                "error": error.localizedDescription
+                "error": error.localizedDescription,
             ]
         }
 
@@ -549,20 +546,21 @@ extension PiMPAudioCommandFacade {
                 "presets": "pimpaudio://presets",
                 "workflows": "pimpaudio://workflows",
                 "editor": "pimpaudio://editor",
-                "operations": "pimpaudio://operations"
+                "operations": "pimpaudio://operations",
             ],
             "counts": [
                 "history": historyStore.entries.count,
                 "takes": historyStore.entries.count,
-                "trainingDatasets": (listTrainingDatasets(arguments: ["limit": 200])["datasets"] as? [[String: Any]])?.count ?? 0,
+                "trainingDatasets": (listTrainingDatasets(arguments: ["limit": 200])["datasets"] as? [[String: Any]])?
+                    .count ?? 0,
                 "trainingRuns": (listTrainingRuns(arguments: ["limit": 100])["runs"] as? [[String: Any]])?.count ?? 0,
                 "presets": loadGenerationPresets().count,
                 "workflows": workflowPromptDefinitions.count,
-                "operations": operationSnapshot(limit: maxOperationRecords).count
+                "operations": operationSnapshot(limit: maxOperationRecords).count,
             ],
             "training": trainingStatus(),
             "editor": editorPayload,
-            "operations": listOperations(arguments: ["limit": 10])
+            "operations": listOperations(arguments: ["limit": 10]),
         ]
     }
 
@@ -579,7 +577,7 @@ extension PiMPAudioCommandFacade {
             "duration": loadedAudio?.duration ?? NSNull(),
             "sampleRate": loadedAudio?.sampleRate ?? NSNull(),
             "channels": loadedAudio?.channels ?? NSNull(),
-            "sourceLoadedAudio": loadedAudio.map(editorLoadedAudioPayload) ?? NSNull()
+            "sourceLoadedAudio": loadedAudio.map(editorLoadedAudioPayload) ?? NSNull(),
         ]
     }
 
@@ -602,7 +600,7 @@ extension PiMPAudioCommandFacade {
             "historyResourceURI": historyID.map { resourceURI(kind: "history", identifier: $0) as Any } ?? NSNull(),
             "takeResourceURI": historyID.map { resourceURI(kind: "take", identifier: $0) as Any } ?? NSNull(),
             "audioResourceURI": historyID.map { resourceURI(kind: "audio", identifier: $0) as Any } ?? NSNull(),
-            "sourceLoadedAudio": loadedAudio.map(editorLoadedAudioPayload) ?? NSNull()
+            "sourceLoadedAudio": loadedAudio.map(editorLoadedAudioPayload) ?? NSNull(),
         ]
     }
 
@@ -610,21 +608,19 @@ extension PiMPAudioCommandFacade {
         let loadedAudio = editorService?.loadedAudio
         let hasLoadedAudio = await editorService?.coordinator?.hasLoadedAudio ?? false
         let lastEdit = editorService?.lastEdit
-        let selection: Any
-
-        if let startTime = lastEdit?.selectionStart,
-           let endTime = lastEdit?.selectionEnd {
-            selection = [
+        let selection: Any = if let startTime = lastEdit?.selectionStart,
+                                let endTime = lastEdit?.selectionEnd {
+            [
                 "startTime": startTime,
                 "endTime": endTime,
                 "duration": endTime - startTime,
                 "frequencyBand": editorFrequencyBandPayload(
                     lowCutHz: lastEdit?.lowCutHz,
                     highCutHz: lastEdit?.highCutHz
-                )
+                ),
             ]
         } else {
-            selection = NSNull()
+            NSNull()
         }
 
         return [
@@ -637,7 +633,7 @@ extension PiMPAudioCommandFacade {
             "clipDuration": loadedAudio?.duration ?? NSNull(),
             "selection": selection,
             "lastEdit": lastEdit.map(editorEditSummaryPayload) ?? NSNull(),
-            "note": "SwiftUI drag selection is still local view state; this reports the most recent persisted editor edit selection."
+            "note": "SwiftUI drag selection is still local view state; this reports the most recent persisted editor edit selection.",
         ]
     }
 
@@ -648,7 +644,7 @@ extension PiMPAudioCommandFacade {
             "kind": "takeCollection",
             "count": rows.count,
             "totalCount": historyStore.entries.count,
-            "takes": Array(rows)
+            "takes": Array(rows),
         ]
     }
 
@@ -658,19 +654,19 @@ extension PiMPAudioCommandFacade {
             ? NSNull()
             : resourceURI(kind: "trace", identifier: entry.id.uuidString)
 
-        return [
+        return try [
             "id": entry.id.uuidString,
             "kind": "take",
             "summary": takeSummary(entry),
             "history": historySummary(entry),
-            "audio": try audioResource(identifier: entry.id.uuidString),
+            "audio": audioResource(identifier: entry.id.uuidString),
             "adapters": (entry.adapters ?? []).map(historyAdapterPayload),
             "resources": [
                 "history": resourceURI(kind: "history", identifier: entry.id.uuidString),
                 "take": resourceURI(kind: "take", identifier: entry.id.uuidString),
                 "audio": resourceURI(kind: "audio", identifier: entry.id.uuidString),
-                "trace": traceURI
-            ]
+                "trace": traceURI,
+            ],
         ]
     }
 
@@ -683,24 +679,24 @@ extension PiMPAudioCommandFacade {
             "generationModes": GenerationMode.allCases.map { mode in
                 [
                     "id": mode.rawValue,
-                    "displayName": mode.displayName
+                    "displayName": mode.displayName,
                 ]
             },
             "pipelines": PipelineChoice.allCases.map { pipeline in
                 [
                     "id": pipeline.rawValue,
-                    "displayName": pipeline.displayName
+                    "displayName": pipeline.displayName,
                 ]
             },
             "methods": [
                 ["id": InferMethod.ode.rawValue],
-                ["id": InferMethod.sde.rawValue]
+                ["id": InferMethod.sde.rawValue],
             ],
             "precisions": Precision.allCases.map { ["id": $0.rawValue] },
             "guidancePresets": GuidancePreset.allCases.map(guidancePresetPayload),
             "inpaintPresets": InpaintPreset.allCases.map(inpaintPresetPayload),
             "reverbPresets": ReverbPreset.allCases.map(reverbPresetPayload),
-            "dspEffects": DSPEffect.allCases.map(dspEffectPayload)
+            "dspEffects": DSPEffect.allCases.map(dspEffectPayload),
         ]
     }
 
@@ -718,7 +714,7 @@ extension PiMPAudioCommandFacade {
         [
             "kind": "workflowCollection",
             "count": workflowPromptDefinitions.count,
-            "workflows": workflowPromptDefinitions.map(workflowPromptPayload)
+            "workflows": workflowPromptDefinitions.map(workflowPromptPayload),
         ]
     }
 
@@ -750,7 +746,7 @@ extension PiMPAudioCommandFacade {
             "audioResourceURI": resourceURI(kind: "audio", identifier: entry.id.uuidString),
             "traceResourceURI": historyStore.traceURL(for: entry) == nil
                 ? NSNull()
-                : resourceURI(kind: "trace", identifier: entry.id.uuidString)
+                : resourceURI(kind: "trace", identifier: entry.id.uuidString),
         ]
     }
 
@@ -761,7 +757,7 @@ extension PiMPAudioCommandFacade {
             "weight": adapter.weight,
             "source": adapter.source ?? NSNull(),
             "rank": adapter.rank ?? NSNull(),
-            "baseModelID": adapter.baseModelID ?? NSNull()
+            "baseModelID": adapter.baseModelID ?? NSNull(),
         ]
     }
 
@@ -808,7 +804,7 @@ extension PiMPAudioCommandFacade {
             "adapterID": preset.adapterID ?? NSNull(),
             "adapterStrength": preset.adapterStrength,
             "coverStrength": preset.coverStrength,
-            "resourceURI": resourceURI(kind: "preset", identifier: preset.id.uuidString)
+            "resourceURI": resourceURI(kind: "preset", identifier: preset.id.uuidString),
         ]
     }
 
@@ -820,9 +816,9 @@ extension PiMPAudioCommandFacade {
             "detail": preset.detail,
             "cfgInterval": [
                 "start": interval.start,
-                "end": interval.end
+                "end": interval.end,
             ],
-            "guidanceScaleOverride": preset.guidanceScaleOverride ?? NSNull()
+            "guidanceScaleOverride": preset.guidanceScaleOverride ?? NSNull(),
         ]
     }
 
@@ -831,7 +827,7 @@ extension PiMPAudioCommandFacade {
             "id": preset.rawValue,
             "displayName": preset.rawValue.capitalized,
             "strength": preset.strength,
-            "guidanceScale": preset.guidanceScale
+            "guidanceScale": preset.guidanceScale,
         ]
     }
 
@@ -844,8 +840,8 @@ extension PiMPAudioCommandFacade {
                 "decayTime": parameters.decayTime,
                 "wetDryMix": parameters.wetDryMix,
                 "preDelay": parameters.preDelay,
-                "damping": parameters.damping
-            ]
+                "damping": parameters.damping,
+            ],
         ]
     }
 
@@ -857,7 +853,7 @@ extension PiMPAudioCommandFacade {
             "requiresParameters": effect.requiresParameters,
             "isTransform": effect.isTransform,
             "operationKind": "editor.applyEffectChain",
-            "tool": "apply_editor_effect_chain"
+            "tool": "apply_editor_effect_chain",
         ]
     }
 
@@ -872,12 +868,12 @@ extension PiMPAudioCommandFacade {
                 [
                     "name": argument.name,
                     "description": argument.description,
-                    "required": argument.required
+                    "required": argument.required,
                 ]
             },
             "resources": workflow.resources,
             "tools": workflow.tools,
-            "resourceURI": resourceURI(kind: "workflow", identifier: workflow.id)
+            "resourceURI": resourceURI(kind: "workflow", identifier: workflow.id),
         ]
     }
 
@@ -949,7 +945,7 @@ extension PiMPAudioCommandFacade {
             "modelName": entry.modelName ?? NSNull(),
             "adapterCount": entry.adapters?.count ?? 0,
             "isPreferred": entry.isPreferred ?? false,
-            "listeningNote": entry.listeningNote ?? NSNull()
+            "listeningNote": entry.listeningNote ?? NSNull(),
         ]
     }
 
@@ -980,7 +976,7 @@ extension PiMPAudioCommandFacade {
             "absMean": trace.audio.absMean,
             "absMax": trace.audio.absMax,
             "isPreferred": trace.isPreferred ?? false,
-            "listeningNote": trace.listeningNote ?? NSNull()
+            "listeningNote": trace.listeningNote ?? NSNull(),
         ]
     }
 
@@ -993,21 +989,20 @@ extension PiMPAudioCommandFacade {
             "audioFileName": trace.audioFileName,
             "audioFilePath": audioPath,
             "isPreferred": trace.isPreferred ?? false,
-            "listeningNote": trace.listeningNote ?? NSNull()
+            "listeningNote": trace.listeningNote ?? NSNull(),
         ]
     }
-
 
     func rowPayload(_ row: TraceComparisonRow) -> [String: Any] {
         [
             "label": row.label,
             "left": row.left,
             "right": row.right,
-            "isDifferent": row.isDifferent
+            "isDifferent": row.isDifferent,
         ]
     }
 
-    func encodedJSONObject<T: Encodable>(_ value: T) throws -> [String: Any] {
+    func encodedJSONObject(_ value: some Encodable) throws -> [String: Any] {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         let data = try encoder.encode(value)
@@ -1016,6 +1011,4 @@ extension PiMPAudioCommandFacade {
         }
         return object
     }
-
-
 }

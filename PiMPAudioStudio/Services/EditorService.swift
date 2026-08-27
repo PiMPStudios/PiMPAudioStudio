@@ -1,6 +1,6 @@
-import SwiftUI
 import Combine
 import PiMPAudioCore
+import SwiftUI
 
 @MainActor
 class EditorService: ObservableObject {
@@ -16,7 +16,7 @@ class EditorService: ObservableObject {
         conditioningActor: ConditioningActor,
         sfxModelManager: SFXModelManager? = nil
     ) {
-        self.coordinator = InpaintCoordinator(
+        coordinator = InpaintCoordinator(
             vaeActor: vaeActor,
             diffusionActor: diffusionActor,
             conditioningActor: conditioningActor
@@ -28,7 +28,7 @@ class EditorService: ObservableObject {
         if let sfxMgr = sfxModelManager {
             sfxPipelineSubscription = sfxMgr.$pipeline
                 .sink { [weak self] pipeline in
-                    guard let self, let coord = self.coordinator else { return }
+                    guard let self, let coord = coordinator else { return }
                     let tokenizer = sfxMgr.tokenizer
                     let vae = sfxMgr.sfxVAE
                     let diffusion = sfxMgr.sfxDiffusion
@@ -131,7 +131,7 @@ struct EditorEditSummary: Equatable {
         seed: Int?,
         completedAt: Date
     ) {
-        self.kind = "inpaint"
+        kind = "inpaint"
         self.mode = mode
         self.regionPrompt = regionPrompt
         self.originalPrompt = originalPrompt
@@ -143,9 +143,9 @@ struct EditorEditSummary: Equatable {
         self.strength = strength
         self.guidanceScale = guidanceScale
         self.seed = seed
-        self.dspEffects = []
-        self.beforeDuration = nil
-        self.afterDuration = nil
+        dspEffects = []
+        beforeDuration = nil
+        afterDuration = nil
         self.completedAt = completedAt
     }
 
@@ -155,18 +155,18 @@ struct EditorEditSummary: Equatable {
         afterDuration: TimeInterval,
         completedAt: Date
     ) {
-        self.kind = "dsp"
-        self.mode = nil
-        self.regionPrompt = nil
-        self.originalPrompt = nil
-        self.pipeline = nil
-        self.selectionStart = nil
-        self.selectionEnd = nil
-        self.lowCutHz = nil
-        self.highCutHz = nil
-        self.strength = nil
-        self.guidanceScale = nil
-        self.seed = nil
+        kind = "dsp"
+        mode = nil
+        regionPrompt = nil
+        originalPrompt = nil
+        pipeline = nil
+        selectionStart = nil
+        selectionEnd = nil
+        lowCutHz = nil
+        highCutHz = nil
+        strength = nil
+        guidanceScale = nil
+        seed = nil
         self.dspEffects = dspEffects
         self.beforeDuration = beforeDuration
         self.afterDuration = afterDuration

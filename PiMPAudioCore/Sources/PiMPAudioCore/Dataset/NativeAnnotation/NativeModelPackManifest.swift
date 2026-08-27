@@ -103,18 +103,18 @@ public enum NativeModelPackError: LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case .invalidManifest(let detail):
-            return "Invalid native model pack: \(detail)"
-        case .missingFile(let url):
-            return "Native model pack is missing \(url.lastPathComponent)."
-        case .unsafePath(let path):
-            return "Native model pack contains an unsafe path: \(path)."
-        case .sizeMismatch(let path, let expected, let actual):
-            return "Native model pack file \(path) is \(actual) bytes; expected \(expected)."
-        case .checksumMismatch(let path, let expected, let actual):
-            return "Native model pack file \(path) has SHA-256 \(actual); expected \(expected)."
-        case .unreadableIndex(let url):
-            return "Native model pack index is unreadable at \(url.path)."
+        case let .invalidManifest(detail):
+            "Invalid native model pack: \(detail)"
+        case let .missingFile(url):
+            "Native model pack is missing \(url.lastPathComponent)."
+        case let .unsafePath(path):
+            "Native model pack contains an unsafe path: \(path)."
+        case let .sizeMismatch(path, expected, actual):
+            "Native model pack file \(path) is \(actual) bytes; expected \(expected)."
+        case let .checksumMismatch(path, expected, actual):
+            "Native model pack file \(path) has SHA-256 \(actual); expected \(expected)."
+        case let .unreadableIndex(url):
+            "Native model pack index is unreadable at \(url.path)."
         }
     }
 }
@@ -298,11 +298,11 @@ public enum NativeModelPackValidator {
         guard values.isRegularFile == true, let size = values.fileSize else {
             throw NativeModelPackError.missingFile(url)
         }
-        return NativeModelPackManifest.FileRecord(
+        return try NativeModelPackManifest.FileRecord(
             role: role,
             path: path,
             byteCount: Int64(size),
-            sha256: try sha256(of: url)
+            sha256: sha256(of: url)
         )
     }
 
@@ -310,14 +310,14 @@ public enum NativeModelPackValidator {
         _ manifest: NativeModelPackManifest
     ) throws {
         guard manifest.schemaVersion
-                == NativeModelPackManifest.currentSchemaVersion
+            == NativeModelPackManifest.currentSchemaVersion
         else {
             throw NativeModelPackError.invalidManifest(
                 "unsupported schema version \(manifest.schemaVersion)"
             )
         }
         guard manifest.tensorMappingVersion
-                == NativeModelPackManifest.currentTensorMappingVersion
+            == NativeModelPackManifest.currentTensorMappingVersion
         else {
             throw NativeModelPackError.invalidManifest(
                 "unsupported tensor mapping version "
@@ -331,15 +331,14 @@ public enum NativeModelPackValidator {
         else {
             throw NativeModelPackError.invalidManifest("invalid pack ID")
         }
-        let expected: (modelID: String, revision: String)
-        switch manifest.task {
+        let expected: (modelID: String, revision: String) = switch manifest.task {
         case .caption:
-            expected = (
+            (
                 "ACE-Step/acestep-captioner",
                 OmniWeightLoader.captionerRevision
             )
         case .transcribe:
-            expected = (
+            (
                 "ACE-Step/acestep-transcriber",
                 OmniWeightLoader.transcriberRevision
             )
@@ -406,7 +405,7 @@ public enum NativeModelPackValidator {
                 )
             }
             guard record.sha256.count == 64,
-                  record.sha256.allSatisfy({ $0.isHexDigit })
+                  record.sha256.allSatisfy(\.isHexDigit)
             else {
                 throw NativeModelPackError.invalidManifest(
                     "invalid SHA-256 for \(record.path)"

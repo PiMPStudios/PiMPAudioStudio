@@ -1,5 +1,5 @@
-import SwiftUI
 import PiMPAudioCore
+import SwiftUI
 
 struct CommunityBrowserView: View {
     @StateObject private var service = CommunityService()
@@ -8,9 +8,9 @@ struct CommunityBrowserView: View {
     @State private var selectedCategory: ModelCategory?
     @State private var showingImportSheet = false
 
-    // ModelCategory doesn't conform to CaseIterable — use a hardcoded list.
+    /// ModelCategory doesn't conform to CaseIterable — use a hardcoded list.
     private let allCategories: [ModelCategory] = [
-        .aceStepDiT, .aceStepVAE, .aceStepLM, .stableAudio
+        .aceStepDiT, .aceStepVAE, .aceStepLM, .stableAudio,
     ]
 
     var body: some View {
@@ -75,7 +75,7 @@ struct CommunityBrowserView: View {
     @ViewBuilder
     private var content: some View {
         let adapters = filteredAdapters
-        if service.isRefreshing && service.manifest == nil {
+        if service.isRefreshing, service.manifest == nil {
             loadingState
         } else if adapters.isEmpty {
             emptyState
@@ -104,13 +104,13 @@ struct CommunityBrowserView: View {
                 .font(.largeTitle)
                 .foregroundStyle(.secondary)
             Text(searchText.isEmpty && selectedCategory == nil
-                 ? "No Community Adapters"
-                 : "No Results")
+                ? "No Community Adapters"
+                : "No Results")
                 .font(.headline)
                 .foregroundStyle(.secondary)
             Text(searchText.isEmpty && selectedCategory == nil
-                 ? "Check back later or add one from a HuggingFace URL."
-                 : "Try a different search or category.")
+                ? "Check back later or add one from a HuggingFace URL."
+                : "Try a different search or category.")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
             Spacer()
@@ -247,7 +247,7 @@ private struct AdapterRow: View {
                 .foregroundStyle(.green)
         } else if let state = downloadState {
             switch state {
-            case .downloading(let progress):
+            case let .downloading(progress):
                 Button {
                     service.cancelDownload(adapterID: adapter.id)
                 } label: {

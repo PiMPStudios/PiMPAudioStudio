@@ -29,14 +29,14 @@ public enum OmniThinkerWeightLoaderError: LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case .missingIndex(let url):
-            return "Missing safetensors index at \(url.path)."
-        case .missingShard(let url):
-            return "Missing checkpoint shard at \(url.path)."
-        case .missingTensor(let name):
-            return "Checkpoint shard does not contain \(name)."
-        case .incorrectTensorCount(let expected, let actual):
-            return "Loaded \(actual) Thinker text tensors; expected \(expected)."
+        case let .missingIndex(url):
+            "Missing safetensors index at \(url.path)."
+        case let .missingShard(url):
+            "Missing checkpoint shard at \(url.path)."
+        case let .missingTensor(name):
+            "Checkpoint shard does not contain \(name)."
+        case let .incorrectTensorCount(expected, actual):
+            "Loaded \(actual) Thinker text tensors; expected \(expected)."
         }
     }
 }
@@ -159,7 +159,7 @@ public enum OmniThinkerWeightLoader {
 
         let expectedCount =
             manifest?.tensorCounts.thinker
-            ?? model.parameters().flattened().count
+                ?? model.parameters().flattened().count
         guard selected.count == expectedCount else {
             throw OmniThinkerWeightLoaderError.incorrectTensorCount(
                 expected: expectedCount,
@@ -185,7 +185,7 @@ public enum OmniThinkerWeightLoader {
 
 private extension Duration {
     var timeInterval: Double {
-        let components = self.components
+        let components = components
         return Double(components.seconds)
             + Double(components.attoseconds) / 1_000_000_000_000_000_000
     }

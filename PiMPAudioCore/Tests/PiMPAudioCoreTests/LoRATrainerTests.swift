@@ -1,9 +1,9 @@
-import Testing
 import Foundation
 import MLX
 import MLXNN
 import MLXRandom
 @testable import PiMPAudioCore
+import Testing
 
 @Test func cosineSchedulerUsesWarmupFraction() {
     let scheduler = CosineScheduler(baseLR: 0.001, warmupFraction: 0.25, totalSteps: 8)
@@ -153,7 +153,7 @@ import MLXRandom
     )
 
     let values = dora.reshaped([-1]).asArray(Float.self)
-    zip(values, baseValues).forEach { value, expected in
+    for (value, expected) in zip(values, baseValues) {
         #expect(abs(value - expected) < 0.00001)
     }
 }
@@ -260,7 +260,7 @@ import MLXRandom
             "layers.28.selfAttn.qProj.lokrW1",
             "layers.28.selfAttn.qProj.lokrW2",
             "layers.29.crossAttn.vProj.lokrW1",
-            "metadata"
+            "metadata",
         ],
         kind: .lokr
     )

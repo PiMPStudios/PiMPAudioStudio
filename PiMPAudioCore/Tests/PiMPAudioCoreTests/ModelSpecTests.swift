@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 @testable import PiMPAudioCore
+import Testing
 
 @Test func modelSpecStoresProperties() {
     let spec = ModelSpec(
@@ -53,5 +53,5 @@ import Testing
     )
     let baseURL = URL(filePath: "/tmp/models")
     #expect(spec.localPath(for: "model.safetensors", base: baseURL)
-            == URL(filePath: "/tmp/models/ace-step-dit/model.safetensors"))
+        == URL(filePath: "/tmp/models/ace-step-dit/model.safetensors"))
 }

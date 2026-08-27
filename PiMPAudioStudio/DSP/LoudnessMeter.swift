@@ -1,5 +1,5 @@
-import Foundation
 import Accelerate
+import Foundation
 
 /// Level readouts for the editor polish path.
 ///
@@ -20,13 +20,19 @@ enum LoudnessMeter {
         var sampleRate: Int
         var channels: Int
 
-        var isStereo: Bool { channels >= 2 }
+        var isStereo: Bool {
+            channels >= 2
+        }
 
         /// Headroom under a 0 dBFS full-scale sample peak.
-        var samplePeakHeadroomDB: Float { -peakDBFS }
+        var samplePeakHeadroomDB: Float {
+            -peakDBFS
+        }
 
         /// True-peak overshoot vs sample peak (dB); positive means TP hotter than sample peak.
-        var truePeakOvershootDB: Float { truePeakDBFS - peakDBFS }
+        var truePeakOvershootDB: Float {
+            truePeakDBFS - peakDBFS
+        }
     }
 
     static func measure(_ buffer: AudioBuffer) -> Metrics {
@@ -60,7 +66,9 @@ enum LoudnessMeter {
     private static let oversampleFactor = 4
     /// Input samples used on each side of an interpolated position.
     private static let kernelHalfSpan = 12
-    private static var kernelTaps: Int { kernelHalfSpan * 2 }
+    private static var kernelTaps: Int {
+        kernelHalfSpan * 2
+    }
 
     /// Windowed-sinc kernels for fractional phases 1/4, 2/4, 3/4.
     ///
@@ -73,23 +81,21 @@ enum LoudnessMeter {
     /// L1 norm of the widest kernel — bounds how far an interpolated value can exceed
     /// the largest input sample in its span. Used to skip blocks that provably cannot
     /// contain the true peak.
-    private static let kernelL1Norm: Float = {
-        interpolationKernels
-            .map { $0.reduce(0) { $0 + abs($1) } }
-            .max() ?? 1
-    }()
+    private static let kernelL1Norm: Float = interpolationKernels
+        .map { $0.reduce(0) { $0 + abs($1) } }
+        .max() ?? 1
 
     private static func makeInterpolationKernels() -> [[Float]] {
         let taps = kernelHalfSpan * 2
         var kernels: [[Float]] = []
         kernels.reserveCapacity(oversampleFactor - 1)
 
-        for phase in 1..<oversampleFactor {
+        for phase in 1 ..< oversampleFactor {
             let fraction = Double(phase) / Double(oversampleFactor)
             var kernel = [Double](repeating: 0, count: taps)
             var sum = 0.0
 
-            for tap in 0..<taps {
+            for tap in 0 ..< taps {
                 // Tap `tap` multiplies the input sample at offset (tap - kernelHalfSpan + 1).
                 let offset = Double(tap - kernelHalfSpan + 1)
                 let x = fraction - offset
@@ -105,7 +111,9 @@ enum LoudnessMeter {
 
             // Unity DC gain so a constant signal interpolates to itself.
             if abs(sum) > 1e-12 {
-                for tap in 0..<taps { kernel[tap] /= sum }
+                for tap in 0 ..< taps {
+                    kernel[tap] /= sum
+                }
             }
             kernels.append(kernel.map { Float($0) })
         }
@@ -130,7 +138,7 @@ enum LoudnessMeter {
         vDSP_maxmgv(samples, 1, &peak, vDSP_Length(samples.count))
 
         let taps = kernelTaps
-        let blockSize = max(4_096, taps * 4)
+        let blockSize = max(4096, taps * 4)
         let blockCount = (frameCount + blockSize - 1) / blockSize
 
         var channelSamples = [Float](repeating: 0, count: frameCount)
@@ -138,12 +146,12 @@ enum LoudnessMeter {
         var phaseOutput = [Float](repeating: 0, count: blockSize)
         var blockMaxima = [Float](repeating: 0, count: blockCount)
 
-        for channel in 0..<channelCount {
-            for frame in 0..<frameCount {
+        for channel in 0 ..< channelCount {
+            for frame in 0 ..< frameCount {
                 channelSamples[frame] = samples[frame * channelCount + channel]
             }
 
-            for block in 0..<blockCount {
+            for block in 0 ..< blockCount {
                 let start = block * blockSize
                 let count = min(blockSize, frameCount - start)
                 var blockMax: Float = 0
@@ -154,22 +162,28 @@ enum LoudnessMeter {
             }
 
             // A block's outputs also read its neighbours' edges, so bound with the halo.
-            let bounds: [(index: Int, bound: Float)] = (0..<blockCount).map { block in
+            let bounds: [(index: Int, bound: Float)] = (0 ..< blockCount).map { block in
                 var span = blockMaxima[block]
-                if block > 0 { span = max(span, blockMaxima[block - 1]) }
-                if block + 1 < blockCount { span = max(span, blockMaxima[block + 1]) }
+                if block > 0 {
+                    span = max(span, blockMaxima[block - 1])
+                }
+                if block + 1 < blockCount {
+                    span = max(span, blockMaxima[block + 1])
+                }
                 return (block, span * kernelL1Norm)
             }.sorted { $0.bound > $1.bound }
 
             for entry in bounds {
                 // Sorted descending: once one block cannot beat `peak`, none can.
-                if entry.bound <= peak { break }
+                if entry.bound <= peak {
+                    break
+                }
 
                 let start = entry.index * blockSize
                 let count = min(blockSize, frameCount - start)
                 let paddedCount = count + taps - 1
 
-                for i in 0..<paddedCount {
+                for i in 0 ..< paddedCount {
                     let sourceFrame = start + i - (kernelHalfSpan - 1)
                     padded[i] = (sourceFrame >= 0 && sourceFrame < frameCount)
                         ? channelSamples[sourceFrame]
@@ -200,7 +214,7 @@ enum LoudnessMeter {
         guard channelCount >= 2, !samples.isEmpty else { return peakDBFS(samples) }
         let frameCount = samples.count / channelCount
         var peak: Float = 0
-        for frame in 0..<frameCount {
+        for frame in 0 ..< frameCount {
             let base = frame * channelCount
             let mid = 0.5 * (samples[base] + samples[base + 1])
             peak = max(peak, abs(mid))
@@ -220,7 +234,7 @@ enum LoudnessMeter {
         let channels = audio.channels
         let frameCount = audio.frameCount
         var mono = [Float](repeating: 0, count: frameCount)
-        for frame in 0..<frameCount {
+        for frame in 0 ..< frameCount {
             let base = frame * channels
             // Average first two channels (typical stereo L/R)
             mono[frame] = 0.5 * (audio.samples[base] + audio.samples[base + 1])
@@ -250,12 +264,16 @@ enum LoudnessMeter {
     }
 
     static func formatDBFS(_ value: Float) -> String {
-        if value <= -119.5 { return "−∞ dB" }
+        if value <= -119.5 {
+            return "−∞ dB"
+        }
         return String(format: "%.1f dB", value)
     }
 
     static func formatLUFS(_ value: Float) -> String {
-        if value <= -69.5 { return "−∞ LUFS" }
+        if value <= -69.5 {
+            return "−∞ LUFS"
+        }
         return String(format: "%.1f LUFS", value)
     }
 

@@ -17,7 +17,9 @@ public enum AceStepLMNameMap {
         }
 
         // Filter lm_head if it ever appears.
-        if mapped.hasPrefix("lm_head.") { return nil }
+        if mapped.hasPrefix("lm_head.") {
+            return nil
+        }
 
         // embed_tokens → embedTokens (note: AceStepLM uses Embedding, not
         // Linear, so the parameter path is .embedTokens.weight directly).

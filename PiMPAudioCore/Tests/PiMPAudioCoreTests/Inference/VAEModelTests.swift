@@ -1,8 +1,8 @@
-import Testing
 import MLX
 import MLXNN
 import MLXRandom
 @testable import PiMPAudioCore
+import Testing
 
 @Suite("VAE Model")
 struct VAEModelTests {

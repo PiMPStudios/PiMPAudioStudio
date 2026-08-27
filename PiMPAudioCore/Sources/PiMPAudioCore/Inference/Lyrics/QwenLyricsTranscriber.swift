@@ -1,5 +1,5 @@
-import Foundation
 import AudioCommon
+import Foundation
 import MLX
 import Qwen3ASR
 
@@ -28,8 +28,8 @@ public struct LyricsTranscriptionOptions: Sendable, Equatable {
         alignerModelID: String? = "aufklarer/Qwen3-ForcedAligner-0.6B-4bit",
         language: String? = nil,
         alignmentLanguage: String = "English",
-        sampleRate: Int = 24_000,
-        maxTokens: Int = 4_096,
+        sampleRate: Int = 24000,
+        maxTokens: Int = 4096,
         context: String? = nil,
         offlineMode: Bool = false,
         trimsSilence: Bool = true,
@@ -136,9 +136,9 @@ public enum LyricsAlignmentError: LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .missingAlignerModel:
-            return "A Qwen3 forced-aligner model is required."
+            "A Qwen3 forced-aligner model is required."
         case .emptyText:
-            return "Lyrics text is required for forced alignment."
+            "Lyrics text is required for forced alignment."
         }
     }
 }
@@ -232,7 +232,7 @@ public actor QwenLyricsTranscriber {
         }
         guard let alignerModelID = options.alignerModelID,
               !alignerModelID.trimmingCharacters(
-                in: .whitespacesAndNewlines
+                  in: .whitespacesAndNewlines
               ).isEmpty
         else {
             throw LyricsAlignmentError.missingAlignerModel
@@ -334,7 +334,7 @@ public actor QwenLyricsTranscriber {
         let padding = max(0, Int((Double(sampleRate) * 0.1).rounded()))
         let start = max(samples.startIndex, first - padding)
         let end = min(samples.index(before: samples.endIndex), last + padding)
-        let trimmed = Array(samples[start...end])
+        let trimmed = Array(samples[start ... end])
         let leading = Double(start) / Double(sampleRate)
         let trailing = Double(samples.count - end - 1) / Double(sampleRate)
         return PreparedAudio(samples: trimmed, leadingSeconds: leading, trailingSeconds: trailing)

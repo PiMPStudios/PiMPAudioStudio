@@ -1,10 +1,10 @@
-import Testing
 import Foundation
 @testable import PiMPAudioStudio
+import Testing
 
 @Test func normalizeRMSScalesBufferToTargetDBFS() throws {
     let sourceSamples: [Float] = [0.10, -0.10, 0.20, -0.20, 0.10, -0.10, 0.20, -0.20]
-    let source = AudioBufferConverter.fromFloats(sourceSamples, sampleRate: 48_000, channels: 1)
+    let source = AudioBufferConverter.fromFloats(sourceSamples, sampleRate: 48000, channels: 1)
 
     let processed = try SimpleDSP.normalize(source, mode: .rms(targetDB: -12.0))
     let processedSamples = AudioBufferConverter.toFloats(processed)
@@ -14,7 +14,7 @@ import Foundation
 
 @Test func normalizeRMSCapsUpwardGainBeforeClipping() throws {
     let sourceSamples: [Float] = [0.90, -0.20, 0.10, -0.10]
-    let source = AudioBufferConverter.fromFloats(sourceSamples, sampleRate: 48_000, channels: 1)
+    let source = AudioBufferConverter.fromFloats(sourceSamples, sampleRate: 48000, channels: 1)
 
     let processed = try SimpleDSP.normalize(source, mode: .rms(targetDB: -1.0))
     let processedSamples = AudioBufferConverter.toFloats(processed)
@@ -27,30 +27,30 @@ import Foundation
 @Test func normalizePeakTargetsMinusOneDBFS() throws {
     // Peak 0.5 → target -1 dBFS (~0.891)
     let sourceSamples: [Float] = [0.5, -0.25, 0.1, -0.1]
-    let source = AudioBufferConverter.fromFloats(sourceSamples, sampleRate: 48_000, channels: 1)
+    let source = AudioBufferConverter.fromFloats(sourceSamples, sampleRate: 48000, channels: 1)
 
     let processed = try SimpleDSP.normalize(source, mode: .peak(targetDBFS: -1.0))
     let peak = LoudnessMeter.peakDBFS(AudioBufferConverter.toFloats(processed))
 
-    #expect(abs(peak - (-1.0)) < 0.05)
+    #expect(abs(peak - -1.0) < 0.05)
 }
 
 @Test func normalizePeakScalesDownHotFiles() throws {
     let sourceSamples: [Float] = [0.99, -0.99, 0.5, -0.5]
-    let source = AudioBufferConverter.fromFloats(sourceSamples, sampleRate: 48_000, channels: 1)
+    let source = AudioBufferConverter.fromFloats(sourceSamples, sampleRate: 48000, channels: 1)
 
     let processed = try SimpleDSP.normalize(source, mode: .peak(targetDBFS: -3.0))
     let peak = LoudnessMeter.peakDBFS(AudioBufferConverter.toFloats(processed))
 
-    #expect(abs(peak - (-3.0)) < 0.08)
+    #expect(abs(peak - -3.0) < 0.08)
 }
 
 @Test func trimSilenceRemovesLeadingAndTrailingPadding() throws {
-    let sampleRate = 1_000
+    let sampleRate = 1000
     let channels = 1
     // 100 silent, 200 tone, 100 silent
     var samples = [Float](repeating: 0, count: 400)
-    for i in 100..<300 {
+    for i in 100 ..< 300 {
         samples[i] = 0.5
     }
     let source = AudioBufferConverter.fromFloats(samples, sampleRate: sampleRate, channels: channels)
@@ -71,7 +71,7 @@ import Foundation
 @Test func trimSilenceRespectsMaxLeadCap() throws {
     let sampleRate = 100
     var samples = [Float](repeating: 0, count: 300)
-    for i in 200..<300 {
+    for i in 200 ..< 300 {
         samples[i] = 0.8
     }
     let source = AudioBufferConverter.fromFloats(samples, sampleRate: sampleRate, channels: 1)
@@ -91,7 +91,7 @@ import Foundation
 }
 
 @Test func highPassAttenuatesNearDCContent() throws {
-    let sampleRate = 48_000
+    let sampleRate = 48000
     // Constant DC should be killed by HPF
     let samples = [Float](repeating: 0.4, count: sampleRate / 10)
     let source = AudioBufferConverter.fromFloats(samples, sampleRate: sampleRate, channels: 1)
@@ -102,7 +102,7 @@ import Foundation
     )
     let out = AudioBufferConverter.toFloats(processed)
     // After settling, residual should be near zero
-    let tail = out.suffix(2_000)
+    let tail = out.suffix(2000)
     let residual = tail.map(abs).reduce(0, +) / Float(tail.count)
 
     #expect(residual < 0.02)
@@ -119,7 +119,7 @@ import Foundation
     // sin(45°)·A, so the continuous waveform peaks ~3.01 dB above the sample peak.
     // Linear interpolation can never report this — an intermediate on the segment
     // between two samples is bounded by max(|a|, |b|).
-    let samples = (0..<4_000).map { index -> Float in
+    let samples = (0 ..< 4000).map { index -> Float in
         0.5 * sin(2 * .pi * (Float(index) + 0.5) * 0.25)
     }
     let samplePeak = LoudnessMeter.peakDBFS(samples)
@@ -131,7 +131,7 @@ import Foundation
 
 @Test func truePeakMatchesSamplePeakOnWellSampledSignal() {
     // A slow sine is densely sampled, so there is almost nothing between samples.
-    let samples = (0..<4_000).map { index -> Float in
+    let samples = (0 ..< 4000).map { index -> Float in
         0.6 * sin(Float(index) * 0.01)
     }
     let overshoot = LoudnessMeter.truePeakDBFS(samples, channels: 1)
@@ -143,8 +143,8 @@ import Foundation
 
 @Test func truePeakScansEveryChannelIndependently() {
     // Intersample content only in the right channel must still be reported.
-    var samples = [Float](repeating: 0, count: 4_000 * 2)
-    for frame in 0..<4_000 {
+    var samples = [Float](repeating: 0, count: 4000 * 2)
+    for frame in 0 ..< 4000 {
         samples[frame * 2] = 0.2 * sin(Float(frame) * 0.01)
         samples[frame * 2 + 1] = 0.5 * sin(2 * .pi * (Float(frame) + 0.5) * 0.25)
     }
@@ -154,7 +154,7 @@ import Foundation
 }
 
 @Test func approximateLUFSSumsChannelPowersLikeBS1770() {
-    let mono = (0..<4_800).map { index -> Float in 0.3 * sin(Float(index) * 0.05) }
+    let mono = (0 ..< 4800).map { index -> Float in 0.3 * sin(Float(index) * 0.05) }
     var stereo = [Float](repeating: 0, count: mono.count * 2)
     for (index, value) in mono.enumerated() {
         stereo[index * 2] = value
@@ -171,12 +171,12 @@ import Foundation
 }
 
 @Test func int16RoundTripReproducesItsInputExactly() {
-    let values: [Int16] = [0, 1, -1, 7, -7, 1_000, -1_000, 20_000, -20_000, 32_767, -32_767]
+    let values: [Int16] = [0, 1, -1, 7, -7, 1000, -1000, 20000, -20000, 32767, -32767]
     var data = Data()
     for value in values {
         withUnsafeBytes(of: value.littleEndian) { data.append(contentsOf: $0) }
     }
-    let buffer = AudioBuffer(data: data, sampleRate: 48_000, channels: 1)
+    let buffer = AudioBuffer(data: data, sampleRate: 48000, channels: 1)
 
     // A DSP stage that changes nothing must really change nothing — otherwise every
     // no-op stage in a chain quietly erodes the signal.
@@ -197,7 +197,7 @@ import Foundation
 
 @Test func foldToMonoAveragesLeftAndRight() {
     let samples: [Float] = [0.5, 0.3, 0.0, 1.0]
-    let stereo = AudioBufferConverter.fromFloats(samples, sampleRate: 48_000, channels: 2)
+    let stereo = AudioBufferConverter.fromFloats(samples, sampleRate: 48000, channels: 2)
     let mono = LoudnessMeter.foldToMono(stereo)
     #expect(mono.channels == 1)
     #expect(mono.frameCount == 2)
@@ -214,7 +214,7 @@ import Foundation
         rangeDB: 24
     )
     // 12 dB under at 2:1 → GR = -12 * (1 - 0.5) = -6
-    #expect(abs(gr - (-6.0)) < 0.01)
+    #expect(abs(gr - -6.0) < 0.01)
 }
 
 @Test func softGateDoesNotExpandAboveThreshold() {
@@ -228,9 +228,9 @@ import Foundation
 }
 
 @Test func softGateAttenuatesQuietTail() throws {
-    var samples = [Float](repeating: 0.5, count: 1_000)
-    samples.append(contentsOf: [Float](repeating: 0.01, count: 2_000))
-    let source = AudioBufferConverter.fromFloats(samples, sampleRate: 48_000, channels: 1)
+    var samples = [Float](repeating: 0.5, count: 1000)
+    samples.append(contentsOf: [Float](repeating: 0.01, count: 2000))
+    let source = AudioBufferConverter.fromFloats(samples, sampleRate: 48000, channels: 1)
 
     let gated = try DynamicsProcessor.softGate(
         source,
@@ -252,7 +252,7 @@ import Foundation
 @Test func dspProcessorAppliesNormalizeParameters() throws {
     let processor = DSPProcessor()
     let samples: [Float] = [0.25, -0.25, 0.1, -0.1]
-    let buffer = AudioBufferConverter.fromFloats(samples, sampleRate: 48_000, channels: 1)
+    let buffer = AudioBufferConverter.fromFloats(samples, sampleRate: 48000, channels: 1)
 
     let result = try processor.apply(
         effect: .normalize,
@@ -261,7 +261,7 @@ import Foundation
         parameters: .normalize(NormalizeParameters(targetPeakDBFS: -1.0))
     )
     let peak = LoudnessMeter.peakDBFS(AudioBufferConverter.toFloats(result))
-    #expect(abs(peak - (-1.0)) < 0.08)
+    #expect(abs(peak - -1.0) < 0.08)
 }
 
 @Test func compressorGainReductionIsNegativeAboveThreshold() {
@@ -272,7 +272,7 @@ import Foundation
         kneeDB: 0
     )
     // 12 dB over threshold at 4:1 → GR = 12 * (1/4 - 1) = -9
-    #expect(abs(gr - (-9.0)) < 0.01)
+    #expect(abs(gr - -9.0) < 0.01)
 }
 
 @Test func compressorDoesNotReduceBelowThreshold() {
@@ -287,7 +287,7 @@ import Foundation
 
 @Test func limiterEnforcesCeiling() throws {
     let samples: [Float] = [0.99, -0.99, 0.5, -0.5]
-    let source = AudioBufferConverter.fromFloats(samples, sampleRate: 48_000, channels: 1)
+    let source = AudioBufferConverter.fromFloats(samples, sampleRate: 48000, channels: 1)
     let limited = try DynamicsProcessor.limit(
         source,
         parameters: LimiterParameters(ceilingDBFS: -1.0, releaseMilliseconds: 20)
@@ -298,10 +298,10 @@ import Foundation
 
 @Test func loudnessStagingRaisesQuietMaterial() throws {
     // Quiet tone
-    let samples = (0..<4_800).map { i -> Float in
+    let samples = (0 ..< 4800).map { i -> Float in
         0.02 * sin(Float(i) * 0.05)
     }
-    let source = AudioBufferConverter.fromFloats(samples, sampleRate: 48_000, channels: 1)
+    let source = AudioBufferConverter.fromFloats(samples, sampleRate: 48000, channels: 1)
     let before = LoudnessMeter.approximateLUFS(AudioBufferConverter.toFloats(source))
 
     let staged = try DynamicsProcessor.aimLoudness(
@@ -317,11 +317,11 @@ import Foundation
 
 @Test func compressThenLimitPipelineViaProcessor() throws {
     let processor = DSPProcessor()
-    let samples = (0..<2_000).map { i -> Float in
+    let samples = (0 ..< 2000).map { i -> Float in
         let t = Float(i)
         return 0.7 * sin(t * 0.1) + 0.2 * sin(t * 0.03)
     }
-    let source = AudioBufferConverter.fromFloats(samples, sampleRate: 48_000, channels: 1)
+    let source = AudioBufferConverter.fromFloats(samples, sampleRate: 48000, channels: 1)
 
     let compressed = try processor.apply(
         effect: .compress,
@@ -340,10 +340,10 @@ import Foundation
 }
 
 @Test func polishForKeepGentleLeavesPeakHeadroom() throws {
-    let sampleRate = 48_000
+    let sampleRate = 48000
     // Hot signal with silent pads
     var samples = [Float](repeating: 0, count: sampleRate / 2)
-    for i in (sampleRate / 10)..<(sampleRate / 2 - sampleRate / 20) {
+    for i in (sampleRate / 10) ..< (sampleRate / 2 - sampleRate / 20) {
         samples[i] = 0.95 * sin(Float(i) * 0.08)
     }
     let source = AudioBufferConverter.fromFloats(samples, sampleRate: sampleRate, channels: 1)
@@ -361,14 +361,14 @@ import Foundation
 
     #expect(polished.frameCount < source.frameCount)
     let peak = LoudnessMeter.peakDBFS(AudioBufferConverter.toFloats(polished))
-    #expect(abs(peak - (-3.0)) < 0.25)
+    #expect(abs(peak - -3.0) < 0.25)
 }
 
 @Test func polishForKeepStreamingLimitsPeak() throws {
-    let samples = (0..<8_000).map { i -> Float in
+    let samples = (0 ..< 8000).map { i -> Float in
         0.6 * sin(Float(i) * 0.07)
     }
-    let source = AudioBufferConverter.fromFloats(samples, sampleRate: 48_000, channels: 1)
+    let source = AudioBufferConverter.fromFloats(samples, sampleRate: 48000, channels: 1)
 
     let polished = try PolishForKeepProcessor.apply(
         source,
@@ -386,10 +386,10 @@ import Foundation
 
 @Test func polishForKeepViaDSPProcessor() throws {
     let processor = DSPProcessor()
-    let samples = (0..<4_000).map { i -> Float in
+    let samples = (0 ..< 4000).map { i -> Float in
         0.4 * sin(Float(i) * 0.05)
     }
-    let source = AudioBufferConverter.fromFloats(samples, sampleRate: 48_000, channels: 1)
+    let source = AudioBufferConverter.fromFloats(samples, sampleRate: 48000, channels: 1)
 
     let result = try processor.apply(
         effect: .polishForKeep,
@@ -403,13 +403,15 @@ import Foundation
 }
 
 @Test func loudnessStagingLimitsBoostedPeaksInFloat() throws {
-    let sampleRate = 48_000
+    let sampleRate = 48000
     // Quiet bed plus sparse transients: the LUFS boost pushes peaks well past full
     // scale, so this only behaves correctly if the limiter sees un-clipped float.
-    let samples = (0..<sampleRate).map { index -> Float in
+    let samples = (0 ..< sampleRate).map { index -> Float in
         let t = Float(index) / Float(sampleRate)
         var value = 0.05 * sin(2 * .pi * 220 * t)
-        if index % 4_800 < 120 { value += 0.45 * sin(2 * .pi * 2_000 * t) }
+        if index % 4800 < 120 {
+            value += 0.45 * sin(2 * .pi * 2000 * t)
+        }
         return value
     }
     let source = FloatAudio(samples: samples, sampleRate: sampleRate, channels: 1)
@@ -437,10 +439,10 @@ import Foundation
 }
 
 @Test func polishForKeepStreamingLandsOnTargetForStereo() throws {
-    let sampleRate = 48_000
-    let frames = 24_000
+    let sampleRate = 48000
+    let frames = 24000
     var samples = [Float](repeating: 0, count: frames * 2)
-    for frame in 0..<frames {
+    for frame in 0 ..< frames {
         let value = 0.25 * sin(Float(frame) * 0.06)
         samples[frame * 2] = value
         samples[frame * 2 + 1] = value
@@ -463,12 +465,12 @@ import Foundation
     // This material never reaches the ceiling, so the gain stage lands exactly on
     // target. A channel-averaged meter would leave it ~3 dB hot instead.
     let lufs = LoudnessMeter.approximateLUFS(polished.samples, channels: 2)
-    #expect(abs(lufs - (-14)) < 0.5)
+    #expect(abs(lufs - -14) < 0.5)
 }
 
 @Test func polishForKeepAppliesDarkToneAndSpaceWithinCeiling() throws {
-    let sampleRate = 48_000
-    let samples = (0..<12_000).map { index -> Float in 0.4 * sin(Float(index) * 0.05) }
+    let sampleRate = 48000
+    let samples = (0 ..< 12000).map { index -> Float in 0.4 * sin(Float(index) * 0.05) }
     let source = FloatAudio(samples: samples, sampleRate: sampleRate, channels: 1)
 
     let polished = try PolishForKeepProcessor.apply(
@@ -495,49 +497,49 @@ import Foundation
 }
 
 @Test func wsolaTimeStretchKeepsFinalWindowTailForCompressedOutput() {
-    let frameCount = 8_192
-    let samples = (0..<frameCount).map { index in
+    let frameCount = 8192
+    let samples = (0 ..< frameCount).map { index in
         Float((index % 256) - 128) / 128.0
     }
 
     let stretched = WSOLAProcessor.stretch(
         samples,
         rate: 2.0,
-        sampleRate: 48_000,
+        sampleRate: 48000,
         channels: 1
     )
 
-    #expect(stretched.count == 4_096)
+    #expect(stretched.count == 4096)
 }
 
 @Test func reverbTailIncludesDecayAndPreDelayWhenWetSignalIsPresent() {
     let parameters = ReverbParameters(decayTime: 0.25, wetDryMix: 0.5, preDelay: 50, damping: 0.5)
 
-    let tailFrames = AVAudioEngineDSP.reverbTailFrameCount(parameters: parameters, sampleRate: 48_000)
+    let tailFrames = AVAudioEngineDSP.reverbTailFrameCount(parameters: parameters, sampleRate: 48000)
 
-    #expect(tailFrames == 14_400)
+    #expect(tailFrames == 14400)
 }
 
 @Test func reverbTailIsSkippedForDryOnlyMix() {
     let parameters = ReverbParameters(decayTime: 2.0, wetDryMix: 0, preDelay: 100, damping: 0.5)
 
-    let tailFrames = AVAudioEngineDSP.reverbTailFrameCount(parameters: parameters, sampleRate: 48_000)
+    let tailFrames = AVAudioEngineDSP.reverbTailFrameCount(parameters: parameters, sampleRate: 48000)
 
     #expect(tailFrames == 0)
 }
 
 @Test func reverbDampingLowersWetPathLowPassCutoff() {
-    let open = AVAudioEngineDSP.reverbDampingCutoffHz(forDamping: 0, sampleRate: 48_000)
-    let damped = AVAudioEngineDSP.reverbDampingCutoffHz(forDamping: 1, sampleRate: 48_000)
+    let open = AVAudioEngineDSP.reverbDampingCutoffHz(forDamping: 0, sampleRate: 48000)
+    let damped = AVAudioEngineDSP.reverbDampingCutoffHz(forDamping: 1, sampleRate: 48000)
 
-    #expect(open == 20_000)
-    #expect(damped == 2_000)
+    #expect(open == 20000)
+    #expect(damped == 2000)
     #expect(damped < open)
 }
 
 @Test func reverbRenderKeepsDecayTailForWholeTrack() throws {
-    let sampleRate = 48_000
-    var samples = [Float](repeating: 0, count: 2_048)
+    let sampleRate = 48000
+    var samples = [Float](repeating: 0, count: 2048)
     samples[0] = 0.8
     let source = AudioBufferConverter.fromFloats(samples, sampleRate: sampleRate, channels: 1)
     let parameters = ReverbParameters(decayTime: 0.1, wetDryMix: 0.5, preDelay: 10, damping: 0.5)
@@ -566,7 +568,7 @@ import Foundation
 
 @Test func parametricEQBandwidthIsClampedToAVAudioRange() {
     #expect(AVAudioEngineDSP.bandwidthOctaves(forQ: 0.1) == 5.0)
-    #expect(AVAudioEngineDSP.bandwidthOctaves(forQ: 10_000) == 0.05)
+    #expect(AVAudioEngineDSP.bandwidthOctaves(forQ: 10000) == 0.05)
 }
 
 @Test func stereoFadeInUsesSameGainPerFrame() throws {
@@ -580,7 +582,7 @@ import Foundation
     let out = AudioBufferConverter.toFloats(faded)
 
     // Every frame should apply the same gain to L and R
-    for frame in 0..<frames {
+    for frame in 0 ..< frames {
         let l = out[frame * channels]
         let r = out[frame * channels + 1]
         #expect(abs(l - r) < 1e-5, "frame \(frame): L=\(l) R=\(r) should match")
@@ -593,7 +595,7 @@ import Foundation
 @Test func dspProcessorRejectsMissingEQParameters() throws {
     let processor = DSPProcessor()
     let samples = [Float](repeating: 0.1, count: 256)
-    let buffer = AudioBufferConverter.fromFloats(samples, sampleRate: 48_000, channels: 1)
+    let buffer = AudioBufferConverter.fromFloats(samples, sampleRate: 48000, channels: 1)
     #expect(throws: DSPProcessor.ProcessingError.self) {
         try processor.apply(effect: .eq, to: buffer, target: .wholeTrack, parameters: .none)
     }

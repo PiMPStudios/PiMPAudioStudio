@@ -1,13 +1,17 @@
 import Accelerate
 
-struct LPCFormantShifter {
+enum LPCFormantShifter {
     private static let lpcOrder = 24
     private static let frameSize = 1024
     private static let hopSize = 256
     private static let silenceThresholdDB: Float = -60.0
 
-    static func correct(original: [Float], shifted: [Float],
-                        sampleRate: Int, channels: Int) -> [Float] {
+    static func correct(
+        original: [Float],
+        shifted: [Float],
+        sampleRate: Int,
+        channels: Int
+    ) -> [Float] {
         let origFrameCount = original.count / channels
         let shiftFrameCount = shifted.count / channels
 
@@ -16,44 +20,56 @@ struct LPCFormantShifter {
         }
 
         if channels == 1 {
-            return correctChannel(original: original, shifted: shifted,
-                                  origFrames: origFrameCount, shiftFrames: shiftFrameCount)
+            return correctChannel(
+                original: original,
+                shifted: shifted,
+                origFrames: origFrameCount,
+                shiftFrames: shiftFrameCount
+            )
         }
 
         var origDeinterleaved = [[Float]](repeating: [Float](repeating: 0, count: origFrameCount), count: channels)
         var shiftDeinterleaved = [[Float]](repeating: [Float](repeating: 0, count: shiftFrameCount), count: channels)
 
-        for frame in 0..<origFrameCount {
-            for ch in 0..<channels {
+        for frame in 0 ..< origFrameCount {
+            for ch in 0 ..< channels {
                 origDeinterleaved[ch][frame] = original[frame * channels + ch]
             }
         }
-        for frame in 0..<shiftFrameCount {
-            for ch in 0..<channels {
+        for frame in 0 ..< shiftFrameCount {
+            for ch in 0 ..< channels {
                 shiftDeinterleaved[ch][frame] = shifted[frame * channels + ch]
             }
         }
 
         var correctedChannels = [[Float]]()
-        for ch in 0..<channels {
+        for ch in 0 ..< channels {
             correctedChannels.append(
-                correctChannel(original: origDeinterleaved[ch], shifted: shiftDeinterleaved[ch],
-                               origFrames: origFrameCount, shiftFrames: shiftFrameCount)
+                correctChannel(
+                    original: origDeinterleaved[ch],
+                    shifted: shiftDeinterleaved[ch],
+                    origFrames: origFrameCount,
+                    shiftFrames: shiftFrameCount
+                )
             )
         }
 
         let outputFrames = correctedChannels[0].count
         var interleaved = [Float](repeating: 0, count: outputFrames * channels)
-        for frame in 0..<outputFrames {
-            for ch in 0..<channels {
+        for frame in 0 ..< outputFrames {
+            for ch in 0 ..< channels {
                 interleaved[frame * channels + ch] = correctedChannels[ch][frame]
             }
         }
         return interleaved
     }
 
-    private static func correctChannel(original: [Float], shifted: [Float],
-                                        origFrames: Int, shiftFrames: Int) -> [Float] {
+    private static func correctChannel(
+        original: [Float],
+        shifted: [Float],
+        origFrames: Int,
+        shiftFrames: Int
+    ) -> [Float] {
         var output = [Float](repeating: 0, count: shiftFrames)
         var envelope = [Float](repeating: 0, count: shiftFrames)
 
@@ -62,15 +78,15 @@ struct LPCFormantShifter {
 
         let numFrames = min((origFrames - frameSize) / hopSize, (shiftFrames - frameSize) / hopSize) + 1
 
-        for frameIdx in 0..<numFrames {
+        for frameIdx in 0 ..< numFrames {
             let origStart = frameIdx * hopSize
             let shiftStart = frameIdx * hopSize
 
-            let origFrame = Array(original[origStart..<origStart + frameSize])
-            let shiftFrame = Array(shifted[shiftStart..<shiftStart + frameSize])
+            let origFrame = Array(original[origStart ..< origStart + frameSize])
+            let shiftFrame = Array(shifted[shiftStart ..< shiftStart + frameSize])
 
             if isFrameSilent(shiftFrame) {
-                for i in 0..<frameSize where shiftStart + i < shiftFrames {
+                for i in 0 ..< frameSize where shiftStart + i < shiftFrames {
                     output[shiftStart + i] += shiftFrame[i] * window[i]
                     envelope[shiftStart + i] += window[i]
                 }
@@ -89,13 +105,13 @@ struct LPCFormantShifter {
             let residual = inverseFilter(windowedShift, coefficients: shiftCoeffs)
             let corrected = synthesisFilter(residual, coefficients: origCoeffs)
 
-            for i in 0..<frameSize where shiftStart + i < shiftFrames {
+            for i in 0 ..< frameSize where shiftStart + i < shiftFrames {
                 output[shiftStart + i] += corrected[i] * window[i]
                 envelope[shiftStart + i] += window[i]
             }
         }
 
-        for i in 0..<shiftFrames {
+        for i in 0 ..< shiftFrames {
             if envelope[i] > 0.001 {
                 output[i] /= envelope[i]
             } else {
@@ -112,11 +128,16 @@ struct LPCFormantShifter {
         var result = [Float](repeating: 0, count: order)
 
         frame.withUnsafeBufferPointer { ptr in
-            for lag in 0..<order {
+            for lag in 0 ..< order {
                 var sum: Float = 0
-                vDSP_dotpr(ptr.baseAddress!, 1,
-                           ptr.baseAddress! + lag, 1,
-                           &sum, vDSP_Length(n - lag))
+                vDSP_dotpr(
+                    ptr.baseAddress!,
+                    1,
+                    ptr.baseAddress! + lag,
+                    1,
+                    &sum,
+                    vDSP_Length(n - lag)
+                )
                 result[lag] = sum
             }
         }
@@ -133,9 +154,9 @@ struct LPCFormantShifter {
         var aPrev = [Float](repeating: 0, count: order)
         var error = r[0]
 
-        for i in 0..<order {
+        for i in 0 ..< order {
             var sum: Float = r[i + 1]
-            for j in 0..<i {
+            for j in 0 ..< i {
                 sum += aPrev[j] * r[i - j]
             }
 
@@ -143,12 +164,14 @@ struct LPCFormantShifter {
             k = min(max(k, -0.99), 0.99)
 
             a[i] = k
-            for j in 0..<i {
+            for j in 0 ..< i {
                 a[j] = aPrev[j] + k * aPrev[i - 1 - j]
             }
 
             error *= (1.0 - k * k)
-            if error < 1e-10 { break }
+            if error < 1e-10 {
+                break
+            }
 
             aPrev = a
         }
@@ -160,9 +183,9 @@ struct LPCFormantShifter {
         let order = coefficients.count
         var residual = [Float](repeating: 0, count: n)
 
-        for i in 0..<n {
+        for i in 0 ..< n {
             var prediction: Float = 0
-            for j in 0..<min(order, i) {
+            for j in 0 ..< min(order, i) {
                 prediction += coefficients[j] * signal[i - 1 - j]
             }
             residual[i] = signal[i] - prediction
@@ -175,9 +198,9 @@ struct LPCFormantShifter {
         let order = coefficients.count
         var output = [Float](repeating: 0, count: n)
 
-        for i in 0..<n {
+        for i in 0 ..< n {
             var prediction: Float = 0
-            for j in 0..<min(order, i) {
+            for j in 0 ..< min(order, i) {
                 prediction += coefficients[j] * output[i - 1 - j]
             }
             output[i] = residual[i] + prediction

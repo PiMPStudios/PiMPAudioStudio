@@ -1,5 +1,5 @@
-import Testing
 @testable import PiMPAudioCore
+import Testing
 
 @Suite("TimestepSchedule")
 struct TimestepScheduleTests {
@@ -39,7 +39,7 @@ struct TimestepScheduleTests {
         let schedule = TimestepSchedule.compute(shift: 3.0, inferSteps: 4)
         #expect(schedule.count == 4)
         #expect(schedule[0] == 1.0)
-        for i in 1..<schedule.count {
+        for i in 1 ..< schedule.count {
             #expect(schedule[i] < schedule[i - 1])
         }
     }
@@ -84,7 +84,7 @@ struct TimestepScheduleTests {
         // with infer_steps=8, and the Turbo fixed SHIFT_TIMESTEPS[3.0].
         let schedule = TimestepSchedule.compute(shift: 3.0, inferSteps: 8)
         let expected: [Float] = [
-            1.00000, 0.954545, 0.90000, 0.833333, 0.75000, 0.642857, 0.50000, 0.30000
+            1.00000, 0.954545, 0.90000, 0.833333, 0.75000, 0.642857, 0.50000, 0.30000,
         ]
         #expect(schedule.count == 8)
         for (i, e) in expected.enumerated() {

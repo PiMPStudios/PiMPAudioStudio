@@ -82,10 +82,12 @@ struct PolishForKeepView: View {
             .tint(accent)
             .disabled(state.isDSPBusy || !state.isLoaded)
 
-            Text("Runs trim → high-pass → tone → glue → space → loudness/limit as one undo step. Use individual Effects below for finer control.")
-                .font(.system(size: 10))
-                .foregroundStyle(.tertiary)
-                .fixedSize(horizontal: false, vertical: true)
+            Text(
+                "Runs trim → high-pass → tone → glue → space → loudness/limit as one undo step. Use individual Effects below for finer control."
+            )
+            .font(.system(size: 10))
+            .foregroundStyle(.tertiary)
+            .fixedSize(horizontal: false, vertical: true)
         }
         .padding(12)
         .background(accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))

@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 @testable import PiMPAudioCore
+import Testing
 
 @Suite("AudioDiagnostics", .serialized)
 struct AudioDiagnosticsTests {
@@ -74,17 +74,17 @@ struct AudioDiagnosticsTests {
             )
         }
 
-        let active = info("PiMPAudioStudio-AUDIODIAG-active.log", daysAgo: 0, size: 1_000)
-        let recent = info("PiMPAudioStudio-AUDIODIAG-recent.log", daysAgo: 1, size: 1_000)
-        let old = info("PiMPAudioStudio-AUDIODIAG-old.log", daysAgo: 30, size: 1_000)
-        let bulky = info("PiMPAudioStudio-AUDIODIAG-bulky.log", daysAgo: 2, size: 50_000)
+        let active = info("PiMPAudioStudio-AUDIODIAG-active.log", daysAgo: 0, size: 1000)
+        let recent = info("PiMPAudioStudio-AUDIODIAG-recent.log", daysAgo: 1, size: 1000)
+        let old = info("PiMPAudioStudio-AUDIODIAG-old.log", daysAgo: 30, size: 1000)
+        let bulky = info("PiMPAudioStudio-AUDIODIAG-bulky.log", daysAgo: 2, size: 50000)
 
         let deleted = AudioDiagnostics.selectLogFilesToDelete(
             candidates: [active, recent, old, bulky],
             keepPaths: [active.url.path],
             maxAgeDays: 14,
             maxFiles: 2,
-            maxTotalBytes: 10_000,
+            maxTotalBytes: 10000,
             now: now
         )
         let deletedNames = Set(deleted.map(\.url.lastPathComponent))
@@ -103,13 +103,13 @@ struct AudioDiagnosticsTests {
         defer { try? fm.removeItem(at: dir) }
 
         let now = Date()
-        for i in 0..<5 {
+        for i in 0 ..< 5 {
             let url = dir.appendingPathComponent(
-                "PiMPAudioStudio-AUDIODIAG-2020-01-0\(i+1)_00-00-00-000-AAAAAAA\(i).log"
+                "PiMPAudioStudio-AUDIODIAG-2020-01-0\(i + 1)_00-00-00-000-AAAAAAA\(i).log"
             )
             try "old log \(i)".write(to: url, atomically: true, encoding: .utf8)
             try fm.setAttributes(
-                [.modificationDate: Calendar.current.date(byAdding: .day, value: -60, to: now)!],
+                [.modificationDate: #require(Calendar.current.date(byAdding: .day, value: -60, to: now))],
                 ofItemAtPath: url.path
             )
         }

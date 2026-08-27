@@ -130,8 +130,8 @@ Ranked list is empty. Do not reopen parked rewrites from later reviews.
   `default.metallib` on Actions; compile-only Core CI is intentional
 - **Swift 6 language mode / `SWIFT_STRICT_CONCURRENCY` as errors** — toolchain
   is already 6.2; 5.10 mode is intentional
-- **Tree-wide SwiftFormat or SwiftLint in CI** — parked until Actions minutes
-  reset, then a dedicated format pass (not a surprise while quota is tight)
+- **SwiftLint in CI** — not enabled. SwiftFormat 0.62.1 is the format gate;
+  do not add SwiftLint in the same pass.
 - **#7 Homebrew / `~/.codex` / `~/.grok` / `~/.gemini` sandbox exceptions** —
   App Store entitlement cleanup. This product is not going to the App Store;
   keep the exceptions for local CLI tools.

@@ -1,6 +1,6 @@
-import Testing
 import Foundation
 @testable import PiMPAudioCore
+import Testing
 
 @Test func downloadClientBuildsCorrectURL() async throws {
     let client = DownloadClient()

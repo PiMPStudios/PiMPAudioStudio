@@ -1,7 +1,7 @@
-import SwiftUI
 import AVFoundation
-import PiMPAudioCore
 import OSLog
+import PiMPAudioCore
+import SwiftUI
 import UniformTypeIdentifiers
 
 private let editorExportLogger = Logger(
@@ -79,14 +79,14 @@ struct EditorView: View {
         .background {
             Group {
                 Button("") {
-                    if state.hasSelection && state.isLoaded {
+                    if state.hasSelection, state.isLoaded {
                         state.applyDSPEffect(.trimToSelection)
                     }
                 }
                 .keyboardShortcut("t", modifiers: .command)
 
                 Button("") {
-                    if state.hasSelection && state.isLoaded {
+                    if state.hasSelection, state.isLoaded {
                         state.applyDSPEffect(.deleteSelection)
                     }
                 }
@@ -132,7 +132,11 @@ struct EditorView: View {
         }
         .alert("Could Not Export Audio", isPresented: Binding(
             get: { exportErrorMessage != nil },
-            set: { if !$0 { exportErrorMessage = nil } }
+            set: {
+                if !$0 {
+                    exportErrorMessage = nil
+                }
+            }
         )) {
             Button("OK", role: .cancel) { exportErrorMessage = nil }
         } message: {
@@ -140,7 +144,11 @@ struct EditorView: View {
         }
         .alert("Editor Error", isPresented: Binding(
             get: { state.operationErrorMessage != nil },
-            set: { if !$0 { state.operationErrorMessage = nil } }
+            set: {
+                if !$0 {
+                    state.operationErrorMessage = nil
+                }
+            }
         )) {
             Button("OK", role: .cancel) { state.operationErrorMessage = nil }
         } message: {
@@ -166,11 +174,14 @@ struct EditorView: View {
             // Transport bar
             HStack(spacing: 10) {
                 Button {
-                    if state.isPlayingPreview { state.pausePreview() }
-                    else { state.playPreview() }
+                    if state.isPlayingPreview {
+                        state.pausePreview()
+                    } else {
+                        state.playPreview()
+                    }
                 } label: {
                     Image(systemName: state.isPlayingPreview
-                          ? "pause.circle.fill" : "play.circle.fill")
+                        ? "pause.circle.fill" : "play.circle.fill")
                         .font(.system(size: 26))
                 }
                 .buttonStyle(.plain)
@@ -202,8 +213,8 @@ struct EditorView: View {
     private var frequencySection: some View {
         let cutRange = EditorState.frequencyCutRange
         let minBandwidth = EditorState.minimumFrequencyBandwidthHz
-        let lowSliderRange = cutRange.lowerBound...(cutRange.upperBound - minBandwidth)
-        let highSliderRange = (cutRange.lowerBound + minBandwidth)...cutRange.upperBound
+        let lowSliderRange = cutRange.lowerBound ... (cutRange.upperBound - minBandwidth)
+        let highSliderRange = (cutRange.lowerBound + minBandwidth) ... cutRange.upperBound
 
         return DisclosureGroup("Frequency Constraint") {
             VStack(spacing: 8) {
@@ -275,7 +286,7 @@ struct EditorView: View {
                             code: 1,
                             userInfo: [
                                 NSLocalizedDescriptionKey:
-                                    "AVFoundation could not create an audio buffer."
+                                    "AVFoundation could not create an audio buffer.",
                             ]
                         )
                     }
@@ -285,7 +296,7 @@ struct EditorView: View {
             }.value
 
             switch loadResult {
-            case .success(let buffer):
+            case let .success(buffer):
                 await MainActor.run {
                     state.applyLoadedBuffer(buffer, fileName: fileName)
                 }
@@ -320,7 +331,7 @@ struct EditorView: View {
                     }
                 }
 
-            case .failure(let error):
+            case let .failure(error):
                 await MainActor.run {
                     state.deferUIUpdate { editor in
                         editor.isLoaded = false
@@ -348,7 +359,7 @@ struct EditorView: View {
             return
         }
 
-        state.saveUndoSnapshot()   // save pre-inpaint buffer so AI edits are undoable
+        state.saveUndoSnapshot() // save pre-inpaint buffer so AI edits are undoable
         state.isProcessing = true
         state.progress = .buildingMask
 
@@ -393,8 +404,13 @@ struct EditorView: View {
         }
     }
 
-    private func performUndo() { state.undoDSP() }
-    private func performRedo() { state.redoDSP() }
+    private func performUndo() {
+        state.undoDSP()
+    }
+
+    private func performRedo() {
+        state.redoDSP()
+    }
 
     private func exportFile(format: ExportFormat) {
         guard let buffer = state.audioBuffer else { return }
@@ -433,13 +449,13 @@ enum EditorAudioExportError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidBuffer(let reason):
+        case let .invalidBuffer(reason):
             return "Could not export edited audio because the editor buffer is invalid: \(reason)"
-        case .writeFailed(let url, let error):
+        case let .writeFailed(url, error):
             return "Could not write edited audio to \(url.path(percentEncoded: false)): \(error.localizedDescription)"
         case .exportSessionUnavailable:
             return "Could not create the native M4A export session."
-        case .compressedExportFailed(let url, let error):
+        case let .compressedExportFailed(url, error):
             let detail = error?.localizedDescription ?? "AVFoundation did not report a detailed reason."
             return "Could not export edited audio to \(url.path(percentEncoded: false)): \(detail)"
         }
@@ -587,7 +603,7 @@ enum EditorAudioExporter {
         data.append(contentsOf: value.utf8)
     }
 
-    private static func appendLittleEndian<T: FixedWidthInteger>(_ value: T, to data: inout Data) {
+    private static func appendLittleEndian(_ value: some FixedWidthInteger, to data: inout Data) {
         var littleEndian = value.littleEndian
         withUnsafeBytes(of: &littleEndian) { data.append(contentsOf: $0) }
     }

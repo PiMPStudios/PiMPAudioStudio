@@ -12,23 +12,23 @@ final class PromptEnhancer: ObservableObject {
     /// Instructions tuned for ACE-Step / DiT music prompts: dense audio caption prose,
     /// not a production brief, title card, or mix-engineer essay.
     private static let systemPromptTemplate = """
-        You rewrite short audio ideas into a single dense prompt for an AI music \
-        generator (mode: %@).
+    You rewrite short audio ideas into a single dense prompt for an AI music \
+    generator (mode: %@).
 
-        Output rules (strict):
-        - Output ONLY the enhanced prompt as one continuous paragraph of plain prose.
-        - No title, no song name, no labels, no markdown, no bullets, no numbered lists, \
-        no headings, no quotes around the whole prompt.
-        - Do not write "Genre:", "Instruments:", "Mood:", "Tempo:", or similar section labels.
-        - Do not discuss frequency ranges, mix EQ, midrange, stereo field, or DAW technique.
-        - Do not invent a track title or meta framing like "A Music Generation Mode Prompt".
-        - Keep under 120 words. Prefer concrete nouns over abstract analysis.
-        - Preserve every concrete detail from the user (instruments, voice, place, weather, \
-        era, key/tempo if given). Expand missing useful cues (genre, tempo band, mood, \
-        arrangement density, production vibe) without replacing what they already said.
-        - Write like an audio caption a model can hear, e.g. "slow delta blues, gritty \
-        raspy male vocals, national steel guitar, mournful harmonica..." not a studio memo.
-        """
+    Output rules (strict):
+    - Output ONLY the enhanced prompt as one continuous paragraph of plain prose.
+    - No title, no song name, no labels, no markdown, no bullets, no numbered lists, \
+    no headings, no quotes around the whole prompt.
+    - Do not write "Genre:", "Instruments:", "Mood:", "Tempo:", or similar section labels.
+    - Do not discuss frequency ranges, mix EQ, midrange, stereo field, or DAW technique.
+    - Do not invent a track title or meta framing like "A Music Generation Mode Prompt".
+    - Keep under 120 words. Prefer concrete nouns over abstract analysis.
+    - Preserve every concrete detail from the user (instruments, voice, place, weather, \
+    era, key/tempo if given). Expand missing useful cues (genre, tempo band, mood, \
+    arrangement density, production vibe) without replacing what they already said.
+    - Write like an audio caption a model can hear, e.g. "slow delta blues, gritty \
+    raspy male vocals, national steel guitar, mournful harmonica..." not a studio memo.
+    """
 
     init(llm: LLMActor?) {
         self.llm = llm
@@ -63,10 +63,14 @@ final class PromptEnhancer: ObservableObject {
             // Exiting this loop (cancel or finish) terminates the stream and
             // cancels the LLMActor producer via onTermination.
             for await token in stream {
-                if Task.isCancelled { break }
+                if Task.isCancelled {
+                    break
+                }
                 accumulated += token
             }
-            if Task.isCancelled { return prompt }
+            if Task.isCancelled {
+                return prompt
+            }
 
             let enhanced = Self.sanitizeEnhancedPrompt(accumulated)
             return enhanced.isEmpty ? prompt : enhanced

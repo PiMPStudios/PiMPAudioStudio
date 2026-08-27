@@ -21,8 +21,8 @@ public class LyricEncoder: Module {
         // v1.5 checkpoint provides both weight and bias for this projection
         // (called `embed_tokens` in safetensors). Linear must allocate the
         // bias parameter slot so the loaded tensor has a place to land.
-        self.inputProjection = Linear(Self.inputDim, Self.hiddenSize, bias: true)
-        self.layers = (0..<Self.numLayers).map { _ in
+        inputProjection = Linear(Self.inputDim, Self.hiddenSize, bias: true)
+        layers = (0 ..< Self.numLayers).map { _ in
             Qwen3Layer(
                 hiddenSize: Self.hiddenSize,
                 intermediateSize: Self.intermediateSize,
@@ -32,8 +32,8 @@ public class LyricEncoder: Module {
                 rmsNormEps: Self.rmsNormEps
             )
         }
-        self.norm = RMSNorm(dimensions: Self.hiddenSize, eps: Self.rmsNormEps)
-        self.rotaryEmbedding = RotaryEmbedding(
+        norm = RMSNorm(dimensions: Self.hiddenSize, eps: Self.rmsNormEps)
+        rotaryEmbedding = RotaryEmbedding(
             headDim: Self.headDim,
             maxLen: 32768,
             base: 1_000_000.0

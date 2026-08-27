@@ -1,5 +1,5 @@
-import SwiftUI
 import PiMPAudioCore
+import SwiftUI
 
 struct DownloadProgressRow: View {
     let spec: ModelSpec

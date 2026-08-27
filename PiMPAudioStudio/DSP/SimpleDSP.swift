@@ -1,7 +1,7 @@
-import Foundation
 import Accelerate
+import Foundation
 
-struct SimpleDSP {
+enum SimpleDSP {
     enum DSPError: LocalizedError {
         case invalidSelection
         case bufferEmpty
@@ -9,9 +9,9 @@ struct SimpleDSP {
         var errorDescription: String? {
             switch self {
             case .invalidSelection:
-                return "The selected audio range is not valid."
+                "The selected audio range is not valid."
             case .bufferEmpty:
-                return "The audio buffer is empty."
+                "The audio buffer is empty."
             }
         }
     }
@@ -28,7 +28,7 @@ struct SimpleDSP {
 
         guard startByte < buffer.data.count else { throw DSPError.invalidSelection }
 
-        let trimmedData = buffer.data[startByte..<endByte]
+        let trimmedData = buffer.data[startByte ..< endByte]
         return AudioBuffer(data: Data(trimmedData), sampleRate: buffer.sampleRate, channels: buffer.channels)
     }
 
@@ -43,7 +43,7 @@ struct SimpleDSP {
         let endByte = min(endSample * bytesPerSample, buffer.data.count)
 
         var result = Data()
-        result.append(buffer.data[0..<startByte])
+        result.append(buffer.data[0 ..< startByte])
         if endByte < buffer.data.count {
             result.append(buffer.data[endByte...])
         }
@@ -88,10 +88,10 @@ struct SimpleDSP {
         var endVal = endGain
         vDSP_vgen(&startVal, &endVal, &frameRamp, 1, vDSP_Length(frameCount))
 
-        for frame in 0..<frameCount {
+        for frame in 0 ..< frameCount {
             let gain = frameRamp[frame]
             let base = (startFrame + frame) * channels
-            for ch in 0..<channels {
+            for ch in 0 ..< channels {
                 floats[base + ch] *= gain
             }
         }
@@ -115,7 +115,7 @@ struct SimpleDSP {
         var floats = audio.samples
 
         switch mode {
-        case .peak(let targetDBFS):
+        case let .peak(targetDBFS):
             var peak: Float = 0
             vDSP_maxmgv(floats, 1, &peak, vDSP_Length(floats.count))
             guard peak > 0.000_001 else { return audio }
@@ -126,10 +126,12 @@ struct SimpleDSP {
             let targetLinear = pow(10.0, clampedTargetDB / 20.0)
             var scale = targetLinear / peak
             // Avoid no-op numerical noise when already on target.
-            if abs(scale - 1.0) < 0.000_5 { return audio }
+            if abs(scale - 1.0) < 0.000_5 {
+                return audio
+            }
             vDSP_vsmul(floats, 1, &scale, &floats, 1, vDSP_Length(floats.count))
 
-        case .rms(let targetDB):
+        case let .rms(targetDB):
             guard targetDB.isFinite else { return audio }
 
             let currentRMS = rmsAmplitude(floats)
@@ -174,7 +176,9 @@ struct SimpleDSP {
         }
 
         // Entire buffer below threshold — keep as-is (avoid erasing quiet pads).
-        if firstSound >= frameCount { return audio }
+        if firstSound >= frameCount {
+            return audio
+        }
 
         var lastSound = frameCount - 1
         while lastSound > firstSound, audio.framePeak(lastSound) < thresholdLinear {
@@ -195,7 +199,7 @@ struct SimpleDSP {
             : audio.frames(keepStart, keepEnd)
 
         let fadeFrames = Int(
-            (Double(max(0, parameters.edgeFadeMilliseconds)) / 1_000.0) * Double(audio.sampleRate)
+            (Double(max(0, parameters.edgeFadeMilliseconds)) / 1000.0) * Double(audio.sampleRate)
         )
         if fadeFrames > 0, result.frameCount > fadeFrames * 2 {
             applyLinearFade(
@@ -241,12 +245,12 @@ struct SimpleDSP {
         let channels = audio.channels
         let frameCount = audio.frameCount
 
-        for ch in 0..<channels {
+        for ch in 0 ..< channels {
             var x1: Float = 0
             var x2: Float = 0
             var y1: Float = 0
             var y2: Float = 0
-            for frame in 0..<frameCount {
+            for frame in 0 ..< frameCount {
                 let index = frame * channels + ch
                 let x0 = floats[index]
                 let y0 = coeffs.b0 * x0 + coeffs.b1 * x1 + coeffs.b2 * x2
@@ -282,10 +286,10 @@ struct SimpleDSP {
         var endVal = endGain
         vDSP_vgen(&startVal, &endVal, &ramp, 1, vDSP_Length(frameCount))
 
-        for frame in first..<last {
+        for frame in first ..< last {
             let gain = ramp[frame - startFrame]
             let base = frame * channels
-            for ch in 0..<channels {
+            for ch in 0 ..< channels {
                 samples[base + ch] *= gain
             }
         }

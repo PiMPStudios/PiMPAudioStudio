@@ -1,5 +1,5 @@
-import Foundation
 import AVFoundation
+import Foundation
 import PiMPAudioCore
 
 extension PiMPAudioCommandFacade {
@@ -14,7 +14,7 @@ extension PiMPAudioCommandFacade {
             "mode": mode.rawValue,
             "modeDisplayName": mode.displayName,
             "isAvailable": promptEnhancer.isAvailable,
-            "changed": normalizedText(enhanced) != normalizedText(prompt)
+            "changed": normalizedText(enhanced) != normalizedText(prompt),
         ]
     }
 
@@ -37,7 +37,7 @@ extension PiMPAudioCommandFacade {
             "duration": duration,
             "backend": lyricWriterManager.activeBackend,
             "lyrics": lyrics,
-            "lineCount": lyricLineCount(lyrics)
+            "lineCount": lyricLineCount(lyrics),
         ]
     }
 
@@ -98,7 +98,7 @@ extension PiMPAudioCommandFacade {
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         var finalLyrics = suppliedLyrics
         var lyricPayload: [String: Any]?
-        if suppliedLyrics.isEmpty && shouldWriteLyrics {
+        if suppliedLyrics.isEmpty, shouldWriteLyrics {
             let duration = try orchestrationDuration(in: arguments)
             let style = stringValue(arguments["lyricStyle"] ?? arguments["style"]) ?? ""
             if dryRun {
@@ -109,7 +109,7 @@ extension PiMPAudioCommandFacade {
                     "wouldGenerate": true,
                     "backend": lyricWriterManager.activeBackend,
                     "style": style,
-                    "duration": duration
+                    "duration": duration,
                 ]
             } else {
                 finalLyrics = try await lyricWriterManager.writeLyricsText(
@@ -123,14 +123,14 @@ extension PiMPAudioCommandFacade {
                     "backend": lyricWriterManager.activeBackend,
                     "style": style,
                     "duration": duration,
-                    "lineCount": lyricLineCount(finalLyrics)
+                    "lineCount": lyricLineCount(finalLyrics),
                 ]
             }
         } else {
             lyricPayload = [
                 "generated": false,
                 "supplied": !suppliedLyrics.isEmpty,
-                "lineCount": lyricLineCount(finalLyrics)
+                "lineCount": lyricLineCount(finalLyrics),
             ]
         }
 
@@ -142,14 +142,14 @@ extension PiMPAudioCommandFacade {
                     "skipped": true,
                     "reason": "dryRun",
                     "wouldClear": adapterPlan.shouldClear,
-                    "wouldApply": adapterPlan.applyArguments != nil
+                    "wouldApply": adapterPlan.applyArguments != nil,
                 ]
             } else {
                 var clearPayload: [String: Any]?
                 if adapterPlan.shouldClear {
                     clearPayload = try await applyAdapter(arguments: [
                         "clear": true,
-                        "confirm": true
+                        "confirm": true,
                     ])
                 }
 
@@ -184,7 +184,7 @@ extension PiMPAudioCommandFacade {
             "lyrics": finalLyrics.isEmpty ? NSNull() : finalLyrics,
             "lyricWriting": lyricPayload ?? NSNull(),
             "adapterSelection": adapterPayload ?? NSNull(),
-            "generation": submission
+            "generation": submission,
         ]
     }
 
@@ -242,10 +242,9 @@ extension PiMPAudioCommandFacade {
         return [
             "state": generationStatePayload(generationService.state),
             "currentResult": generationService.currentResult.map(generationResultPayload) ?? NSNull(),
-            "currentOperation": currentOperationPayload() ?? NSNull()
+            "currentOperation": currentOperationPayload() ?? NSNull(),
         ]
     }
-
 
     func loadAdapters() async -> [LoRAAdapter] {
         await Task.detached(priority: .userInitiated) {
@@ -402,7 +401,7 @@ extension PiMPAudioCommandFacade {
         guard let identifier = stringValue(
             arguments["adapter"] ?? arguments["adapterID"] ?? arguments["lora"] ?? arguments["loraID"]
         )?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !identifier.isEmpty else {
+            !identifier.isEmpty else {
             return nil
         }
 
@@ -437,11 +436,11 @@ extension PiMPAudioCommandFacade {
             throw PiMPAudioCommandFacadeError.invalidDuration
         }
 
-        let duration: Double
-        if pipeline == .stableAudio || (pipeline == .auto && (mode == .soundFX || mode == .ambient)) {
-            duration = min(requestedDuration, SoundFXPipeline.maxDuration)
+        let duration: Double = if pipeline == .stableAudio ||
+            (pipeline == .auto && (mode == .soundFX || mode == .ambient)) {
+            min(requestedDuration, SoundFXPipeline.maxDuration)
         } else {
-            duration = requestedDuration
+            requestedDuration
         }
 
         let explicitGuidancePreset = guidancePreset(from: arguments["guidancePreset"] ?? arguments["preset"])
@@ -453,17 +452,18 @@ extension PiMPAudioCommandFacade {
         let resolvedGuidancePreset = explicitGuidancePreset
             ?? GuidancePreset.defaultSelection(isXLContext: isXLContext)
 
-        let request = GenerationRequest(
+        let request = try GenerationRequest(
             text: prompt,
             lyrics: lyrics,
-            referenceAudioURL: referenceAudioURL(from: arguments["referenceAudioPath"] ?? arguments["referenceAudioURL"]),
+            referenceAudioURL: referenceAudioURL(from: arguments["referenceAudioPath"] ??
+                arguments["referenceAudioURL"]),
             duration: duration,
-            seed: try seedValue(arguments["seed"]),
+            seed: seedValue(arguments["seed"]),
             method: inferMethod(from: arguments["method"]) ?? .ode,
             guidanceScale: Float(doubleValue(arguments["guidanceScale"] ?? arguments["guidance"]) ?? 7.5),
             guidancePreset: resolvedGuidancePreset,
             precision: precision(from: arguments["precision"]) ?? .float32,
-            stepsOverride: try stepsValue(arguments["steps"] ?? arguments["stepsOverride"]),
+            stepsOverride: stepsValue(arguments["steps"] ?? arguments["stepsOverride"]),
             shiftOverride: Float(doubleValue(arguments["shift"] ?? arguments["shiftOverride"]) ?? 3.0),
             resolvedMode: mode,
             pipelineOverride: pipeline,
@@ -497,12 +497,12 @@ extension PiMPAudioCommandFacade {
                 ?? adapterArguments["lora"]
                 ?? adapterArguments["loraID"]
         )?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !adapterID.isEmpty,
-           let adapter = AdapterRegistry.listAdapters().first(where: {
-               $0.id == adapterID || $0.name.caseInsensitiveCompare(adapterID) == .orderedSame
-           }),
-           adapter.baseModelCategory == .aceStepDiT,
-           LoRAAdapter.isACEBaseModelXL(adapter.baseModelID) {
+            !adapterID.isEmpty,
+            let adapter = AdapterRegistry.listAdapters().first(where: {
+                $0.id == adapterID || $0.name.caseInsensitiveCompare(adapterID) == .orderedSame
+            }),
+            adapter.baseModelCategory == .aceStepDiT,
+            LoRAAdapter.isACEBaseModelXL(adapter.baseModelID) {
             return true
         }
 
@@ -522,9 +522,15 @@ extension PiMPAudioCommandFacade {
 
     func seedValue(_ value: Any?) throws -> Int? {
         guard let value else { return nil }
-        if value is NSNull { return nil }
-        if let int = value as? Int { return int }
-        if let number = value as? NSNumber { return number.intValue }
+        if value is NSNull {
+            return nil
+        }
+        if let int = value as? Int {
+            return int
+        }
+        if let number = value as? NSNumber {
+            return number.intValue
+        }
         if let string = value as? String {
             let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.isEmpty || trimmed.lowercased() == "random" {
@@ -540,9 +546,15 @@ extension PiMPAudioCommandFacade {
 
     func stepsValue(_ value: Any?) throws -> Int? {
         guard let value else { return nil }
-        if value is NSNull { return nil }
-        if let int = value as? Int, int > 0 { return int }
-        if let number = value as? NSNumber, number.intValue > 0 { return number.intValue }
+        if value is NSNull {
+            return nil
+        }
+        if let int = value as? Int, int > 0 {
+            return int
+        }
+        if let number = value as? NSNumber, number.intValue > 0 {
+            return number.intValue
+        }
         if let string = value as? String {
             let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.isEmpty || trimmed.lowercased() == "auto" {
@@ -556,14 +568,13 @@ extension PiMPAudioCommandFacade {
         throw PiMPAudioCommandFacadeError.invalidSteps
     }
 
-
     func adapterSelectionPayload(_ selection: [AdapterSelection]) -> [String: Any] {
         [
             "applied": true,
             "cleared": selection.isEmpty,
             "count": selection.count,
             "primary": selection.first.map(adapterSelectionEntryPayload) ?? NSNull(),
-            "adapters": selection.map(adapterSelectionEntryPayload)
+            "adapters": selection.map(adapterSelectionEntryPayload),
         ]
     }
 
@@ -575,7 +586,7 @@ extension PiMPAudioCommandFacade {
             "baseModelID": entry.adapter.baseModelID,
             "baseModelCategory": entry.adapter.baseModelCategory.rawValue,
             "rank": entry.adapter.config.rank,
-            "alpha": entry.adapter.config.alpha
+            "alpha": entry.adapter.config.alpha,
         ]
     }
 
@@ -594,7 +605,7 @@ extension PiMPAudioCommandFacade {
             "operationID": operationID.map { $0 as Any } ?? NSNull(),
             "operation": operationID
                 .flatMap { operationRecords[$0].map(operationPayload) }
-                .map { $0 as Any } ?? NSNull()
+                .map { $0 as Any } ?? NSNull(),
         ]
     }
 
@@ -621,7 +632,7 @@ extension PiMPAudioCommandFacade {
             "pipeline": request.pipelineOverride.rawValue,
             "referenceAudioPath": request.referenceAudioURL?.path(percentEncoded: false) ?? NSNull(),
             "coverStrength": request.coverStrength,
-            "maxSFXDuration": SoundFXPipeline.maxDuration
+            "maxSFXDuration": SoundFXPipeline.maxDuration,
         ]
         if let requestedDuration {
             payload["requestedDuration"] = requestedDuration
@@ -642,53 +653,53 @@ extension PiMPAudioCommandFacade {
             "pipeline": result.entry.pipeline ?? NSNull(),
             "modelID": result.entry.modelID ?? NSNull(),
             "modelName": result.entry.modelName ?? NSNull(),
-            "hasWaveformPeaks": result.waveformPeaks != nil
+            "hasWaveformPeaks": result.waveformPeaks != nil,
         ]
     }
 
     func generationStatePayload(_ state: GenerationState) -> [String: Any] {
         switch state {
         case .idle:
-            return ["name": "idle"]
-        case .downloadingModel(let progress):
-            return ["name": "downloadingModel", "progress": progress]
-        case .loadingWeights(let progress):
-            return ["name": "loadingWeights", "progress": progress]
+            ["name": "idle"]
+        case let .downloadingModel(progress):
+            ["name": "downloadingModel", "progress": progress]
+        case let .loadingWeights(progress):
+            ["name": "loadingWeights", "progress": progress]
         case .conditioning:
-            return ["name": "conditioning"]
+            ["name": "conditioning"]
         case .tokenizingSource:
-            return ["name": "tokenizingSource"]
+            ["name": "tokenizingSource"]
         case .lmAudioCodeConditioning:
-            return ["name": "lmAudioCodeConditioning"]
-        case .generating(let step, let totalSteps, let eta):
-            return ["name": "generating", "step": step, "totalSteps": totalSteps, "eta": eta]
+            ["name": "lmAudioCodeConditioning"]
+        case let .generating(step, totalSteps, eta):
+            ["name": "generating", "step": step, "totalSteps": totalSteps, "eta": eta]
         case .decoding:
-            return ["name": "decoding"]
+            ["name": "decoding"]
         case .complete:
-            return ["name": "complete"]
-        case .error(let message):
-            return ["name": "error", "message": message]
+            ["name": "complete"]
+        case let .error(message):
+            ["name": "error", "message": message]
         case .cancelled:
-            return ["name": "cancelled"]
+            ["name": "cancelled"]
         case .releasing:
-            return ["name": "releasing"]
+            ["name": "releasing"]
         }
     }
 
     func stateName(_ state: GenerationState) -> String {
         switch state {
-        case .idle: return "idle"
-        case .downloadingModel: return "downloadingModel"
-        case .loadingWeights: return "loadingWeights"
-        case .conditioning: return "conditioning"
-        case .tokenizingSource: return "tokenizingSource"
-        case .lmAudioCodeConditioning: return "lmAudioCodeConditioning"
-        case .generating: return "generating"
-        case .decoding: return "decoding"
-        case .complete: return "complete"
-        case .error: return "error"
-        case .cancelled: return "cancelled"
-        case .releasing: return "releasing"
+        case .idle: "idle"
+        case .downloadingModel: "downloadingModel"
+        case .loadingWeights: "loadingWeights"
+        case .conditioning: "conditioning"
+        case .tokenizingSource: "tokenizingSource"
+        case .lmAudioCodeConditioning: "lmAudioCodeConditioning"
+        case .generating: "generating"
+        case .decoding: "decoding"
+        case .complete: "complete"
+        case .error: "error"
+        case .cancelled: "cancelled"
+        case .releasing: "releasing"
         }
     }
 
@@ -715,10 +726,8 @@ extension PiMPAudioCommandFacade {
             name: .mcpAdapterSelectionDidChange,
             object: nil,
             userInfo: [
-                "adapters": selection.map(adapterSelectionEntryPayload)
+                "adapters": selection.map(adapterSelectionEntryPayload),
             ]
         )
     }
-
-
 }

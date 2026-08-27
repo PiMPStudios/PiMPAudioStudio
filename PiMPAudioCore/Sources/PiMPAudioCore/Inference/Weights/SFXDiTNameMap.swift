@@ -32,7 +32,6 @@
 import MLX
 
 public enum SFXDiTNameMap {
-
     // MARK: - Key mapping (path rename only, no value transformation)
 
     public static func mapKey(_ key: String) -> String? {
@@ -42,7 +41,9 @@ public enum SFXDiTNameMap {
             : key
 
         // 2. Drop non-trainable rotary inverse-frequency buffer.
-        if k.hasSuffix("rotary_pos_emb.inv_freq") { return nil }
+        if k.hasSuffix("rotary_pos_emb.inv_freq") {
+            return nil
+        }
 
         // 3. Sequential index 0/2 → fc1/fc2 for the three embed MLPs.
         for prefix in ["to_timestep_embed", "to_cond_embed", "to_global_embed"] {
@@ -80,8 +81,8 @@ public enum SFXDiTNameMap {
         if k.hasPrefix("blocks.") {
             let rest = k.dropFirst("blocks.".count)
             if let dotIdx = rest.firstIndex(of: ".") {
-                let n      = rest[..<dotIdx]
-                let after  = rest[dotIdx...]
+                let n = rest[..<dotIdx]
+                let after = rest[dotIdx...]
                 k = "transformer.layers.\(n)\(after)"
             }
         }

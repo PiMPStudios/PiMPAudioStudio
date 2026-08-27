@@ -1,5 +1,5 @@
-import Darwin
 import AppKit
+import Darwin
 import Foundation
 
 @MainActor
@@ -69,7 +69,7 @@ final class ProviderAccessStore: ObservableObject {
             return
         }
 
-        if case .blocked(let detail) = detected.state {
+        if case let .blocked(detail) = detected.state {
             var blocked = statuses[providerID] ?? detected
             blocked.testState = .blocked(detail)
             statuses[providerID] = blocked
@@ -123,7 +123,9 @@ final class ProviderAccessStore: ObservableObject {
 }
 
 struct ProviderCLIStatus: Identifiable, Equatable {
-    var id: String { providerID }
+    var id: String {
+        providerID
+    }
 
     let providerID: String
     let displayName: String
@@ -608,7 +610,9 @@ enum ProviderCLIParsers {
                 .components(separatedBy: .newlines)
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .first { $0.localizedCaseInsensitiveContains("(default)") }
-                .map { $0.replacingOccurrences(of: "(default)", with: "").trimmingCharacters(in: .whitespacesAndNewlines) }
+                .map {
+                    $0.replacingOccurrences(of: "(default)", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+                }
 
             if let defaultModel, !defaultModel.isEmpty {
                 return ProviderCLIProbe(
@@ -693,25 +697,25 @@ enum ProviderCLIParsers {
     static func testOutcome(from probe: ProviderCLIProbe) -> ProviderCLITestOutcome {
         switch probe.state {
         case .authenticated:
-            return ProviderCLITestOutcome(success: true, detail: probe.detail)
+            ProviderCLITestOutcome(success: true, detail: probe.detail)
         case .installed:
-            return ProviderCLITestOutcome(success: true, detail: probe.detail)
+            ProviderCLITestOutcome(success: true, detail: probe.detail)
         case .unauthenticated:
-            return ProviderCLITestOutcome(success: false, detail: probe.detail)
-        case .workspaceTrustNeeded(let message):
-            return ProviderCLITestOutcome(
+            ProviderCLITestOutcome(success: false, detail: probe.detail)
+        case let .workspaceTrustNeeded(message):
+            ProviderCLITestOutcome(
                 success: false,
                 detail: message,
                 isWorkspaceTrustNeeded: true
             )
         case .blocked:
-            return ProviderCLITestOutcome(success: false, detail: probe.detail, isBlocked: true)
-        case .failed(let message):
-            return ProviderCLITestOutcome(success: false, detail: message)
+            ProviderCLITestOutcome(success: false, detail: probe.detail, isBlocked: true)
+        case let .failed(message):
+            ProviderCLITestOutcome(success: false, detail: message)
         case .missing:
-            return ProviderCLITestOutcome(success: false, detail: "CLI not found")
+            ProviderCLITestOutcome(success: false, detail: "CLI not found")
         case .notChecked:
-            return ProviderCLITestOutcome(success: false, detail: "Not checked")
+            ProviderCLITestOutcome(success: false, detail: "Not checked")
         }
     }
 
@@ -1076,11 +1080,11 @@ enum ProviderCLIPaths {
     ) -> String {
         switch mode {
         case .process:
-            return processHomeDirectory(environment: environment)
+            processHomeDirectory(environment: environment)
         case .realUser:
-            return realUserHomeDirectory(environment: environment)
-        case .custom(let path):
-            return path
+            realUserHomeDirectory(environment: environment)
+        case let .custom(path):
+            path
         }
     }
 
@@ -1115,12 +1119,12 @@ enum ProviderCLIPaths {
     static func suggestedGrantDirectory(for definition: ProviderCLIDefinition) -> URL? {
         switch definition.providerID {
         case "xai":
-            return URL(
+            URL(
                 fileURLWithPath: "\(realUserHomeDirectory())/.grok",
                 isDirectory: true
             )
         default:
-            return nil
+            nil
         }
     }
 
@@ -1186,10 +1190,10 @@ enum ProviderCommandError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .timedOut(let command, let timeout):
-            return "\(command) timed out after \(Int(timeout)) seconds"
-        case .launchFailed(let command, let diagnostic, let error):
-            return "\(command) launch failed: \(error.localizedDescription); \(diagnostic)"
+        case let .timedOut(command, timeout):
+            "\(command) timed out after \(Int(timeout)) seconds"
+        case let .launchFailed(command, diagnostic, error):
+            "\(command) launch failed: \(error.localizedDescription); \(diagnostic)"
         }
     }
 }
@@ -1223,8 +1227,8 @@ private final class ProviderCapturedProcess: @unchecked Sendable {
         self.command = command
         self.arguments = arguments
         self.launchDiagnostic = launchDiagnostic
-        self.standardInputData = standardInput?.data(using: .utf8)
-        self.standardInputPipe = standardInput == nil ? nil : Pipe()
+        standardInputData = standardInput?.data(using: .utf8)
+        standardInputPipe = standardInput == nil ? nil : Pipe()
         process.executableURL = executableURL
         process.arguments = processArguments
         process.environment = environment
@@ -1259,7 +1263,10 @@ private final class ProviderCapturedProcess: @unchecked Sendable {
 
     private func runProcess() async throws -> ProviderCommandResult {
         try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<ProviderCommandResult, Error>) in
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<
+                ProviderCommandResult,
+                Error
+            >) in
                 start(continuation: continuation)
             }
         } onCancel: {
@@ -1371,7 +1378,7 @@ private final class ProviderCapturedProcess: @unchecked Sendable {
 
         lock.lock()
         didCancel = true
-        let continuation = didResume ? nil : self.continuation
+        let continuation = didResume ? nil : continuation
         if continuation != nil {
             didResume = true
             self.continuation = nil

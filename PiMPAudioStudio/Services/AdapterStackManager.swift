@@ -1,6 +1,6 @@
 import Foundation
-import PiMPAudioCore
 import MLX
+import PiMPAudioCore
 
 enum AdapterStrengthLimits {
     static let minimum: Float = 0.0
@@ -18,7 +18,6 @@ enum AdapterStrengthLimits {
 /// with LoRAInjector to apply/update/clear contributions on the model.
 @MainActor
 final class AdapterStackManager: ObservableObject {
-
     // MARK: - Published State
 
     /// The primary adapter shown in the main AdapterPicker.
@@ -37,7 +36,9 @@ final class AdapterStackManager: ObservableObject {
     static let maxStackSize = 3
 
     /// Maximum additional adapters that can be stacked.
-    var maxAdditional: Int { Self.maxStackSize - (primaryAdapter != nil ? 1 : 0) }
+    var maxAdditional: Int {
+        Self.maxStackSize - (primaryAdapter != nil ? 1 : 0)
+    }
 
     /// Whether the stack is at capacity.
     var isAtCapacity: Bool {

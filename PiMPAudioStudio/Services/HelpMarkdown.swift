@@ -75,7 +75,9 @@ enum HelpMarkdown {
                 var rows: [[String]] = []
                 while index < lines.count {
                     let rowTrimmed = lines[index].trimmingCharacters(in: .whitespaces)
-                    if !isTableRow(rowTrimmed) { break }
+                    if !isTableRow(rowTrimmed) {
+                        break
+                    }
                     rows.append(splitTableCells(rowTrimmed))
                     index += 1
                 }
@@ -87,7 +89,9 @@ enum HelpMarkdown {
                 var items: [String] = []
                 while index < lines.count {
                     let itemTrimmed = lines[index].trimmingCharacters(in: .whitespaces)
-                    if itemTrimmed.isEmpty { break }
+                    if itemTrimmed.isEmpty {
+                        break
+                    }
                     guard let item = unorderedItemText(itemTrimmed) else { break }
                     items.append(item)
                     index += 1
@@ -102,7 +106,9 @@ enum HelpMarkdown {
                 var items: [String] = []
                 while index < lines.count {
                     let itemTrimmed = lines[index].trimmingCharacters(in: .whitespaces)
-                    if itemTrimmed.isEmpty { break }
+                    if itemTrimmed.isEmpty {
+                        break
+                    }
                     guard let item = orderedItemText(itemTrimmed) else { break }
                     items.append(item)
                     index += 1
@@ -119,16 +125,26 @@ enum HelpMarkdown {
             while index < lines.count {
                 let next = lines[index]
                 let nextTrimmed = next.trimmingCharacters(in: .whitespaces)
-                if nextTrimmed.isEmpty { break }
-                if nextTrimmed.hasPrefix("```") { break }
-                if parseHeading(nextTrimmed) != nil { break }
-                if isUnorderedItem(nextTrimmed) || isOrderedItem(nextTrimmed) { break }
+                if nextTrimmed.isEmpty {
+                    break
+                }
+                if nextTrimmed.hasPrefix("```") {
+                    break
+                }
+                if parseHeading(nextTrimmed) != nil {
+                    break
+                }
+                if isUnorderedItem(nextTrimmed) || isOrderedItem(nextTrimmed) {
+                    break
+                }
                 if isTableRow(nextTrimmed),
                    index + 1 < lines.count,
                    isTableSeparator(lines[index + 1].trimmingCharacters(in: .whitespaces)) {
                     break
                 }
-                if nextTrimmed == "---" || nextTrimmed == "***" || nextTrimmed == "___" { break }
+                if nextTrimmed == "---" || nextTrimmed == "***" || nextTrimmed == "___" {
+                    break
+                }
                 paragraphLines.append(nextTrimmed)
                 index += 1
             }
@@ -144,7 +160,7 @@ enum HelpMarkdown {
     /// Drop a leading H1 when it duplicates the navigation title.
     static func droppingRedundantTitle(from blocks: [HelpMarkdownBlock], pageTitle: String) -> [HelpMarkdownBlock] {
         guard let first = blocks.first,
-              case .heading(let level, let text) = first,
+              case let .heading(level, text) = first,
               level == 1 else {
             return blocks
         }
@@ -162,7 +178,11 @@ enum HelpMarkdown {
         guard line.hasPrefix("#") else { return nil }
         var level = 0
         for ch in line {
-            if ch == "#" { level += 1 } else { break }
+            if ch == "#" {
+                level += 1
+            } else {
+                break
+            }
         }
         guard level >= 1, level <= 6 else { return nil }
         let rest = line.dropFirst(level)
@@ -214,8 +234,12 @@ enum HelpMarkdown {
 
     private static func splitTableCells(_ line: String) -> [String] {
         var raw = line.trimmingCharacters(in: .whitespaces)
-        if raw.hasPrefix("|") { raw.removeFirst() }
-        if raw.hasSuffix("|") { raw.removeLast() }
+        if raw.hasPrefix("|") {
+            raw.removeFirst()
+        }
+        if raw.hasSuffix("|") {
+            raw.removeLast()
+        }
         return raw.split(separator: "|", omittingEmptySubsequences: false)
             .map { $0.trimmingCharacters(in: .whitespaces) }
     }

@@ -1,6 +1,6 @@
-import SwiftUI
 import Charts
 import PiMPAudioCore
+import SwiftUI
 
 /// A mini line chart displaying training loss history.
 struct LossCurveView: View {
@@ -13,7 +13,7 @@ struct LossCurveView: View {
     }
 
     var body: some View {
-        if lossHistory.isEmpty && validationHistory.isEmpty {
+        if lossHistory.isEmpty, validationHistory.isEmpty {
             Text("No data yet")
                 .font(.caption)
                 .foregroundStyle(.secondary)

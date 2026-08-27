@@ -30,9 +30,13 @@ struct IntelligenceSettingsView: View {
         }
         .alert("Couldn’t save API key", isPresented: Binding(
             get: { keySaveError != nil },
-            set: { if !$0 { keySaveError = nil } }
+            set: {
+                if !$0 {
+                    keySaveError = nil
+                }
+            }
         )) {
-            Button("OK", role: .cancel) { }
+            Button("OK", role: .cancel) {}
         } message: {
             Text(keySaveError ?? "")
         }
@@ -40,9 +44,11 @@ struct IntelligenceSettingsView: View {
 
     private var modelSection: some View {
         Section {
-            Text("On-device Llama 3–compatible MLX models for Prompt Enhance and Local lyrics. Only these two sizes are supported.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Text(
+                "On-device Llama 3–compatible MLX models for Prompt Enhance and Local lyrics. Only these two sizes are supported."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
 
             ForEach(modelManager.availableModels) { spec in
                 HStack {
@@ -67,8 +73,8 @@ struct IntelligenceSettingsView: View {
                     // Was previously gated only on activeModel ID, which
                     // could show the check while a re-download was in flight
                     // or after files were partially deleted.
-                    if modelManager.activeModel?.id == spec.id
-                        && modelManager.isModelDownloaded(spec) {
+                    if modelManager.activeModel?.id == spec.id,
+                       modelManager.isModelDownloaded(spec) {
                         Image(systemName: "checkmark.circle.fill")
                             .foregroundStyle(.green)
                     }
@@ -100,11 +106,11 @@ struct IntelligenceSettingsView: View {
                 }
             }
 
-            if case .downloading(let progress) = modelManager.downloadState {
+            if case let .downloading(progress) = modelManager.downloadState {
                 ProgressView("Downloading model...", value: Double(progress), total: 1.0)
             }
 
-            if case .error(let message) = modelManager.downloadState {
+            if case let .error(message) = modelManager.downloadState {
                 Label(message, systemImage: "exclamationmark.triangle")
                     .foregroundStyle(.red)
                     .font(.caption)
@@ -313,7 +319,7 @@ struct IntelligenceSettingsView: View {
 
     private func statusDetail(for status: ProviderCLIStatus) -> String? {
         switch status.testState {
-        case .passed(let detail), .workspaceTrustNeeded(let detail), .blocked(let detail), .failed(let detail):
+        case let .passed(detail), let .workspaceTrustNeeded(detail), let .blocked(detail), let .failed(detail):
             return detail
         case .running, .idle:
             break

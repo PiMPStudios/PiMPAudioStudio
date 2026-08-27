@@ -225,10 +225,9 @@ final class LyricWriterManager: ObservableObject {
             rawLyrics,
             targetDuration: duration
         )
-        let finalLyrics = sanitized.isEmpty
+        return sanitized.isEmpty
             ? rawLyrics.trimmingCharacters(in: .whitespacesAndNewlines)
             : sanitized
-        return finalLyrics
     }
 
     func cancel() {
@@ -265,7 +264,7 @@ enum LyricWriterManagerError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .noAvailableBackend:
-            return "No lyric writer backend is available. Activate the local LLM or configure an API backend."
+            "No lyric writer backend is available. Activate the local LLM or configure an API backend."
         }
     }
 }

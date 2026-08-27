@@ -25,8 +25,8 @@ public class ResidualFSQ: Module {
 
     public init(hiddenSize: Int, levels: [Int]) {
         self.levels = levels
-        self.projectIn = Linear(hiddenSize, levels.count, bias: true)
-        self.projectOut = Linear(levels.count, hiddenSize, bias: true)
+        projectIn = Linear(hiddenSize, levels.count, bias: true)
+        projectOut = Linear(levels.count, hiddenSize, bias: true)
     }
 
     /// Run FSQ on continuous input.
@@ -35,10 +35,10 @@ public class ResidualFSQ: Module {
     ///   - `quantized`: `[B, T, hidden_size]` — same shape as input, run through the bottleneck.
     ///   - `indices`:   `[B, T, 1]` — single integer per token (residual depth = 1).
     public func callAsFunction(_ hidden: MLXArray) -> (quantized: MLXArray, indices: MLXArray) {
-        let z = projectIn(hidden)                       // [B, T, dim]
-        let (zq, idx) = quantize(z)                     // [B, T, dim], [B, T]
-        let out = projectOut(zq)                        // [B, T, hidden_size]
-        return (out, idx.expandedDimensions(axis: -1))  // [B, T, 1]
+        let z = projectIn(hidden) // [B, T, dim]
+        let (zq, idx) = quantize(z) // [B, T, dim], [B, T]
+        let out = projectOut(zq) // [B, T, hidden_size]
+        return (out, idx.expandedDimensions(axis: -1)) // [B, T, 1]
     }
 
     /// Snap each scalar to the nearest of `levels[i]` evenly-spaced bins in [-1, 1],
@@ -49,17 +49,17 @@ public class ResidualFSQ: Module {
         let seqL = z.shape[1]
 
         // bound input via tanh and round to nearest bin per axis
-        let zBounded = MLX.tanh(z)                                        // [B, T, dim] in (-1, 1)
-        let levelArr = MLXArray(levels.map { Float($0) })                 // [dim]
+        let zBounded = MLX.tanh(z) // [B, T, dim] in (-1, 1)
+        let levelArr = MLXArray(levels.map { Float($0) }) // [dim]
         // half-step grid: bin i in 0..<level corresponds to value
         //   ((2*i + 1) / level) - 1   ∈ (-1, 1)
         // To pick: i = round((zBounded + 1) * level / 2 - 0.5),
         // clamped to [0, level-1].
         let halfLevels = levelArr / 2.0
-        let scaled = (zBounded + 1.0) * halfLevels - 0.5                  // [B, T, dim]
+        let scaled = (zBounded + 1.0) * halfLevels - 0.5 // [B, T, dim]
         let rounded = MLX.round(scaled)
         let clamped = MLX.clip(rounded, min: MLXArray.zeros(like: rounded), max: levelArr - 1.0)
-        let idxPerAxis = clamped.asType(.int32)                            // [B, T, dim]
+        let idxPerAxis = clamped.asType(.int32) // [B, T, dim]
 
         // recover quantized continuous values from bin indices
         let zq = (idxPerAxis.asType(.float32) + 0.5) * 2.0 / levelArr - 1.0 // [B, T, dim]
@@ -68,7 +68,7 @@ public class ResidualFSQ: Module {
         // idx = sum_i (idxPerAxis[i] * prod(levels[i+1..]))
         var multiplier = 1
         var packed = MLXArray.zeros([bsz, seqL], dtype: .int32)
-        for i in (0..<levels.count).reversed() {
+        for i in (0 ..< levels.count).reversed() {
             let axis = idxPerAxis[0..., 0..., i] * multiplier
             packed = packed + axis
             multiplier *= levels[i]
@@ -89,7 +89,7 @@ public class ResidualFSQ: Module {
 
         let idxPerAxis = MLXArray.zeros([bsz, seqL, dim], dtype: .int32)
         var remaining = codes
-        for i in (0..<dim).reversed() {
+        for i in (0 ..< dim).reversed() {
             let level = levels[i]
             let axis = remaining % level
             remaining = remaining / level
@@ -98,7 +98,7 @@ public class ResidualFSQ: Module {
         }
 
         let levelArr = MLXArray(levels.map { Float($0) })
-        let zq = (idxPerAxis.asType(.float32) + 0.5) * 2.0 / levelArr - 1.0  // [B, T, dim]
-        return projectOut(zq)                                                 // [B, T, hidden_size]
+        let zq = (idxPerAxis.asType(.float32) + 0.5) * 2.0 / levelArr - 1.0 // [B, T, dim]
+        return projectOut(zq) // [B, T, hidden_size]
     }
 }

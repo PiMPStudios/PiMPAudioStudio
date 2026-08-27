@@ -4,14 +4,14 @@ import Foundation
 public enum TargetLayer: String, Codable, CaseIterable, Sendable, Hashable {
     case selfAttention = "self_attn"
     case crossAttention = "cross_attn"
-    case mlp = "mlp"
+    case mlp
 
     /// Maps to the property name pattern used by LoRAInjector (e.g. "selfAttn").
     public var moduleName: String {
         switch self {
-        case .selfAttention: return "selfAttn"
-        case .crossAttention: return "crossAttn"
-        case .mlp: return "mlp"
+        case .selfAttention: "selfAttn"
+        case .crossAttention: "crossAttn"
+        case .mlp: "mlp"
         }
     }
 
@@ -30,11 +30,11 @@ public enum TargetLayer: String, Codable, CaseIterable, Sendable, Hashable {
     public var defaultPatterns: [String] {
         switch self {
         case .selfAttention:
-            return ["selfAttn.qProj", "selfAttn.vProj"]
+            ["selfAttn.qProj", "selfAttn.vProj"]
         case .crossAttention:
-            return ["crossAttn.qProj", "crossAttn.vProj"]
+            ["crossAttn.qProj", "crossAttn.vProj"]
         case .mlp:
-            return ["mlp.gateProj", "mlp.downProj"]
+            ["mlp.gateProj", "mlp.downProj"]
         }
     }
 }
@@ -395,8 +395,8 @@ public struct LoRAAdapter: Codable, Sendable, Identifiable, Equatable, Hashable 
         self.trainedLayerIndices = trainedLayerIndices
     }
 
-    // Custom Codable for backward compatibility — existing adapters without
-    // `source` field decode as .local.
+    /// Custom Codable for backward compatibility — existing adapters without
+    /// `source` field decode as .local.
     enum CodingKeys: String, CodingKey {
         case id, name, config, kind, lokrConfig, baseModelID, baseModelCategory
         case createdAt, sampleCount, finalLoss, source, remoteRepoURL
@@ -451,12 +451,11 @@ public extension LoRAAdapter {
 
     /// Derive trained module paths from adapter weight keys.
     static func trainedPaths(fromWeightKeys keys: [String], kind: AdapterKind) -> [String] {
-        let suffixes: [String]
-        switch kind {
+        let suffixes: [String] = switch kind {
         case .lora:
-            suffixes = [".loraA", ".loraB"]
+            [".loraA", ".loraB"]
         case .lokr:
-            suffixes = [".lokrW1", ".lokrW2", ".lokrMagnitude"]
+            [".lokrW1", ".lokrW2", ".lokrMagnitude"]
         }
 
         var paths = Set<String>()
@@ -475,16 +474,18 @@ public extension LoRAAdapter {
         guard baseModelCategory == .aceStepDiT else {
             return baseModelID == activeBaseID
         }
-        if baseModelID == activeBaseID { return true }
+        if baseModelID == activeBaseID {
+            return true
+        }
 
         guard let adapterVariant = Self.canonicalACEVariant(baseModelID),
               let activeVariant = Self.canonicalACEVariant(activeBaseID, spec: activeSpec) else {
             return false
         }
-        if adapterVariant == "ace-step-dit-xl" && activeVariant.hasPrefix("ace-step-dit-xl") {
+        if adapterVariant == "ace-step-dit-xl", activeVariant.hasPrefix("ace-step-dit-xl") {
             return true
         }
-        if activeVariant == "ace-step-dit-xl" && adapterVariant.hasPrefix("ace-step-dit-xl") {
+        if activeVariant == "ace-step-dit-xl", adapterVariant.hasPrefix("ace-step-dit-xl") {
             return true
         }
         return adapterVariant == activeVariant

@@ -43,7 +43,7 @@ public actor SFXDiffusionActor {
 
     public func makeProgressStream() -> AsyncStream<GenerationProgress> {
         let (stream, continuation) = AsyncStream<GenerationProgress>.makeStream()
-        self.progressContinuation = continuation
+        progressContinuation = continuation
         return stream
     }
 
@@ -62,7 +62,7 @@ public actor SFXDiffusionActor {
         crossCond: MLXArray,
         globalCond: MLXArray,
         config: SFXDiffusionConfig,
-        uncrossCondTokens: MLXArray? = nil  // T5("")+time tokens for CFG; nil → no CFG
+        uncrossCondTokens: MLXArray? = nil // T5("")+time tokens for CFG; nil → no CFG
     ) async throws -> DiffusionResult {
         let totalStart = Date()
         defer {
@@ -76,17 +76,20 @@ public actor SFXDiffusionActor {
         // LogSNR sigmoid schedule: t descends from sigmaMax to near 0 in `steps` values.
         // The final sigmaNext is 0 (handled by the existing fallback in the loop below).
         let sigmas = generateRFSchedule(steps: config.steps, sigmaMax: config.sigmaMax)
-        let doCFG  = config.guidanceScale > 1.0 && uncrossCondTokens != nil
+        let doCFG = config.guidanceScale > 1.0 && uncrossCondTokens != nil
 
         AudioDiagnostics.memory("sfx/diffusion/begin")
-        AudioDiagnostics.note("SFX_DIFF", "latentShape=\(config.latentShape) steps=\(config.steps) sigmaMax=\(config.sigmaMax) doCFG=\(doCFG)")
+        AudioDiagnostics.note(
+            "SFX_DIFF",
+            "latentShape=\(config.latentShape) steps=\(config.steps) sigmaMax=\(config.sigmaMax) doCFG=\(doCFG)"
+        )
         AudioDiagnostics.note(
             "sfx/diffusion/config",
             "latentShape=\(config.latentShape) steps=\(config.steps) sigmaMax=\(config.sigmaMax) guidance=\(config.guidanceScale) doCFG=\(doCFG) seed=\(config.seed.map(String.init) ?? "random")"
         )
         // Log first 10 schedule values so we can verify the logSNR sigmoid shape.
         AudioDiagnostics.floats("SFX_SCHEDULE_FIRST10", Array(sigmas.prefix(10)))
-        AudioDiagnostics.floats("SFX_SCHEDULE_LAST5",   Array(sigmas.suffix(5)))
+        AudioDiagnostics.floats("SFX_SCHEDULE_LAST5", Array(sigmas.suffix(5)))
         AudioDiagnostics.floats("sfx/diffusion/schedule", sigmas)
         AudioDiagnostics.tensor("sfx/diffusion/crossCond", crossCond)
         AudioDiagnostics.tensor("sfx/diffusion/globalCond", globalCond)
@@ -103,12 +106,12 @@ public actor SFXDiffusionActor {
 
         let diffStart = Date()
 
-        for stepIdx in 0..<config.steps {
+        for stepIdx in 0 ..< config.steps {
             try Task.checkCancellation()
 
-            let sigma     = sigmas[stepIdx]
+            let sigma = sigmas[stepIdx]
             let sigmaNext = stepIdx + 1 < sigmas.count ? sigmas[stepIdx + 1] : Float(0)
-            let timestep  = MLXArray([sigma])
+            let timestep = MLXArray([sigma])
             let logDetail = AudioDiagnostics.isEnabled && sfxAudioDiagnosticStep(stepIdx, totalSteps: config.steps)
             if logDetail {
                 AudioDiagnostics.tensor("sfx/diffusion/step\(stepIdx)/xtBefore", xt)
@@ -179,7 +182,10 @@ public actor SFXDiffusionActor {
 
             // [AUDIODIAG] verbose: log steps 0, 1, and final to trace denoising progress.
             if stepIdx <= 1 || stepIdx == config.steps - 1 {
-                AudioDiagnostics.note("SFX_STEP[\(stepIdx)]", "sigma=\(String(format:"%.4f",sigma)) sigmaNext=\(String(format:"%.4f",sigmaNext))")
+                AudioDiagnostics.note(
+                    "SFX_STEP[\(stepIdx)]",
+                    "sigma=\(String(format: "%.4f", sigma)) sigmaNext=\(String(format: "%.4f", sigmaNext))"
+                )
                 AudioDiagnostics.tensor("SFX_VT[\(stepIdx)]", vt)
                 AudioDiagnostics.tensor("SFX_XT[\(stepIdx)]", xt)
             }
@@ -204,7 +210,10 @@ public actor SFXDiffusionActor {
         )
 
         AudioDiagnostics.tensor("SFX_FINAL_LATENTS", xt)
-        AudioDiagnostics.note("SFX_DIFF_DONE", "diffTime=\(String(format:"%.2f",diffTime))s perStep=\(String(format:"%.3f",diffTime/Double(max(config.steps,1))))s")
+        AudioDiagnostics.note(
+            "SFX_DIFF_DONE",
+            "diffTime=\(String(format: "%.2f", diffTime))s perStep=\(String(format: "%.3f", diffTime / Double(max(config.steps, 1))))s"
+        )
         AudioDiagnostics.memory("sfx/diffusion/end")
 
         return DiffusionResult(latents: xt, timeCosts: costs)
@@ -222,7 +231,7 @@ public actor SFXDiffusionActor {
         crossCond: MLXArray,
         globalCond: MLXArray,
         config: SFXDiffusionConfig,
-        uncrossCondTokens: MLXArray? = nil  // T5("")+time tokens for CFG; nil → no CFG
+        uncrossCondTokens: MLXArray? = nil // T5("")+time tokens for CFG; nil → no CFG
     ) async throws -> DiffusionResult {
         let totalStart = Date()
         defer {
@@ -256,12 +265,12 @@ public actor SFXDiffusionActor {
 
         let diffStart = Date()
 
-        for stepIdx in 0..<stepCount {
+        for stepIdx in 0 ..< stepCount {
             try Task.checkCancellation()
 
-            let sigma     = schedule[stepIdx]
+            let sigma = schedule[stepIdx]
             let sigmaNext = stepIdx + 1 < stepCount ? schedule[stepIdx + 1] : Float(0)
-            let timestep  = MLXArray([sigma])
+            let timestep = MLXArray([sigma])
             let logDetail = AudioDiagnostics.isEnabled && sfxAudioDiagnosticStep(stepIdx, totalSteps: stepCount)
             if logDetail {
                 AudioDiagnostics.tensor("sfx/inpaint/step\(stepIdx)/xtBefore", xt)
@@ -370,8 +379,10 @@ public actor SFXDiffusionActor {
             : -6.0
         let logsnrMin: Float = 2.0
 
-        return (0..<steps).map { i in
-            if i == 0 { return sigmaMax }  // pin to exact sigmaMax
+        return (0 ..< steps).map { i in
+            if i == 0 {
+                return sigmaMax
+            } // pin to exact sigmaMax
             let logsnr = logsnrMax + Float(i) / Float(steps) * (logsnrMin - logsnrMax)
             return 1.0 / (1.0 + expf(logsnr))
         }

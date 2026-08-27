@@ -115,9 +115,9 @@ public actor ConditioningActor {
 
         var metaString: String {
             "- bpm: \(bpm)\n"
-            + "- timesignature: \(timeSignature)\n"
-            + "- keyscale: \(keyscale)\n"
-            + "- duration: \(durationSeconds) seconds\n"
+                + "- timesignature: \(timeSignature)\n"
+                + "- keyscale: \(keyscale)\n"
+                + "- duration: \(durationSeconds) seconds\n"
         }
     }
 
@@ -147,7 +147,8 @@ public actor ConditioningActor {
         if lower.contains("very slow") || lower.contains("dirge") || lower.contains("doom") {
             return "55"
         }
-        if lower.contains("slow tempo") || lower.contains("slow,") || lower.contains("slow ") || lower.contains("downtempo") {
+        if lower.contains("slow tempo") || lower.contains("slow,") || lower.contains("slow ") || lower
+            .contains("downtempo") {
             return "70"
         }
         if lower.contains("mid-tempo") || lower.contains("medium tempo") || lower.contains("moderate tempo") {
@@ -175,14 +176,13 @@ public actor ConditioningActor {
             return nil
         }
 
-        let accidental: String
-        switch captures[1]?.lowercased() {
+        let accidental = switch captures[1]?.lowercased() {
         case "#", "♯", "sharp":
-            accidental = "#"
+            "#"
         case "b", "♭", "flat":
-            accidental = "b"
+            "b"
         default:
-            accidental = ""
+            ""
         }
         return "\(note.uppercased())\(accidental) \(mode.lowercased())"
     }
@@ -195,11 +195,11 @@ public actor ConditioningActor {
         guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
             return nil
         }
-        let fullRange = NSRange(text.startIndex..<text.endIndex, in: text)
+        let fullRange = NSRange(text.startIndex ..< text.endIndex, in: text)
         guard let match = regex.firstMatch(in: text, options: [], range: fullRange) else {
             return nil
         }
-        return (1...groups).map { index in
+        return (1 ... groups).map { index in
             guard index < match.numberOfRanges,
                   let range = Range(match.range(at: index), in: text) else {
                 return nil
@@ -212,7 +212,7 @@ public actor ConditioningActor {
     /// Wrap lyrics with upstream's `# Languages / # Lyric` template. Mirrors
     /// `acestep/core/generation/handler/prompt_utils.py:_format_lyrics`.
     private static func wrapLyricsForSFT(lyrics: String, language: String = "en") -> String {
-        return """
+        """
         # Languages
         \(language)
 
@@ -303,7 +303,7 @@ public actor ConditioningActor {
             if overrideFrames == tFrames {
                 src = srcOverride
             } else if overrideFrames > tFrames {
-                src = srcOverride[0..., 0..<tFrames, 0...]
+                src = srcOverride[0..., 0 ..< tFrames, 0...]
             } else {
                 let padding = silenceLatentPadding(
                     batchSize: srcOverride.shape[0],
@@ -344,15 +344,14 @@ public actor ConditioningActor {
             "mode=full value=\(Self.fullGenerationChunkMaskValue) frames=\(tFrames)"
         )
 
-        let result: ConditioningResult
-        if precision == .float16 {
-            result = ConditioningResult(
+        let result = if precision == .float16 {
+            ConditioningResult(
                 encoderStates: encoderStates.asType(.float16),
                 encoderMask: encoderMask,
                 contextLatents: contextLatents.asType(.float16)
             )
         } else {
-            result = ConditioningResult(
+            ConditioningResult(
                 encoderStates: encoderStates,
                 encoderMask: encoderMask,
                 contextLatents: contextLatents
@@ -366,7 +365,7 @@ public actor ConditioningActor {
 
     /// Offset decorrelates the timbre posterior draw from the diffusion noise
     /// stream, which derives its key from the same seed via `MLXRandom.key(seed)`.
-    private static let timbreKeyOffset: UInt64 = 0x7469_6D62  // "timb"
+    private static let timbreKeyOffset: UInt64 = 0x7469_6D62 // "timb"
 
     private func prepareReferenceLatents(
         _ referenceAudio: MLXArray?,
@@ -382,7 +381,7 @@ public actor ConditioningActor {
         // audio that would be truncated anyway.
         let maxSamples = Self.timbreFixFrame * Self.vaeHopLength
         if ref.shape[1] > maxSamples {
-            ref = ref[0..., 0..<maxSamples, 0...]
+            ref = ref[0..., 0 ..< maxSamples, 0...]
         }
 
         let key = timbreSeed.map {
@@ -393,7 +392,7 @@ public actor ConditioningActor {
         if currentFrames == Self.timbreFixFrame {
             return latents
         } else if currentFrames > Self.timbreFixFrame {
-            return latents[0..<latents.shape[0], 0..<Self.timbreFixFrame]
+            return latents[0 ..< latents.shape[0], 0 ..< Self.timbreFixFrame]
         } else {
             let padding = silenceLatentPadding(
                 batchSize: latents.shape[0],
@@ -420,14 +419,14 @@ public actor ConditioningActor {
         let available = silence.shape[1]
         let sliced: MLXArray
         if length <= available {
-            sliced = silence[0..., 0..<length, 0...]
+            sliced = silence[0..., 0 ..< length, 0...]
         } else {
             let repeats = Int(ceil(Double(length) / Double(available)))
             var tiled = silence
-            for _ in 1..<repeats {
+            for _ in 1 ..< repeats {
                 tiled = concatenated([tiled, silence], axis: 1)
             }
-            sliced = tiled[0..., 0..<length, 0...]
+            sliced = tiled[0..., 0 ..< length, 0...]
         }
         return sliced.asType(precision.mlxDtype)
     }
@@ -435,7 +434,7 @@ public actor ConditioningActor {
     /// Load the per-DiT-checkpoint `silence_latent.pt` tensor. Pass `nil` to
     /// clear (e.g., when unloading weights). Shape must be `[1, ≥1, 64]`.
     public func setSilenceLatent(_ latent: MLXArray?) {
-        self.silenceLatent = latent
+        silenceLatent = latent
         if let l = latent {
             condLogger.info("[ConditioningActor.setSilenceLatent] loaded shape=\(l.shape)")
         } else {
@@ -478,7 +477,7 @@ public actor ConditioningActor {
         qwen3.update(parameters: ModuleParameters.unflattened(qwen3Weights))
         eval(qwen3.parameters())
 
-        let lyricWeights = conditionWeights.compactMap { (key, value) -> (String, MLXArray)? in
+        let lyricWeights = conditionWeights.compactMap { key, value -> (String, MLXArray)? in
             guard key.hasPrefix("lyricEncoder.") else { return nil }
             return (String(key.dropFirst("lyricEncoder.".count)), value)
         }
@@ -486,7 +485,7 @@ public actor ConditioningActor {
         lyricEncoder.update(parameters: ModuleParameters.unflattened(lyricWeights))
         eval(lyricEncoder.parameters())
 
-        let timbreWeights = conditionWeights.compactMap { (key, value) -> (String, MLXArray)? in
+        let timbreWeights = conditionWeights.compactMap { key, value -> (String, MLXArray)? in
             guard key.hasPrefix("timbreEncoder.") else { return nil }
             return (String(key.dropFirst("timbreEncoder.".count)), value)
         }
@@ -494,7 +493,7 @@ public actor ConditioningActor {
         timbreEncoder.update(parameters: ModuleParameters.unflattened(timbreWeights))
         eval(timbreEncoder.parameters())
 
-        let condEncWeights = conditionWeights.compactMap { (key, value) -> (String, MLXArray)? in
+        let condEncWeights = conditionWeights.compactMap { key, value -> (String, MLXArray)? in
             guard key.hasPrefix("conditionEncoder.") else { return nil }
             return (String(key.dropFirst("conditionEncoder.".count)), value)
         }
@@ -518,8 +517,8 @@ public actor ConditioningActor {
     private static func logKeyDiff(
         name: String, supplied: [(String, MLXArray)], model: Module
     ) {
-        let modelKeys = Set(model.parameters().flattened().map { $0.0 })
-        let suppliedKeys = Set(supplied.map { $0.0 })
+        let modelKeys = Set(model.parameters().flattened().map(\.0))
+        let suppliedKeys = Set(supplied.map(\.0))
         let matched = suppliedKeys.intersection(modelKeys).count
         let supExtra = suppliedKeys.subtracting(modelKeys)
         let modExtra = modelKeys.subtracting(suppliedKeys)
@@ -533,12 +532,12 @@ public actor ConditioningActor {
     }
 }
 
-extension ConditioningActor {
+public extension ConditioningActor {
     /// Builds a ConditioningActor backed by a real tokenizer file on disk.
     /// Used in production to upgrade from a stub once the model's `tokenizer.json`
     /// has been downloaded, and in tests where a fixture tokenizer is available.
-    public static func make(tokenizerURL: URL) throws -> ConditioningActor {
-        return try ConditioningActor(
+    static func make(tokenizerURL: URL) throws -> ConditioningActor {
+        try ConditioningActor(
             vae: VAEActor(),
             qwen3: Qwen3Model(),
             conditionEncoder: ConditionEncoder(),
@@ -552,8 +551,8 @@ extension ConditioningActor {
     /// Suitable for app launch before model weights are downloaded — all
     /// inference calls will succeed structurally but produce random outputs
     /// until `updateTokenizer(from:)` is called after model download.
-    public static func stub() -> ConditioningActor {
-        return ConditioningActor(
+    static func stub() -> ConditioningActor {
+        ConditioningActor(
             vae: VAEActor(),
             qwen3: Qwen3Model(),
             conditionEncoder: ConditionEncoder(),

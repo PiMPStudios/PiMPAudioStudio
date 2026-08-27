@@ -1,7 +1,7 @@
 import Foundation
 import MLX
-import MLXNN
 import MLXFast
+import MLXNN
 
 public class Qwen3Attention: Module {
     let hiddenSize: Int
@@ -26,22 +26,24 @@ public class Qwen3Attention: Module {
         rmsNormEps: Float
     ) {
         self.hiddenSize = hiddenSize
-        self.numHeads = numAttentionHeads
-        self.numKVHeads = numKeyValueHeads
+        numHeads = numAttentionHeads
+        numKVHeads = numKeyValueHeads
         self.headDim = headDim
-        self.nRep = numAttentionHeads / numKeyValueHeads
-        self.scale = pow(Float(headDim), -0.5)
+        nRep = numAttentionHeads / numKeyValueHeads
+        scale = pow(Float(headDim), -0.5)
 
-        self.qProj = Linear(hiddenSize, numAttentionHeads * headDim, bias: false)
-        self.kProj = Linear(hiddenSize, numKeyValueHeads * headDim, bias: false)
-        self.vProj = Linear(hiddenSize, numKeyValueHeads * headDim, bias: false)
-        self.oProj = Linear(numAttentionHeads * headDim, hiddenSize, bias: false)
-        self.qNorm = RMSNorm(dimensions: headDim, eps: rmsNormEps)
-        self.kNorm = RMSNorm(dimensions: headDim, eps: rmsNormEps)
+        qProj = Linear(hiddenSize, numAttentionHeads * headDim, bias: false)
+        kProj = Linear(hiddenSize, numKeyValueHeads * headDim, bias: false)
+        vProj = Linear(hiddenSize, numKeyValueHeads * headDim, bias: false)
+        oProj = Linear(numAttentionHeads * headDim, hiddenSize, bias: false)
+        qNorm = RMSNorm(dimensions: headDim, eps: rmsNormEps)
+        kNorm = RMSNorm(dimensions: headDim, eps: rmsNormEps)
     }
 
     private func repeatKV(_ x: MLXArray, nRep: Int) -> MLXArray {
-        if nRep == 1 { return x }
+        if nRep == 1 {
+            return x
+        }
         let (b, nKV, seqL, d) = (x.shape[0], x.shape[1], x.shape[2], x.shape[3])
         let expanded = x.expandedDimensions(axis: 2)
         let broadcasted = broadcast(expanded, to: [b, nKV, nRep, seqL, d])
@@ -95,16 +97,16 @@ public class Qwen3Layer: Module {
         headDim: Int,
         rmsNormEps: Float
     ) {
-        self.inputNorm = RMSNorm(dimensions: hiddenSize, eps: rmsNormEps)
-        self.attention = Qwen3Attention(
+        inputNorm = RMSNorm(dimensions: hiddenSize, eps: rmsNormEps)
+        attention = Qwen3Attention(
             hiddenSize: hiddenSize,
             numAttentionHeads: numAttentionHeads,
             numKeyValueHeads: numKeyValueHeads,
             headDim: headDim,
             rmsNormEps: rmsNormEps
         )
-        self.postNorm = RMSNorm(dimensions: hiddenSize, eps: rmsNormEps)
-        self.mlp = SwiGLUMLP(hiddenSize: hiddenSize, intermediateSize: intermediateSize)
+        postNorm = RMSNorm(dimensions: hiddenSize, eps: rmsNormEps)
+        mlp = SwiGLUMLP(hiddenSize: hiddenSize, intermediateSize: intermediateSize)
     }
 
     public func callAsFunction(
@@ -115,7 +117,8 @@ public class Qwen3Layer: Module {
         var h = hiddenStates
         let normed = inputNorm(h)
         let attnOut = attention(
-            hiddenStates: normed, positionCosSin: positionCosSin, attentionMask: attentionMask)
+            hiddenStates: normed, positionCosSin: positionCosSin, attentionMask: attentionMask
+        )
         h = h + attnOut
 
         let postNormed = postNorm(h)

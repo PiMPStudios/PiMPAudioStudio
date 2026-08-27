@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 @testable import PiMPAudioStudio
+import Testing
 
 @Test func providerCLIParsesClaudeSubscriptionAuth() {
     let result = ProviderCommandResult(
@@ -189,8 +189,10 @@ import Testing
     #expect(environment["HOME"] == "/Users/testuser/Library/Containers/com.pimpstudios.PiMPAudioStudio/Data")
 
     let pathDirectories = environment["PATH"]?.split(separator: ":").map(String.init) ?? []
-    #expect(pathDirectories.first == "/Users/testuser/Library/Containers/com.pimpstudios.PiMPAudioStudio/Data/.grok/bin")
-    #expect(pathDirectories.contains("/Users/testuser/Library/Containers/com.pimpstudios.PiMPAudioStudio/Data/.grok/bin"))
+    #expect(pathDirectories
+        .first == "/Users/testuser/Library/Containers/com.pimpstudios.PiMPAudioStudio/Data/.grok/bin")
+    #expect(pathDirectories
+        .contains("/Users/testuser/Library/Containers/com.pimpstudios.PiMPAudioStudio/Data/.grok/bin"))
     #expect(pathDirectories.contains("/Users/testuser/.grok/bin"))
 
     let homebrewIndex = pathDirectories.firstIndex(of: "/opt/homebrew/bin")
@@ -232,7 +234,8 @@ import Testing
 
     let pathDirectories = environment["PATH"]?.split(separator: ":").map(String.init) ?? []
     #expect(pathDirectories.first == "/Users/testuser/.grok/bin")
-    #expect(!pathDirectories.contains("/Users/testuser/Library/Containers/com.pimpstudios.PiMPAudioStudio/Data/.grok/bin"))
+    #expect(!pathDirectories
+        .contains("/Users/testuser/Library/Containers/com.pimpstudios.PiMPAudioStudio/Data/.grok/bin"))
 }
 
 @Test func providerCLIResolvesExecutableBeforeFallingBackToEnv() throws {
@@ -335,7 +338,7 @@ import Testing
 
     let probe = ProviderCLIParsers.parseGrokAuth(result)
 
-    guard case .blocked(let detail) = probe.state else {
+    guard case let .blocked(detail) = probe.state else {
         #expect(Bool(false))
         return
     }

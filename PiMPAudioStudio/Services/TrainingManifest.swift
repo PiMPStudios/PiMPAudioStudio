@@ -106,7 +106,7 @@ struct TrainingPreprocessCacheReference: Codable, Hashable, Sendable {
         self.cacheDirectory = cacheDirectory
         self.clipID = clipID
         self.sourceAudioPath = sourceAudioPath
-        self.fingerprint = Self.fingerprint([
+        fingerprint = Self.fingerprint([
             bundleFileName,
             bundleName,
             clipID,
@@ -219,34 +219,34 @@ struct TrainingRunLog: Codable, Equatable {
         resumedFromCheckpoint: Bool,
         startedAt: Date = Date()
     ) {
-        self.schemaVersion = Self.currentSchemaVersion
+        schemaVersion = Self.currentSchemaVersion
         self.adapterID = adapterID
         self.adapterName = adapterName
         self.adapterKind = adapterKind
-        self.status = .running
+        status = .running
         self.baseModelID = baseModelID
         self.sampleCount = sampleCount
         self.config = config
         self.lokrConfig = lokrConfig
         self.resumedFromCheckpoint = resumedFromCheckpoint
         self.startedAt = startedAt
-        self.updatedAt = startedAt
-        self.finishedAt = nil
-        self.progress = []
-        self.lossHistory = []
-        self.validationHistory = []
-        self.events = [
+        updatedAt = startedAt
+        finishedAt = nil
+        progress = []
+        lossHistory = []
+        validationHistory = []
+        events = [
             TrainingRunEvent(
                 timestamp: startedAt,
                 status: .running,
                 message: resumedFromCheckpoint ? "Training resumed from checkpoint." : "Training started."
-            )
+            ),
         ]
-        self.finalLoss = nil
-        self.trainedPaths = []
-        self.trainedLayerIndices = []
-        self.weightsTensorCount = nil
-        self.errorMessage = nil
+        finalLoss = nil
+        trainedPaths = []
+        trainedLayerIndices = []
+        weightsTensorCount = nil
+        errorMessage = nil
     }
 
     mutating func recordProgress(
@@ -277,8 +277,8 @@ struct TrainingRunLog: Codable, Equatable {
         self.weightsTensorCount = weightsTensorCount ?? self.weightsTensorCount
         self.errorMessage = errorMessage
         self.finishedAt = finishedAt
-        self.updatedAt = finishedAt
-        self.events.append(TrainingRunEvent(
+        updatedAt = finishedAt
+        events.append(TrainingRunEvent(
             timestamp: finishedAt,
             status: status,
             message: message
@@ -292,10 +292,10 @@ enum TrainingDatasetImportError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .unsupportedJSON(let name):
-            return "\(name) is not a supported PiMP Audio Studio training dataset JSON file."
-        case .noUsableAudioFiles(let url):
-            return "No readable audio files were found from \(url.lastPathComponent)."
+        case let .unsupportedJSON(name):
+            "\(name) is not a supported PiMP Audio Studio training dataset JSON file."
+        case let .noUsableAudioFiles(url):
+            "No readable audio files were found from \(url.lastPathComponent)."
         }
     }
 }
@@ -567,7 +567,10 @@ enum TrainingDatasetImporter {
         for clip in clips {
             guard let path = firstString(clip, keys: ["file", "path", "audio"]) else { continue }
             addCaptionEntry(
-                CaptionEntry(description: firstString(clip, keys: ["prompt", "caption"]), lyrics: transcript(from: clip)),
+                CaptionEntry(
+                    description: firstString(clip, keys: ["prompt", "caption"]),
+                    lyrics: transcript(from: clip)
+                ),
                 path: path,
                 baseDirectory: baseDirectory,
                 to: &lookup
@@ -591,7 +594,10 @@ enum TrainingDatasetImporter {
                 )
             } else if let clip = value as? [String: Any] {
                 addCaptionEntry(
-                    CaptionEntry(description: firstString(clip, keys: ["prompt", "caption"]), lyrics: transcript(from: clip)),
+                    CaptionEntry(
+                        description: firstString(clip, keys: ["prompt", "caption"]),
+                        lyrics: transcript(from: clip)
+                    ),
                     path: path,
                     baseDirectory: baseDirectory,
                     to: &lookup

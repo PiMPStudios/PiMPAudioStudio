@@ -61,25 +61,27 @@ public final class T5Config: Sendable {
 }
 
 // MARK: - T5LayerNorm
+
 //
 // T5 uses a simplified RMS-norm variant: x * rsqrt(mean(x^2) + eps), with no
 // bias and a learned per-feature gain. MLXNN.RMSNorm matches this exactly.
 
 // MARK: - T5DenseActDense (FFN)
-//
-// T5 v1.0 (the variant used by Stable Audio Open) uses a standard dense-ReLU-dense FFN:
-//   wi(x)  = Linear(d_model, d_ff, bias=False)
-//   out    = wo(relu(wi(x)))  // Linear(d_ff, d_model, bias=False)
-//
-// HF checkpoint key: DenseReluDense.wi.weight / DenseReluDense.wo.weight
-// T5NameMap routes both to layer1_mlp.wi.weight / layer1_mlp.wo.weight.
+
+///
+/// T5 v1.0 (the variant used by Stable Audio Open) uses a standard dense-ReLU-dense FFN:
+///   wi(x)  = Linear(d_model, d_ff, bias=False)
+///   out    = wo(relu(wi(x)))  // Linear(d_ff, d_model, bias=False)
+///
+/// HF checkpoint key: DenseReluDense.wi.weight / DenseReluDense.wo.weight
+/// T5NameMap routes both to layer1_mlp.wi.weight / layer1_mlp.wo.weight.
 public final class T5DenseActDense: Module, UnaryLayer {
     public var wi: Linear
     public var wo: Linear
 
     public init(config: T5Config) {
-        self.wi = Linear(config.dModel, config.dFF, bias: false)
-        self.wo = Linear(config.dFF, config.dModel, bias: false)
+        wi = Linear(config.dModel, config.dFF, bias: false)
+        wo = Linear(config.dFF, config.dModel, bias: false)
     }
 
     public func callAsFunction(_ x: MLXArray) -> MLXArray {
@@ -88,19 +90,20 @@ public final class T5DenseActDense: Module, UnaryLayer {
 }
 
 // MARK: - T5Attention (self-attention with relative-position bias)
-//
-// T5 quirks vs standard attention:
-//   • No 1/sqrt(d_k) scale on Q·Kᵀ (T5 uses raw dot products).
-//   • Position information comes from a learned per-head BIAS added to
-//     scores before softmax, NOT from RoPE or absolute positional
-//     embeddings. The bias depends on a bucketed relative position
-//     (signed bucket index for bidirectional encoder).
-//   • The bias is computed ONCE per forward (in block 0, which owns
-//     `relative_attention_bias`) and threaded through subsequent blocks.
-//
-// References:
-//   transformers/src/transformers/models/t5/modeling_t5.py
-//     class T5Attention.{_relative_position_bucket, compute_bias, forward}
+
+///
+/// T5 quirks vs standard attention:
+///   • No 1/sqrt(d_k) scale on Q·Kᵀ (T5 uses raw dot products).
+///   • Position information comes from a learned per-head BIAS added to
+///     scores before softmax, NOT from RoPE or absolute positional
+///     embeddings. The bias depends on a bucketed relative position
+///     (signed bucket index for bidirectional encoder).
+///   • The bias is computed ONCE per forward (in block 0, which owns
+///     `relative_attention_bias`) and threaded through subsequent blocks.
+///
+/// References:
+///   transformers/src/transformers/models/t5/modeling_t5.py
+///     class T5Attention.{_relative_position_bucket, compute_bias, forward}
 public final class T5SelfAttention: Module {
     public let numHeads: Int
     public let dKV: Int
@@ -119,16 +122,16 @@ public final class T5SelfAttention: Module {
     public var relativeAttentionBias: Embedding?
 
     public init(config: T5Config, hasRelativeBias: Bool) {
-        self.numHeads = config.numHeads
-        self.dKV = config.dKV
-        self.relativeAttentionNumBuckets = config.relativeAttentionNumBuckets
-        self.relativeAttentionMaxDistance = config.relativeAttentionMaxDistance
+        numHeads = config.numHeads
+        dKV = config.dKV
+        relativeAttentionNumBuckets = config.relativeAttentionNumBuckets
+        relativeAttentionMaxDistance = config.relativeAttentionMaxDistance
         let inner = config.numHeads * config.dKV
-        self.q = Linear(config.dModel, inner, bias: false)
-        self.k = Linear(config.dModel, inner, bias: false)
-        self.v = Linear(config.dModel, inner, bias: false)
-        self.o = Linear(inner, config.dModel, bias: false)
-        self._relativeAttentionBias.wrappedValue = hasRelativeBias
+        q = Linear(config.dModel, inner, bias: false)
+        k = Linear(config.dModel, inner, bias: false)
+        v = Linear(config.dModel, inner, bias: false)
+        o = Linear(inner, config.dModel, bias: false)
+        _relativeAttentionBias.wrappedValue = hasRelativeBias
             ? Embedding(embeddingCount: config.relativeAttentionNumBuckets, dimensions: config.numHeads)
             : nil
     }
@@ -145,9 +148,9 @@ public final class T5SelfAttention: Module {
         }
 
         // memory_position - context_position → [qLen, kLen] signed deltas.
-        let qPos = MLXArray(Array(0..<queryLength).map { Int32($0) })
+        let qPos = MLXArray(Array(0 ..< queryLength).map { Int32($0) })
             .reshaped([queryLength, 1])
-        let kPos = MLXArray(Array(0..<keyLength).map { Int32($0) })
+        let kPos = MLXArray(Array(0 ..< keyLength).map { Int32($0) })
             .reshaped([1, keyLength])
         let relPos = kPos - qPos
 
@@ -159,9 +162,9 @@ public final class T5SelfAttention: Module {
 
         // Embedding lookup: [qLen, kLen, numHeads] → permute [numHeads, qLen, kLen]
         // → expand to [1, numHeads, qLen, kLen] for batch broadcast.
-        let values = bias(buckets)                       // [qLen, kLen, numHeads]
-        let permuted = values.transposed(2, 0, 1)        // [numHeads, qLen, kLen]
-        return permuted.expandedDimensions(axis: 0)      // [1, numHeads, qLen, kLen]
+        let values = bias(buckets) // [qLen, kLen, numHeads]
+        let permuted = values.transposed(2, 0, 1) // [numHeads, qLen, kLen]
+        return permuted.expandedDimensions(axis: 0) // [1, numHeads, qLen, kLen]
     }
 
     /// Bidirectional bucket map from signed `memory - context` distances to
@@ -194,7 +197,7 @@ public final class T5SelfAttention: Module {
             / log(Float(maxDistance) / Float(maxExact))
         let large = (
             MLXArray(Float(maxExact))
-            + logRatio * Float(halfBuckets - maxExact)
+                + logRatio * Float(halfBuckets - maxExact)
         ).asType(.int32)
         let largeClamped = MLX.minimum(large, MLXArray(Int32(halfBuckets - 1)))
 
@@ -247,6 +250,7 @@ public final class T5SelfAttention: Module {
 }
 
 // MARK: - T5Block (encoder layer = self-attn + FFN, each pre-normed)
+
 public final class T5Block: Module {
     public var layer0_norm: RMSNorm
     public var layer0_attn: T5SelfAttention
@@ -254,10 +258,10 @@ public final class T5Block: Module {
     public var layer1_mlp: T5DenseActDense
 
     public init(config: T5Config, hasRelativeBias: Bool) {
-        self.layer0_norm = RMSNorm(dimensions: config.dModel, eps: config.layerNormEpsilon)
-        self.layer0_attn = T5SelfAttention(config: config, hasRelativeBias: hasRelativeBias)
-        self.layer1_norm = RMSNorm(dimensions: config.dModel, eps: config.layerNormEpsilon)
-        self.layer1_mlp = T5DenseActDense(config: config)
+        layer0_norm = RMSNorm(dimensions: config.dModel, eps: config.layerNormEpsilon)
+        layer0_attn = T5SelfAttention(config: config, hasRelativeBias: hasRelativeBias)
+        layer1_norm = RMSNorm(dimensions: config.dModel, eps: config.layerNormEpsilon)
+        layer1_mlp = T5DenseActDense(config: config)
     }
 
     /// Pre-norm residual block: norm → attn → residual → norm → MLP →
@@ -293,11 +297,11 @@ public final class T5Encoder: Module {
 
     public init(config: T5Config = .t5Base) {
         self.config = config
-        self._shared.wrappedValue = Embedding(embeddingCount: config.vocabSize, dimensions: config.dModel)
-        self.blocks = (0..<config.numLayers).map { idx in
+        _shared.wrappedValue = Embedding(embeddingCount: config.vocabSize, dimensions: config.dModel)
+        blocks = (0 ..< config.numLayers).map { idx in
             T5Block(config: config, hasRelativeBias: idx == 0)
         }
-        self._finalLayerNorm.wrappedValue = RMSNorm(dimensions: config.dModel, eps: config.layerNormEpsilon)
+        _finalLayerNorm.wrappedValue = RMSNorm(dimensions: config.dModel, eps: config.layerNormEpsilon)
     }
 
     /// Encode a batch of token-id sequences into hidden states.
@@ -344,7 +348,7 @@ public final class T5Encoder: Module {
         // from ~60 meaningless positions dominating the 4–5 real tokens.
         // Without this, crossCond abs_mean is ~24× larger than Python's value.
         if let mask = attentionMask {
-            let maskF = mask.asType(.float32).expandedDimensions(axis: -1)  // [B, L, 1]
+            let maskF = mask.asType(.float32).expandedDimensions(axis: -1) // [B, L, 1]
             h = h * maskF
         }
 

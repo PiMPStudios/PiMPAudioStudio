@@ -10,7 +10,6 @@ import MLX
 /// Frequency-band channel mapping is a linear latent-channel heuristic scaled
 /// to the active audio sample rate's Nyquist frequency.
 public enum MaskBuilder {
-
     // MARK: - Public API
 
     /// Build a binary latent-space mask from an ``InpaintSelection``.
@@ -34,7 +33,6 @@ public enum MaskBuilder {
         latentDim: Int,
         hopSize: Int
     ) -> MLXArray {
-
         guard let frameRange = frameRange(
             selection: selection,
             totalDuration: totalDuration,
@@ -91,7 +89,7 @@ public enum MaskBuilder {
         let endFrame = max(0, min(rawEnd, latentFrames))
         guard startFrame < endFrame else { return nil }
 
-        return startFrame..<endFrame
+        return startFrame ..< endFrame
     }
 
     // MARK: - Private helpers
@@ -103,7 +101,7 @@ public enum MaskBuilder {
         latentFrames: Int
     ) -> MLXArray {
         var data = [Float](repeating: 0, count: latentFrames)
-        for i in startFrame..<endFrame {
+        for i in startFrame ..< endFrame {
             data[i] = 1.0
         }
         return MLXArray(data, [1, latentFrames, 1])
@@ -124,7 +122,6 @@ public enum MaskBuilder {
         nyquistHz: Float,
         band: FrequencyBand
     ) -> MLXArray {
-
         // Compute per-channel weights (0 or 1)
         let channelWeights = frequencyChannelWeights(
             latentDim: latentDim,
@@ -134,8 +131,8 @@ public enum MaskBuilder {
 
         // Build flat [latentFrames * latentDim] data
         var data = [Float](repeating: 0, count: latentFrames * latentDim)
-        for t in startFrame..<endFrame {
-            for ch in 0..<latentDim {
+        for t in startFrame ..< endFrame {
+            for ch in 0 ..< latentDim {
                 data[t * latentDim + ch] = channelWeights[ch]
             }
         }
@@ -151,9 +148,9 @@ public enum MaskBuilder {
         guard latentDim > 0, nyquistHz > 0 else { return [] }
 
         var channelWeights = [Float](repeating: 0, count: latentDim)
-        for channel in 0..<latentDim {
+        for channel in 0 ..< latentDim {
             let channelHz = Float(channel) / Float(max(latentDim - 1, 1)) * nyquistHz
-            if channelHz >= band.lowCutHz && channelHz <= band.highCutHz {
+            if channelHz >= band.lowCutHz, channelHz <= band.highCutHz {
                 channelWeights[channel] = 1.0
             }
         }

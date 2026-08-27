@@ -59,7 +59,7 @@ public struct DiTConfig: Codable, Sendable, Equatable {
         audioAcousticHiddenDim: 64,
         patchSize: 2,
         slidingWindow: 128,
-        layerTypes: (0..<24).map { ($0 + 1) % 2 != 0 ? "sliding_attention" : "full_attention" },
+        layerTypes: (0 ..< 24).map { ($0 + 1) % 2 != 0 ? "sliding_attention" : "full_attention" },
         ropeTheta: 1_000_000,
         maxPositionEmbeddings: 32768,
         textHiddenDim: 1024,
@@ -103,7 +103,7 @@ public struct DiTConfig: Codable, Sendable, Equatable {
         self.slidingWindow = slidingWindow
         self.layerTypes = layerTypes.count == numHiddenLayers
             ? layerTypes
-            : (0..<numHiddenLayers).map { ($0 + 1) % 2 != 0 ? "sliding_attention" : "full_attention" }
+            : (0 ..< numHiddenLayers).map { ($0 + 1) % 2 != 0 ? "sliding_attention" : "full_attention" }
         self.ropeTheta = ropeTheta
         self.maxPositionEmbeddings = maxPositionEmbeddings
         self.textHiddenDim = textHiddenDim
@@ -119,43 +119,43 @@ public struct DiTConfig: Codable, Sendable, Equatable {
         let numHiddenLayers = try container.decodeIfPresent(Int.self, forKey: .numHiddenLayers)
             ?? defaults.numHiddenLayers
         let layerTypes = try container.decodeIfPresent([String].self, forKey: .layerTypes)
-            ?? (0..<numHiddenLayers).map { ($0 + 1) % 2 != 0 ? "sliding_attention" : "full_attention" }
+            ?? (0 ..< numHiddenLayers).map { ($0 + 1) % 2 != 0 ? "sliding_attention" : "full_attention" }
 
-        self.init(
+        try self.init(
             hiddenSize: hiddenSize,
-            encoderHiddenSize: try container.decodeIfPresent(Int.self, forKey: .encoderHiddenSize)
+            encoderHiddenSize: container.decodeIfPresent(Int.self, forKey: .encoderHiddenSize)
                 ?? defaults.encoderHiddenSize,
-            intermediateSize: try container.decodeIfPresent(Int.self, forKey: .intermediateSize)
+            intermediateSize: container.decodeIfPresent(Int.self, forKey: .intermediateSize)
                 ?? defaults.intermediateSize,
             numHiddenLayers: numHiddenLayers,
-            numAttentionHeads: try container.decodeIfPresent(Int.self, forKey: .numAttentionHeads)
+            numAttentionHeads: container.decodeIfPresent(Int.self, forKey: .numAttentionHeads)
                 ?? defaults.numAttentionHeads,
-            numKeyValueHeads: try container.decodeIfPresent(Int.self, forKey: .numKeyValueHeads)
+            numKeyValueHeads: container.decodeIfPresent(Int.self, forKey: .numKeyValueHeads)
                 ?? defaults.numKeyValueHeads,
-            headDim: try container.decodeIfPresent(Int.self, forKey: .headDim)
+            headDim: container.decodeIfPresent(Int.self, forKey: .headDim)
                 ?? defaults.headDim,
-            rmsNormEps: try container.decodeIfPresent(Float.self, forKey: .rmsNormEps)
+            rmsNormEps: container.decodeIfPresent(Float.self, forKey: .rmsNormEps)
                 ?? defaults.rmsNormEps,
-            attentionBias: try container.decodeIfPresent(Bool.self, forKey: .attentionBias)
+            attentionBias: container.decodeIfPresent(Bool.self, forKey: .attentionBias)
                 ?? defaults.attentionBias,
-            inChannels: try container.decodeIfPresent(Int.self, forKey: .inChannels)
+            inChannels: container.decodeIfPresent(Int.self, forKey: .inChannels)
                 ?? defaults.inChannels,
-            audioAcousticHiddenDim: try container.decodeIfPresent(Int.self, forKey: .audioAcousticHiddenDim)
+            audioAcousticHiddenDim: container.decodeIfPresent(Int.self, forKey: .audioAcousticHiddenDim)
                 ?? defaults.audioAcousticHiddenDim,
-            patchSize: try container.decodeIfPresent(Int.self, forKey: .patchSize)
+            patchSize: container.decodeIfPresent(Int.self, forKey: .patchSize)
                 ?? defaults.patchSize,
-            slidingWindow: try container.decodeIfPresent(Int.self, forKey: .slidingWindow)
+            slidingWindow: container.decodeIfPresent(Int.self, forKey: .slidingWindow)
                 ?? defaults.slidingWindow,
             layerTypes: layerTypes,
-            ropeTheta: try container.decodeIfPresent(Float.self, forKey: .ropeTheta)
+            ropeTheta: container.decodeIfPresent(Float.self, forKey: .ropeTheta)
                 ?? defaults.ropeTheta,
-            maxPositionEmbeddings: try container.decodeIfPresent(Int.self, forKey: .maxPositionEmbeddings)
+            maxPositionEmbeddings: container.decodeIfPresent(Int.self, forKey: .maxPositionEmbeddings)
                 ?? defaults.maxPositionEmbeddings,
-            textHiddenDim: try container.decodeIfPresent(Int.self, forKey: .textHiddenDim)
+            textHiddenDim: container.decodeIfPresent(Int.self, forKey: .textHiddenDim)
                 ?? defaults.textHiddenDim,
-            timbreHiddenDim: try container.decodeIfPresent(Int.self, forKey: .timbreHiddenDim)
+            timbreHiddenDim: container.decodeIfPresent(Int.self, forKey: .timbreHiddenDim)
                 ?? defaults.timbreHiddenDim,
-            isTurbo: try container.decodeIfPresent(Bool.self, forKey: .isTurbo)
+            isTurbo: container.decodeIfPresent(Bool.self, forKey: .isTurbo)
                 ?? defaults.isTurbo
         )
     }
@@ -207,7 +207,7 @@ public class DiTDecoder: Module {
     let normOut: RMSNorm
     let projOut: ConvTransposed1d
     let scaleShiftTable: MLXArray
-    let nullConditionEmb: MLXArray   // [1, 1, hidden_size] learned "no conditioning" token for CFG
+    let nullConditionEmb: MLXArray // [1, 1, hidden_size] learned "no conditioning" token for CFG
     let layerTypes: [String]
     let slidingWindow: Int
 
@@ -236,23 +236,23 @@ public class DiTDecoder: Module {
         self.patchSize = patchSize
         self.slidingWindow = slidingWindow
 
-        let resolvedLayerTypes = layerTypes ?? (0..<numHiddenLayers).map { i in
+        let resolvedLayerTypes = layerTypes ?? (0 ..< numHiddenLayers).map { i in
             (i + 1) % 2 != 0 ? "sliding_attention" : "full_attention"
         }
         self.layerTypes = resolvedLayerTypes
 
-        self.rotaryEmb = RotaryEmbedding(
+        rotaryEmb = RotaryEmbedding(
             headDim: headDim, maxLen: maxPositionEmbeddings, base: ropeTheta
         )
-        self.projIn = Conv1d(
+        projIn = Conv1d(
             inputChannels: inChannels, outputChannels: hiddenSize,
             kernelSize: patchSize, stride: patchSize, padding: 0
         )
-        self.timeEmbed = TimestepEmbedding(inChannels: 256, timeEmbedDim: hiddenSize)
-        self.timeEmbedR = TimestepEmbedding(inChannels: 256, timeEmbedDim: hiddenSize)
-        self.conditionEmbedder = Linear(encoderHiddenSize, hiddenSize, bias: true)
+        timeEmbed = TimestepEmbedding(inChannels: 256, timeEmbedDim: hiddenSize)
+        timeEmbedR = TimestepEmbedding(inChannels: 256, timeEmbedDim: hiddenSize)
+        conditionEmbedder = Linear(encoderHiddenSize, hiddenSize, bias: true)
 
-        self.layers = (0..<numHiddenLayers).map { i in
+        layers = (0 ..< numHiddenLayers).map { i in
             DiTLayer(
                 hiddenSize: hiddenSize,
                 intermediateSize: intermediateSize,
@@ -267,13 +267,13 @@ public class DiTDecoder: Module {
             )
         }
 
-        self.normOut = RMSNorm(dimensions: hiddenSize, eps: rmsNormEps)
-        self.projOut = ConvTransposed1d(
+        normOut = RMSNorm(dimensions: hiddenSize, eps: rmsNormEps)
+        projOut = ConvTransposed1d(
             inputChannels: hiddenSize, outputChannels: audioAcousticHiddenDim,
             kernelSize: patchSize, stride: patchSize, padding: 0
         )
-        self.scaleShiftTable = MLXArray.zeros([1, 2, hiddenSize])
-        self.nullConditionEmb = MLXArray.zeros([1, 1, encoderHiddenSize])
+        scaleShiftTable = MLXArray.zeros([1, 2, hiddenSize])
+        nullConditionEmb = MLXArray.zeros([1, 1, encoderHiddenSize])
     }
 
     public convenience init(config: DiTConfig) {
@@ -298,7 +298,9 @@ public class DiTDecoder: Module {
     }
 
     private func getSlidingMask(seqLen: Int) -> MLXArray {
-        if let cached = slidingMasks[seqLen] { return cached }
+        if let cached = slidingMasks[seqLen] {
+            return cached
+        }
         let mask = createSlidingWindowMask(seqLen: seqLen, windowSize: slidingWindow)
         slidingMasks[seqLen] = mask
         return mask
@@ -387,11 +389,15 @@ public class DiTDecoder: Module {
 
         // Patch embedding via strided convolution
         h = projIn(h)
-        if shouldTrace { trace["proj_in"] = h }
+        if shouldTrace {
+            trace["proj_in"] = h
+        }
 
         // Project encoder states
         let encStates = conditionEmbedder(encoderHiddenStates)
-        if shouldTrace { trace["condition_embed"] = encStates }
+        if shouldTrace {
+            trace["condition_embed"] = encStates
+        }
 
         let seqLen = h.shape[1]
 
@@ -411,7 +417,7 @@ public class DiTDecoder: Module {
         // without padding mask in cross-attention, so applying one at
         // inference shifts the attention distribution away from training
         // and degrades prompt-following.
-        let _ = encoderAttentionMask  // intentionally unused
+        _ = encoderAttentionMask // intentionally unused
 
         // Process through transformer layers
         let tracedLayers = traceLayerIndices ?? []
@@ -438,14 +444,18 @@ public class DiTDecoder: Module {
         let outParts = outMod.split(parts: 2, axis: 1)
         let (shift, scale) = (outParts[0], outParts[1])
         h = normOut(h) * (1.0 + scale) + shift
-        if shouldTrace { trace["post_norm_out"] = h }
+        if shouldTrace {
+            trace["post_norm_out"] = h
+        }
 
         // De-patchify via transposed convolution
         h = projOut(h)
 
         // Crop back to original sequence length
-        h = h[0..., 0..<originalSeqLen, 0...]
-        if shouldTrace { trace["output"] = h }
+        h = h[0..., 0 ..< originalSeqLen, 0...]
+        if shouldTrace {
+            trace["output"] = h
+        }
 
         return (h, cache, trace)
     }

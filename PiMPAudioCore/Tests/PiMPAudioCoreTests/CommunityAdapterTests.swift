@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 @testable import PiMPAudioCore
+import Testing
 
 @Test func communityAdapterDecodesOptionalSHA256() throws {
     let json = Data("""

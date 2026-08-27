@@ -19,5 +19,7 @@ import MLX
 /// Retained only to avoid breaking any external callers; not used internally.
 public enum SFXVAENameMap {
     /// Always returns nil.  Use VAENameMap / convertVAEWeights instead.
-    public static func mapKey(_ key: String) -> String? { nil }
+    public static func mapKey(_ key: String) -> String? {
+        nil
+    }
 }

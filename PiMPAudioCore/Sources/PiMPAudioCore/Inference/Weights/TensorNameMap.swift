@@ -50,7 +50,9 @@ public enum TensorNameMap {
         guard key.hasPrefix("decoder.") else { return nil }
         var stripped = String(key.dropFirst("decoder.".count))
 
-        if stripped.contains("rotary_emb") { return nil }
+        if stripped.contains("rotary_emb") {
+            return nil
+        }
 
         // PyTorch wraps proj_in / proj_out in
         //   Sequential(Lambda(transpose), Conv1d|ConvTranspose1d, Lambda(transpose))
@@ -66,7 +68,9 @@ public enum TensorNameMap {
         // camelCase. Numeric components (layer indices) are kept verbatim.
         let components = stripped.split(separator: ".", omittingEmptySubsequences: false).map { component -> String in
             let s = String(component)
-            if Int(s) != nil { return s }
+            if Int(s) != nil {
+                return s
+            }
             return snakeToCamel(s)
         }
         return components.joined(separator: ".")

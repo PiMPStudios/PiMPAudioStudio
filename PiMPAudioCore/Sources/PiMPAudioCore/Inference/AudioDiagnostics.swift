@@ -190,11 +190,19 @@ public enum AudioDiagnostics {
 
         for info in sortedNewestFirst {
             let path = info.url.path
-            if keep.contains(path) { continue }
-            if info.modified < cutoff { continue } // too old → delete
-            if keep.count >= fileLimit { continue }
+            if keep.contains(path) {
+                continue
+            }
+            if info.modified < cutoff {
+                continue
+            } // too old → delete
+            if keep.count >= fileLimit {
+                continue
+            }
             let size = max(0, info.size)
-            if keptBytes + size > byteLimit, !keep.isEmpty { continue }
+            if keptBytes + size > byteLimit, !keep.isEmpty {
+                continue
+            }
             keep.insert(path)
             keptBytes += size
         }
@@ -228,7 +236,7 @@ public enum AudioDiagnostics {
         let flat = statsArray.reshaped([-1])
         let count = min(5, flat.shape[0])
         var firstN: [Float] = []
-        for i in 0..<count {
+        for i in 0 ..< count {
             firstN.append(flat[i].item(Float.self))
         }
 

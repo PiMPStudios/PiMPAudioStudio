@@ -26,7 +26,7 @@ struct ReverbControlView: View {
                         get: { parameters.decayTime },
                         set: { parameters.decayTime = $0; selectedPreset = nil }
                     ),
-                    range: 0.1...10.0,
+                    range: 0.1 ... 10.0,
                     format: "%.1fs"
                 )
 
@@ -36,7 +36,7 @@ struct ReverbControlView: View {
                         get: { parameters.wetDryMix },
                         set: { parameters.wetDryMix = $0; selectedPreset = nil }
                     ),
-                    range: 0...1.0,
+                    range: 0 ... 1.0,
                     format: "%.0f%%",
                     displayMultiplier: 100
                 )
@@ -47,7 +47,7 @@ struct ReverbControlView: View {
                         get: { parameters.preDelay },
                         set: { parameters.preDelay = $0; selectedPreset = nil }
                     ),
-                    range: 0...100,
+                    range: 0 ... 100,
                     format: "%.0fms"
                 )
 
@@ -57,7 +57,7 @@ struct ReverbControlView: View {
                         get: { parameters.damping },
                         set: { parameters.damping = $0; selectedPreset = nil }
                     ),
-                    range: 0...1.0,
+                    range: 0 ... 1.0,
                     format: "%.2f"
                 )
             }

@@ -25,12 +25,12 @@ public actor DiTActor {
 
     public init(decoder: DiTDecoder) {
         self.decoder = decoder
-        self.decoderConfig = .v15Base
+        decoderConfig = .v15Base
     }
 
     public init(config: DiTConfig = .v15Base) {
-        self.decoder = DiTDecoder(config: config)
-        self.decoderConfig = config
+        decoder = DiTDecoder(config: config)
+        decoderConfig = config
     }
 
     public func configure(config: DiTConfig) {
@@ -121,12 +121,17 @@ public actor DiTActor {
         // of supplied weight paths, then report how many supplied keys
         // actually correspond to a real parameter path.
         let modelParams = decoder!.parameters().flattened()
-        let modelKeys = Set(modelParams.map { $0.0 })
-        let suppliedKeys = Set(weights.map { $0.0 })
+        let modelKeys = Set(modelParams.map(\.0))
+        let suppliedKeys = Set(weights.map(\.0))
         let matched = suppliedKeys.intersection(modelKeys).count
         let onlyInSupplied = suppliedKeys.subtracting(modelKeys)
         let onlyInModel = modelKeys.subtracting(suppliedKeys)
-        logger.info("[DiTActor] config hidden=\(self.decoderConfig.hiddenSize) layers=\(self.decoderConfig.numHiddenLayers) decoderLayers=\(self.decoder?.layers.count ?? -1)")
+        let hiddenSize = decoderConfig.hiddenSize
+        let layerCount = decoderConfig.numHiddenLayers
+        let decoderLayerCount = decoder?.layers.count ?? -1
+        logger.info(
+            "[DiTActor] config hidden=\(hiddenSize) layers=\(layerCount) decoderLayers=\(decoderLayerCount)"
+        )
         logger.info("[DiTActor] supplied=\(suppliedKeys.count) model=\(modelKeys.count) matched=\(matched)")
         logger.info("[DiTActor] supplied-but-no-model-param (first 12): \(Array(onlyInSupplied.sorted().prefix(12)))")
         logger.info("[DiTActor] model-param-but-no-supplied (first 12): \(Array(onlyInModel.sorted().prefix(12)))")
@@ -160,7 +165,7 @@ public actor DiTActor {
     /// length matches what the model saw during training. Returns nil when
     /// no DiT weights are loaded yet.
     public func nullConditionEmbedding() -> MLXArray? {
-        return decoder?.nullConditionEmb
+        decoder?.nullConditionEmb
     }
 
     // MARK: - LoRA
@@ -504,10 +509,10 @@ public actor DiTActor {
     ) -> Set<Int> {
         let coverage = max(1, requestedLayerCount ?? legacyLoRATrainingLayerCount)
         guard layerCount > coverage else {
-            return Set(0..<layerCount)
+            return Set(0 ..< layerCount)
         }
 
-        return Set((layerCount - coverage)..<layerCount)
+        return Set((layerCount - coverage) ..< layerCount)
     }
 
     /// Cancel ongoing training.

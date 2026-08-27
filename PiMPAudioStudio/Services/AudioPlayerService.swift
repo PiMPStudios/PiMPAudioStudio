@@ -77,7 +77,11 @@ final class AudioPlayerService: ObservableObject {
     }
 
     func togglePlayback() {
-        if isPlaying { pause() } else { play() }
+        if isPlaying {
+            pause()
+        } else {
+            play()
+        }
     }
 
     func seek(to time: TimeInterval) {
@@ -100,11 +104,11 @@ final class AudioPlayerService: ObservableObject {
     private func startTimer() {
         timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
-                guard let self, let player = self.player else { return }
-                self.currentTime = player.currentTime
+                guard let self, let player else { return }
+                currentTime = player.currentTime
                 if !player.isPlaying {
-                    self.isPlaying = false
-                    self.stopTimer()
+                    isPlaying = false
+                    stopTimer()
                 }
             }
         }
@@ -130,14 +134,16 @@ final class AudioPlayerService: ObservableObject {
         let framesPerBucket = max(totalFrames / bucketCount, 1)
 
         var peaks = [Float](repeating: 0, count: bucketCount)
-        for bucket in 0..<bucketCount {
+        for bucket in 0 ..< bucketCount {
             let start = bucket * framesPerBucket
             let end = min(start + framesPerBucket, totalFrames)
             var maxVal: Float = 0
-            for frame in start..<end {
-                for ch in 0..<channelCount {
+            for frame in start ..< end {
+                for ch in 0 ..< channelCount {
                     let val = abs(channelData[ch][frame])
-                    if val > maxVal { maxVal = val }
+                    if val > maxVal {
+                        maxVal = val
+                    }
                 }
             }
             peaks[bucket] = maxVal

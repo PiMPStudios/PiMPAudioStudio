@@ -96,10 +96,10 @@ public enum CheckpointError: Error, LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case .filesMissing(let detail):
-            return "Checkpoint files missing: \(detail)"
-        case .modelMismatch(let expected, let actual):
-            return "Model mismatch: checkpoint was trained on '\(expected)' but current model is '\(actual)'"
+        case let .filesMissing(detail):
+            "Checkpoint files missing: \(detail)"
+        case let .modelMismatch(expected, actual):
+            "Model mismatch: checkpoint was trained on '\(expected)' but current model is '\(actual)'"
         }
     }
 }

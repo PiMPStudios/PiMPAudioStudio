@@ -6,8 +6,8 @@ public enum TensorParityMetricsError: Error, LocalizedError, Sendable {
 
     public var errorDescription: String? {
         switch self {
-        case .emptyTensor(let name):
-            return "Cannot compare empty tensor '\(name)'."
+        case let .emptyTensor(name):
+            "Cannot compare empty tensor '\(name)'."
         }
     }
 }
@@ -42,8 +42,8 @@ public enum TensorParityMetrics {
             throw TensorParityMetricsError.emptyTensor(name)
         }
 
-        let lhsComparable = lhs[0..<comparedElements]
-        let rhsComparable = rhs[0..<comparedElements]
+        let lhsComparable = lhs[0 ..< comparedElements]
+        let rhsComparable = rhs[0 ..< comparedElements]
         eval(lhsComparable, rhsComparable)
 
         let diff = lhsComparable - rhsComparable

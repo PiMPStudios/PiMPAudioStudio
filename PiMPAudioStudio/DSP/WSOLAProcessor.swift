@@ -1,6 +1,6 @@
 import Accelerate
 
-struct WSOLAProcessor {
+enum WSOLAProcessor {
     private static let windowSize = 1024
     private static let overlapRatio: Float = 0.75
     private static let analysisHop = 256
@@ -18,21 +18,21 @@ struct WSOLAProcessor {
         }
 
         var deinterleaved = [[Float]](repeating: [Float](repeating: 0, count: frameCount), count: channels)
-        for frame in 0..<frameCount {
-            for ch in 0..<channels {
+        for frame in 0 ..< frameCount {
+            for ch in 0 ..< channels {
                 deinterleaved[ch][frame] = samples[frame * channels + ch]
             }
         }
 
         var stretchedChannels = [[Float]]()
-        for ch in 0..<channels {
+        for ch in 0 ..< channels {
             stretchedChannels.append(stretchChannel(deinterleaved[ch], frameCount: frameCount, rate: rate))
         }
 
         let outputFrames = stretchedChannels[0].count
         var interleaved = [Float](repeating: 0, count: outputFrames * channels)
-        for frame in 0..<outputFrames {
-            for ch in 0..<channels {
+        for frame in 0 ..< outputFrames {
+            for ch in 0 ..< channels {
                 interleaved[frame * channels + ch] = stretchedChannels[ch][frame]
             }
         }
@@ -50,19 +50,22 @@ struct WSOLAProcessor {
         var synthesisPos = 0
         var writtenEnd = 0
 
-        while synthesisPos + windowSize <= outputLength && analysisPos + windowSize <= frameCount {
-            let bestPos: Int
-            if isFrameSilent(input, at: analysisPos) {
-                bestPos = analysisPos
+        while synthesisPos + windowSize <= outputLength, analysisPos + windowSize <= frameCount {
+            let bestPos: Int = if isFrameSilent(input, at: analysisPos) {
+                analysisPos
             } else if synthesisPos == 0 {
-                bestPos = analysisPos
+                analysisPos
             } else {
-                bestPos = findBestMatch(input: input, frameCount: frameCount,
-                                        idealPos: analysisPos, prevOutput: output,
-                                        prevEnd: synthesisPos)
+                findBestMatch(
+                    input: input,
+                    frameCount: frameCount,
+                    idealPos: analysisPos,
+                    prevOutput: output,
+                    prevEnd: synthesisPos
+                )
             }
 
-            for i in 0..<windowSize {
+            for i in 0 ..< windowSize {
                 let srcIdx = bestPos + i
                 guard srcIdx < frameCount else { break }
                 output[synthesisPos + i] += input[srcIdx] * window[i]
@@ -77,9 +80,13 @@ struct WSOLAProcessor {
         return Array(output.prefix(min(outputLength, max(synthesisPos, writtenEnd))))
     }
 
-    private static func findBestMatch(input: [Float], frameCount: Int,
-                                       idealPos: Int, prevOutput: [Float],
-                                       prevEnd: Int) -> Int {
+    private static func findBestMatch(
+        input: [Float],
+        frameCount: Int,
+        idealPos: Int,
+        prevOutput: [Float],
+        prevEnd: Int
+    ) -> Int {
         let searchStart = max(0, idealPos - searchRange)
         let searchEnd = min(frameCount - windowSize, idealPos + searchRange)
         guard searchStart < searchEnd else { return idealPos }
@@ -93,14 +100,19 @@ struct WSOLAProcessor {
 
         prevOutput.withUnsafeBufferPointer { outputPtr in
             input.withUnsafeBufferPointer { inputPtr in
-                for candidate in searchStart...searchEnd {
+                for candidate in searchStart ... searchEnd {
                     let overlapLength = min(refLength, frameCount - candidate)
                     guard overlapLength > 0 else { continue }
 
                     var correlation: Float = 0
-                    vDSP_dotpr(outputPtr.baseAddress! + refStart, 1,
-                               inputPtr.baseAddress! + candidate, 1,
-                               &correlation, vDSP_Length(overlapLength))
+                    vDSP_dotpr(
+                        outputPtr.baseAddress! + refStart,
+                        1,
+                        inputPtr.baseAddress! + candidate,
+                        1,
+                        &correlation,
+                        vDSP_Length(overlapLength)
+                    )
 
                     if correlation > bestCorrelation {
                         bestCorrelation = correlation
@@ -131,13 +143,13 @@ struct WSOLAProcessor {
         var envelope = [Float](repeating: 0, count: output.count)
         var pos = 0
         while pos + windowSize <= output.count {
-            for i in 0..<windowSize {
+            for i in 0 ..< windowSize {
                 envelope[pos + i] += window[i]
             }
             pos += synthesisHop
         }
 
-        for i in 0..<output.count {
+        for i in 0 ..< output.count {
             if envelope[i] > 0.001 {
                 output[i] /= envelope[i]
             }

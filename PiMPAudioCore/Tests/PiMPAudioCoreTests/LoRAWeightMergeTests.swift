@@ -1,7 +1,7 @@
 import Foundation
 import MLX
-import Testing
 @testable import PiMPAudioCore
+import Testing
 
 private func floatArray(_ values: [Float], _ shape: [Int]) -> MLXArray {
     MLXArray(values, shape)
@@ -77,7 +77,7 @@ private func floatArray(_ values: [Float], _ shape: [Int]) -> MLXArray {
     )
 
     let dict = Dictionary(uniqueKeysWithValues: result.weights.map { ($0.0, $0.1) })
-    let mergedDelta = matmul(dict["\(path).loraB"]!, dict["\(path).loraA"]!)
+    let mergedDelta = try matmul(#require(dict["\(path).loraB"]), #require(dict["\(path).loraA"]))
     eval(mergedDelta)
 
     // True blend: 0.5*[[2,0],[0,0]] + 0.5*[[0,0],[0,4]] = [[1,0],[0,2]]

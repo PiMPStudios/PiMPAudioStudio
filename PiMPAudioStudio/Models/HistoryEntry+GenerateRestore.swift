@@ -38,7 +38,7 @@ extension HistoryEntry {
             }
         }
 
-        let adapters = trace?.adapters ?? self.adapters ?? []
+        let adapters = trace?.adapters ?? adapters ?? []
         let primary = adapters.first
 
         return GenerationPreset(
@@ -63,7 +63,7 @@ extension HistoryEntry {
 
     /// Adapter stack payloads for GenerateView's stack restore path.
     func adapterStackPayload(trace: GenerationTrace? = nil) -> [[String: Any]] {
-        let adapters = trace?.adapters ?? self.adapters ?? []
+        let adapters = trace?.adapters ?? adapters ?? []
         return adapters.map { adapter in
             [
                 "id": adapter.id,

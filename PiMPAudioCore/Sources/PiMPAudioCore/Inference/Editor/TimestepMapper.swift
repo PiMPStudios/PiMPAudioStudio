@@ -1,5 +1,5 @@
 #if canImport(Darwin)
-import Darwin
+    import Darwin
 #endif
 
 public enum TimestepMapper {
@@ -67,8 +67,10 @@ public enum TimestepMapper {
             ? logf((1.0 - sigmaMax) / sigmaMax + 1e-6)
             : -6.0
         let logsnrMin: Float = 2.0
-        return (0..<steps).map { i in
-            if i == 0 { return sigmaMax }
+        return (0 ..< steps).map { i in
+            if i == 0 {
+                return sigmaMax
+            }
             let logsnr = logsnrMax + Float(i) / Float(steps) * (logsnrMin - logsnrMax)
             return 1.0 / (1.0 + expf(logsnr))
         }
@@ -90,7 +92,9 @@ public enum TimestepMapper {
         let start = startStep(forStrength: strength, totalSteps: totalSteps)
         guard start > 0 else { return [] }
         let full = sfxRFSchedule(steps: totalSteps, sigmaMax: sigmaMax)
-        if start >= totalSteps { return full }
+        if start >= totalSteps {
+            return full
+        }
         return Array(full[start...])
     }
 }

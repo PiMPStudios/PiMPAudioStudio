@@ -1,12 +1,11 @@
-import Testing
 import MLX
 @testable import PiMPAudioCore
+import Testing
 
 // MARK: - InpaintCoordinator Tests
 
 @Suite("InpaintCoordinator")
 struct InpaintCoordinatorTests {
-
     // MARK: - Helpers
 
     private func makeCoordinator() -> InpaintCoordinator {
@@ -65,7 +64,7 @@ struct InpaintCoordinatorTests {
     func loadAudioReturnsCorrectMetadata() async throws {
         let coordinator = makeCoordinator()
         let sampleRate = 44100
-        let numSamples = sampleRate * 4  // 4 seconds
+        let numSamples = sampleRate * 4 // 4 seconds
         let samples = MLXArray.zeros([1, numSamples, 2])
         let result = try await coordinator.loadAudio(samples: samples, sampleRate: sampleRate)
         #expect(result.sampleRate == sampleRate)
@@ -118,7 +117,7 @@ struct InpaintCoordinatorTests {
     @Test("loadAudio defers VAE encode and reports zero latentFrames")
     func loadAudioDefersVAEEncode() async throws {
         let coordinator = makeCoordinator()
-        let samples = MLXArray.zeros([1, 44100 * 2, 2])  // 2 seconds
+        let samples = MLXArray.zeros([1, 44100 * 2, 2]) // 2 seconds
         let result = try await coordinator.loadAudio(samples: samples, sampleRate: 44100)
         // Full-track encode is deferred until first AI edit so Open/History→Edit
         // does not park multi-tens-of-GB of MLX GPU cache.

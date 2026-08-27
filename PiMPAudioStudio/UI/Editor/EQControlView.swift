@@ -7,7 +7,7 @@ struct EQControlView: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            ForEach(0..<3, id: \.self) { index in
+            ForEach(0 ..< 3, id: \.self) { index in
                 bandView(index: index)
             }
         }
@@ -44,11 +44,11 @@ struct EQControlView: View {
             }
 
             VStack(spacing: 4) {
-                Slider(value: $parameters.bands[index].frequency, in: 20...20000)
+                Slider(value: $parameters.bands[index].frequency, in: 20 ... 20000)
                     .tint(.blue)
-                Slider(value: $parameters.bands[index].gain, in: -24...24)
+                Slider(value: $parameters.bands[index].gain, in: -24 ... 24)
                     .tint(gainColor(parameters.bands[index].gain))
-                Slider(value: $parameters.bands[index].q, in: 0.1...10)
+                Slider(value: $parameters.bands[index].q, in: 0.1 ... 10)
                     .tint(.gray)
             }
         }
@@ -71,8 +71,12 @@ struct EQControlView: View {
     }
 
     private func gainColor(_ gain: Float) -> Color {
-        if gain > 0.1 { return .green }
-        if gain < -0.1 { return .red }
+        if gain > 0.1 {
+            return .green
+        }
+        if gain < -0.1 {
+            return .red
+        }
         return .secondary
     }
 }

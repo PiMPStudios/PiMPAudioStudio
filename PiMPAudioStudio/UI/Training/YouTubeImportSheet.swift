@@ -16,7 +16,9 @@ struct YouTubeImportSheet: View {
     @State private var ytDlpVersion: String?
     @State private var captionsWriteError: String?
 
-    private var ytDlpFound: Bool { ytDlpVersion != nil }
+    private var ytDlpFound: Bool {
+        ytDlpVersion != nil
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -30,7 +32,7 @@ struct YouTubeImportSheet: View {
                     switch builder.phase {
                     case .idle:
                         EmptyView()
-                    case .failed(let msg):
+                    case let .failed(msg):
                         errorView(msg)
                     case .fetchingPlaylist, .downloading, .chunking:
                         progressSection
@@ -49,7 +51,9 @@ struct YouTubeImportSheet: View {
         .frame(minWidth: 540, minHeight: 500)
         .task { ytDlpVersion = await YouTubeDatasetBuilder.ytDlpVersion() }
         .onChange(of: builder.phase) { _, newPhase in
-            if case .complete = newPhase { editableClips = builder.resultClips }
+            if case .complete = newPhase {
+                editableClips = builder.resultClips
+            }
         }
     }
 
@@ -78,39 +82,40 @@ struct YouTubeImportSheet: View {
 
     // MARK: - yt-dlp Banner
 
+    @ViewBuilder
     private var ytDlpBanner: some View {
-        Group {
-            if ytDlpFound, let version = ytDlpVersion {
-                HStack(spacing: 8) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
-                    Text("yt-dlp \(version) found")
-                        .font(.callout)
-                        .foregroundStyle(.primary)
-                    Spacer()
-                }
-                .padding(10)
-                .background(.green.opacity(0.08))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-            } else {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.orange)
-                        Text("yt-dlp not found")
-                            .font(.callout)
-                            .fontWeight(.semibold)
-                    }
-                    Text("Install via Homebrew: **brew install yt-dlp**")
-                        .font(.caption)
-                    Text("If already installed, PiMPAudioStudio may need Full Disk Access in System Settings \u{2192} Privacy & Security.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(10)
-                .background(.orange.opacity(0.08))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+        if ytDlpFound, let version = ytDlpVersion {
+            HStack(spacing: 8) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                Text("yt-dlp \(version) found")
+                    .font(.callout)
+                    .foregroundStyle(.primary)
+                Spacer()
             }
+            .padding(10)
+            .background(.green.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        } else {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                    Text("yt-dlp not found")
+                        .font(.callout)
+                        .fontWeight(.semibold)
+                }
+                Text("Install via Homebrew: **brew install yt-dlp**")
+                    .font(.caption)
+                Text(
+                    "If already installed, PiMPAudioStudio may need Full Disk Access in System Settings \u{2192} Privacy & Security."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+            .padding(10)
+            .background(.orange.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
         }
     }
 
@@ -126,9 +131,11 @@ struct YouTubeImportSheet: View {
                 .textFieldStyle(.roundedBorder)
                 .disabled(builder.phase.isRunning)
 
-            Text("Accepted: channel URL (@handle or /channel/), playlist URL (/playlist?list=), or any YouTube URL yt-dlp can parse as a playlist.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Text(
+                "Accepted: channel URL (@handle or /channel/), playlist URL (/playlist?list=), or any YouTube URL yt-dlp can parse as a playlist."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("Style Description")
@@ -155,7 +162,7 @@ struct YouTubeImportSheet: View {
             VStack(spacing: 6) {
                 LabeledContent("Clip Length") {
                     HStack(spacing: 8) {
-                        Slider(value: $config.clipLength, in: 15...60, step: 5)
+                        Slider(value: $config.clipLength, in: 15 ... 60, step: 5)
                             .frame(maxWidth: 160)
                             .disabled(builder.phase.isRunning)
                         Text("\(Int(config.clipLength))s")
@@ -165,19 +172,23 @@ struct YouTubeImportSheet: View {
                     }
                 }
                 LabeledContent("Clips per Track") {
-                    Stepper("\(config.clipsPerTrack)",
-                            value: $config.clipsPerTrack,
-                            in: 1...20)
-                        .disabled(builder.phase.isRunning)
-                        .frame(maxWidth: 130)
+                    Stepper(
+                        "\(config.clipsPerTrack)",
+                        value: $config.clipsPerTrack,
+                        in: 1 ... 20
+                    )
+                    .disabled(builder.phase.isRunning)
+                    .frame(maxWidth: 130)
                 }
                 LabeledContent("Max Total Clips") {
-                    Stepper("\(config.maxTotalClips)",
-                            value: $config.maxTotalClips,
-                            in: 5...200,
-                            step: 5)
-                        .disabled(builder.phase.isRunning)
-                        .frame(maxWidth: 130)
+                    Stepper(
+                        "\(config.maxTotalClips)",
+                        value: $config.maxTotalClips,
+                        in: 5 ... 200,
+                        step: 5
+                    )
+                    .disabled(builder.phase.isRunning)
+                    .frame(maxWidth: 130)
                 }
             }
             .padding(10)
@@ -237,42 +248,41 @@ struct YouTubeImportSheet: View {
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
+    @ViewBuilder
     private var progressIcon: some View {
-        Group {
-            switch builder.phase {
-            case .fetchingPlaylist:
-                Image(systemName: "list.bullet.rectangle")
-                    .font(.title2)
-                    .foregroundStyle(.blue)
-            case .downloading:
-                Image(systemName: "arrow.down.circle")
-                    .font(.title2)
-                    .foregroundStyle(.blue)
-            case .chunking:
-                Image(systemName: "scissors")
-                    .font(.title2)
-                    .foregroundStyle(.orange)
-            default:
-                EmptyView()
-            }
+        switch builder.phase {
+        case .fetchingPlaylist:
+            Image(systemName: "list.bullet.rectangle")
+                .font(.title2)
+                .foregroundStyle(.blue)
+        case .downloading:
+            Image(systemName: "arrow.down.circle")
+                .font(.title2)
+                .foregroundStyle(.blue)
+        case .chunking:
+            Image(systemName: "scissors")
+                .font(.title2)
+                .foregroundStyle(.orange)
+        default:
+            EmptyView()
         }
     }
 
     private var progressLabel: String {
         switch builder.phase {
-        case .fetchingPlaylist: return "Fetching playlist…"
-        case .downloading(let idx, let total, _): return "Downloading \(idx) of \(total)"
-        case .chunking(let idx, let total): return "Chunking audio \(idx) of \(total)"
-        default: return ""
+        case .fetchingPlaylist: "Fetching playlist…"
+        case let .downloading(idx, total, _): "Downloading \(idx) of \(total)"
+        case let .chunking(idx, total): "Chunking audio \(idx) of \(total)"
+        default: ""
         }
     }
 
     private var progressDetail: String {
         switch builder.phase {
-        case .fetchingPlaylist: return "Querying video list with yt-dlp"
-        case .downloading(_, _, let title): return title
-        case .chunking(let idx, _): return "Slicing video \(idx) into \(Int(config.clipLength))s clips"
-        default: return ""
+        case .fetchingPlaylist: "Querying video list with yt-dlp"
+        case let .downloading(_, _, title): title
+        case let .chunking(idx, _): "Slicing video \(idx) into \(Int(config.clipLength))s clips"
+        default: ""
         }
     }
 
@@ -283,10 +293,10 @@ struct YouTubeImportSheet: View {
             ProgressView()
                 .progressViewStyle(.linear)
                 .frame(maxWidth: .infinity)
-        case .downloading(let idx, let total, _):
+        case let .downloading(idx, total, _):
             ProgressView(value: Double(idx - 1), total: Double(total))
                 .frame(maxWidth: .infinity)
-        case .chunking(let idx, let total):
+        case let .chunking(idx, total):
             ProgressView(value: Double(idx - 1), total: Double(total))
                 .frame(maxWidth: .infinity)
         default:
@@ -306,7 +316,7 @@ struct YouTubeImportSheet: View {
                     .font(.callout)
                     .fontWeight(.medium)
                 Spacer()
-                if case .complete(let dir, _) = builder.phase {
+                if case let .complete(dir, _) = builder.phase {
                     Button {
                         NSWorkspace.shared.open(dir)
                     } label: {
@@ -392,7 +402,7 @@ struct YouTubeImportSheet: View {
             case .complete:
                 Button("Open in Training") {
                     captionsWriteError = nil
-                    if case .complete(let dir, _) = builder.phase {
+                    if case let .complete(dir, _) = builder.phase {
                         do {
                             try YouTubeDatasetBuilder.writeCaptionsFile(clips: editableClips, to: dir)
                         } catch {

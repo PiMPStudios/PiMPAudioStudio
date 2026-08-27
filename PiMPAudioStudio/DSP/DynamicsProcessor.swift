@@ -1,5 +1,5 @@
-import Foundation
 import Accelerate
+import Foundation
 
 /// Stereo-linked glue compressor, peak limiter, and loudness staging for editor polish P1.
 ///
@@ -12,7 +12,7 @@ enum DynamicsProcessor {
         var errorDescription: String? {
             switch self {
             case .bufferEmpty:
-                return "The audio buffer is empty."
+                "The audio buffer is empty."
             }
         }
     }
@@ -52,10 +52,10 @@ enum DynamicsProcessor {
         )
 
         var envelopeDB: Float = -120
-        for frame in 0..<frameCount {
+        for frame in 0 ..< frameCount {
             var peak: Float = 0
             let base = frame * channels
-            for ch in 0..<channels {
+            for ch in 0 ..< channels {
                 peak = max(peak, abs(floats[base + ch]))
             }
             let inputDB = peak > 1e-10 ? 20.0 * log10(peak) : -120
@@ -73,7 +73,7 @@ enum DynamicsProcessor {
                 kneeDB: knee
             )
             let gain = pow(10.0, grDB / 20.0) * makeupLinear
-            for ch in 0..<channels {
+            for ch in 0 ..< channels {
                 floats[base + ch] *= gain
             }
         }
@@ -112,10 +112,10 @@ enum DynamicsProcessor {
         )
 
         var envelope: Float = 0
-        for frame in 0..<frameCount {
+        for frame in 0 ..< frameCount {
             var peak: Float = 0
             let base = frame * channels
-            for ch in 0..<channels {
+            for ch in 0 ..< channels {
                 peak = max(peak, abs(floats[base + ch]))
             }
 
@@ -126,14 +126,18 @@ enum DynamicsProcessor {
             }
 
             var gain: Float = 1
-            if envelope > ceilingLinear && envelope > 1e-10 {
+            if envelope > ceilingLinear, envelope > 1e-10 {
                 gain = ceilingLinear / envelope
             }
-            for ch in 0..<channels {
+            for ch in 0 ..< channels {
                 var sample = floats[base + ch] * gain
                 // Hard safety clamp at ceiling (after smooth GR).
-                if sample > ceilingLinear { sample = ceilingLinear }
-                if sample < -ceilingLinear { sample = -ceilingLinear }
+                if sample > ceilingLinear {
+                    sample = ceilingLinear
+                }
+                if sample < -ceilingLinear {
+                    sample = -ceilingLinear
+                }
                 floats[base + ch] = sample
             }
         }
@@ -168,8 +172,12 @@ enum DynamicsProcessor {
         var deltaDB = target - current
         let maxBoost = max(parameters.maxBoostDB, 0)
         // Cap boost; allow large cuts so hot masters can still come down.
-        if deltaDB > maxBoost { deltaDB = maxBoost }
-        if deltaDB < -36 { deltaDB = -36 }
+        if deltaDB > maxBoost {
+            deltaDB = maxBoost
+        }
+        if deltaDB < -36 {
+            deltaDB = -36
+        }
 
         if abs(deltaDB) > 0.05 {
             var scale = pow(10.0, deltaDB / 20.0)
@@ -220,10 +228,10 @@ enum DynamicsProcessor {
         )
 
         var envelopeDB: Float = -120
-        for frame in 0..<frameCount {
+        for frame in 0 ..< frameCount {
             var peak: Float = 0
             let base = frame * channels
-            for ch in 0..<channels {
+            for ch in 0 ..< channels {
                 peak = max(peak, abs(floats[base + ch]))
             }
             let inputDB = peak > 1e-10 ? 20.0 * log10(peak) : -120
@@ -242,7 +250,7 @@ enum DynamicsProcessor {
                 rangeDB: range
             )
             let gain = pow(10.0, grDB / 20.0)
-            for ch in 0..<channels {
+            for ch in 0 ..< channels {
                 floats[base + ch] *= gain
             }
         }
@@ -263,7 +271,9 @@ enum DynamicsProcessor {
         // Extra attenuation beyond the under-threshold distance: under * (1 - 1/ratio)
         var gr = -under * (1.0 - 1.0 / safeRatio)
         let minGR = -max(rangeDB, 0)
-        if gr < minGR { gr = minGR }
+        if gr < minGR {
+            gr = minGR
+        }
         return gr
     }
 
@@ -293,14 +303,16 @@ enum DynamicsProcessor {
             compressedOver = (x * x) / (2 * kneeDB)
         }
 
-        if compressedOver <= 0 { return 0 }
+        if compressedOver <= 0 {
+            return 0
+        }
         // Output overshoot = compressedOver / ratio; GR = output - input overshoot
         return compressedOver * (1.0 / safeRatio - 1.0)
     }
 
     private static func envelopeCoefficient(timeMilliseconds: Float, sampleRate: Float) -> Float {
         // Standard one-pole: exp(-1 / (seconds * sampleRate))
-        let seconds = max(Double(timeMilliseconds), 0.01) / 1_000.0
+        let seconds = max(Double(timeMilliseconds), 0.01) / 1000.0
         return Float(exp(-1.0 / (seconds * Double(sampleRate))))
     }
 }
