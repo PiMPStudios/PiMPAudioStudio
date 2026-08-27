@@ -95,11 +95,8 @@ completed **#22**).
 
 12. ~~`ENABLE_TESTABILITY` on Release~~ — done.
 
-13. **God files** (maintainability)
-    `RunPodService` ~3k, enrichment, package writer, MCP catalog/server. This is
-    how `generate` missed the confirm list, and how **#23** `cancel_operation`
-    missed it again. Eventual shape: one tool declaration with Codable input
-    plus `requiresConfirmation`, schema/dispatch derived from that.
+13. ~~God files / typed MCP catalog~~ — parked: confirm-list misses already
+    fixed (**#1**, **#23**). No split or catalog rewrite without a new bug.
 
 14. ~~Three `CapturedProcess` copies~~ — parked: wrappers have diverged
     (timeout, stdin, SIGKILL). Do not unify unless a hang shows up.
@@ -123,7 +120,7 @@ completed **#22**).
 
 ## Highest-leverage next picks
 
-Do not start **#13** as a surprise rewrite. **#21** is nits.
+**#21** is nits. Do not reopen parked rewrites from later reviews.
 
 ## Declined or parked (do not re-open from later reviews)
 
@@ -147,6 +144,10 @@ Do not start **#13** as a surprise rewrite. **#21** is nits.
 - **#14 Shared `CapturedProcess`** — YouTube, RunPod, and provider CLI
   wrappers stay separate. They share a pipe/cancel shape but differ on
   timeout, stdin, and SIGKILL. Unify only if a real hang or timeout bug
+  shows up.
+- **#13 God files / typed MCP catalog** — `generate` and `cancel_operation`
+  confirm misses are fixed. File size and a single-declaration catalog are
+  not current bugs. Do not split RunPod/enrichment/MCP unless a new miss
   shows up.
 
 ## What’s already in good shape
