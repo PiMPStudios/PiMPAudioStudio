@@ -8,6 +8,23 @@ All notable changes to PiMP Audio Studio are documented here.
 
 ### Fixed
 
+- **Editor DSP/polish no longer overwrites a newly opened file.** Opening or
+  undoing while an effect is running cancels that work and drops the stale
+  result instead of committing it under the new filename.
+- **Rejected generate during model release no longer clears the release
+  gate.** `canSubmitGeneration` stays false while unload owns the lifecycle.
+- **Stable Audio unload clears VAE/DiT references before publishing a nil
+  pipeline**, so the editor cannot retain those weights after Release GPU
+  Memory.
+- **Remote `preprocess` jobs stop after tensors** and no longer launch an
+  unrequested training run.
+- **Remote tensor reuse now requires a dataset/model fingerprint match**, not
+  only finite tensor files.
+- **Remote training preserves explicit `0` / `0.0` settings** such as seed and
+  `cfg_ratio` instead of substituting defaults.
+- **Remote training success requires a current-run adapter** (`*.safetensors`
+  under `side_step_output/final`); a zero-exit train with no weights is a
+  failure.
 - **Community adapter catalog now loads from `PiMPStudios/pimp-adapters`**.
   The previous catalog URL 404'd and showed an empty list.
 - **Dataset review bindings no longer force-unwrap** the loaded package.

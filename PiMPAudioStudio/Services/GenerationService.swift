@@ -209,6 +209,9 @@ final class GenerationService: ObservableObject {
         if trainingService?.isTrainingActive == true {
             return false
         }
+        if activeReleaseID != nil {
+            return false
+        }
         switch state {
         case .idle, .complete, .cancelled, .error:
             return true
@@ -228,8 +231,7 @@ final class GenerationService: ObservableObject {
             state = .error("Cannot generate while training is running. Stop training first.")
             return
         }
-        if case .releasing = state {
-            state = .error("Cannot generate while models are still releasing. Wait a moment and try again.")
+        if activeReleaseID != nil || state == .releasing {
             return
         }
 
@@ -512,6 +514,17 @@ final class GenerationService: ObservableObject {
         defer {
             selectedAdapterID = previousSelectedAdapterID
             adapterStack = previousAdapterStack
+        }
+
+        if activeReleaseID != nil || state == .releasing {
+            throw GenerationBatchError.failed(
+                "Cannot generate while models are still releasing. Wait a moment and try again."
+            )
+        }
+        if trainingService?.isTrainingActive == true {
+            throw GenerationBatchError.failed(
+                "Cannot generate while training is running. Stop training first."
+            )
         }
 
         generate(request: request)

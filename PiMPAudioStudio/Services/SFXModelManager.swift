@@ -178,21 +178,23 @@ final class SFXModelManager: ObservableObject {
     /// Release the in-memory SFX pipeline, freeing GPU memory.
     /// The downloaded model files remain on disk and can be reloaded via loadPipeline().
     func unloadPipeline() {
-        pipeline = nil
-        tokenizer = nil
-        sfxVAE = nil
-        sfxDiffusion = nil
-        loadedModelID = nil
+        clearLoadedModelsThenPublishNilPipeline()
     }
 
     func deleteWeights() {
         try? FileManager.default.removeItem(at: modelPath)
         downloadState = .notDownloaded
-        pipeline = nil
+        clearLoadedModelsThenPublishNilPipeline()
+    }
+
+    /// Nil dependent actors before `$pipeline` so Combine subscribers cannot
+    /// recapture VAE/DiT weights after "Release GPU Memory".
+    private func clearLoadedModelsThenPublishNilPipeline() {
         tokenizer = nil
         sfxVAE = nil
         sfxDiffusion = nil
         loadedModelID = nil
+        pipeline = nil
     }
 
     private func isModelDownloaded() -> Bool {

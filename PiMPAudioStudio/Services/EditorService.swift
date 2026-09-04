@@ -29,9 +29,9 @@ class EditorService: ObservableObject {
             sfxPipelineSubscription = sfxMgr.$pipeline
                 .sink { [weak self] pipeline in
                     guard let self, let coord = coordinator else { return }
-                    let tokenizer = sfxMgr.tokenizer
-                    let vae = sfxMgr.sfxVAE
-                    let diffusion = sfxMgr.sfxDiffusion
+                    let tokenizer = pipeline == nil ? nil : sfxMgr.tokenizer
+                    let vae = pipeline == nil ? nil : sfxMgr.sfxVAE
+                    let diffusion = pipeline == nil ? nil : sfxMgr.sfxDiffusion
                     Task {
                         await coord.setSFXPipeline(pipeline, tokenizer: tokenizer)
                         await coord.setSFXActors(vae: vae, diffusion: diffusion)

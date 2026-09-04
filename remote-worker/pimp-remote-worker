@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as _dt
+import hashlib
 import json
 import os
 import re
@@ -161,6 +162,26 @@ def first_number(*values: Any) -> float | None:
             except ValueError:
                 continue
     return None
+
+
+def coerce_int(value: Any, default: int) -> int:
+    if value is None or value == "":
+        return default
+    return int(value)
+
+
+def coerce_float(value: Any, default: float) -> float:
+    if value is None or value == "":
+        return default
+    return float(value)
+
+
+def file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def find_remote_job(root: Path) -> Path:
@@ -381,18 +402,9 @@ class RemoteWorker:
         metrics: dict[str, float] | None = None,
         error: dict[str, Any] | None = None,
         extra_artifacts: list[dict[str, Any]] | None = None,
+        include_training_artifacts: bool = True,
     ) -> None:
         artifacts: list[dict[str, Any]] = [
-            {
-                "kind": "final_adapter",
-                "path": relative_path(self.final_adapter_dir, self.package_root),
-                "media_type": "application/vnd.pimp-audio.adapter",
-            },
-            {
-                "kind": "checkpoints",
-                "path": relative_path(self.checkpoints_dir, self.package_root),
-                "media_type": "inode/directory",
-            },
             {
                 "kind": "logs",
                 "path": relative_path(self.logs_file, self.package_root),
@@ -404,6 +416,20 @@ class RemoteWorker:
                 "media_type": "application/x-ndjson",
             },
         ]
+        if include_training_artifacts:
+            artifacts = [
+                {
+                    "kind": "final_adapter",
+                    "path": relative_path(self.final_adapter_dir, self.package_root),
+                    "media_type": "application/vnd.pimp-audio.adapter",
+                },
+                {
+                    "kind": "checkpoints",
+                    "path": relative_path(self.checkpoints_dir, self.package_root),
+                    "media_type": "inode/directory",
+                },
+                *artifacts,
+            ]
         if extra_artifacts:
             artifacts.extend(extra_artifacts)
         result = {
@@ -1148,8 +1174,9 @@ except Exception as exc:
 
         ace_dir, checkpoints, python = self.env_paths()
         train_py = ace_dir / "train.py"
-        configured_max_duration = float(
-            training.get("max_duration_seconds") or MAX_CLIP_DURATION_SECONDS
+        configured_max_duration = coerce_float(
+            training.get("max_duration_seconds"),
+            MAX_CLIP_DURATION_SECONDS,
         )
         selected_durations = [
             first_number(sample.get("duration"))
@@ -1163,13 +1190,13 @@ except Exception as exc:
             MAX_CLIP_DURATION_SECONDS,
             max(configured_max_duration, selected_duration),
         ))
-        epochs = int(training.get("epochs") or (100 if task == "train_lora" else 80))
-        save_every = int(training.get("save_every") or 10)
-        batch_size = int(training.get("batch_size") or 1)
-        grad_accum = int(training.get("gradient_accumulation_steps") or 2)
-        lr = float(training.get("learning_rate") or 0.00008)
-        cfg_ratio = float(training.get("cfg_ratio") or 0.15)
-        seed = int(training.get("seed") or 42)
+        epochs = coerce_int(training.get("epochs"), 100 if task == "train_lora" else 80)
+        save_every = coerce_int(training.get("save_every"), 10)
+        batch_size = coerce_int(training.get("batch_size"), 1)
+        grad_accum = coerce_int(training.get("gradient_accumulation_steps"), 2)
+        lr = coerce_float(training.get("learning_rate"), 0.00008)
+        cfg_ratio = coerce_float(training.get("cfg_ratio"), 0.15)
+        seed = coerce_int(training.get("seed"), 42)
         target_modules = training.get("target_modules") if isinstance(training.get("target_modules"), list) else []
         target_modules = [str(item) for item in target_modules] or ["q_proj", "v_proj"]
         attention_type = first_string(training.get("attention_type"), "both") or "both"
@@ -1280,9 +1307,9 @@ except Exception as exc:
         if adapter_type == "lokr":
             train_cmd.extend([
                 "--lokr-linear-dim",
-                str(int(training.get("lokr_linear_dim") or 32)),
+                str(coerce_int(training.get("lokr_linear_dim"), 32)),
                 "--lokr-linear-alpha",
-                str(int(training.get("lokr_linear_alpha") or 64)),
+                str(coerce_int(training.get("lokr_linear_alpha"), 64)),
             ])
             if bool(training.get("lokr_weight_decompose", True)):
                 train_cmd.append("--lokr-weight-decompose")
@@ -1372,6 +1399,70 @@ except Exception as exc:
             return 0
         return len(list(self.tensor_dir.glob("*.pt")))
 
+    def cache_fingerprint_path(self) -> Path:
+        return self.tensor_dir / "cache_fingerprint.json"
+
+    def preprocessing_fingerprint(
+        self,
+        dataset: dict[str, Any],
+        *,
+        variant: str,
+        precision: str,
+        max_duration: int,
+    ) -> dict[str, Any]:
+        samples: list[dict[str, Any]] = []
+        for sample in dataset.get("samples") or []:
+            if not isinstance(sample, dict):
+                continue
+            source = Path(str(sample.get("source_audio_path") or ""))
+            samples.append(
+                {
+                    "id": sample.get("id"),
+                    "asset_id": sample.get("asset_id"),
+                    "asset_role": sample.get("asset_role"),
+                    "caption": sample.get("caption"),
+                    "lyrics": sample.get("lyrics"),
+                    "duration": sample.get("duration"),
+                    "training_range": sample.get("training_range"),
+                    "source_range": sample.get("source_range"),
+                    "source_filename": sample.get("source_filename"),
+                    "audio_sha256": file_sha256(source) if source.is_file() else "",
+                }
+            )
+        return {
+            "schema_version": 1,
+            "variant": variant,
+            "preprocess_precision": precision,
+            "max_duration": max_duration,
+            "samples": samples,
+        }
+
+    def read_cache_fingerprint(self) -> dict[str, Any] | None:
+        path = self.cache_fingerprint_path()
+        if not path.is_file():
+            return None
+        try:
+            payload = read_json(path)
+        except (OSError, json.JSONDecodeError, TypeError, ValueError):
+            return None
+        return payload if isinstance(payload, dict) else None
+
+    def write_cache_fingerprint(self, fingerprint: dict[str, Any]) -> None:
+        self.tensor_dir.mkdir(parents=True, exist_ok=True)
+        write_json(self.cache_fingerprint_path(), fingerprint)
+
+    def fingerprints_match(self, expected: dict[str, Any], stored: dict[str, Any] | None) -> bool:
+        if stored is None:
+            return False
+        return json.loads(json.dumps(expected, sort_keys=True, default=str)) == json.loads(
+            json.dumps(stored, sort_keys=True, default=str)
+        )
+
+    def has_adapter_weights(self, directory: Path) -> bool:
+        if not directory.is_dir():
+            return False
+        return any(directory.rglob("*.safetensors"))
+
     def tensor_cache_health(self, repair: bool = False) -> tuple[bool, str, int]:
         if not self.tensor_dir.exists():
             return False, "tensor directory is missing", 0
@@ -1430,20 +1521,25 @@ except Exception as exc:
         return True, "tensor cache is finite", len(tensor_paths)
 
     def copy_outputs(self) -> dict[str, float]:
-        self.checkpoints_dir.mkdir(parents=True, exist_ok=True)
-        self.final_adapter_dir.mkdir(parents=True, exist_ok=True)
         src_final = self.output_dir / "final"
         src_checkpoints = self.output_dir / "checkpoints"
-        if src_final.exists():
-            if self.final_adapter_dir.exists():
-                shutil.rmtree(self.final_adapter_dir)
-            shutil.copytree(src_final, self.final_adapter_dir)
+        if not self.has_adapter_weights(src_final):
+            raise RuntimeError("Training completed without a final adapter")
+        if self.final_adapter_dir.exists():
+            shutil.rmtree(self.final_adapter_dir)
+        shutil.copytree(src_final, self.final_adapter_dir)
         if src_checkpoints.exists():
             if self.checkpoints_dir.exists():
                 shutil.rmtree(self.checkpoints_dir)
             shutil.copytree(src_checkpoints, self.checkpoints_dir)
+        else:
+            self.checkpoints_dir.mkdir(parents=True, exist_ok=True)
         final_files = list(self.final_adapter_dir.rglob("*")) if self.final_adapter_dir.exists() else []
-        checkpoint_count = len([path for path in self.checkpoints_dir.iterdir() if path.is_dir()]) if self.checkpoints_dir.exists() else 0
+        checkpoint_count = (
+            len([path for path in self.checkpoints_dir.iterdir() if path.is_dir()])
+            if self.checkpoints_dir.exists()
+            else 0
+        )
         return {
             "tensor_count": float(self.count_tensors()),
             "final_file_count": float(len([path for path in final_files if path.is_file()])),
@@ -1500,17 +1596,27 @@ except Exception as exc:
 
             cache_ok, cache_reason, tensor_count = self.tensor_cache_health(repair=True)
             force_preprocess = os.environ.get("PIMP_REMOTE_FORCE_PREPROCESS", "0") == "1"
-            if cache_ok and not force_preprocess:
+            expected_fingerprint = self.preprocessing_fingerprint(
+                dataset,
+                variant=preprocess_cmd[preprocess_cmd.index("--model-variant") + 1],
+                precision=preprocess_cmd[preprocess_cmd.index("--precision") + 1],
+                max_duration=int(preprocess_cmd[preprocess_cmd.index("--max-duration") + 1]),
+            )
+            cache_matches = self.fingerprints_match(expected_fingerprint, self.read_cache_fingerprint())
+            if cache_ok and cache_matches and not force_preprocess:
                 if cache_reason != "tensor cache is finite":
                     self.log("preprocess", "Repaired preprocessed tensor cache", tensor_count=tensor_count, reason=cache_reason)
                 self.log("preprocess", "Reusing existing preprocessed tensors", tensor_count=tensor_count)
             else:
+                discard_reason = (
+                    "forced" if force_preprocess else ("fingerprint mismatch" if cache_ok else cache_reason)
+                )
                 if self.tensor_dir.exists() and tensor_count > 0:
                     self.log(
                         "preprocess",
                         "Discarding preprocessed tensor cache",
                         tensor_count=tensor_count,
-                        reason="forced" if force_preprocess else cache_reason,
+                        reason=discard_reason,
                     )
                 if self.tensor_dir.exists():
                     shutil.rmtree(self.tensor_dir)
@@ -1520,9 +1626,35 @@ except Exception as exc:
                 cache_ok, cache_reason, tensor_count = self.tensor_cache_health(repair=True)
                 if cache_ok and cache_reason != "tensor cache is finite":
                     self.log("preprocess", "Repaired preprocessed tensor cache", tensor_count=tensor_count, reason=cache_reason)
+                if cache_ok:
+                    self.write_cache_fingerprint(expected_fingerprint)
             if not cache_ok:
                 raise RuntimeError(f"Preprocessing did not produce a usable tensor cache: {cache_reason}")
             self.metric(stage="preprocess", tensor_count=tensor_count)
+
+            if str(self.job.get("task") or "") == "preprocess":
+                self.log("complete", "Preprocessing complete", tensor_count=tensor_count)
+                self.write_result(
+                    "succeeded",
+                    metrics={
+                        "tensor_count": float(tensor_count),
+                        "sample_count": float(len(dataset.get("samples", []))),
+                    },
+                    extra_artifacts=[
+                        {
+                            "kind": "tensors",
+                            "path": relative_path(self.tensor_dir, self.package_root),
+                            "media_type": "inode/directory",
+                        },
+                        {
+                            "kind": "side_step_dataset",
+                            "path": relative_path(self.side_step_dataset, self.package_root),
+                            "media_type": "application/json",
+                        },
+                    ],
+                    include_training_artifacts=False,
+                )
+                return 0
 
             if self.output_dir.exists():
                 shutil.rmtree(self.output_dir)

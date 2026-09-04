@@ -297,8 +297,9 @@ struct EditorView: View {
 
             switch loadResult {
             case let .success(buffer):
-                await MainActor.run {
+                let loadGeneration = await MainActor.run { () -> Int in
                     state.applyLoadedBuffer(buffer, fileName: fileName)
+                    return state.documentGeneration
                 }
 
                 // Store PCM only — full-track VAE encode is deferred until first
@@ -306,6 +307,7 @@ struct EditorView: View {
                 // of MLX GPU cache (see Diagnostics editor/loadAudio).
                 guard let coordinator = editorService.coordinator else {
                     await MainActor.run {
+                        guard state.documentGeneration == loadGeneration else { return }
                         state.deferUIUpdate { editor in
                             editor.operationErrorMessage =
                                 "Audio opened for playback, but the editor pipeline is not ready for AI edits."
@@ -317,13 +319,22 @@ struct EditorView: View {
                     AudioBufferConverter.toMLXArray(buffer)
                 }.value
                 do {
+                    let stillCurrent = await MainActor.run { () -> Bool in
+                        state.documentGeneration == loadGeneration
+                    }
+                    guard stillCurrent else { return }
                     _ = try await coordinator.loadAudio(
                         samples: mlxArray,
                         sampleRate: buffer.sampleRate,
                         precision: .float32
                     )
+                    await MainActor.run {
+                        guard state.documentGeneration == loadGeneration else { return }
+                        lastSyncedBufferRevision = state.bufferRevision
+                    }
                 } catch {
                     await MainActor.run {
+                        guard state.documentGeneration == loadGeneration else { return }
                         state.deferUIUpdate { editor in
                             editor.operationErrorMessage =
                                 "Audio opened for playback, but editor prep failed: \(error.localizedDescription)"
@@ -362,6 +373,8 @@ struct EditorView: View {
         state.saveUndoSnapshot() // save pre-inpaint buffer so AI edits are undoable
         state.isProcessing = true
         state.progress = .buildingMask
+        let sourceRevision = state.bufferRevision
+        let sourceDocument = state.documentGeneration
 
         Task { @MainActor in
             // If local DSP/load changed PCM since last sync, push it so AI encodes
@@ -390,7 +403,10 @@ struct EditorView: View {
             // Only refresh the buffer after a successful edit. Pulling audio on
             // failure rewrote the waveform from stale coordinator state and
             // made it look like a no-op "edit" had been applied.
-            guard succeeded, let updatedAudio = await coordinator.getCurrentAudio() else { return }
+            guard succeeded,
+                  state.documentGeneration == sourceDocument,
+                  state.bufferRevision == sourceRevision,
+                  let updatedAudio = await coordinator.getCurrentAudio() else { return }
             let newBuffer = AudioBufferConverter.fromMLXArray(
                 updatedAudio,
                 sampleRate: state.sampleRate

@@ -89,6 +89,9 @@ class EditorState: ObservableObject {
     /// AI apply. EditorView uses this to know when to re-sync the coordinator
     /// without re-encoding on every Inpaint of an unchanged buffer.
     private(set) var bufferRevision: Int = 0
+    /// Bumps when a new document is adopted so in-flight DSP/AI/load work can
+    /// drop stale results instead of overwriting the newly opened file.
+    private(set) var documentGeneration: Int = 0
 
     private let dspProcessor = DSPProcessor()
 
@@ -260,6 +263,7 @@ class EditorState: ObservableObject {
         operationErrorMessage = nil
         polishAppliedConfirmation = false
 
+        let sourceRevision = bufferRevision
         dspTask = Task { [weak self] in
             defer {
                 Task { @MainActor [weak self] in
@@ -276,6 +280,7 @@ class EditorState: ObservableObject {
 
                 await MainActor.run { [weak self] in
                     guard let self else { return }
+                    guard shouldCommitProcessedBuffer(sourceRevision: sourceRevision) else { return }
                     pushUndoSnapshot(buffer)
                     redoStack.removeAll()
                     canUndo = true
@@ -320,6 +325,7 @@ class EditorState: ObservableObject {
         isDSPBusy = true
         operationErrorMessage = nil
 
+        let sourceRevision = bufferRevision
         dspTask = Task { [weak self] in
             defer {
                 Task { @MainActor [weak self] in
@@ -341,6 +347,7 @@ class EditorState: ObservableObject {
 
                 await MainActor.run { [weak self] in
                     guard let self else { return }
+                    guard shouldCommitProcessedBuffer(sourceRevision: sourceRevision) else { return }
                     // Commit: save pre-op buffer so it can be restored by undo.
                     pushUndoSnapshot(buffer)
                     redoStack.removeAll()
@@ -604,6 +611,7 @@ class EditorState: ObservableObject {
 
     /// Apply a freshly decoded buffer on the next runloop tick (History → Edit / Open).
     func applyLoadedBuffer(_ buffer: AudioBuffer, fileName: String) {
+        invalidateInFlightBufferWork()
         deferUIUpdate { state in
             state.fileName = fileName
             state.operationErrorMessage = nil
@@ -620,6 +628,19 @@ class EditorState: ObservableObject {
             state.refreshWaveformPeaks(from: buffer, clearExisting: true)
             state.refreshLevelMetrics()
         }
+    }
+
+    /// Cancel DSP and bump document/buffer identity so in-flight results cannot
+    /// commit onto a different file or an undone buffer.
+    func invalidateInFlightBufferWork() {
+        dspTask?.cancel()
+        documentGeneration &+= 1
+        noteBufferMutation()
+        isProcessing = false
+    }
+
+    private func shouldCommitProcessedBuffer(sourceRevision: Int) -> Bool {
+        !Task.isCancelled && bufferRevision == sourceRevision
     }
 
     nonisolated static func computePeaks(from buffer: AudioBuffer) -> [Float] {
