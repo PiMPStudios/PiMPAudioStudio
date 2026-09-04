@@ -1,5 +1,6 @@
 # Pin CI to SwiftFormat 0.62.1. Run:
 #   swiftformat --config .swiftformat PiMPAudioStudio PiMPAudioStudioTests PiMPAudioCore
+# wrap and wrapArguments time out on large files on Ubuntu (AppStateTests ~4k lines).
 --swiftversion 5.10
 --indent 4
 --maxwidth 120
@@ -10,6 +11,7 @@
 --stripunusedargs closure-only
 --disable wrapMultilineStatementBraces
 --disable wrap
+--disable wrapArguments
 --disable noForceUnwrapInTests
 --disable noForceTryInTests
 --exclude .build,DerivedData,Vendor,Spikes

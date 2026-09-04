@@ -46,7 +46,8 @@ All notable changes to PiMP Audio Studio are documented here.
 
 - **Swift sources formatted with SwiftFormat 0.62.1.** CI lints
   `PiMPAudioStudio`, `PiMPAudioStudioTests`, and `PiMPAudioCore` on Ubuntu.
-  `Vendor/` and `Spikes/` stay excluded.
+  `Vendor/` and `Spikes/` stay excluded. The `wrap` and `wrapArguments`
+  rules are disabled because they time out on large files on Ubuntu.
 - **Keychain writes now fail visibly** and store secrets as
   `WhenUnlockedThisDeviceOnly`. Update-or-add no longer deletes a good key
   before a failed insert.
