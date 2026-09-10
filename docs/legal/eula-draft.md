@@ -1,6 +1,6 @@
 # PiMP Audio Studio End-User License Agreement
 
-**DRAFT FOR ATTORNEY REVIEW - NOT YET OPERATIVE**
+> DRAFT FOR ATTORNEY REVIEW — NOT YET OPERATIVE
 
 This draft is a starting point for licensing compiled PiMP Audio Studio
 applications to customers. It does not govern source-repository access, which
@@ -81,7 +81,8 @@ resource termination, and compliance with provider terms.
 ## 8. Privacy and Security
 
 Use of the application is subject to the PiMP Audio Studio Privacy Policy when
-published. Local credentials should be stored through supported secure storage.
+published (draft: `privacy-policy-draft.md`). Local credentials should be
+stored through supported secure storage.
 You are responsible for protecting account credentials, API keys, SSH keys,
 datasets, and exported job packages and for promptly responding to suspected
 unauthorized access.
@@ -153,13 +154,23 @@ before submission.
 
 ## 16. Governing Law and General Terms
 
-This Agreement is governed by the laws of the State of Mississippi, without
+This Agreement is governed by the laws of the State of Wyoming, without
 regard to conflict-of-law principles, except where mandatory consumer law
 requires otherwise. If a provision is unenforceable, it will be limited to the
 minimum extent necessary and the remainder will continue in effect. This
 Agreement and incorporated policies form the entire agreement concerning the
 application unless separate written terms apply.
 
-The final agreement must identify a customer-support contact, legal-notice
-address, effective date, applicable purchase terms, and jurisdiction-specific
-consumer provisions before use.
+Notices under this Agreement may be sent to:
+
+```text
+Professional Interactive Media Productions LLC
+30 N Gould St #65749
+Sheridan, WY 82801
+USA
+```
+
+Email: [support@pimp.net](mailto:support@pimp.net)
+
+The final agreement must still identify an effective date, applicable
+purchase terms, and jurisdiction-specific consumer provisions before use.

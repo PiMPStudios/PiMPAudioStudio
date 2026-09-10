@@ -15,11 +15,18 @@ PiMP Audio Studio.
   short acknowledgment template for specifically invited repository readers.
 - [`eula-draft.md`](eula-draft.md) is a non-operative customer EULA draft for
   attorney review before binary distribution.
+- [`privacy-policy-draft.md`](privacy-policy-draft.md) is a non-operative
+  customer privacy policy draft. It is not in force until counsel review,
+  confirmed contact details, and publication.
+- [`privacy-data-flow-inventory.md`](privacy-data-flow-inventory.md) is the
+  working inventory of on-device storage and outbound network flows that
+  the privacy draft is based on. It is not a privacy policy.
 
 ## Before Commercial Release
 
 1. Have qualified counsel review the source license and EULA.
-2. Complete a privacy/data-flow audit and publish a privacy policy.
+2. Have counsel review the privacy policy draft against the data-flow
+   inventory, fill contact/address gaps, and publish the policy.
 3. Generate and bundle complete direct and transitive third-party notices.
 4. Audit every downloadable model and remote-worker dependency separately.
 5. Decide whether the App Store build uses Apple's standard EULA or a reviewed

@@ -22,7 +22,7 @@ Studio repository owned by Professional Interactive Media Productions LLC,
 d/b/a PiMP Studios.
 
 I confirm that I received, read, and agree to the PiMP Audio Studio Proprietary
-Source Code License, Version 1.0 dated July 24, 2026, available in the
+Source Code License, Version 1.1 dated September 9, 2026, available in the
 repository's `LICENSE` file. In particular, I agree that:
 
 1. The repository and its nonpublic contents are proprietary and confidential.
@@ -53,7 +53,7 @@ document, then ask the recipient to reply from their identified email account
 with the following statement:
 
 > I have read and agree to the PiMP Audio Studio Proprietary Source Code
-> License, Version 1.0 dated July 24, 2026, and the Source Access
+> License, Version 1.1 dated September 9, 2026, and the Source Access
 > Acknowledgment. My GitHub username is [USERNAME], and my access is limited to
 > [AUTHORIZED PURPOSE].
 
