@@ -9,6 +9,7 @@ and run without the source repository.
 ```text
 Bundle ID: com.pimpstudios.PiMPAudioStudio
 Display name: PiMP Audio Studio
+Team ID: F3S7J7L552
 Marketing version: 0.8.0
 Build version: 8
 Minimum macOS: 15.0
@@ -19,7 +20,7 @@ Sandbox: enabled
 The repository is governed by:
 
 ```text
-PiMP Audio Studio Proprietary Source Code License, Version 1.0
+PiMP Audio Studio Proprietary Source Code License, Version 1.1
 ```
 
 Do not publish source or redistributable assets as open source unless licensing

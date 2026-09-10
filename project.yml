@@ -48,6 +48,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.pimpstudios.PiMPAudioStudio
+        DEVELOPMENT_TEAM: F3S7J7L552
+        CODE_SIGN_STYLE: Automatic
         MARKETING_VERSION: "0.8.0"
         CURRENT_PROJECT_VERSION: 8
         SWIFT_VERSION: "5.10"
@@ -96,6 +98,8 @@ targets:
         product: MLXOptimizers
     settings:
       base:
+        DEVELOPMENT_TEAM: F3S7J7L552
+        CODE_SIGN_STYLE: Automatic
         SWIFT_VERSION: "5.10"
         GENERATE_INFOPLIST_FILE: YES
 
