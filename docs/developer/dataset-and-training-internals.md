@@ -126,8 +126,10 @@ Worker contract details: [Remote Worker](remote-worker.md),
 ## MCP Surfaces
 
 Training-related tools include list/inspect/compare datasets and runs,
-`training_preflight`, `start_training` (dry-run default), `stop_training`,
-`tail_training_log`, and RunPod launch/status/terminate tools.
+`training_preflight`, `start_training` (dry-run default, reviewed dataset
+package only), `stop_training`, `tail_training_log`, and RunPod
+launch/status/terminate tools. MCP does not expose `resumeAdapterID`,
+train-from-history, or `delete_model`.
 
 ## Tests To Prefer
 

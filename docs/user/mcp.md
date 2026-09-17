@@ -65,6 +65,10 @@ High-level tool groups:
 | Operations | `list_operations`, `get_operation`, `cancel_operation` (confirm) |
 | Cleanup | `release_memory` |
 
+`start_training` uses a reviewed dataset package. It does not train from
+history takes or resume a paused adapter (`resumeAdapterID`). There is no
+`delete_model` tool.
+
 Long-running work returns an `operationID` you can poll. Mutating tools default
 to safe modes (`dryRun: true` where applicable) and require `confirm: true` or
 MCP form elicitation before billable/destructive actions. Clients that cannot

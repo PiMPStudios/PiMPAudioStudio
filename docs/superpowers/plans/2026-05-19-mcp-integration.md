@@ -3,6 +3,11 @@
 > **Codex planning note (2026-05-19):** This plan records the agreed local MCP
 > direction. Implement in small slices. Do not expose remote/LAN access in v1.
 >
+> **Status (2026-09-14):** Phases 1–4 and the shipped Phase 5 tools
+> (`set_active_model`, `delete_history_entries`) are in. Remaining Phase 5
+> items are train-from-history, resume training, and `delete_model`. MCP tasks
+> wait on the Swift SDK.
+>
 > **Standards update (2026-05-20):** Future MCP work should bias toward the
 > official protocol shape and the official Swift SDK where practical. Keep
 > `AnvilCommandFacade` as the app boundary and move transport/lifecycle/schema
@@ -223,18 +228,23 @@ existing localhost listener, Settings controls, optional token gate, and
 session, parses POST SSE responses, verifies `GET /mcp`, and checks a
 request-scoped `notifications/progress` event.
 
-## Phase 5 — Deferred Heavy/Destructive Actions
+## Phase 5 — Remaining Heavy/Destructive Actions
 
-Only start this after read-only and controlled-action tools are reliable.
+Two of the originally deferred tools shipped later with confirm/elicitation
+guards. Do not treat them as open:
 
-- [ ] `train_lora_from_history`
-- [ ] `resume_lora_training`
-- [ ] `set_active_model`
-- [ ] `delete_history_entry`
-- [ ] `delete_model`
+- [x] `set_active_model` — activate a ready registry model for its category.
+- [x] `delete_history_entries` — delete selected history IDs or all history
+  (`deleteAll`). Plan name was `delete_history_entry`.
 
-Each of these needs stricter confirmation and clearer UI feedback than the
-read-only phase.
+Still not exposed over MCP (UI/`TrainingService`/`ModelRegistry` only):
+
+- [ ] `train_lora_from_history` — `start_training` trains from a reviewed
+  dataset package (`importedFiles`) and passes empty history `entries`.
+- [ ] `resume_lora_training` — `TrainingService` accepts `resumeAdapterID`;
+  MCP `start_training` does not. `stop_training` can save a checkpoint.
+- [ ] `delete_model` — UI calls `ModelRegistry.deleteModelFiles`; there is
+  no MCP tool (`download_model` and `set_active_model` exist).
 
 ## Test Plan
 

@@ -3,11 +3,15 @@
 > **Codex planning note (2026-05-19):** This locks in the agreed MCP shape for
 > Anvil. Phase 1 read-oriented localhost tools, Phase 2 read-only resources,
 > the localhost smoke script, return-only prompt/lyric action tools, and the
-> first controlled review-metadata write are now implemented; later phases
-> remain planned.
-> The design intentionally treats MCP as a local
-> automation/control surface over existing app workflows, not as a dependency
-> inside the audio generation pipeline.
+> first controlled review-metadata write are now implemented.
+>
+> **Status (2026-09-14):** MCP v1 is in (SDK Streamable HTTP, guarded tools,
+> pollable operations). Remaining work is MCP task mapping when the Swift SDK
+> supports it, plus the still-deferred slices below.
+>
+> The design intentionally treats MCP as a local automation/control surface
+> over existing app workflows, not as a dependency inside the audio generation
+> pipeline.
 >
 > **Standards update (2026-05-20):** Anvil should move toward an SDK-backed or
 > spec-conformant MCP layer as the local control surface grows into richer
@@ -138,16 +142,21 @@ Add after read-only tools are stable.
   validates adapter/base model compatibility; implemented.
 - `release_memory`: run the existing release GPU memory path. Guard: requires
   `confirm: true` or MCP form elicitation approval; implemented.
+- `set_active_model`: activate a ready registry model for its category.
+  Guard: requires `confirm: true` or MCP form elicitation; implemented.
+- `delete_history_entries`: delete selected history IDs or all history.
+  Guard: requires `confirm: true` or MCP form elicitation; implemented.
+  Spec name was `delete_history_entry`.
 
 ### Deferred Tools
 
-These are useful, but should not be in the first pass.
+These remain useful and are still not MCP tools. Local training over MCP is
+`start_training` / `stop_training` from a reviewed dataset package only.
 
-- `train_lora_from_history`
-- `resume_lora_training`
-- `delete_history_entry`
-- `delete_model`
-- `set_active_model`
+- `train_lora_from_history` — not exposed; `start_training` does not take
+  history entries
+- `resume_lora_training` — not exposed; MCP does not pass `resumeAdapterID`
+- `delete_model` — not exposed; UI uses `ModelRegistry.deleteModelFiles`
 - Raw audio export over MCP
 - Raw tensor/debug internals
 

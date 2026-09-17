@@ -189,9 +189,12 @@ shapes such as broad full-attention LoKR on XL models.
 
 `start_training` uses the same resolver but defaults to `dryRun: true`. To
 actually start local training, pass `dryRun: false` and either approve the MCP
-elicitation form or pass `confirm: true` after explicit approval. `stop_training`
-uses the TrainingService stop path and can save a checkpoint when possible via
-`saveCheckpoint: true`; it is also guarded by MCP elicitation or `confirm: true`.
+elicitation form or pass `confirm: true` after explicit approval. Training is
+from a reviewed dataset package only; MCP does not accept history takes or
+`resumeAdapterID` (the UI resume path). `stop_training` uses the TrainingService
+stop path and can save a checkpoint when possible via `saveCheckpoint: true`; it
+is also guarded by MCP elicitation or `confirm: true`. There is no
+`delete_model` tool; model-file removal stays in Settings.
 
 `editor_status` returns editor readiness, loaded audio metadata, supported
 editor action descriptors, and the active editor operation when present.
@@ -551,9 +554,15 @@ curl -s -X DELETE "$ENDPOINT" \
 
 - The server binds to `127.0.0.1` only.
 - It does not expose raw tensors, model weights, or remote/LAN access.
-- Training MCP tools are read-only diagnostics and dataset/run discovery; they
-  do not start training, cancel training, or upload audio.
-- Destructive and expensive actions are intentionally deferred.
+- Training MCP can inspect datasets/runs, preflight, start from a reviewed
+  dataset package (dry-run default), and stop (optional checkpoint). It does
+  not train from history takes, resume a paused adapter, or delete model
+  files.
+- Destructive and expensive actions that are exposed require `confirm: true`
+  or MCP form elicitation (`generate`, editor mutations, `start_training`,
+  `set_active_model`, `delete_history_entries`, RunPod launch/terminate, and
+  similar). Still not exposed: train-from-history, resume training, and
+  `delete_model`.
 - `compare_traces` uses the same Model, Adapters, Sampling, Prompt &
   Lyrics, and Audio grouping as the Generation Analyzer compare view.
 - `enhance_prompt` and `write_lyrics` may load/use the configured

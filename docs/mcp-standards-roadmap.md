@@ -168,7 +168,8 @@ Tools should perform bounded actions:
 - compare takes
 - mark a take as preferred
 - release memory
-- start, pause, or resume training only with stronger safeguards
+- start or stop local training from a reviewed dataset package
+  (train-from-history and resume-from-checkpoint are not MCP tools yet)
 
 Prompts should capture reusable workflows:
 
@@ -315,8 +316,8 @@ PiMP Audio Studio's JSON-safe facade payloads and SDK `Value` objects.
   pollable operation contract.
 - Preserve `cancel_operation` for app-owned background jobs while relying on SDK
   cancellation notifications for in-flight MCP requests.
-- Extend the current confirmation/elicitation pattern before adding broader
-  destructive editing actions.
+- Extend the current confirmation/elicitation pattern before adding
+  train-from-history, resume-training, and `delete_model` tools.
 - Defer LAN/remote access until authentication and session posture are
   revisited.
 

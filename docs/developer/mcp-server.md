@@ -96,7 +96,8 @@ Supported DSP effect names: `trimToSelection`, `deleteSelection`, `fadeIn`,
 ### Training / datasets
 
 - `training_preflight`
-- `start_training` (default `dryRun: true`)
+- `start_training` (default `dryRun: true`; dataset package only, no
+  `resumeAdapterID` / history takes)
 - `stop_training`
 - `build_training_dataset` (default dry-run; operation when submitted)
 - `enrich_training_dataset` (default dry-run; operation when submitted)

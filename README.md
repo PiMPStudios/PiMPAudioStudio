@@ -193,8 +193,9 @@ Near-term work called out by the docs:
 3. Bundle user docs into the app and build the in-app Help window.
 4. Add repeatable release packaging: version bump, signed/notarized app, DMG,
    smoke tests, and sandbox entitlement audit.
-5. Continue MCP polish around long-running task progress, cancellation, and
-   guarded destructive actions.
+5. Continue MCP polish: map pollable operations onto MCP tasks when the Swift
+   SDK exposes task capabilities; add train-from-history, resume-training, and
+   `delete_model` tools.
 6. Continue dataset/training refinements such as saved training presets,
    checkpoint browsers, gradient sensitivity estimation, and optional remote
    ACE-Step captioner/transcriber jobs.
