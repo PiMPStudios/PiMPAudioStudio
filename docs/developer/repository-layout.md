@@ -14,6 +14,11 @@ PiMPAudioStudio/
   docs/                          User, developer, plans, investigations
   CHANGELOG.md
   README.md
+  LICENSE                        Apache License 2.0
+  NOTICE                         Apache attribution notice
+  TRADEMARKS.md                  Name and icon; not granted by the license
+  CONTRIBUTING.md                Contribution terms
+  THIRD_PARTY_NOTICES.md         Direct dependency licenses
 ```
 
 ## App Target (`PiMPAudioStudio/`)

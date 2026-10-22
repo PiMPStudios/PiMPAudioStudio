@@ -180,6 +180,10 @@ remote-worker/                Portable CUDA/Side-Step worker for cloud pods
 Spikes/                       Isolated experiments
 docs/                         User docs, developer docs, plans, roadmaps, debug notes
 CHANGELOG.md                  Project changelog
+LICENSE                       Apache License 2.0
+NOTICE                        Apache attribution notice
+TRADEMARKS.md                 Name and icon; not granted by the license
+CONTRIBUTING.md               How to contribute
 ```
 
 ## Current Roadmap
@@ -216,15 +220,16 @@ Near-term work called out by the docs:
 
 ## License
 
-PiMP Audio Studio is proprietary and confidential software.
+PiMP Audio Studio is licensed under [Apache License 2.0](LICENSE).
 
-Copyright (c) 2026 Professional Interactive Media Productions LLC, d/b/a PiMP
-Studios. All rights reserved. Repository access does not grant permission to
-copy, modify, publish, distribute, commercialize, or reuse project materials.
-See [LICENSE](LICENSE) for the terms governing authorized source access.
+Copyright 2026 Professional Interactive Media Productions LLC, d/b/a PiMP
+Studios.
+
+Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). The Apache
+license does not grant trademark rights; see [TRADEMARKS.md](TRADEMARKS.md).
 
 Third-party components and model assets remain subject to their own licenses.
-See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+See [NOTICE](NOTICE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ---
 

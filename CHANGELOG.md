@@ -44,6 +44,10 @@ All notable changes to PiMP Audio Studio are documented here.
 
 ### Changed
 
+- **Repository licensed under Apache License 2.0.** Replaced the proprietary
+  source-access license with Apache 2.0, added `NOTICE` and `TRADEMARKS.md`,
+  and opened contributions under the same terms. Third-party components and
+  downloadable models keep their own licenses.
 - **Swift sources formatted with SwiftFormat 0.62.1.** CI lints
   `PiMPAudioStudio`, `PiMPAudioStudioTests`, and `PiMPAudioCore` on Ubuntu.
   `Vendor/` and `Spikes/` stay excluded. The `wrap` and `wrapArguments`

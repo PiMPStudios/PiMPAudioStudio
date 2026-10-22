@@ -1,10 +1,14 @@
 # PiMP Audio Studio End-User License Agreement
 
-> DRAFT FOR ATTORNEY REVIEW — NOT YET OPERATIVE
+> DRAFT — NOT OPERATIVE. SOURCE IS APACHE LICENSE 2.0.
 
-This draft is a starting point for licensing compiled PiMP Audio Studio
-applications to customers. It does not govern source-repository access, which
-is covered by the repository `LICENSE` file.
+This file is a leftover draft from when a paid compiled application was under
+consideration. It is **not** in force. PiMP-owned source in this repository
+is licensed under [Apache License 2.0](../../LICENSE). Do not present this
+document to users.
+
+The text below is retained only as historical drafting. Do not treat it as
+current terms for source, binaries, or contributions.
 
 ## 1. Parties and Acceptance
 

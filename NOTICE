@@ -1,0 +1,13 @@
+PiMP Audio Studio
+Copyright 2026 Professional Interactive Media Productions LLC, d/b/a PiMP Studios
+
+Licensed under the Apache License, Version 2.0.
+See LICENSE for the full license text.
+
+This product includes third-party software. Copyright notices and licenses
+for those components are recorded in THIRD_PARTY_NOTICES.md. Preserve those
+notices in distributions that include the corresponding components.
+
+Model weights, datasets, and remote services that the application can
+download or call are not licensed under Apache 2.0 unless their own terms
+say so. See THIRD_PARTY_NOTICES.md.

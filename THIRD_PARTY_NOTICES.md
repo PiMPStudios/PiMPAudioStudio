@@ -1,15 +1,13 @@
 # Third-Party Notices
 
-PiMP Audio Studio is proprietary software, but it incorporates and interoperates
-with third-party software, services, and model assets that remain governed by
-their own licenses. The PiMP Audio Studio proprietary license does not replace
-or restrict rights granted directly by those third-party licensors.
+PiMP-owned source in this repository is licensed under Apache License 2.0
+(see [LICENSE](LICENSE) and [NOTICE](NOTICE)). That license does not replace
+or restrict rights granted directly by third-party licensors.
 
 This file records the project's current direct software dependencies. It is a
-development inventory, not yet the final release-bundle attribution report.
-Before public distribution, the release process must collect the complete
-licenses and required notices for direct and transitive dependencies actually
-included in the shipped application.
+development inventory. Distributions that include those components must also
+preserve their copyright notices, license texts, and NOTICE files as each
+license requires.
 
 ## Direct Software Dependencies
 

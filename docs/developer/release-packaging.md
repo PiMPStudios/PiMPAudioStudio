@@ -17,16 +17,9 @@ Hardened runtime: enabled
 Sandbox: enabled
 ```
 
-The repository is governed by:
-
-```text
-PiMP Audio Studio Proprietary Source Code License, Version 1.1
-```
-
-Do not publish source or redistributable assets as open source unless licensing
-changes. Invited repository readers receive only the limited rights stated in
-the root `LICENSE`; use `docs/legal/source-access-acknowledgment.md` to document
-their acceptance.
+The repository is licensed under Apache License 2.0. See the root `LICENSE`,
+`NOTICE`, and `TRADEMARKS.md`. Third-party components and downloadable models
+keep their own terms (`THIRD_PARTY_NOTICES.md`).
 
 ## Standalone App Goal
 
@@ -49,8 +42,8 @@ Bundle:
 - Bundled user docs from `docs/user/`
 - Small templates/config files needed at runtime
 - Portable remote-worker payload as inert resources if still required for upload
-- Reviewed customer EULA and privacy policy
-- Complete third-party license and NOTICE bundle
+- `LICENSE`, `NOTICE`, and the third-party license bundle
+- A published privacy policy only if that distribution channel needs one
 
 Do not bundle:
 
@@ -62,23 +55,23 @@ Do not bundle:
 
 ## Legal Release Gate
 
-Before public distribution:
+Before public binary distribution:
 
-1. Have counsel review the proprietary source license and customer EULA.
-2. Decide whether App Store distribution uses Apple's standard EULA or a
-   reviewed custom EULA; direct downloads must present equivalent reviewed
-   terms.
-3. Publish a privacy policy based on a current data-flow audit.
-4. Collect complete direct and transitive dependency notices into the app
-   bundle, including MIT copyright notices, the Apache License 2.0 text, and
-   any dependency NOTICE files.
-5. Audit every model, dataset, and remote-worker dependency independently from
+1. Ship `LICENSE`, `NOTICE`, and the third-party notices required by bundled
+   dependencies (MIT copyright lines, Apache License 2.0 text, and any
+   dependency NOTICE files).
+2. Do not present `docs/legal/eula-draft.md` as in-force terms. Source and
+   self-built binaries are Apache License 2.0.
+3. Publish a privacy policy if the distribution channel needs one, based on
+   a current data-flow audit.
+4. Audit every model, dataset, and remote-worker dependency independently from
    the application source license.
+5. Keep the product name and icon consistent with `TRADEMARKS.md`.
 
 ## Sandboxing Notes
 
 See [Storage, Sandbox, Security](storage-sandbox-security.md). Audit temporary
-exceptions before paid public release.
+exceptions before a public Developer ID build.
 
 ## Docs Bundling
 

@@ -34,7 +34,8 @@ This policy covers the compiled PiMP Audio Studio application for macOS
 
 It does **not** cover:
 
-- access to the private source repository (see the repository `LICENSE`);
+- the public source repository (Apache License 2.0; see the repository
+  `LICENSE`);
 - a PiMP Studios website, store, or user account, if one is added later;
 - models, datasets, or cloud providers you choose, except to explain that
   the Application can send data to them at your direction.
