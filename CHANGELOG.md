@@ -44,6 +44,9 @@ All notable changes to PiMP Audio Studio are documented here.
 
 ### Changed
 
+- **Public README matches the shipped 0.8 app.** Dropped stale Help / remote
+  GPU / App Store wording, stated Xcode 26 and first-launch disk cost, and
+  pointed issues at the bug-report checklist.
 - **Repository licensed under Apache License 2.0.** Replaced the proprietary
   source-access license with Apache 2.0, added `NOTICE` and `TRADEMARKS.md`,
   and opened contributions under the same terms. Third-party components and
